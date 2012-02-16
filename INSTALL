@@ -1,0 +1,79 @@
+Install Instructions
+====================
+
+Install From Source code
+------------------------
+
+Installing from the source code is straightforward:
+
+
+1. 	Make sure you have installed software and libraries:
+
+	* PERL (5.8.8 should work, but 5.10.0 or higher is better)
+	* Libmicrohttpd (which in turn requires GnuTLS for TLS support)
+	* OpenSSL
+
+Note: SQLITE is compiled and integrated ath the same time that CaumeDSE
+(Replace the Sqlite folder with the latest amalgamation distribution if 
+needed).
+
+2. Edit the makefile in the main directory tu siot your needs (e.g. deactivate
+   DEBUG or enable RELEASE flags)
+	
+3. Compile with gcc (or other C compiler) and make by issuing the following
+   command:	
+	
+	make 
+
+4. Install:
+
+	make install
+
+(Note: by default the software will be installed in /opt/cdse)
+
+5. On the first run, the CaumeDSE platform will create its own databases in
+   /opt/cdse if it doesn't find any there (LogsDB, ResourcesDB and RolesDB,
+   these are SQLite databases, their contents are encrypted in the same way as
+   user data is encrypted).
+
+   At this point CaumeDSE will create for you a default organization (EngineOrg) 
+   and an administration user (EngineAdmin) and will setup its roles with full
+   powers to give you an administration account to start with. The organization
+   key with which all roles, and data in related to this organization is encrypted
+   will be generated automatically with a PRNG and this is the only time that it 
+   will be shown. If you loose it you loose access to your instance (unless you 
+   were able to create another organization and users with enough privileges),
+   so TAKE NOTE OF THIS KEY.
+
+6. Read the README file for general instructions, on how to use this software,
+   available functionality and current limitations.
+
+   For features that we expect to include in future versions read the TODO file.
+
+
+
+Install test files
+------------------
+
+The test mode (withthe DEBUG flag enabled) will run a series of tests 
+automatically when the program starts. The test files in TEST/testfiles 
+needed for these tests will be copied automatically by the makefile.
+
+There is a test database with users and test certificates that you may use
+to try out CaumeDSE, which includes some loeaded files, and a perl script to 
+parse it, all being done with the default organization (EngineOrg) and 
+administrator account (EngineAdmin). 
+
+To use this test organization (do not use it for production under any 
+circumstances!) just copy the contents of TEST/testDB_opt_cdse over 
+/opt/cdse (WARNING: YOU WILL OVERWRITE THE PROGRAM DATABASES! make backups
+first). 
+
+The KEY for this test organization will be located in 
+/opt/cdse/secureTmp/EngineOrg.key.txt in clear text.
+
+Digital certificates requests an a p12 certificate ready to install in a 
+browser for EngineAdmin are included in TEST/testCertAuth (ca.pem, server.key
+and server.pem within the test database are the same os those in this folder)
+
+
