@@ -10,8 +10,8 @@ Installing from the source code is straightforward:
 1. 	Make sure you have installed software and libraries:
 
 	* PERL (version 5.8.8 should work, but 5.10.0 or higher is better)
-	* Libmicrohttpd (which in turn requires GnuTLS for TLS support, 
-	  version 2.6.6 or higher).
+	* Libmicrohttpd (version 0.9.17 or higher, which in turn requires 
+	  GnuTLS for TLS support version 2.6.6 or higher).
 	* OpenSSL (version 0.98 should work, 1.00 or higher is preferred)
 
 Note: SQLITE is compiled and integrated ath the same time that CaumeDSE
