@@ -1,4 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 0.88 ALPHA
+Caume Data Security Engine (CaumeDSE) version 0.88.alpha
 
 NOTE: Please read section II, in regard to the APLHA status
 of this software and its implications!
@@ -1445,9 +1445,10 @@ Note that running in DEBUG mode not only makes use of HTTP (and then
 switches to HTTPS after the first [enter] is pressed) which does not
 encrypt incoming connections, but also dumps to the console sensitive
 information including passwords. To change to release mode (which also
-performs much faster), replace -DDEBUG with -DRELEASE in the DEFINES 
-section of the makefile and recompile. Once the software reaches BETA
-status it will be released with -DRELEASE as default (in release mode
-the software enters and infinite loop to answer connections; right now
-you need to kill the process to stop it).
+performs much faster), use the following parameter when running ./configure:
+	--enable-RELEASE
+
+Once the software reaches BETA status it will be released with RELEASE
+mode as default (in release mode the software enters and infinite loop to 
+answer connections; right now you need to kill the process to stop it).
 

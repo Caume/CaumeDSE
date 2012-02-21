@@ -9,17 +9,29 @@ Installing from the source code is straightforward:
 
 1. 	Make sure you have installed software and libraries:
 
-	* PERL (version 5.8.8 should work, but 5.10.0 or higher is better)
+	* PERL (version 5.10.0 or higher)
 	* Libmicrohttpd (version 0.9.17 or higher, which in turn requires 
 	  GnuTLS for TLS support version 2.6.6 or higher).
 	* OpenSSL (version 0.98 should work, 1.00 or higher is preferred)
 
 Note: SQLITE is compiled and integrated ath the same time that CaumeDSE
-(Replace the Sqlite folder with the latest amalgamation distribution if 
-needed).
+(Replace files within the sqlite directory with the latest amalgamation 
+distribution if needed).
 
-2. Edit the makefile in the main directory tu siot your needs (e.g. deactivate
-   DEBUG or enable RELEASE flags)
+2. Configure the package with:
+
+	./configure
+
+   By default the package is compiled in DEBUG  mode. If you want to compile
+   the package in release mode add the following parameter when calling the
+   configure script:
+
+	--enable-RELEASE
+
+   If your want the test database to be copied to the default data directory
+   add the following parameter when calling the configure script:
+
+	--enable-TESTDATABASE
 	
 3. Compile with gcc (or other C compiler) and make by issuing the following
    command:	
@@ -53,12 +65,12 @@ needed).
 
 
 
-Install test files
-------------------
+Test files and DB
+-----------------
 
-The test mode (withthe DEBUG flag enabled) will run a series of tests 
-automatically when the program starts. The test files in TEST/testfiles 
-needed for these tests will be copied automatically by the makefile.
+In DEBUG mode, CaumeDSE will run a series of tests automatically when the program 
+starts. The test files in TEST/testfiles are needed for these tests and they will 
+be copied automatically by the Makefile whe you compile in DEBUG mode (default).
 
 There is a test database with users and test certificates that you may use
 to try out CaumeDSE, which includes some loeaded files, and a perl script to 
@@ -66,9 +78,10 @@ parse it, all being done with the default organization (EngineOrg) and
 administrator account (EngineAdmin). 
 
 To use this test organization (do not use it for production under any 
-circumstances!) just copy the contents of TEST/testDB_opt_cdse over 
-/opt/cdse (WARNING: YOU WILL OVERWRITE THE PROGRAM DATABASES! make backups
-first). 
+circumstances!) just use the configure script parameter mentioned in step 2
+of the Installation procedure (WARNING: YOU WILL OVERWRITE THE PROGRAM DATABASES! 
+make backups first). Note that this test DB expects EngineStorage files to be
+in /opt/cdse.
 
 The KEY for this test organization will be located in 
 /opt/cdse/secureTmp/EngineOrg.key.txt in clear text.

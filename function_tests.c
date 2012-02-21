@@ -392,7 +392,7 @@ void testCSV ()
 void testEngMgmnt ()
 {
     int result;
-    result=cmeSetupEngineAdminDBs ();
+    result=cmeSetupEngineAdminDBs();
 }
 
 void testWebServices ()

@@ -165,7 +165,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeIDDRolesDBAnyTable_orgResourceId 11          //Column index {0 based} for WSID column
 #define cmeIDDURIMaxDepth 12                            //Max. # of elements in an URI {excluding parameters}.
 
-#define cmeEngineVersion "0.0.88 alpha"
+#define cmeEngineVersion "0.88.alpha"
 #define cmeWSHTMLPageStart "<html><head><title>Caume Data Security Engine </title></head>" \
  "<body><p><b>Caume DSE version " cmeEngineVersion "</b>"\
  "<br> &copy; 2010-2012 by Omar Alejandro Herrera Reyna.</p><br><br>" //Standard Webpage Title, open tags and (c).
@@ -264,44 +264,102 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define MHD_PLATFORM_H                              //for microhttpd.
 #define _FILE_OFFSET_BITS 64                        //for microhttpd {MHD_create_response_from_callback}.
 
-#include <stdio.h>
-#include <stdarg.h>     //handle va_list types for string formatting functions (e.g. vsnprintf())
-#include <stdlib.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <string.h>
-#include <ctype.h>      //toupper(),isalpha()
-#include <locale.h>
-#include <sys/time.h>
-#include <sys/types.h>      //for microhttpd
-#include <sys/stat.h>       //for microhttpd
-#include <sys/select.h>     //for microhttpd
-#include <sys/socket.h>     //for microhttpd
-#include <fcntl.h>          //for microhttpd
-#include <microhttpd.h>     //for microhttpd
-// --- OpenSSL includes
-#include <openssl/bio.h>      //I/O piped memory and filter functions in OpenSSL
-#include <openssl/err.h>      //Error functions
-#include <openssl/rand.h>     //Pseudo Random generator functions
-#include <openssl/bn.h>       //BIG number functions
-#include <openssl/hmac.h>     //Hash Message Authentication Code algorithm
-#include <openssl/evp.h>      //Symmetric Encryption algorithms wrapper
-#include <openssl/buffer.h>
-// --- GnuTLS includes
-#include <gnutls/gnutls.h>
-#include <gnutls/x509.h>
+// --- Autoconf includes
+#if HAVE_CONFIG_H
+#include "config.h"
+#endif
 
-/***
-//#include "/usr/lib/perl5/5.8.8/x86_64-linux/CORE/EXTERN.h"
-//#include "/usr/lib/perl5/5.8.8/x86_64-linux/CORE/perl.h"
-Correct location is now handled vía gcc option: `perl -MExtUtils::Embed -e perl_inc` .
-This makes code portable among linux distributions
-***/
+// --- General C libraries includes
+#if HAVE_STDIO_H
+#include <stdio.h>
+#endif
+#if HAVE_STDARG_H
+#include <stdarg.h>     //handle va_list types for string formatting functions (e.g. vsnprintf())
+#endif
+#if HAVE_STDLIB_H
+#include <stdlib.h>
+#endif
+#if HAVE_STDINT_H
+#include <stdint.h>
+#endif
+#if HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+#if HAVE_STRING_H
+#include <string.h>
+#endif
+#if HAVE_CTYPE_H
+#include <ctype.h>      //toupper(),isalpha()
+#endif
+#if HAVE_LOCALE_H
+#include <locale.h>
+#endif
+#if HAVE_SYS_TIME_H
+#include <sys/time.h>
+#endif
+#if HAVE_SYS_TYPES_H
+#include <sys/types.h>      //for microhttpd
+#endif
+#if HAVE_SYS_STAT_H
+#include <sys/stat.h>       //for microhttpd
+#endif
+#if HAVE_SYS_SELECT_H
+#include <sys/select.h>     //for microhttpd
+#endif
+#if HAVE_SYS_SOCKET_H
+#include <sys/socket.h>     //for microhttpd
+#endif
+#if HAVE_FCNTL_H
+#include <fcntl.h>          //for microhttpd
+#endif
+#if HAVE_LIBMICROHTTPD
+#include <microhttpd.h>     //for microhttpd
+#endif
+
+// --- OpenSSL includes
+#if HAVE_OPENSSL_BIO_H
+#include <openssl/bio.h>      //I/O piped memory and filter functions in OpenSSL
+#endif
+#if HAVE_OPENSSL_ERR_H
+#include <openssl/err.h>      //Error functions
+#endif
+#if HAVE_OPENSSL_RAND_H
+#include <openssl/rand.h>     //Pseudo Random generator functions
+#endif
+#if HAVE_OPENSSL_BN_H
+#include <openssl/bn.h>       //BIG number functions
+#endif
+#if HAVE_OPENSSL_HMAC_H
+#include <openssl/hmac.h>     //Hash Message Authentication Code algorithm
+#endif
+#if HAVE_OPENSSL_EVP_H
+#include <openssl/evp.h>      //Symmetric Encryption algorithms wrapper
+#endif
+#if HAVE_OPENSSL_BUFFER_H
+#include <openssl/buffer.h>
+#endif
+
+// --- GnuTLS includes
+#if HAVE_GNUTLS_GNUTLS_H
+#include <gnutls/gnutls.h>
+#endif
+#if HAVE_GNUTLS_X509_H
+#include <gnutls/x509.h>
+#endif
+
+// --- Embedded PERL includes
+#if HAVE_EXTERN_H
 #include <EXTERN.h> //for embedded perl interpreter
+#endif
+#if HAVE_PERL_H
 #include <perl.h>   //for embedded perl interpreter
+#endif
+#if HAVE_XSUB_H
 #include <XSUB.h>   //for embedded perl interpreter (32 bit machines)
+#endif
 EXTERN_C void xs_init (pTHX); //for embedded perl interpreter (using dynamically generated: 'xs_init.c')
 
+// --- CaumeDSE includes
 #include "crypto.h"
 #include "sqlite/sqlite3.h"
 #include "db.h"

@@ -104,12 +104,12 @@ int main(int argc, char *argv[], char *env[])
     cmeStrConstrAppend(&title,"Caume Data Security Engine, ver. %s - (c) 2010-2011 by Omar Alejandro Herrera Reyna.\n",cmeEngineVersion);
     printf("%s",title);
 
+    testEngMgmnt();
 #ifdef DEBUG
     testCryptoSymmetric(bufIn,bufOut);
     testCryptoDigest_Str(bufIn);
     testPerl(cdsePerl);
-    testDB (cdsePerl);
-    testEngMgmnt ();
+    testDB(cdsePerl);
     testCSV();
 #endif
 #ifdef RELEASE
