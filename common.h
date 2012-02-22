@@ -35,7 +35,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
     the public domain (http://www.sqlite.org/copyright.html).
 
     This product includes software from the GNU Libmicrohttpd project, Copyright
-    Â© 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
+    © 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
     2008, 2009, 2010 , 2011, 2012 Free Software Foundation, Inc.
 
     This product includes software from Perl5, which is Copyright (C) 1993-2005,
@@ -44,6 +44,11 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 ***/
 #ifndef COMMON_H_INCLUDED
 #define COMMON_H_INCLUDED
+
+// --- Autoconf includes
+#if HAVE_CONFIG_H
+#include "config.h"
+#endif
 
 //TODO (OHR#8#): Replace calls to malloc with audited, simple, wrapper function.
 //TODO (OHR#9#): Define function to read Globals in main.c from config file
@@ -66,8 +71,23 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeMaxRAWDataInPart 4000        //Max number of bytes in a secure file slice {part}, estimated from smallest SQLITE secureDB column files. {RECOMMENDED: 5120}
 // FIXME (OHR#2#): Fix cmeCipherByteString(). Right now, the Final mehtod fails when cmeMaxRAWDataInPart (aka srcLen) > evpBufferSize. It shouldn't.
 #define cmeDefaultContentReaderCallbackPageSize 1024*32     //Default Page size for ContentReaderCallback functions.    {RECOMMENDED: 1024*32}
-#define cmeDefaultFilePath "/opt/cdse/"  //Default virtual root path for storing engine files {DBs}.
-#define cmeDefaultSecureTmpFilePath "/opt/cdse/secureTmp/"   //default virtual root for storing temporal files that in a restricted storage {e.g. encrypted memory FS this though access restrictions}.
+
+#ifdef PATH_DATADIR
+#define cmeDefaultFilePath PATH_DATADIR "/"                     //Default virtual root path for storing engine files {DBs}.
+#define cmeDefaultSecureTmpFilePath PATH_DATADIR "/secureTmp/"  //Default virtual root for storing temporal files that in a restricted storage {e.g. encrypted memory FS this though access restrictions}.
+#define cmeDefaultHTTPSKeyFile PATH_DATADIR "/server.key"       //Default file with PEM key file for TLS/SSL server.
+#define cmeDefaultHTTPSCertFile PATH_DATADIR "/server.pem"      //Default file with PEM cert file for TLS/SSL server.
+#define cmeDefaultCACertFile PATH_DATADIR "/ca.pem"             //Default file with PEM cert file for CA to validate client certificates.
+#define cmeAdminDefaultStoragePath PATH_DATADIR "/"             //Default storage path for first organization { = cmeDefaultFilePath}.
+#else
+#define cmeDefaultFilePath "/opt/cdse/"                     //Default virtual root path for storing engine files {DBs}.
+#define cmeDefaultSecureTmpFilePath "/opt/cdse/secureTmp/"  //default virtual root for storing temporal files that in a restricted storage {e.g. encrypted memory FS this though access restrictions}.
+#define cmeDefaultHTTPSKeyFile "/opt/cdse/server.key"       //Default file with PEM key file for TLS/SSL server.
+#define cmeDefaultHTTPSCertFile "/opt/cdse/server.pem"      //Default file with PEM cert file for TLS/SSL server.
+#define cmeDefaultCACertFile "/opt/cdse/ca.pem"             //Default file with PEM cert file for CA to validate client certificates.
+#define cmeAdminDefaultStoragePath "/opt/cdse/"             //Default storage path for first organization { = cmeDefaultFilePath}.
+#endif /*PATH_DATADIR*/
+
 #define cmeDefaultResourcesDBName "ResourcesDB"     //Default filename for ResourcesDB sqlite3 filename.
 #define cmeDefaultRolesDBName "RolesDB"             //Default filename for ResourcesDB sqlite3 filename.
 #define cmeDefaultLogsDBName "LogsDB"               //Default filename for ResourcesDB sqlite3 filename.
@@ -81,9 +101,6 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeDefaultInsertSqlRows 512         //Default # of rows to be inserted into a sqlite3 db at a time {within a Begin - Commit block}.
 #define cmeDefaultWebservicePort 80         //Default port for regular HTTP web services.
 #define cmeDefaultWebServiceSSLPort 443     //Default port for TLS/SSL web services.
-#define cmeDefaultHTTPSKeyFile "/opt/cdse/server.key"    //Default file with PEM key file for TLS/SSL server.
-#define cmeDefaultHTTPSCertFile "/opt/cdse/server.pem"   //Default file with PEM cert file for TLS/SSL server.
-#define cmeDefaultCACertFile "/opt/cdse/ca.pem"          //Default file with PEM cert file for CA to validate client certificates.
 #define cmeDefaultThreadWaitSeconds 0                     //Default number of seconds to wait for thread synchronization.
 #define cmeDefaultPerlIterationFunction     "cmePERLProcessRow"               //Name for the perl iteration function to be called when parsing SQL results with PERL
 #define cmeDefaultPerlColNameSetupFunction  "cmePERLProcessColumnNames"       //Name for the perl iteration function to be called when parsing SQL results with PERL
@@ -91,7 +108,6 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 
 #define cmeAdminDefaultUserId "EngineAdmin"            //Default userId for first administrator account.
 #define cmeAdminDefaultStorageId "EngineStorage"       //Default storageId for first administrator account.
-#define cmeAdminDefaultStoragePath "/opt/cdse/"         //Default storage path for first organization { = cmeDefaultFilePath}.
 #define cmeAdminDefaultOrgId "EngineOrg"               //Default orgId for first administrator account.
                                                        //Note that there is NO default orgKey for EngineOrg... it will be generated randomly the first time the engine is run and won't be stored in clear {so take note!}.
 
@@ -165,7 +181,11 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeIDDRolesDBAnyTable_orgResourceId 11          //Column index {0 based} for WSID column
 #define cmeIDDURIMaxDepth 12                            //Max. # of elements in an URI {excluding parameters}.
 
-#define cmeEngineVersion "0.88.alpha"
+#ifdef PACKAGE_VERSION
+#define cmeEngineVersion PACKAGE_VERSION
+#else
+#define cmeEngineVersion "Undefined version"
+#endif /*PACKAGE_VERSION*/
 #define cmeWSHTMLPageStart "<html><head><title>Caume Data Security Engine </title></head>" \
  "<body><p><b>Caume DSE version " cmeEngineVersion "</b>"\
  "<br> &copy; 2010-2012 by Omar Alejandro Herrera Reyna.</p><br><br>" //Standard Webpage Title, open tags and (c).
@@ -263,11 +283,6 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeFree(a) {if(a){ free(a); a=NULL;}}       //Internal free function that resets pointers to NULL.
 #define MHD_PLATFORM_H                              //for microhttpd.
 #define _FILE_OFFSET_BITS 64                        //for microhttpd {MHD_create_response_from_callback}.
-
-// --- Autoconf includes
-#if HAVE_CONFIG_H
-#include "config.h"
-#endif
 
 // --- General C libraries includes
 #if HAVE_STDIO_H

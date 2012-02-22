@@ -20,14 +20,14 @@ I. Purpose and philosophy
 
 1. Purpose
 
-The idea behind CaumeDSE was to provide a free software solution that allowed 
-the creation reasonably secure isolated environments to process and store
-sensitive data, within untrusted environments.
+The idea behind CaumeDSE was to provide a free software solution that
+allowed the creation reasonably secure isolated environments to process and
+store sensitive data, within untrusted environments.
 
-With concepts such as the cloud, bring your own device, and an increased demand
-form mobile devices it has become clear that the way in which companies operate
-is changing dramatically, and with, the way in which we secure information
-and the infrastructure that support business processes.
+With concepts such as the cloud, bring your own device, and an increased
+demand form mobile devices it has become clear that the way in which
+companies operate is changing dramatically, and with, the way in which we
+secure information and the infrastructure that support business processes.
 
 More specifically, CaumeDSE has been designed as a service platform that 
 provides security to data by using free, well known and robust cryptographic 
@@ -40,77 +40,85 @@ support front end applications.
 
 2. Philosophy
 
-CaumeDSE is designed around solid security principles, that take into account
-new models of doing business and use information technologies, as well as
-an increasing number of more demanding regulations.
+CaumeDSE is designed around solid security principles, that take into
+account new models of doing business and use information technologies, as
+well as an increasing number of more demanding regulations.
 
 Trust is essential for security, in fact, it is one of the main reasons
 why we put security in place on systems: to be able to trust them. We
 aim to provide trust by following these principles:
 
-* Transparency. With free, open source software, you can check for yourself 
+* Transparency. With free, open source software, you can check for yourself
   what this software does.
-* Portability. With open standards and data structures, you are not locked in 
-  into  a specific closed technology. Moreover, by being free an open source, 
-  this platform can be ported to many environments and modified to suit your 
-  own needs, and you don't depend on a company being there to continue 
-  development.
-* Simplicity. We favor simplicity for doing all tasks as much as possible. With 
-  the adoption of REST, we hope that interaction and development with this 
-  platform will be as easy as possible.
-* Secure by design. We developed this tool with security as a primary goal; that 
-  is not to say it is perfect, but its development and structure have been 
-  created to provide continuous improvement in this area, independently of other 
-  important requirements such as performance and interoperability
-* Need to know and use. We restrict as much as possible the access to 
-  information. One way that we do it is by not storing encryption keys within 
-  the software. This means that each organization (in the scope of this 
-  software) is responsible of managing keys securely, but it also allows the to 
-  control who accesses what, with the aid of roles.
-* Traceability. Logging securely all relevant actions provides you with good 
+
+* Portability. With open standards and data structures, you are not locked
+  in into a specific closed technology.  Moreover, by being free and open
+  source, this platform can be ported to many environments and modified to
+  suit your own needs, and you don't depend on a company being there to
+  continue development.
+
+* Simplicity. We favor simplicity for doing all tasks as much as possible.
+  With the adoption of REST, we hope that interaction and development with
+  this platform will be as easy as possible.
+
+* Secure by design. We developed this tool with security as a primary goal;
+  that is not to say it is perfect, but its development and structure have
+  been created to provide continuous improvement in this area, independently
+  of other important requirements such as performance and interoperability
+
+* Need to know and use. We restrict as much as possible the access to
+  information.  One way that we do it is by not storing encryption keys
+  within the software.  This means that each organization (in the scope of
+  this software) is responsible of managing keys securely, but it also
+  allows the to control who accesses what, with the aid of roles.
+
+* Traceability. Logging securely all relevant actions provides you with good
   control on who did what when, as well as evidence in case of an incident.
-* Thoroughness. We aim to do extensive debugging and security assessments before 
-  any major release. This won't prevent from problems arising, but should limit 
-  their number and provide a more stable platform. We favor stability and 
-  simplicity over new functionality, since the later can be developed easily on 
-  top of this platform by other software.
 
-There are some important aspects regarding trust. Achieving trust is difficult, 
-particularly since as human beings we posses a natural bias towards risk 
-assessment (e.g. we tend to think that the closer to us things are, the more 
-secure they are). 
+* Thoroughness. We aim to do extensive debugging and security assessments
+  before any major release.  This won't prevent from problems arising, but
+  should limit their number and provide a more stable platform.  We favor
+  stability and simplicity over new functionality, since the later can be
+  developed easily on top of this platform by other software.
 
-No matter how sensitive a particular piece of data is or how much money you are 
-willing  to invest to protect it, in the end, for it to be useful, you will 
-need to trust someone.
+There are some important aspects regarding trust. Achieving trust is
+difficult, particularly since as human beings we posses a natural bias
+towards risk assessment (e.g.  we tend to think that the closer to us things
+are, the more secure they are).
 
-There are many arguments in favor of hardware based protections, and it is true 
-that such devices are usually more resistant to certain types of attacks than 
-software, but you still end trusting the manufacturer of such products as much 
-as you  need to trust the developer of security software. Also, specialized 
-hardware may offer better performance than software for some tasks, such as 
-higher resistance against reverse engineering and internal processing 
-monitoring.
+No matter how sensitive a particular piece of data is or how much money you
+are willing to invest to protect it, in the end, for it to be useful, you
+will need to trust someone.
 
-Like there are disadvantages to a software based approach, there are also some 
-advantages to it. 
+There are many arguments in favor of hardware based protections, and it is
+true that such devices are usually more resistant to certain types of
+attacks than software, but you still end trusting the manufacturer of such
+products as much as you need to trust the developer of security software. 
+Also, specialized hardware may offer better performance than software for
+some tasks, such as higher resistance against reverse engineering and
+internal processing monitoring.
 
-Transparency is one of them. Even if your won't be checking the source code yourself, 
-you know that it is available for many others to take a look at it (so the chances 
-of finding problems and fixing them may be higher than with with closed hardware 
-devices).
+Like there are disadvantages to a software based approach, there are also
+some advantages to it.
 
-Another advantage is portability. Think about some possible scenarios you may face with 
-new operation models such as the cloud. An infrastructure provider in the cloud may 
-not be offering hardware based security solutions, or you may not be able to install 
-in their premises your preferred hardware based solution. But still, if you have some 
-control at some layer of the environment where data will be stored, transferred or 
-processed, you can setup your "rules of engagement" there and create a virtual 
-perimeter that may offer a reasonable level of protection for your data. 
+Transparency is one of them. Even if your won't be checking the source code
+yourself, you know that it is available for many others to take a look at it
+(so the chances of finding problems and fixing them may be higher than with
+with closed hardware devices).
 
-In terms of compliance, remember that when you contract external services and personnel
-you may share with them some responsibility for protecting sensitive data and operations,
-but you cannot share accountability; that will remain on your side.
+Another advantage is portability. Think about some possible scenarios you
+may face with new operation models such as the cloud.  An infrastructure
+provider in the cloud may not be offering hardware based security solutions,
+or you may not be able to install in their premises your preferred hardware
+based solution.  But still, if you have some control at some layer of the
+environment where data will be stored, transferred or processed, you can
+setup your "rules of engagement" there and create a virtual perimeter that
+may offer a reasonable level of protection for your data.
+
+In terms of compliance, remember that when you contract external services
+and personnel you may share with them some responsibility for protecting
+sensitive data and operations, but you cannot share accountability; that
+will remain on your side.
 
 
 II. Status
@@ -120,29 +128,38 @@ II. Status
 The current version of the software is 0.88 ALPHA
 
 Right now, the software is in alpha status, which means:
-	* Planned functionality is still incomplete and some features could be added, 
-	  changed or removed before settling on a feature set for first release.
-	* Testing (performance, stability and security) has not been extensive.
+
+	* Planned functionality is still incomplete and some features could
+	  be added, changed or removed before settling on a feature set for
+	  first release.
+
+	* Testing (performance, stability and security) has not been
+	  extensive.
+
 	* Documentation is still limited.
-	* Portability and compilation aids (e.g. autoconf scripts) are still missing.
+
+	* Portability and compilation aids (e.g. autoconf scripts) are still
+	  missing.
 	
-At this stage you may try the concepts and some functionality of the software. It is a 
-good opportunity to send your comments and suggestions for us to consider into the
-first release. Please take a look at section VI (Collaborating).
+At this stage you may try the concepts and some functionality of the
+software.  It is a good opportunity to send your comments and suggestions
+for us to consider into the first release.  Please take a look at section VI
+(Collaborating).
 
 
 III. License
 ------------
 
-
-Caume Data Security Engine (also called CaumeDSE) is released under the GNU General 
-Public License version 3 by the Copyright holder, with the additional exemption that 
-compiling, linking, and/or using OpenSSL is allowed.
+Caume Data Security Engine (also called CaumeDSE) is released under the GNU
+General Public License version 3 by the Copyright holder, with the
+additional exemption that compiling, linking, and/or using OpenSSL is
+allowed.
 
 The software is Copyright 2010-2012 by Omar Alejandro Herrera Reyna.
 
-Check licensing and copyright details for CaumeDSE and other included software in the 
-file called COPYING and in the headers of the source code available for distribution.
+Check licensing and copyright details for CaumeDSE and other included
+software in the file called COPYING and in the headers of the source code
+available for distribution.
 
 
 IV. Architecture and functionality     
@@ -152,63 +169,79 @@ IV. Architecture and functionality
 
 The architecture of CaumeDSE is composed of several layers:
 
-	1. API - Web based, RESTful API that handles requests to resources using 
-	   standard HTTP methods (GET, POST, PUT, DELETE, HEAD and OPTIONS).
-	   The requests can be received by HTTP (TCP port 80; only in DEBUG mode) or
-	   by HTTPS (TCP port 443). Libmicrohttpd is used as an internal, standalone
-	   web server to handle the requests, while TLS security is handled by GnuTLS.
-	   Standard query parameters and multipart/form-data encoded parameters 
-	   (for POST method) are supported in resource requests.
-	2. Authentication - Authentication of users and applications is handled at
-	   the web server level. Right now, client authentication with digital 
-	   certificates with TLS is supported.
-	3. Authorization - Authorization is handled internally by CaumeDSE with role
-	   tables for each user. Each role table maps each available resource type 
-	   with available HTTP methods (GET, POST, PUT,...). All roles are encrypted
-	   with the organization's key (see resource hierarchy below).
-	4. Resource access - CaumeDSE maintains internal index databases that map
-	   data resources to their location. All resources and index database registers 
-	   are encrypted with the organization's key. Currently 3 types of data 
-	   resources are supported: raw files, CSV files and Perl scripts. File 
-	   resources in addition are split in several parts (CSV files are split in 
-	   columns and each column in different parts of a specific size). 
-	5. Resource protection - The resulting encrypted files are named with pseudo 
-	   random generated hexadecimal strings, and stored in their corresponding 
-	   storage directory (the relation between the original files and each encrypted 
-	   part is maintained in the internal index database). No encryption key is ever 
-	   stored in an internal database, and values in internal databases are
-	   salted before being encrypted with one salt per register, and a second salt
-	   per value (salts per register are not encrypted). Since encryption keys are rather 
-	   handled as passwords, internally these keys are processed using PKCS1.5 to
-	   generate a temporary key and its corresponding initialization vector (iv) that 
-	   are the ones actually being used by the encryption/decryption algorithms. 
-	   This KEY/IV generation mechanism is compatible with the OpenSSL's command line
-	   tool (i.e. you can actually decrypt manually each file and database register
-	   if you have all the necessary information with this tool). Resource indexes
-	   are shuffled when new elements are added (for CSV files, columns are 
-	   reconstructed maintaining the order of their registers, but the order in
-	   which columns appear changes. Scripts should therefore access columns by 
-	   name and not by their position).
-	6. Resource processing - All data processing including encryption and 
-	   decryption takes place in memory (with a few exceptions, such as file 
-	   uploads that are stored in a specific directory before being encrypted,
-	   overwritten and deleted). Internal secure databases (data tables organized
-	   in rows and columns like CSV files) can be processed by Perl scripts in 
-	   memory, using and embedded Perl interpreter. 
-	7. Sessions and multi-threading - CaumeDSE uses stateless REST connections and 
-	   does not support multiple execution threads. Also, it currently supports 
-	   only one user at a time. While this imposes some limits to operations, it also
-	   makes it easier to detect and fix issues. Multiple instances to support
-	   several users at any single time may be managed by a controlling application
-	   in the future. This layered model will allow us to improve usability without 
-	   compromising security.
+	1. API - Web based, RESTful API that handles requests to resources
+	   using standard HTTP methods (GET, POST, PUT, DELETE, HEAD and
+	   OPTIONS).  The requests can be received by HTTP (TCP port 80;
+	   only in DEBUG mode) or by HTTPS (TCP port 443).  Libmicrohttpd is
+	   used as an internal, standalone web server to handle the
+	   requests, while TLS security is handled by GnuTLS.  Standard
+	   query parameters and multipart/form-data encoded parameters (for
+	   POST method) are supported in resource requests.
+
+	2. Authentication - Authentication of users and applications is
+	   handled at the web server level.  Right now, client
+	   authentication with digital certificates with TLS is supported.
+
+	3. Authorization - Authorization is handled internally by CaumeDSE
+	   with role tables for each user.  Each role table maps each
+	   available resource type with available HTTP methods (GET, POST,
+	   PUT,...).  All roles are encrypted with the organization's key
+	   (see resource hierarchy below).
+
+	4. Resource access - CaumeDSE maintains internal index databases
+	   that map data resources to their location.  All resources and
+	   index database registers are encrypted with the organization's
+	   key.  Currently 3 types of data resources are supported: raw
+	   files, CSV files and Perl scripts.  File resources in addition
+	   are split in several parts (CSV files are split in columns and
+	   each column in different parts of a specific size).
+
+	5. Resource protection - The resulting encrypted files are named
+	   with pseudo random generated hexadecimal strings, and stored in
+	   their corresponding storage directory (the relation between the
+	   original files and each encrypted part is maintained in the
+	   internal index database).  No encryption key is ever stored in an
+	   internal database, and values in internal databases are salted
+	   before being encrypted with one salt per register, and a second
+	   salt per value (salts per register are not encrypted).  Since
+	   encryption keys are rather handled as passwords, internally these
+	   keys are processed using PKCS1.5 to generate a temporary key and
+	   its corresponding initialization vector (iv) that are the ones
+	   actually being used by the encryption/decryption algorithms. 
+	   This KEY/IV generation mechanism is compatible with the OpenSSL's
+	   command line tool (i.e.  you can actually decrypt manually each
+	   file and database register if you have all the necessary
+	   information with this tool).  Resource indexes are shuffled when
+	   new elements are added (for CSV files, columns are reconstructed
+	   maintaining the order of their registers, but the order in which
+	   columns appear changes.  Scripts should therefore access columns
+	   by name and not by their position).
+
+	6. Resource processing - All data processing including encryption
+	   and decryption takes place in memory (with a few exceptions, such
+	   as file uploads that are stored in a specific directory before
+	   being encrypted, overwritten and deleted).  Internal secure
+	   databases (data tables organized in rows and columns like CSV
+	   files) can be processed by Perl scripts in memory, using and
+	   embedded Perl interpreter.
+
+	7. Sessions and multi-threading - CaumeDSE uses stateless REST
+	   connections and does not support multiple execution threads. 
+	   Also, it currently supports only one user at a time.  While this
+	   imposes some limits to operations, it also makes it easier to
+	   detect and fix issues.  Multiple instances to support several
+	   users at any single time may be managed by a controlling
+	   application in the future.  This layered model will allow us to
+	   improve usability without compromising security.
 
 
 2. Resource hierarchy 
-Resources are organized hierarchically using a REST approach. Reading the uniform resource 
-identifier (URI) within an HTTP request from left to right will show resources and resource 
-types that USE or CONTAIN the resource or resource type to the right of it within the 
-hierarchy, until you find the requested resource at the end (before any parameters).
+
+Resources are organized hierarchically using a REST approach. Reading the
+uniform resource identifier (URI) within an HTTP request from left to right
+will show resources and resource types that USE or CONTAIN the resource or
+resource type to the right of it within the hierarchy, until you find the
+requested resource at the end (before any parameters).
 
 The resource hierarchy is listed below:
 
@@ -250,9 +283,9 @@ The resource hierarchy is listed below:
 
 ~ = Not implemented (might be implemented in the future).
 
-Resources (listed within keys, { and }), must be called by their unique name. 
-Resource types are not listed within keys and they must be named exactly as
-they are listed.
+Resources (listed within keys, { and }), must be called by their unique
+name.  Resource types are not listed within keys and they must be named
+exactly as they are listed.
 
 For example, to get the resource representation of user EngineAdmin that is
 registered in organization EngineOrg at the CaumeDSE instance in ip address
@@ -261,13 +294,14 @@ registered in organization EngineOrg at the CaumeDSE instance in ip address
 https://192.168.1.1/organizations/EngineOrg/users/EngineAdmin?userId=EngineAdmin&
 orgId=EngineOrg&orgKey=6DA74D788E0A33A0272252796EF0748A
 
-Check section V for access methods, parameters and examples for each resource/
-resourceType requests and their expected results.
+Check section V for access methods, parameters and examples for each
+resource/ resourceType requests and their expected results.
 
 
 3. Request parameters
-Common parameters to a resource request are passed either via a query string 
-or as a multipart/form-data encoded body (in the case of POST requests). 
+
+Common parameters to a resource request are passed either via a query string
+or as a multipart/form-data encoded body (in the case of POST requests).
 
 There are 3 types of parameters 
 
@@ -276,97 +310,107 @@ There are 3 types of parameters
 	* Optional parameters
 
 3.1 Authorizations & Encryption parameters
-These parameters are required in every request to decrypt resource indexes roles 
-and resources, and allows the system to verify if the request is authorized 
-(note that authentication takes place before any authorization and decryption).
+
+These parameters are required in every request to decrypt resource indexes
+roles and resources, and allows the system to verify if the request is
+authorized (note that authentication takes place before any authorization
+and decryption).
 
 userId 
-	Specifies the {user} to verify authorization (note that this same user 
-	is authenticated previously). The user referred to by userId must be 
-	a resource of the organization defined within orgId.
+
+	Specifies the {user} to verify authorization (note that this same
+	user is authenticated previously).  The user referred to by userId
+	must be a resource of the organization defined within orgId.
 orgId 
-	Specifies the {organization} to verify authorization and perform resource
-	operations. This parameter does no need to match the organization defined
-	in the URI. For example, a user with the right privileges can create a
-	new organization (defined in the URI) with a POST request, but still
-	authenticate and be authorized using the userId and orgId parameters.	 
+
+	Specifies the {organization} to verify authorization and perform
+	resource operations.  This parameter does no need to match the
+	organization defined in the URI.  For example, a user with the right
+	privileges can create a new organization (defined in the URI) with a
+	POST request, but still authenticate and be authorized using the
+	userId and orgId parameters.
 orgKey 
-	Specifies the organization key that is used to decrypt resources and 
-	internal database values. Every resource registered within the same
-	organization are encrypted with the same key (although with different
-	salt and initialization vector). This includes users, and is the reason
-	why authentication is a separate process. 
+
+	Specifies the organization key that is used to decrypt resources and
+	internal database values.  Every resource registered within the same
+	organization are encrypted with the same key (although with
+	different salt and initialization vector).  This includes users, and
+	is the reason why authentication is a separate process.
 
 3.2 Resource attribute parameters (to match or update) 
-These parameters, allow you to specify matching registers (exact matches only), 
-if prepended with an underscore (_) and combined with methods such as GET, HEAD,
-PUT or DELETE, or to update resource values in POST and PUT methods if prepended
-with an asterisk (*).
 
-For example, a request using a PUT method to update all user resources (resource 
-type users) whose resourceInfo value is 'new', by setting their certificate value 
-to 'undefined' you would use a PUT request that would look similar to this one:
+These parameters, allow you to specify matching registers (exact matches
+only), if prepended with an underscore (_) and combined with methods such as
+GET, HEAD, PUT or DELETE, or to update resource values in POST and PUT
+methods if prepended with an asterisk (*).
+
+For example, a request using a PUT method to update all user resources
+(resource type users) whose resourceInfo value is 'new', by setting their
+certificate value to 'undefined' you would use a PUT request that would look
+similar to this one:
 
 https://192.168.1.1/organizations/EngineOrg/users?userId=EngineAdmin&
 orgId=EngineOrg&orgKey=6DA74D788E0A33A0272252796EF0748A&_resourceInfo=new&
 *certificate=undefined
 
-Attribute parameters could be considered resources contained by the 
-corresponding resource or resource type where they are being used. As such,
+Attribute parameters could be considered resources contained by the
+corresponding resource or resource type where they are being used.  As such,
 they may be included in the resource hierarchy in the future to provide a
-consistent and alternative form to be accessed. Unfortunately, managing every 
-attribute as a resource also means more requests to perform a simple function
-(e.g. Suppose you have a resource with 5 attributes, you can create the 
-resource and update all 5 attributes in a single request if you use attribute
-parameters, but if you manage attributes as resources contained by the main 
-resource, it would take 6 requests to create the resource and each of its 
-attributes)
+consistent and alternative form to be accessed.  Unfortunately, managing
+every attribute as a resource also means more requests to perform a simple
+function (e.g.  Suppose you have a resource with 5 attributes, you can
+create the resource and update all 5 attributes in a single request if you
+use attribute parameters, but if you manage attributes as resources
+contained by the main resource, it would take 6 requests to create the
+resource and each of its attributes)
 
-To check which attribute parameters are supported by each resource and resource
-type refer to section V (REST (Resource) API reference).
+To check which attribute parameters are supported by each resource and
+resource type refer to section V (REST (Resource) API reference).
 
 userId 	
 	Resources/ResourceTypes: ANY
 
-	Prefixes: match (_) only.For POST/PUT updates the value is always taken from
-	the URI
+	Prefixes: match (_) only.For POST/PUT updates the value is always
+	taken from the URI
 	
-	When used with _ matches against the userId attribute of a resource. This
-	attribute contains the last user to modify (e.g. with PUT) the resource, or
-	the user who created the resource (with POST) if it has not been modified.
+	When used with _ matches against the userId attribute of a resource.
+	This attribute contains the last user to modify (e.g.  with PUT) the
+	resource, or the user who created the resource (with POST) if it has
+	not been modified.
 
 	For other uses check: 3.1 Authorizations & Encryption parameters
 
 orgId
 	Resources/ResourceTypes: ANY
 	
-	Prefixes: match (_) only.For POST/PUT updates the value is always taken from
-	the URI
+	Prefixes: match (_) only.For POST/PUT updates the value is always
+	taken from the URI
 
-	When used with _ matches against the orgId attribute of a resource. This
-	attribute contains the orgId corresponding to the last user to modify (e.g. 
-	with PUT) the resource or to the user who created the resource (with POST) 
-	if it has not been modified.
+	When used with _ matches against the orgId attribute of a resource.
+	This attribute contains the orgId corresponding to the last user to
+	modify (e.g.  with PUT) the resource or to the user who created the
+	resource (with POST) if it has not been modified.
 
 	For other uses check: 3.1 Authorizations & Encryption parameters
 
 resourceInfo
-	Resources/ResourceTypes: organizations, {organization}, users, {user}, storage
-	{storage}, documents, {document}
+	Resources/ResourceTypes: organizations, {organization}, users,
+	{user}, storage {storage}, documents, {document}
 
 	Prefixes: match (_) and update (*).	
 
 	Contains general information regarding the resource.
 
 certificate
-	Resources/ResourceTypes: organizations, {organization}, users, {user}
+	Resources/ResourceTypes: organizations, {organization}, users,
+	{user}
 
 	Prefixes: match (_) and update (*).
 
-	Stores digital certificate information related to the resource. Note that
-	CaumeDSE does not use this information in any way for authentication. 
-	Organizations can store any string here (PEM certificates, certificate
-	issuer, certificate hash,...).
+	Stores digital certificate information related to the resource. Note
+	that CaumeDSE does not use this information in any way for
+	authentication.  Organizations can store any string here (PEM
+	certificates, certificate issuer, certificate hash,...).
 
 publicKey
 	Resources/ResourceTypes: organizations, {organization}, users, {user}         
@@ -374,23 +418,23 @@ publicKey
 	Prefixes: match (_) and update (*).	
 
 	Stores public key information related to the resource. Note that
-	CaumeDSE does not use this information in any way for authentication.      
-	Organizations can store any string here (PEM public keys, public key
-	file names, public key hash,...).
+	CaumeDSE does not use this information in any way for
+	authentication.  Organizations can store any string here (PEM public
+	keys, public key file names, public key hash,...).
 
 userResourceId
 	Resources/ResourceTypes: users
 
-	Prefixes: match (_) only. For POST ({user}), this attribute is taken from 
-	the URI.
+	Prefixes: match (_) only. For POST ({user}), this attribute is taken
+	from the URI.
 
 	Stores the identifier of a {user} resource.
 
 orgResourceId
 	Resources/ResourceTypes: organizations
 
-	Prefixes: match (_) only. For POST ({organization}) this attribute is 
-	taken from the URI.
+	Prefixes: match (_) only. For POST ({organization}) this attribute
+	is taken from the URI.
 
 	Stores the identifier of an {organization} resource.
 
@@ -399,86 +443,89 @@ basicAuthPwdHash
 
 	Prefixes: match (_) and update (*).
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain password hashes for
-	user authentication via the HTTP basic authentication method in the 
-	future.	
+	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain
+	password hashes for user authentication via the HTTP basic
+	authentication method in the future.
 
 oauthConsumerKey
 	Resources/ResourceTypes: users, {user}
 
 	Prefixes: match (_) and update (*).
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the Consumer Secret 
-	for user authentication via OAUTH authentication protocol in the 
-	future.
+	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
+	Consumer Secret for user authentication via OAUTH authentication
+	protocol in the future.
 
 oauthConsumerSecret
 	Resources/ResourceTypes: users, {user}
 
 	Prefixes: match (_) and update (*).
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the Consumer Secret
-	for user authentication via OAUTH authentication protocol in the
-	future.
+	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
+	Consumer Secret for user authentication via OAUTH authentication
+	protocol in the future.
 
 columnFile
 	Resources/ResourceTypes: documents, {document}
 	
-	Prefixes: match (_) only. For POST/PUT this attribute is calculated by CaumeDSE.
+	Prefixes: match (_) only. For POST/PUT this attribute is calculated
+	by CaumeDSE.
 
-	Stores the name (hexadecimal string generated randomly) that contains the 
-	encrypted content for the corresponding partId and columnId.
+	Stores the name (hexadecimal string generated randomly) that
+	contains the encrypted content for the corresponding partId and
+	columnId.
 
 documentId
 	Resources/ResourceTypes: documents
 
-	Prefixes: match (_) only. For POST ({document}) this attribute is taken 
-	from the URI.
+	Prefixes: match (_) only. For POST ({document}) this attribute is
+	taken from the URI.
 
 	Stores the identifier of a {document} resource.
 
 storageId
 	Resources/ResourceTypes: storage
 
-	Prefixes: match (_) only. For POST ({storage}) this attribute is taken from
-	the URI.
+	Prefixes: match (_) only. For POST ({storage}) this attribute is
+	taken from the URI.
 
 	Stores the identifier of a {storage} resource.
 
 partHash
 	Resources/ResourceTypes: documents, {document}
 
-	Prefixes: match (_) only. For POST/PUT this attribute is calculated by
-	CaumeDSE.
+	Prefixes: match (_) only. For POST/PUT this attribute is calculated
+	by CaumeDSE.
 
-	Stores the hash of the encrypted content in the corresponding columnFile.
+	Stores the hash of the encrypted content in the corresponding
+	columnFile.
 
 totalParts
 	Resources/ResourceTypes: documents, {document}
 
-	Prefixes: match (_) only. For POST/PUT this attribute is calculated by 
-	CaumeDSE.
+	Prefixes: match (_) only. For POST/PUT this attribute is calculated
+	by CaumeDSE.
 
-	Stores the number of encrypted parts in which the original file was 
-	divided. For CSV files, this refers to the number of parts in which 
-	every column was divided if you want to know the number of files that 
-	contain pieces of a CSV files, just do (number of columns)*totalParts. 
-	The highest number in columnId is the number of columns that a CSV 
-	resource has.
+	Stores the number of encrypted parts in which the original file was
+	divided.  For CSV files, this refers to the number of parts in which
+	every column was divided if you want to know the number of files
+	that contain pieces of a CSV files, just do (number of
+	columns)*totalParts.  The highest number in columnId is the number
+	of columns that a CSV resource has.
 
 partId	
 	Resources/ResourceTypes: documents, {document}
 
-	Prefixes: match (_) only. For POST/PUT this attribute is calculated by
-	CaumeDSE.
+	Prefixes: match (_) only. For POST/PUT this attribute is calculated
+	by CaumeDSE.
 
 	Stores the sequential id for the part for the corresponding columnId. 
 
 lastModified
 	Resources/ResourceTypes: documents, {document}
 
-	Prefixes: match (_) only. For POST/PUT this attribute is calculated by 
-	CaumeDSE.
+	Prefixes: match (_) only. For POST/PUT this attribute is calculated
+	by CaumeDSE.
 
 	Stores the Unix time (epoch) corresponding to the last time that the
 	resource was updated (PUT), or to the time it was created (POST) if
@@ -487,20 +534,21 @@ lastModified
 columnId
 	Resources/ResourceTypes: documents, {document}
 
-	Prefixes: match (_) only. For POST/PUT this attribute is calculated by 
-	CaumeDSE.
+	Prefixes: match (_) only. For POST/PUT this attribute is calculated
+	by CaumeDSE.
 
-	Stores the column id corresponding to the column File. for document 
-	types different from CSV files (e.g. raw files), this value is 
-	always 1 (i.e. they consist of a single column).
+	Stores the column id corresponding to the column File. for document
+	types different from CSV files (e.g.  raw files), this value is
+	always 1 (i.e.  they consist of a single column).
 
 location
 	Resources/ResourceTypes: storage, {storage}
 
 	Prefixes: match (_) and update (*).
 
-	Stores information related to the location of the {storage} resource.
-	You can store any text string here, it is not used by CaumeDSE.
+	Stores information related to the location of the {storage}
+	resource.  You can store any text string here, it is not used by
+	CaumeDSE.
 
 type
 	Resources/ResourceTypes: storage, {storage}
@@ -508,19 +556,19 @@ type
 	Prefixes: match (_) and update (*).
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	type of storage to allow CaumeDSE to connect and use remote storage in
-	the future. Right now, only regular file storage available through
-	standard input and output functions is supported.
+	type of storage to allow CaumeDSE to connect and use remote storage
+	in the future.  Right now, only regular file storage available
+	through standard input and output functions is supported.
 
 accessPath
 	Resources/ResourceTypes: storage, {storage}
 
 	Prefixes: match (_) and update (*).
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify
-	an access identifier to allow CaumeDSE to connect and use remote
-	storage in the future. Right now, only regular file storage available
-	through standard input and output functions is supported.
+	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify an
+	access identifier to allow CaumeDSE to connect and use remote
+	storage in the future.  Right now, only regular file storage
+	available through standard input and output functions is supported.
 	
 accessUser
 	Resources/ResourceTypes: storage, {storage}
@@ -528,8 +576,8 @@ accessUser
 	Prefixes: match (_) and update (*).
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	user identifier to allow CaumeDSE to connect and use remote 
-	storage in the future. Right now, only regular file storage available 
+	user identifier to allow CaumeDSE to connect and use remote storage
+	in the future.  Right now, only regular file storage available
 	through standard input and output functions is supported.
 
 accessPassword
@@ -538,21 +586,21 @@ accessPassword
 	Prefixes: match (_) and update (*).
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify
-	access credentials to allow CaumeDSE to connect and use remote 
-	storage in the future. Right now, only regular file storage available 
-	through standard input and output functions is supported.
+	access credentials to allow CaumeDSE to connect and use remote
+	storage in the future.  Right now, only regular file storage
+	available through standard input and output functions is supported.
 
 _get
 	Resources/ResourceTypes: {roleTable}
 
 	Prefixes: match (_) and update (*).
 
-	NOTE: with the match prefix you would have a 2 underscores at
-	in the parameter name.
+	NOTE: with the match prefix you would have a 2 underscores at in the
+	parameter name.
 
-	This attribute specifies whether the corresponding {user} at 
-	the specified {organization} is allowed to perform GET requests
-	on resources related to {roleTable}.
+	This attribute specifies whether the corresponding {user} at the
+	specified {organization} is allowed to perform GET requests on
+	resources related to {roleTable}.
 	
 	String "1" is for allow. string "0" is for deny.
 
@@ -561,12 +609,12 @@ _post
 
 	Prefixes: match (_) and update (*).
 
-	NOTE: with the match prefix you would have a 2 underscores at
-	in the parameter name.
+	NOTE: with the match prefix you would have a 2 underscores at in the
+	parameter name.
 
-	This attribute specifies whether the corresponding {user} at          
-	the specified {organization} is allowed to perform POST requests
-	on resources related to {roleTable}.
+	This attribute specifies whether the corresponding {user} at the
+	specified {organization} is allowed to perform POST requests on
+	resources related to {roleTable}.
 
 	String "1" is for allow. string "0" is for deny.
 
@@ -575,12 +623,12 @@ _put
 
 	Prefixes: match (_) and update (*).
 
-	NOTE: with the match prefix you would have a 2 underscores at
-	in the parameter name.
+	NOTE: with the match prefix you would have a 2 underscores at in the
+	parameter name.
 
-	This attribute specifies whether the corresponding {user} at          
-	the specified {organization} is allowed to perform PUT requests
-	on resources related to {roleTable}. 
+	This attribute specifies whether the corresponding {user} at the
+	specified {organization} is allowed to perform PUT requests on
+	resources related to {roleTable}.
 
 	String "1" is for allow. string "0" is for deny.
 
@@ -589,12 +637,12 @@ _delete
 
 	Prefixes: match (_) and update (*).
 
-	NOTE: with the match prefix you would have a 2 underscores at
-	in the parameter name.
+	NOTE: with the match prefix you would have a 2 underscores at in the
+	parameter name.
 
-	This attribute specifies whether the corresponding {user} at
-	the specified {organization} is allowed to perform DELETE requests
-	on resources related to {roleTable}.
+	This attribute specifies whether the corresponding {user} at the
+	specified {organization} is allowed to perform DELETE requests on
+	resources related to {roleTable}.
 
 	String "1" is for allow. string "0" is for deny.
 
@@ -603,12 +651,12 @@ _head
 
 	Prefixes: match (_) and update (*).
 
-	NOTE: with the match prefix you would have a 2 underscores at
-	in the parameter name.
+	NOTE: with the match prefix you would have a 2 underscores at in the
+	parameter name.
 
-	This attribute specifies whether the corresponding {user} at
-	the specified {organization} is allowed to perform HEAD requests
-	on resources related to {roleTable}.
+	This attribute specifies whether the corresponding {user} at the
+	specified {organization} is allowed to perform HEAD requests on
+	resources related to {roleTable}.
 
 	String "1" is for allow. string "0" is for deny.
 
@@ -617,12 +665,12 @@ _options
 
 	Prefixes: match (_) and update (*).
 
-	NOTE: with the match prefix you would have a 2 underscores at
-	in the parameter name.
+	NOTE: with the match prefix you would have a 2 underscores at in the
+	parameter name.
 
-	This attribute specifies whether the corresponding {user} at
-	the specified {organization} is allowed to perform OPTIONS requests
-	on resources related to {roleTable}.
+	This attribute specifies whether the corresponding {user} at the
+	specified {organization} is allowed to perform OPTIONS requests on
+	resources related to {roleTable}.
 
 	String "1" is for allow. string "0" is for deny.
 
@@ -633,8 +681,8 @@ timestamp
 	automatically by CaumeDSE
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	timestamp at the point where CaumeDSE receives the not yet 
-	authenticated or authorized request. Part of the transaction log.
+	timestamp at the point where CaumeDSE receives the not yet
+	authenticated or authorized request.  Part of the transaction log.
 	
 uri	
 	Resources/ResourceTypes: transactions
@@ -643,7 +691,7 @@ uri
 	automatically by CaumeDSE
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	URI of a received request. Part of the transaction log.
+	URI of a received request.  Part of the transaction log.
 
 headers
 	Resources/ResourceTypes: transactions
@@ -652,7 +700,7 @@ headers
 	automatically by CaumeDSE
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	HTTP header of a received request. Part of the transaction log.
+	HTTP header of a received request.  Part of the transaction log.
 
 startTimestamp
 	Resources/ResourceTypes: transactions
@@ -661,9 +709,9 @@ startTimestamp
 	automatically by CaumeDSE
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	timestamp at the point where CaumeDSE starts processing a request, after 
-	a successful authentication and authorization. Part of the transaction 
-	log.
+	timestamp at the point where CaumeDSE starts processing a request,
+	after a successful authentication and authorization.  Part of the
+	transaction log.
 
 stopTimestamp
 	Resources/ResourceTypes: transactions
@@ -672,9 +720,9 @@ stopTimestamp
 	automatically by CaumeDSE
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	timestamp at the point where CaumeDSE stops processing a request, after
-	a successful authentication and authorization. Part of the transaction 
-	log.
+	timestamp at the point where CaumeDSE stops processing a request,
+	after a successful authentication and authorization.  Part of the
+	transaction log.
 
 dataMBIn
 	Resources/ResourceTypes: transactions
@@ -683,7 +731,7 @@ dataMBIn
 	automatically by CaumeDSE
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
-	volume of data received as part of the request, in MB. Part of the 
+	volume of data received as part of the request, in MB.  Part of the
 	transaction log.
 
 dataMBOut
@@ -693,70 +741,74 @@ dataMBOut
 	automatically by CaumeDSE
 
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
-	volume of data sent as part of the answer to a request, in MB. Part of
-	the transaction log.
+	volume of data sent as part of the answer to a request, in MB.  Part
+	of the transaction log.
 	
 
 3.3 Optional parameters
 
 salt
-	Specifies the salt to be used with all values of an internal database 
-	register or a data resource for encryption/decryption. if not included, 
-	it will be generated by a pseudo random algorithm by CaumeDSE. 
-	If included it must be an hexadecimal string 16 characters long (i.e. 
-	representing 8 bytes).
+	Specifies the salt to be used with all values of an internal
+	database register or a data resource for encryption/decryption.  if
+	not included, it will be generated by a pseudo random algorithm by
+	CaumeDSE.  If included it must be an hexadecimal string 16
+	characters long (i.e.  representing 8 bytes).
 
 	(Note that for values within the same register another salt is
-	generated and prepended to values before being encrypted (internally 
-	this is called valueSalt), and removed after decryption, this second 
-	salt is necessary to avoid same ciphertext for identical database 
+	generated and prepended to values before being encrypted (internally
+	this is called valueSalt), and removed after decryption, this second
+	salt is necessary to avoid same ciphertext for identical database
 	values within the same internal database register.)
 
 newOrgKey
-	In POST requests only (i.e 'create'), this parameter specifies the 
-	organization key (orgKey) to be used for creating the new resource, 
-	which is different from the orgKey used to protect the the userId's 
-	roles of the requesting user (of course, the user must have POST 
-	permission within its organization that can be decrypted with orgKey).
+	In POST requests only (i.e 'create'), this parameter specifies the
+	organization key (orgKey) to be used for creating the new resource,
+	which is different from the orgKey used to protect the the userId's
+	roles of the requesting user (of course, the user must have POST
+	permission within its organization that can be decrypted with
+	orgKey).
 
-	This allows for example, an administrator to create a different 
-	organization or resources within a different organization. After being 
-	created though, this administrator would need a user with the right 
-	credentials to be authenticated and the corresponding permissions within
-	the role table for this new organization in order to access the newly 
-	created resources.
+	This allows for example, an administrator to create a different
+	organization or resources within a different organization.  After
+	being created though, this administrator would need a user with the
+	right credentials to be authenticated and the corresponding
+	permissions within the role table for this new organization in order
+	to access the newly created resources.
 
 	If omitted, orgKey will be used to protect any new resource.
 
 outputType
-	Specifies the type of output for the result. Available values are csv 
-	and HTML (the later is the default). this is particularly useful for
-	results that return data tables, such as resource specification queries
-	or requests for the contents of csv type files.
+	Specifies the type of output for the result. Available values are
+	csv and HTML (the later is the default).  this is particularly
+	useful for results that return data tables, such as resource
+	specification queries or requests for the contents of csv type
+	files.
 
 3.4 Document POST parameters
-These parameters are required in every POST request of {document} resources. 
+
+These parameters are required in every POST request of {document} resources.
 
 file
-	Specifies the file name and contents (which does not necessarily will 
-	be the same as the documentId of the resource in the URI) of the file
-	to be uploaded, to create a {document} resource. POST requests will
-	contain the attribute parameters and the file contents encoded in 
-	multipart/form-data format within the body.
+	Specifies the file name and contents (which does not necessarily
+	will be the same as the documentId of the resource in the URI) of
+	the file to be uploaded, to create a {document} resource.  POST
+	requests will contain the attribute parameters and the file contents
+	encoded in multipart/form-data format within the body.
 
 
 V. REST (Resource) API reference
 --------------------------------
-Note that with the POST method you must define values for every updateable
-parameter, to ensure that every attribute is initialized by the user. 
-With the PUT method you can update just the values that need changes.
 
-While most examples of POST requests include data in the URI, be aware
-that the standard way is to encode both parameters (and any file) using
-multipart/form-data format. Any POST request can be encoded in this way
-(CaumeDSE supports both encoding formats: URI appended parameters and 
-multipart/form-data parameters). However, you must use multipart/form-data
-encoding if you are uploading a file (See {document} resource examples 
+Note that with the POST method you must define values for every updateable
+parameter, to ensure that every attribute is initialized by the user.  With
+the PUT method you can update just the values that need changes.
+
+While most examples of POST requests include data in the URI, be aware that
+the standard way is to encode both parameters (and any file) using
+multipart/form-data format.  Any POST request can be encoded in this way
+(CaumeDSE supports both encoding formats: URI appended parameters and
+multipart/form-data parameters).  However, you must use multipart/form-data
+encoding if you are uploading a file (See {document} resource examples
 below).
 
 organizations
@@ -773,8 +825,8 @@ organizations
 		RESPONSE BODY:
 			<Attribute table for matching resources>
 
-	Example 1) 	List all organizations with publicKey = 'undefined' in a
-			CSV style list
+	Example 1) 	List all organizations with publicKey = 'undefined'
+			in a CSV style list
 		METHOD: 
 			GET
 		URI:
@@ -799,10 +851,10 @@ organizations
 		RESPONSE BODY:
 			<Attribute table for matching resource>
 
-	Example 1) 	Create a new organization called BusinessOrg, using a new
-			organization key: 3132333440414243, with account EngineAdmin 
-			from EngineOrg (EngineAdmin is assumed to have POST privileges 
-			for organizations)
+	Example 1) 	Create a new organization called BusinessOrg, using
+			a new organization key: 3132333440414243, with
+			account EngineAdmin from EngineOrg (EngineAdmin is
+			assumed to have POST privileges for organizations)
 		METHOD:
 			POST
 		URI:
@@ -829,7 +881,7 @@ organizations
 			<EMPTY>	
 
 	Example 3) 	Set attribute publicKey to 'serial:10F46D308B39' for
-				organization EngineOrg
+			organization EngineOrg
 		METHOD:
 			PUT
 		URI:
@@ -848,17 +900,19 @@ users
 	Supported ATTRIBUTE PARAMETERS:
 		MATCH:
 			_userId _orgId _resourceInfo _certificate _publicKey
-			_userResourceId _basicAuthPwdHash _oauthConsumerKey 
+			_userResourceId _basicAuthPwdHash _oauthConsumerKey
 			_oauthConsumerSecret
 		UPDATE:
-			*resourceInfo *certificate *publicKey *basicAuthPwdHash
-			*oauthConsumerKey *oauthConsumerSecret
+			*resourceInfo *certificate *publicKey
+			*basicAuthPwdHash *oauthConsumerKey
+			*oauthConsumerSecret
 		RESPONSE HEADERS:
 			Engine-results: <number of matching registers>
 		RESPONSE BODY:
 			<Attribute table for matching resources>
 
-	Example 1)	List attributes of all users of organization EngineOrg
+	Example 1)	List attributes of all users of organization
+			EngineOrg 
 		METHOD:
 			GET
 		URI:
@@ -911,10 +965,11 @@ users
 		REQUEST BODY:
 			<EMPTY>
 
-	Example 2)	Create user BusinessAdmin in organization BusinessOrg, 
-			using BusinessOrg's (new) organization key: 3132333440414243, 
-			with account EngineAdmin from EngineOrg (EngineAdmin is
-			assumed to have POST privileges for users)
+	Example 2)	Create user BusinessAdmin in organization
+			BusinessOrg, using BusinessOrg's (new) organization
+			key: 3132333440414243, with account EngineAdmin from
+			EngineOrg (EngineAdmin is assumed to have POST
+			privileges for users)
 		METHOD:
 			POST
 		URI:
@@ -941,14 +996,16 @@ users
 			*_get *_post *_put *_delete *_head *_options
 		TABLE NAMES:
 			documents users roleTables parserScripts content
-			organizations storage documentTypes engineCommands transactions
+			organizations storage documentTypes engineCommands
+			transactions
 		RESPONSE HEADERS:
 			Engine-results: <number of matching registers>
 		RESPONSE BODY:
 			<Attribute table for matching resource>
 
-	Example 1) 	Get EngineAdmin permission table for resource table users (
-				i.e. for resources/resource type: users and {user}), if any.
+	Example 1) 	Get EngineAdmin permission table for resource table
+			users ( i.e.  for resources/resource type: users and
+			{user}), if any.
 		METHOD:
 				GET
 		URI:
@@ -960,13 +1017,14 @@ users
 		REQUEST BODY:
 			<EMPTY>
 
-	Example 2) 	Allow user BusinessAdmin in organization BusinessOrg,
-			using BusinessOrg's (new) organization key: 3132333440414243,
-			with account EngineAdmin from EngineOrg (EngineAdmin is
-			assumed to have POST privileges for users), to perform GET,
-			HEAD, OPTIONS AND PUT requests by creating new permissions
-			in the the users roleTable (i.e. for resources/resource type: 
-			users and {user}).
+	Example 2) 	Allow user BusinessAdmin in organization
+			BusinessOrg, using BusinessOrg's (new) organization
+			key: 3132333440414243, with account EngineAdmin from
+			EngineOrg (EngineAdmin is assumed to have POST
+			privileges for users), to perform GET, HEAD, OPTIONS
+			AND PUT requests by creating new permissions in the
+			the users roleTable (i.e.  for resources/resource
+			type: users and {user}).
 		METHOD:
 			POST
 		URI:
@@ -1008,7 +1066,8 @@ storage
 		REQUEST BODY:
 			<EMPTY>
 
-	Example 2) 	Delete all storage resources with location 'localhost'
+	Example 2) 	Delete all storage resources with location
+			'localhost'
 		METHOD:
 			DELETE
 		URI:
@@ -1092,8 +1151,8 @@ documents
 		RESPONSE BODY:
 			<Attribute table for matching resources>
 
-	Example 1) 	List attribute table for all document resources of type
-			file.raw
+	Example 1) 	List attribute table for all document resources of
+			type file.raw
 		METHOD:
 			GET
 		URI:
@@ -1181,8 +1240,8 @@ orgKey: <input name="orgKey" type="password" value=
 <input type="submit" value=" Send "></form>
 </body></html>
 
-	Example 2.2)	Body part of a multipart/form-data encoded request using
-			the HTML example format above:
+	Example 2.2)	Body part of a multipart/form-data encoded request
+			using the HTML example format above:
 
 -----------------------------204285202715621161041257990753
 Content-Disposition: form-data; name="file"; filename="cleartext.txt"
@@ -1233,26 +1292,29 @@ This is a raw file
 			<NONE>
 		PERL SCRIPT CALLBACK SUBROUTINES:
 			cmePERLProcessRow: 
-				Called on each iteration to processes every 
-				row. Receives the whole row as an array (@_).
+				Called on each iteration to processes every
+				row.  Receives the whole row as an array
+				(@_).
 				
-				The script main function is also called before
-				processing every row to perform general tasks 
-				(e.g. initialization).
+				The script main function is also called
+				before processing every row to perform
+				general tasks (e.g.  initialization).
 			cmePERLProcessColumnNames:
 				Called once to process the first row which
-				should contain the column names. Receives the
-				whole row as an array (@_). Should be used to
-				set indexes of columns to be processed.
+				should contain the column names.  Receives
+				the whole row as an array (@_).  Should be
+				used to set indexes of columns to be
+				processed.
 		RESPONSE HEADERS:
 			Engine-results: <number of matching registers>
 		RESPONSE BODY:
 			<Contents of parsed file.csv with perl script>
 
-	Example 1) 	Get parsed contents of payroll.csv file (of type file.csv)
-			using script myscript.pl (of type script.perl); get results
-			in csv format. Note that the csv file will be decrypted and
-			processed with the embedded Perl interpreter in memory.
+	Example 1) 	Get parsed contents of payroll.csv file (of type
+			file.csv) using script myscript.pl (of type
+			script.perl); get results in csv format.  Note that
+			the csv file will be decrypted and processed with
+			the embedded Perl interpreter in memory.
 		METHOD:
 			GET
 		URI:
@@ -1297,11 +1359,11 @@ Jelani,Wyatt,9,53897
 Bernard,Jackson,10,140408
 
 	Example 1.3)	Sample myscript.pl file (should have been uploaded
-			as a file of type script.pl before the request). This
-			particular scripts sums every number in the salary 
-			columns and stores in this same column the partial
-			results (i.e. the last value contains the complete
-			sum).
+			as a file of type script.pl before the request). 
+			This particular scripts sums every number in the
+			salary columns and stores in this same column the
+			partial results (i.e.  the last value contains the
+			complete sum).
 
 if ($init eq undef)
 {
@@ -1408,47 +1470,50 @@ favicon.ico
 
 VI. Collaborating
 -----------------
+
 Maintaining open source software with strict security requirements is hard. 
 We appreciate all help we can get, be it by coding/ fixing code or just by
 submitting errors or functionality requests.
 
-We will do our best to listen to everybody an try to answer all requests.
-However, to maintain control and ensure quality we must restrict the
-number of people making decisions and not everyone's wishes will be pleased.
+We will do our best to listen to everybody an try to answer all requests. 
+However, to maintain control and ensure quality we must restrict the number
+of people making decisions and not everyone's wishes will be pleased. 
 Still, we expect that the layered model of the software platform will allow
-almost any functionality to be implemented in a higher level, while we try 
+almost any functionality to be implemented in a higher level, while we try
 to maintain the engine (CaumeDSE) as small and stable as possible.
 
-If you wish to contribute in any way please visit the project page in github.
+If you wish to contribute in any way please visit the project page
+(Caume/CaumeDSE) in github.
 
 VII. Security considerations
 ----------------------------
+
 While all operations are performed in memory and some measures have been
-implemented to limit data leaks, such as overwriting keys after use, 
-it should be noted that users with sufficient privileges may still be able
-to access memory contents during operation (e.g. by dumping the contents
-of memory devices in Unix based operating systems). Also, memory swaps
-to disks may occur (these are controlled by the operating system).
+implemented to limit data leaks, such as overwriting keys after use, it
+should be noted that users with sufficient privileges may still be able to
+access memory contents during operation (e.g.  by dumping the contents of
+memory devices in Unix based operating systems).  Also, memory swaps to
+disks may occur (these are controlled by the operating system).
 
-Also, permissions of directories where files are stored, particularly of
-the secureTmp directory (where unencrypted files are posted before being 
-processed/encrypted and then overwritten as part of POST requests) 
-should be restricted to limit unauthorized access.
+Also, permissions of directories where files are stored, particularly of the
+secureTmp directory (where unencrypted files are posted before being
+processed/encrypted and then overwritten as part of POST requests) should be
+restricted to limit unauthorized access.
 
-You may consider running this software with a limited account; just take 
-into account that it has to be able to access Perl libraries, its own 
-database directories, and listen to incoming HTTPS connections (
-and also HTTP in DEBUG mode). Alternatively you may consider running
-CaumeDSE in a chrooted environment.
+You may consider running this software with a limited account; just take
+into account that it has to be able to access Perl libraries, its own
+database directories, and listen to incoming HTTPS connections ( and also
+HTTP in DEBUG mode).  Alternatively you may consider running CaumeDSE in a
+chrooted environment.
 
 Note that running in DEBUG mode not only makes use of HTTP (and then
-switches to HTTPS after the first [enter] is pressed) which does not
-encrypt incoming connections, but also dumps to the console sensitive
-information including passwords. To change to release mode (which also
-performs much faster), use the following parameter when running ./configure:
+switches to HTTPS after the first [enter] is pressed) which does not encrypt
+incoming connections, but also dumps to the console sensitive information
+including passwords.  To change to release mode (which also performs much
+faster), use the following parameter when running ./configure:
+
 	--enable-RELEASE
 
-Once the software reaches BETA status it will be released with RELEASE
-mode as default (in release mode the software enters and infinite loop to 
-answer connections; right now you need to kill the process to stop it).
-
+Once the software reaches BETA status it will be released with RELEASE mode
+as default (in release mode the software enters and infinite loop to answer
+connections; right now you need to kill the process to stop it).

@@ -1,8 +1,34 @@
-2012-02-21  Omar A. Herrera Reyna (omar.herrera@kinakuta.com.mx)
-        * ADDED autoconf and automake configure and isntallation scripts
+2012-02-22  Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+	* configure.ac (PATH_DATADIR): Added C preprocessor define for
+	default data/system databases path, to be included in config.h.
 
-2012-02-16  Omar A. Herrera Reyna (omar.herrera@kinakuta.com.mx)
-	* RELEASED first ALPHA version (0.88.alpha)
+	* common.h (cmeDefaultFilePath, cmeDefaultSecureTmpFilePath,
+	cmeDefaultHTTPSKeyFile, cmeDefaultHTTPSCertFile,
+	cmeDefaultCACertFile, cmeAdminDefaultStoragePath): Set defines
+	relative to PATH_DATADIR from config.h, if available.
+
+        * common.h (cmeEngineVersion): Set define = PACKAGE_VERSION
+        from config.h, if available.
+
+	* README: Reformatted some paragraphs and corrected some spelling
+	errors
+
+2012-02-21  Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+        * configure.ac: New file, Autoconf template.
+
+	* Makefile.ac: New file, Automake template.
+
+	* NEWS: New file, placeholder for news.
+
+	* AUTHORS: New file, list of authors.
+
+	* ChangeLog: New file, list of changes.
+
+	* configure, compile, depcomp, missing, install-sh: New scripts from
+	Autotools.
+
+2012-02-16  Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+	* RELEASED first version 0.88.alpha
 
 Copyright 2010 - 2012 Omar Alejandro Herrera Reyna
 Copying and distribution of this file, with or without modification, are

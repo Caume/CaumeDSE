@@ -19,18 +19,18 @@ AC_PROG_RANLIB
 AM_PROG_CC_C_O
 
 PERL=''
-AC_CHECK_PROG(PERL,perl,perl,[])
+AC_CHECK_PROG(PERL,[Cperl,perl,[])
 perl_version="5.10.0"
 if test "x$PERL" != "x"; then
-  AC_MSG_CHECKING(for perl version >= $perl_version)
-  $PERL -e "use $perl_version;" > /dev/null 2>&1
-  if test $? -ne 0; then
-    AC_MSG_RESULT(no);
-  else
-    AC_MSG_RESULT(ok);
-  fi
+	AC_MSG_CHECKING(for perl version >= $perl_version)
+	$PERL -e "use $perl_version;" > /dev/null 2>&1
+	if test $? -ne 0; then
+    		AC_MSG_RESULT(no);
+  	else
+    		AC_MSG_RESULT(ok);
+  	fi
 else
-  AC_MSG_WARN(could not find perl!)
+  	AC_MSG_WARN(could not find perl!)
 fi
 
 # Checks for libraries.
@@ -134,16 +134,19 @@ AC_SUBST([BINDIR], ["$PREFIX/cdse/bin"])
 AC_SUBST([DATADIR], ["$PREFIX/cdse"])
 AC_SUBST([SECUREDIR], ["$DATADIR/secureTmp"])
 AC_ARG_ENABLE([RELEASE],
-        [  --enable-RELEASE     enable RELEASE mode],
-        [ADDITIONAL_CFLAGS="$RELEASE_CFLAGS" compile_mode="RELEASE" TESTFILES=''],
-        [ADDITIONAL_CFLAGS="$DEBUG_CFLAGS" compile_mode="DEBUG" TESTFILES="$DATADIR/testfiles"])
+	[  --enable-RELEASE     enable RELEASE mode],
+	[ADDITIONAL_CFLAGS="$RELEASE_CFLAGS" compile_mode="RELEASE" TESTFILES=''],
+	[ADDITIONAL_CFLAGS="$DEBUG_CFLAGS" compile_mode="DEBUG" TESTFILES="$DATADIR/testfiles"])
 AC_SUBST(ADDITIONAL_CFLAGS)
 AC_SUBST(TESTFILES)
 AC_ARG_ENABLE([TESTDATABASE],
-        [  --enable-TESTDATABASE     copy TEST DATABASE files to Data directory],
-        [TESTDB="$DATADIR"],
-        [TESTDB=''])
+	[  --enable-TESTDATABASE     copy TEST DATABASE files to Data directory],
+	[TESTDB="$DATADIR"],
+	[TESTDB=''])
 AC_SUBST(TESTDB)
+
+# Set required configuration defines y config.h
+AC_DEFINE_UNQUOTED([PATH_DATADIR], ["$DATADIR"], [Path for default data and system databases.])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
