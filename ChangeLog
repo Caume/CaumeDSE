@@ -1,0 +1,9 @@
+2012-02-21  Omar A. Herrera Reyna (omar.herrera@kinakuta.com.mx)
+        * ADDED autoconf and automake configure and isntallation scripts
+
+2012-02-16  Omar A. Herrera Reyna (omar.herrera@kinakuta.com.mx)
+	* RELEASED first ALPHA version (0.88.alpha)
+
+Copyright 2010 - 2012 Omar Alejandro Herrera Reyna
+Copying and distribution of this file, with or without modification, are
+permitted provided the copyright notice and this notice are preserved.

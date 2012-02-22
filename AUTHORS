@@ -1,0 +1,5 @@
+Omar Alejandro Herrera Reyna   first version of all files except files sqlite directory.
+
+Note: CaumeDSE is distributed with the current version of SQLite (sqlite directory) but
+SQLite is considered to be a different package.
+
