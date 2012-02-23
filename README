@@ -20,75 +20,77 @@ I. Purpose and philosophy
 
 1. Purpose
 
-The idea behind CaumeDSE was to provide a free software solution that
-allowed the creation reasonably secure isolated environments to process and
-store sensitive data, within untrusted environments.
+The idea behind CaumeDSE is to provide a free software solution that
+allowed the creation of reasonably secure and isolated workspaces to process
+and store sensitive data, within uncontrolled environments.
 
-With concepts such as the cloud, bring your own device, and an increased
-demand form mobile devices it has become clear that the way in which
-companies operate is changing dramatically, and with, the way in which we
-secure information and the infrastructure that support business processes.
+With concepts such as the cloud and bring your own device as well as an
+increasing demand for mobile devices, it has become clear that the way in
+which companies operate is changing dramatically, and with it, the way in
+which we secure information and the infrastructure that supports business
+processes.
 
-More specifically, CaumeDSE has been designed as a service platform that 
-provides security to data by using free, well known and robust cryptographic 
-software, as well as open an simple data structures and interfaces, to make 
-portability and extensibility easy.
+CaumeDSE has been designed as a service platform that provides security to
+data by using free, well known and robust cryptographic software, as well as
+open an simple data structures and interfaces to make portability and
+extensibility easy.
 
-Rather than an end-user solution, CaumeDSE is a services platform created to 
-support front end applications.
+CaumeDSE is not an end-user solution. It is a service platform for
+sopporting front end applications.
 
 
 2. Philosophy
 
-CaumeDSE is designed around solid security principles, that take into
-account new models of doing business and use information technologies, as
-well as an increasing number of more demanding regulations.
+CaumeDSE is designed with solid security principles, that take into account
+new models of doing business and emerging information technologies.  It also
+takes into consideration the increasing number of data privacy regulations.
 
-Trust is essential for security, in fact, it is one of the main reasons
-why we put security in place on systems: to be able to trust them. We
+Trust is essential for security. In fact, it is one of the main reasons why
+we put security in place on computer systems: to be able to trust them.  We
 aim to provide trust by following these principles:
 
 * Transparency. With free, open source software, you can check for yourself
-  what this software does.
+  what this software does, and know that others can and will do it as well
+  to help improving it.
 
-* Portability. With open standards and data structures, you are not locked
-  in into a specific closed technology.  Moreover, by being free and open
-  source, this platform can be ported to many environments and modified to
-  suit your own needs, and you don't depend on a company being there to
-  continue development.
+* Portability. With open standards and data structures, you avoid vendor
+  lock-ins with closed programs/technologies.  Moreover, by being free and
+  open source, this platform can be ported to many environments and modified
+  to suit your own needs.  You don't depend on a company being there to
+  continue its development.
 
 * Simplicity. We favor simplicity for doing all tasks as much as possible.
-  With the adoption of REST, we hope that interaction and development with
-  this platform will be as easy as possible.
+  With the adoption of REST, we expect that interaction and development with
+  this platform will be easy and straightforward.
 
-* Secure by design. We developed this tool with security as a primary goal;
-  that is not to say it is perfect, but its development and structure have
-  been created to provide continuous improvement in this area, independently
-  of other important requirements such as performance and interoperability
+* Secure by design. We developed this tool with security as a primary goal. 
+  That is not to say it is perfect, but its development process has been
+  structured to ensure continued improvement in this area, independently of
+  other important requirements such as performance and interoperability
 
 * Need to know and use. We restrict as much as possible the access to
   information.  One way that we do it is by not storing encryption keys
   within the software.  This means that each organization (in the scope of
   this software) is responsible of managing keys securely, but it also
-  allows the to control who accesses what, with the aid of roles.
+  allows them to have full control of who access what.
 
-* Traceability. Logging securely all relevant actions provides you with good
-  control on who did what when, as well as evidence in case of an incident.
+* Traceability. Logging securely all relevant actions provides good control
+  on who did what, when, as well as evidence in case of an incident.
 
 * Thoroughness. We aim to do extensive debugging and security assessments
-  before any major release.  This won't prevent from problems arising, but
-  should limit their number and provide a more stable platform.  We favor
-  stability and simplicity over new functionality, since the later can be
-  developed easily on top of this platform by other software.
+  before any major release.  This won't eliminate all problems, but should
+  limit their number and provide a more stable platform.  We favor stability
+  and simplicity over new functionality, since the later can be developed
+  easily on top of this platform by other software.
 
 There are some important aspects regarding trust. Achieving trust is
-difficult, particularly since as human beings we posses a natural bias
-towards risk assessment (e.g.  we tend to think that the closer to us things
-are, the more secure they are).
+difficult, particularly since we human beings posses a natural bias towards
+risk assessment (e.g.  we tend to think that the closer to us things are,
+the more secure they are).
 
 No matter how sensitive a particular piece of data is or how much money you
 are willing to invest to protect it, in the end, for it to be useful, you
-will need to trust someone.
+will need to trust someone and/or something.
 
 There are many arguments in favor of hardware based protections, and it is
 true that such devices are usually more resistant to certain types of
@@ -99,12 +101,12 @@ some tasks, such as higher resistance against reverse engineering and
 internal processing monitoring.
 
 Like there are disadvantages to a software based approach, there are also
-some advantages to it.
+some advantages to it.  Transparency is one of them.
 
-Transparency is one of them. Even if your won't be checking the source code
-yourself, you know that it is available for many others to take a look at it
-(so the chances of finding problems and fixing them may be higher than with
-with closed hardware devices).
+Even if your won't be checking the source code yourself, you know that it is
+available for many others to take a look at it (so the chances of finding
+problems and fixing them may be higher than that of closed hardware
+solutions).
 
 Another advantage is portability. Think about some possible scenarios you
 may face with new operation models such as the cloud.  An infrastructure
@@ -1517,3 +1519,5 @@ faster), use the following parameter when running ./configure:
 Once the software reaches BETA status it will be released with RELEASE mode
 as default (in release mode the software enters and infinite loop to answer
 connections; right now you need to kill the process to stop it).
+
+
