@@ -1,4 +1,9 @@
+2012-02-23 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+	* README: Reformatted some paragraphs, corrected some spelling
+        errors and changed some wording.
+
 2012-02-22  Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
 	* configure.ac (PATH_DATADIR): Added C preprocessor define for
 	default data/system databases path, to be included in config.h.
 
@@ -14,6 +19,7 @@
 	errors
 
 2012-02-21  Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
         * configure.ac: New file, Autoconf template.
 
 	* Makefile.ac: New file, Automake template.
@@ -28,6 +34,7 @@
 	Autotools.
 
 2012-02-16  Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
 	* RELEASED first version 0.88.alpha
 
 Copyright 2010 - 2012 Omar Alejandro Herrera Reyna
