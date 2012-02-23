@@ -2,6 +2,28 @@
 	* README: Reformatted some paragraphs, corrected some spelling
         errors and changed some wording.
 
+	* engine_admin.c (cmeWebServiceSetup): removed
+	MHD_USE_THREAD_PER_CONNECTION from HTTP configuration since we are
+	using a single thread (i.e.  MHD_USE_SELECT_INTERNALLY, as in
+	HTTPS).
+
+	* common.h (cmeBypassTLSAuthenticationInHTTP): added define for
+	bypassing TLS authentication when non TLS sessions (e.g. HTTP) are
+	used. Value comes from BYPASS_TLS_IN_HTTP in config.h.
+
+	* webservice_interface.c (cmeWebServiceProcessRequest): Now skips
+	TLS authentication if no TLS session is available, and bypasses
+	(i.e.  accepts) authentication if TLS authentication is required,
+	session is no HTTP and cmeBypassTLSAuthenticationInHTTP is 1.
+
+	* configure.ac (BYPASSTLSAUTHINHTTP BYPASS_TLS_IN_HTTP): included
+	enable parameter to allow TLS authentication bypasses for non TLS
+	sessions (e.g.  for HTTP session testing). 
+
+	* config.h (BYPASS_TLS_IN_HTTP): define included by configure.ac
+
+	* configure.ac (PERL): fixed perl check; autoreconf -i works again.
+
 2012-02-22  Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* configure.ac (PATH_DATADIR): Added C preprocessor define for

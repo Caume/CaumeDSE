@@ -59,6 +59,11 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define evpMaxKeyIvLen 64               //Max size for Key and IV arrays {64 bytes allows keys of up to 512 bits}
 #define evpSaltBufferSize 8             //EVP_BytesToKey{} uses 8 bytes long salts to derive key and iv
 #define bioReadBufferSize 4096          //Buffer Size for BIO_read {RECOMMENDED: 4096}.
+#ifdef BYPASS_TLS_IN_HTTP
+#define cmeBypassTLSAuthenticationInHTTP BYPASS_TLS_IN_HTTP //Enable/disable bypassing TLS authentication with non TLS sessions {i.e. HTTP} with config. script {1=ON, 0=OFF}.
+#else
+#define cmeBypassTLSAuthenticationInHTTP 1 //Allows bypassing TLS authentication with non TLS sessions {e.g. when testing HTTP connections with TLS auth. enabled, where TLS authentication would allways fail obvoiusly}.
+#endif /*BYPASS_TLS_IN_HTTP*/
 #define cmeUseTLSAuthentication 1       //TLS user authentication module {1=ON, 0=OFF}.
 #define cmeUseOAUTHAuthentication 0     //OAUTH user authentication module {1=ON, 0=OFF}. NOTE: NOT YET IMPLEMENTED
 #define cmeCSVRowBuffer 5000            //Buffer for processing CSV files - reads at most this # of rows at a time {RECOMMENDED: 5000} and processes them before reading more.

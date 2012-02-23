@@ -413,6 +413,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
     char *orgKey=NULL;
     char *newOrgKey=NULL;
     char *storagePath=NULL;
+    const union MHD_ConnectionInfo *connectionInfo=NULL;
     #define cmeWebServiceProcessRequestFree() \
         do { \
             cmeFree(userId); \
@@ -509,12 +510,27 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                 authentication+=1;
             }
         }
-        if (cmeUseTLSAuthentication) //Try TLS client certificate authentication.
+        connectionInfo=MHD_get_connection_info(connection, MHD_CONNECTION_INFO_PROTOCOL); //Get gnutls connection protocol information.
+        if ((cmeUseTLSAuthentication)&&(connectionInfo)) //Try TLS client certificate authentication.
         {   //NOTE: CA (ca.pem) signs org certificate; org certificate signs user certificate. Client certificate chain must include both org and user certificates!
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), will try TLS authentication; GnuTLS reports protocol version: %d.\n",
+                    connectionInfo->protocol);
+#endif
             result=cmeWebServiceClientCertAuth(userId, orgId, connection);
             if (!result) //TLS Authentication Successful.
             {
                 authentication+=2;
+            }
+        }
+        else
+        {
+            if ((cmeBypassTLSAuthenticationInHTTP)&&(cmeUseTLSAuthentication))
+            {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), WARNING: bypassing TLS authentication in an HTTP session.\n");
+#endif
+                authentication+=4; //If TLS authentication is required but session is not HTTPS/TLS, assume authentication is correct. (For testing purposes only, e.g. HTTP in DEBUG mode)
             }
         }
         if (!authentication) //Error, all authentication methods failed!

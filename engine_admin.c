@@ -632,13 +632,12 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
     }
     else  //HTTP
     {
-        ///webServiceDaemon = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,
+        // We would use webServiceDaemon = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,  for multiple threads. But right now we use a single thread-
         webServiceDaemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY,
                                             port, NULL, NULL,
                                             &cmeWebServiceAnswerConnection,NULL,
                                             MHD_OPTION_NOTIFY_COMPLETED,&cmeWebServiceRequestCompleted,
-                                            MHD_USE_THREAD_PER_CONNECTION,
-                                            MHD_OPTION_END);
+                                            NULL,MHD_OPTION_END);
         if (NULL == webServiceDaemon)
         {
 #ifdef ERROR_LOG

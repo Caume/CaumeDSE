@@ -1520,4 +1520,9 @@ Once the software reaches BETA status it will be released with RELEASE mode
 as default (in release mode the software enters and infinite loop to answer
 connections; right now you need to kill the process to stop it).
 
+If you want to bypass TLS authentication for testing purposes in DEBUG mode
+with HTTP (which will obviously fail), you may enable this feature (FOR
+TESTING PURPOSES ONLY) with:
+
+	--enable-BYPASSTLSAUTHINHTTP
 

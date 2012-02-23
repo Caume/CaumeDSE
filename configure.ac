@@ -19,7 +19,7 @@ AC_PROG_RANLIB
 AM_PROG_CC_C_O
 
 PERL=''
-AC_CHECK_PROG(PERL,[Cperl,perl,[])
+AC_CHECK_PROG(PERL,perl,perl,[])
 perl_version="5.10.0"
 if test "x$PERL" != "x"; then
 	AC_MSG_CHECKING(for perl version >= $perl_version)
@@ -115,7 +115,6 @@ AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 AC_CHECK_FUNCS([memset setlocale strndup])
 
-
 # Set default cflags for Makefile.am
 GENERAL_CFLAGS="-DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall -O2 `$PERL -M'ExtUtils::Embed' -e ccopts --`"
 RELEASE_CFLAGS="-s -DRELEASE"
@@ -144,9 +143,14 @@ AC_ARG_ENABLE([TESTDATABASE],
 	[TESTDB="$DATADIR"],
 	[TESTDB=''])
 AC_SUBST(TESTDB)
-
+AC_ARG_ENABLE([BYPASSTLSAUTHINHTTP],
+	[  --enable-BYPASSTLSAUTHINHTTP     Accepts sessions in HTTP when TLS authentication is used; USE ONLY FOR TESTING PURPOSES!],
+	[BYTLS=1],
+	[BYTLS=0])
+                        
 # Set required configuration defines y config.h
 AC_DEFINE_UNQUOTED([PATH_DATADIR], ["$DATADIR"], [Path for default data and system databases.])
+AC_DEFINE_UNQUOTED([BYPASS_TLS_IN_HTTP], [$BYTLS], [Enables (1) or disables (0) bypassing TLS authentication when it is required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
@@ -168,3 +172,4 @@ echo \
      all                - build all binaries
      install            - install everything
 --------------------------------------------------"
+
