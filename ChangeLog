@@ -1,6 +1,24 @@
+2012-02-24 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* perl_interpreter.c (cmePerlParserCmdLineInit,
+	cmePerlParserInstruction): Disabled deallocation and reallocation
+	procedure for Perl interpreter on each execution to fix problems
+	with some Perl instances.
+
+	* config.log: deleted from distribution.
+
+	* configure.ac (GENERAL_CFLAGS RELEASE_CFLAGS DEBUG_CFLAGS): deleted
+	manual optimization flags.  We'll go with the defaults (user can
+	override them with configure script anyway).
+
+	* configure.ac (echo): changed order of compiler paramters in
+	configure result printout, to reflect actual order and added
+	environment CFLAGS.
+
 2012-02-23 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
 	* README: Reformatted some paragraphs, corrected some spelling
-        errors and changed some wording.
+	errors and changed some wording.
 
 	* engine_admin.c (cmeWebServiceSetup): removed
 	MHD_USE_THREAD_PER_CONNECTION from HTTP configuration since we are

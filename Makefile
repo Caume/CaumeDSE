@@ -169,7 +169,7 @@ ECHO_N = -n
 ECHO_T = 
 EGREP = /bin/grep -E
 EXEEXT = 
-GENERAL_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall -O2  -fno-strict-aliasing -pipe -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib64/perl5/5.12.4/x86_64-linux/CORE 
+GENERAL_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -fno-strict-aliasing -pipe -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib64/perl5/5.12.4/x86_64-linux/CORE 
 GREP = /bin/grep
 INSTALL = /usr/bin/install -c
 INSTALL_DATA = ${INSTALL} -m 644
@@ -246,7 +246,7 @@ top_build_prefix =
 top_builddir = .
 top_srcdir = .
 SUBDIRS = .
-AM_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall -O2  -fno-strict-aliasing -pipe -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib64/perl5/5.12.4/x86_64-linux/CORE  -g -DDEBUG
+AM_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -fno-strict-aliasing -pipe -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib64/perl5/5.12.4/x86_64-linux/CORE  -g -DDEBUG
 AM_LDFLAGS = `perl -M'ExtUtils::Embed' -e ldopts --`
 spath = /opt/cdse/secureTmp
 tdbpath = 

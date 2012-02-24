@@ -116,7 +116,7 @@ AC_FUNC_REALLOC
 AC_CHECK_FUNCS([memset setlocale strndup])
 
 # Set default cflags for Makefile.am
-GENERAL_CFLAGS="-DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall -O2 `$PERL -M'ExtUtils::Embed' -e ccopts --`"
+GENERAL_CFLAGS="-DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall `$PERL -M'ExtUtils::Embed' -e ccopts --`"
 RELEASE_CFLAGS="-s -DRELEASE"
 DEBUG_CFLAGS="-g -DDEBUG"
 AC_SUBST(GENERAL_CFLAGS)
@@ -164,7 +164,7 @@ echo \
  Data: 		'${DATADIR}'.
  Test files:	'${TESTFILES}'
  Test database: '${TESTDB}'
- Compiler: 	'${CC} ${GENERAL_CFLAGS} ${ADDITIONAL_CFLAGS} ${CPPFLAGS}'
+ Compiler: 	'${CC} ${CPPFLAGS} ${GENERAL_CFLAGS} ${ADDITIONAL_CFLAGS} ${CFLAGS}'
  Package features:
    Build mode: ${compile_mode}
  Now type 'make @<:@<target>@:>@'

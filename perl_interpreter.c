@@ -48,11 +48,14 @@ int cmePerlParserCmdLineInit (int argc, char **argv, PerlInterpreter *myPerl)
 {
     int result;
 
+/*  //This procedure was implemented to fix issues with PERL 5.8.8 but it causes some problems on later versions.
+    //It is now being removed since we are requiring PERL >= 5.10.0 anyway and it is more efficient to have a single
+    //PERL instance.
     perl_destruct(myPerl);
     perl_free(myPerl);
     myPerl=perl_alloc();
     perl_construct(myPerl);
-
+*/
     if ((!argv[0])||(!argv[1])) //Error, critical parameter missing!
     {
 #ifdef ERROR_LOG
@@ -87,11 +90,15 @@ int cmePerlParserInstruction (char *perlInstruction, PerlInterpreter *myPerl)
     const char eParam[]="-e";
 
     PL_perl_destruct_level = 0; //Destruct and reconstruct again the Perl interpreter to avoid namespace problems.
+
+/*  //This procedure was implemented to fix issues with PERL 5.8.8 but it causes some problems on later versions.
+    //It is now being removed since we are requiring PERL >= 5.10.0 anyway and it is more efficient to have a single
+    //PERL instance.
     perl_destruct(myPerl);
     perl_free(myPerl);
     myPerl=perl_alloc();
     perl_construct(myPerl);
-
+*/
     ilist[0]=(char *)prg;
     ilist[1]=(char *)eParam;
     ilist[2]=perlInstruction;
