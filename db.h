@@ -58,10 +58,10 @@ int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave);
 int cmeSQLIterate (const char *args,int numCols,char **pStrResults,char **pColNames);
 // Wrapper function for sqlite3_exec() and cmeSQLIterate ()
 int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
-                PerlInterpreter *myPerl, char **pErrmsg);
+                PerlInterpreter *myPerl);
 // Wrapper function for sqlite3_get_table()
 int cmeMemTable (sqlite3 *db, const char *sqlQuery,char ***pQueryResult,
-                 int *numRows, int *numColumns, char **pErrmsg);
+                 int *numRows, int *numColumns);
 // Wrapper function for sqlite3_free_table()
 int cmeMemTableFinal (char **QueryResult);
 // Function to import a Memory table (eg. result from cmeSQLTable() into a SQLite3 DB

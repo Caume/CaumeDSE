@@ -264,7 +264,6 @@ void testDB (PerlInterpreter* myPerl)
     int numRows=0;
     int numColumns=0;
     sqlite3 *DB;
-    char *pErrmsg;              //Important: do not declare it as char **
     char **pQueryResult;        //Important: do not declare it as char ***
 
     cmeDBCreateOpen (":memory:",&DB);       //Create memory DB
@@ -275,9 +274,9 @@ void testDB (PerlInterpreter* myPerl)
                "INSERT INTO table1 (nombre,apellido,salario) VALUES('Antonio','Lugo',12100.50);"
                "INSERT INTO table1 (nombre,apellido,salario) VALUES('Dante','Ferrini',10014);"
                "INSERT INTO table1 (nombre,apellido,salario) VALUES('Joaquín','González',7800);"
-               "COMMIT;",NULL,NULL,&pErrmsg); //Create a table
+               "COMMIT;",NULL,NULL); //Create a table
 
-    cmeMemTable(DB,"SELECT * FROM table1;",&pQueryResult,&numRows,&numColumns,&pErrmsg);
+    cmeMemTable(DB,"SELECT * FROM table1;",&pQueryResult,&numRows,&numColumns);
     for (cont=0;cont<=numRows;cont++)
     {
         for (cont2=0;cont2<numColumns;cont2++)
@@ -300,13 +299,13 @@ void testDB (PerlInterpreter* myPerl)
                "INSERT INTO table1 (nombre,apellido,salario) VALUES('Antonio','Lugo',12100.50);"
                "INSERT INTO table1 (nombre,apellido,salario) VALUES('Dante','Ferrini',10014);"
                "INSERT INTO table1 (nombre,apellido,salario) VALUES('Joaquín','González',7800);"
-               "COMMIT;","iterate",myPerl,&pErrmsg); //Create a table
+               "COMMIT;","iterate",myPerl); //Create a table
                //Callback function is called only when results are available, so the
                //above is also safe. Otherwise use:
                //"COMMIT;",NULL,NULL,&pErrmsg); //Create a table
 
     cmeSQLRows(DB,"BEGIN TRANSACTION; SELECT * FROM table1 WHERE salario > 10000;"
-               " COMMIT;","iterate",myPerl,&pErrmsg); //Select
+               " COMMIT;","iterate",myPerl); //Select
 
     cmeDBClose(DB);
 }
@@ -321,7 +320,6 @@ void testCSV ()
     char fName2[]="/opt/cdse/testfiles/CSVtest2.csv";
     char **elements=NULL;
     char **pQueryResult=NULL;
-    char *errMsg=NULL;
     const char *attributes[]={"shuffle","protect"};
     const char *attributesData[]={"aes-128-cbc","aes-128-cbc"};
     sqlite3 *resultDB=NULL;
@@ -359,13 +357,13 @@ void testCSV ()
     cmeCSVFileRowsToMemTableFinal (&elements, numCols, processedRows);
     result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
                           "password1",attributes, attributesData,2,0,"Payroll Database; Confidential.",
-                          "file.csv", "AcmeIncPayroll.csv", "storage1",cmeDefaultFilePath,&errMsg);
+                          "file.csv", "AcmeIncPayroll.csv", "storage1",cmeDefaultFilePath);
     result=cmeCSVFileToSecureDB(fName2,1,&numCols,&processedRows,"User123","CaumeDSE",
                           "password1",attributes, attributesData,2,0,"Payroll Database 2; Tests.",
-                          "file.csv", "AcmeIncPayroll Tests.csv","storage2",cmeDefaultFilePath,&errMsg);
+                          "file.csv", "AcmeIncPayroll Tests.csv","storage2",cmeDefaultFilePath);
     result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
                           "password1",attributes, attributesData,2,1,"Payroll Database; Confidential.",
-                          "file.csv", "AcmeIncPayroll.csv","storage1",cmeDefaultFilePath,&errMsg);
+                          "file.csv", "AcmeIncPayroll.csv","storage1",cmeDefaultFilePath);
     if (cmeDBOpen("/opt/cdse/ResourcesDB",&pResourcesDB)) //Error
     {
         return;
@@ -374,7 +372,7 @@ void testCSV ()
     cmeSecureDBToMemDB (&resultDB, pResourcesDB,"AcmeIncPayroll.csv","password1",cmeDefaultFilePath);
 
     printf("--- Retrieved data from secure table:\n");
-    result=cmeMemTable(resultDB,"SELECT * FROM data;",&pQueryResult,&numRows,&numCols,&errMsg);
+    result=cmeMemTable(resultDB,"SELECT * FROM data;",&pQueryResult,&numRows,&numCols);
     for (cont=0;cont<=numRows;cont++)
     {
         for (cont2=0;cont2<numCols;cont2++)

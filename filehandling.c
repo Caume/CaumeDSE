@@ -464,7 +464,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                           const char *userId,const char *orgId,const char *orgKey, const char **attribute,
                           const char **attributeData, const int numAttribute,const int replaceDB,
                           const char *resourceInfo, const char *documentType, const char *documentId,
-                          const char *storageId, const char *storagePath, char **errMsg)
+                          const char *storageId, const char *storagePath)
 {
     int cont,cont2,cont3,rContLimit,result,totalParts,readBytes,written;
     int rowStart=0;
@@ -591,7 +591,6 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
     resourcesDB=NULL;
     *numCols=0;         //Set default results
     *processedRows=0;
-    *errMsg=NULL;
     do
     {
         result=cmeCSVFileRowsToMemTable(CSVfName, &elements, numCols, &cycleProcessedRows, hasColNames, rowStart, rowEnd);
@@ -659,11 +658,11 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                                     " value TEXT, rowOrder TEXT, hash TEXT, sign TEXT, hashProtected TEXT,"
                                     " signProtected TEXT, otphDkey TEXT);"
                                     "COMMIT;");
-                if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL,errMsg)) //Create a table 'data'.
+                if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'data'.
                 {
 #ifdef ERROR_LOG
                     fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeSQLRows() Error, can't "
-                            "create table 'data' in DB file %d: %s! Error: %s\n",cont,SQLDBfNames[cont],*errMsg);
+                            "create table 'data' in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
 #endif
                     cmeCSVFileToSecureDBFree();
                     return(9);
@@ -672,11 +671,11 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                 cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE meta "
                                     "(id INTEGER PRIMARY KEY, userId TEXT, orgID TEXT, salt TEXT,"
                                     " attribute TEXT, attributeData TEXT); COMMIT;");
-                if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL,errMsg)) //Create a table 'meta'.
+                if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'meta'.
                 {
 #ifdef ERROR_LOG
                     fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeSQLRows() Error, can't "
-                            "create table 'meta' in DB file %d: %s! Error: %s\n",cont,SQLDBfNames[cont],*errMsg);
+                            "create table 'meta' in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
 #endif
                     cmeCSVFileToSecureDBFree();
                     return(11);
@@ -698,11 +697,11 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                     cmeFree(salt);
                 }
                 cmeStrConstrAppend(&sqlQuery,"COMMIT;");
-                if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL,errMsg)) //Insert row.
+                if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Insert row.
                 {
     #ifdef ERROR_LOG
                     fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeSQLRows() Error, can't "
-                            "insert row in DB file %d: %s! Error: %s\n",cont,SQLDBfNames[cont],*errMsg);
+                            "insert row in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
     #endif
                     cmeCSVFileToSecureDBFree();
                     return(17);
@@ -747,11 +746,11 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                     cmeFree(hashProtected);
                     cmeFree(hash);
                     cmeFree(securedRowOrder);
-                    if (cmeSQLRows((ppDB[(*numCols)*cont+cont2]),sqlQuery,NULL,NULL,errMsg)) //Insert row.
+                    if (cmeSQLRows((ppDB[(*numCols)*cont+cont2]),sqlQuery,NULL,NULL)) //Insert row.
                     {
 #ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeSQLRows() Error, can't "
-                                "insert row in DB file %d: %s! Error: %s\n",cont,SQLDBfNames[cont],*errMsg);
+                                "insert row in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
 #endif
                         cmeCSVFileToSecureDBFree();
                         return(13);
@@ -772,11 +771,11 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
         {
             result=cmeMemSecureDBProtect(ppDB[cont],orgKey);
             cmeStrConstrAppend(&sqlQuery,"VACUUM;"); //Reconstruct DB without slack space w/ unprotected data!
-            if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL,errMsg)) //Vacuum DB col.
+            if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Vacuum DB col.
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeSQLRows() Error, can't "
-                        "VACCUM DB file %d: %s! Error: %s\n",cont,SQLDBfNames[cont],*errMsg);
+                        "VACCUM DB file %d: %s!\n",cont,SQLDBfNames[cont]);
 #endif
                 cmeCSVFileToSecureDBFree();
                 return(14);
@@ -828,7 +827,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
 int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const char *orgId,const char *orgKey,
                             const char *resourceInfo, const char *documentType, const char *documentId,
                             const char *storageId, const char *storagePath)
-{   //IDD v.1.0.18 61sep2011
+{   //IDD v.1.0.20
     int cont,result,written,written2,lastPartSize;
     int bufferLen=0;
     int numParts=0;
@@ -837,7 +836,7 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
     char *tmpMemCiphertext=NULL;    //This will hold the encrypted data.
     char *tmpMemB64Ciphertext=NULL; //This will hold the B64 encoded version of the encrypted data.
     char *currentFilePartPath=NULL; //This will hold the whole file path for the current file part.
-    char *pFilePartStart=NULL;      //This will point to the start of each file slice (no need to free this ptr).
+    const char *pFilePartStart=NULL;      //This will point to the start of each file slice (no need to free this ptr).
     char **filePartNames=NULL;      //This will hold the random file part names.
     char **filePartHashes=NULL;     //This will hold the hashes for all file parts.
     char **filePartSalts=NULL;      //This will hold the salts for all file parts.
@@ -940,14 +939,14 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
         cmeRAWFileToSecureFileFree();
         return(4);
     }
-    // TODO (OHR#1#): Delete source file if operation is successful (check if this has to be done within or outside of this funcion)
     cmeRAWFileToSecureFileFree();
     return (0);
 }
 
 int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
-                               const char *documentType, const char *documentPath, const char *orgKey)
-{   // TODO (OHR#1#): Add orgId and storageId parameter and get index info for both documentId and documentType. otherwise 2 files with same name but different type will be loaded!
+                               const char *documentType, const char *documentPath, const char *orgId,
+                               const char *storageId, const char *orgKey)
+{
     int cont,cont2,result,written;
     int numRows=0;
     int numCols=0;
@@ -957,11 +956,11 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
     int *memFilePartsDataSize=NULL;     //Dynamic array to store the corresponding size in bytes, of the file part.
     char **memFilePartsData=NULL;       //Dynamic array to store unencrypted data of each part of the protected file.
     char **queryResult=NULL;
-    char **resultMemTable=NULL;
     char **colSQLDBfNames=NULL;         //Dynamic array to store part filenames of the protected RAWFile.
-    char *errMsg=NULL;
     char *currentDocumentId=NULL;
     char *currentDocumentType=NULL;
+    char *currentOrgResourceId=NULL;
+    char *currentStorageId=NULL;
     char *currentPartId=NULL;
     char *currentEncryptedData=NULL;
     char *bkpFName=NULL;
@@ -972,8 +971,9 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
             cmeFree(currentDocumentId); \
             cmeFree(currentPartId); \
             cmeFree(currentDocumentType); \
+            cmeFree(currentOrgResourceId); \
+            cmeFree(currentStorageId); \
             cmeFree(currentEncryptedData); \
-            cmeFree(resultMemTable); \
             cmeFree(bkpFName); \
             cmeFree(decodedEncryptedString); \
             cmeFree(memFilePartsOrder); \
@@ -998,8 +998,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
             } \
         } while (0)
 
-    result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols,
-                       &errMsg);
+    result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols);
     if(result) // Error
     {
         cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
@@ -1018,9 +1017,9 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
     for(cont=1;cont<=numRows;cont++) //First row in a cmeSQLTable contains the names of columns; we skip them.
     {
         result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],     //Protected value (B64+encrypted+salted)
-                                         &currentDocumentId,                                //Unencrypted result (documentId)
+                                         &currentDocumentId,                                //Unencrypted result (docuentId)
                                          cmeDefaultEncAlg,
-                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect value
+                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect register.
                                          orgKey,&written);
         if (result)  //Error
         {
@@ -1028,36 +1027,57 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
             return(2);
         }
         result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type],     //Protected value (B64+encrypted+salted)
-                                         &currentDocumentType,                                //Unencrypted result (documnent type)
+                                         &currentDocumentType,                                //Unencrypted result (document type)
                                          cmeDefaultEncAlg,
-                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect value
+                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect register.
                                          orgKey,&written);
         if (result)  //Error
         {
             cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
             return(3);
         }
-        if ((!(strcmp(currentDocumentId,documentId)))&&(!(strcmp(currentDocumentType,documentType))))  //This part belongs to the protected RAWFile -> process!
+        result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId],     //Protected value (B64+encrypted+salted)
+                                         &currentOrgResourceId,                                //Unencrypted result (document orgResourceId)
+                                         cmeDefaultEncAlg,
+                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect register.
+                                         orgKey,&written);
+        if (result)  //Error
+        {
+            cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+            return(4);
+        }
+        result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId],     //Protected value (B64+encrypted+salted)
+                                         &currentStorageId,                                //Unencrypted result (document type)
+                                         cmeDefaultEncAlg,
+                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect register.
+                                         orgKey,&written);
+        if (result)  //Error
+        {
+            cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+            return(5);
+        }
+        if ((!(strcmp(currentDocumentId,documentId)))&&(!(strcmp(currentDocumentType,documentType)))
+            &&(!(strcmp(currentOrgResourceId,orgId)))&&(!(strcmp(currentStorageId,storageId))))  //This part belongs to the protected RAWFile -> process!
         {
             result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],     //Protected value (B64+encrypted+salted)
                                              &(colSQLDBfNames[dbNumCols]),       //Unencrypted result (columnFile)
                                              cmeDefaultEncAlg,
-                                             &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),  //Salt used to protect value
+                                             &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),  //Salt used to protect register.
                                              orgKey,&written);
             if (result)  //Error
             {
                 cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-                return(3);
+                return(6);
             }
             result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partId],     //Protected value (B64+encrypted+salted)
                                              &currentPartId,       //Unencrypted result (partId, as a text string)
                                              cmeDefaultEncAlg,
-                                             &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),  //Salt used to protect value
+                                             &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),  //Salt used to protect register.
                                              orgKey,&written);
             if (result)  //Error
             {
                 cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-                return(4);
+                return(7);
             }
             memFilePartsOrder[dbNumCols]=atoi(currentPartId); //Set order number.
             memset(currentPartId,0,written);   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
@@ -1075,7 +1095,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
             if (result)  //Error
             {
                 cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-                return(5);
+                return(8);
             }
             result=cmeUnprotectByteString(currentEncryptedData,&(memFilePartsData[dbNumCols]),cmeDefaultEncAlg,
                                             &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey,
@@ -1085,7 +1105,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
             if (result)  //Error
             {
                 cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-                return(6);
+                return(9);
             }
             cmeFree(currentEncryptedData); //Free currentEncryptedData for the next cycle.
             dbNumCols++;
@@ -1116,7 +1136,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
         if (!fpTmpRAWFile)  //Error
         {
             cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-            return(7);
+            return(10);
         }
         for (cont=1;cont<=dbNumCols;cont++) //Go through each part number in order
         {
@@ -1134,7 +1154,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
     else  //Error, file not found
     {
         cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-        return(8);
+        return(11);
     }
 }
 

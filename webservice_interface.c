@@ -6110,7 +6110,6 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
     char *columnFileFullPath=NULL;      //Temp. storage for full path of columnFile for method DELETE.
     char *postImportFile=NULL;          //Note that we will just get pointer to connection info. via MHD_lookup_connection_value. We won't free that memory here!
     char *resourceInfoText=NULL;        //Note that we will just get pointer to connection info. via MHD_lookup_connection_value. We won't free that memory here!
-    char *errMsg=NULL;                  //SQLite will handle this pointer; cmeFree is not needed.
     char **resultRegisterCols=NULL;
     const int numColumns=15;            //Number of columns in corresponding resource table.
     const int numDuplicateMatchColumns=4;   //Columns by which we detect duplicates, in this case: "orgResourceId","storageId","type" and "documentId"; must be the first to be added to columnValuesToMatch and columnNamesToMatch
@@ -6317,8 +6316,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId
                                                         urlElements[3], //storageId
-                                                        storagePath,    //storagePath
-                                                        &errMsg);
+                                                        storagePath);    //storagePath
                         }
                         else //Create resource using orgKey
                         {
@@ -6328,8 +6326,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId
                                                         urlElements[3], //storageId
-                                                        storagePath,    //storagePath
-                                                        &errMsg);
+                                                        storagePath);    //storagePath
                         }
                         if (result) //Error, File couldn't be imported
                         {
@@ -7143,7 +7140,7 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
             con_info->connectionType=0;
             con_info->connection=NULL;
         }
-        if (con_info->filePointer)
+        if (con_info->filePointer)  // TODO (OHR#1#): overwrite source file if operation is successful before deleting it
         {
             fclose (con_info->filePointer);
             con_info->filePointer=NULL;
@@ -7804,7 +7801,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     int numResultRegisters=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
-    char *pErrmsg=NULL;
     char *orgKey=NULL;                  //requester orgKey.
     char *userId=NULL;                  //requester userId.
     char *orgId=NULL;                   //requester orgId.
@@ -7945,7 +7941,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     {
                         result=cmeSecureFileToTmpRAWFile (&tmpRAWFile,pDB,scriptNameValues[0],resultRegisterCols
                                                           [cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
-                                                          storagePath,orgKey);
+                                                          storagePath,urlElements[1],urlElements[3],orgKey);
                         if (result)//Error
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -8036,7 +8032,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(4);
                     }
                     result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
-                               cmeDefaultPerlIterationFunction,cdsePerl,&pErrmsg); //Select
+                               cmeDefaultPerlIterationFunction,cdsePerl); //Select
                     if (!result) //OK
                     {
                         //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -8048,7 +8044,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     }
                     else //Error
                     {
-                        sqlite3_free(pErrmsg);
                         cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
                                            "Internal server error number '%d'."
                                            "METHOD: '%s' URL: '%s'."
@@ -8172,7 +8167,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     {
                         result=cmeSecureFileToTmpRAWFile (&tmpRAWFile,pDB,scriptNameValues[0],resultRegisterCols
                                                           [cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
-                                                          storagePath,orgKey);
+                                                          storagePath,urlElements[1],urlElements[3],orgKey);
                         if (result)//Error
                         {
 #ifdef ERROR_LOG
@@ -8235,7 +8230,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(13);
                     }
                     result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
-                                      cmeDefaultPerlIterationFunction,cdsePerl,&pErrmsg); //Select
+                                      cmeDefaultPerlIterationFunction,cdsePerl); //Select
                     if (!result) //OK
                     {
                         if (cmeResultMemTableRows) // Found >0 rows.
@@ -8262,7 +8257,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     }
                     else //Error
                     {
-                        sqlite3_free(pErrmsg);
 #ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
                                 " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters error!\n",result,method,url);
@@ -8656,7 +8650,6 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
     int numResultRegisters=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
-    char *pErrmsg=NULL;
     char *orgKey=NULL;                  //requester orgKey.
     char *userId=NULL;                  //requester userId.
     char *orgId=NULL;                   //requester orgId.
@@ -8797,7 +8790,7 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                         return(1);
                     }
                     result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
-                                      NULL,NULL,&pErrmsg); //Select all data; no parser script.
+                                      NULL,NULL); //Select all data; no parser script.
                     if (!result) //OK
                     {
                         //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -8809,7 +8802,6 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     }
                     else //Error
                     {
-                        sqlite3_free(pErrmsg);
                         cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
                                            "Internal server error number '%d'."
                                            "METHOD: '%s' URL: '%s'."
@@ -8835,7 +8827,8 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     {
                         if (numResultRegisters) // Found >0
                         {
-                            result=cmeSecureFileToTmpRAWFile (responseFilePath,pDB,urlElements[7],urlElements[5],storagePath,orgKey);
+                            result=cmeSecureFileToTmpRAWFile (responseFilePath,pDB,urlElements[7],urlElements[5],storagePath,
+                                                              urlElements[1],urlElements[3],orgKey);
                             if (result)//Error
                             {
                                 cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -8995,7 +8988,7 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                         return(8);
                     }
                     result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
-                                      NULL,NULL,&pErrmsg); //Select all data; no parser script.
+                                      NULL,NULL); //Select all data; no parser script.
                     if (!result) //OK
                     {
                         if (cmeResultMemTableRows) // Found >0 rows.
@@ -9021,7 +9014,6 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     }
                     else //Error
                     {
-                        sqlite3_free(pErrmsg);
 #ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentClass(), Error, internal server error '%d'."
                                 " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters error!\n",result,method,url);
@@ -9042,7 +9034,8 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     {
                         if (numResultRegisters) // Found >0
                         {
-                            result=cmeSecureFileToTmpRAWFile (responseFilePath,pDB,urlElements[7],urlElements[5],storagePath,orgKey); //We don't need this for HEAD, but strictly speaking, we need to test that the "content" is there, even if we are not returning any file.
+                            result=cmeSecureFileToTmpRAWFile (responseFilePath,pDB,urlElements[7],urlElements[5],storagePath,
+                                                              urlElements[1],urlElements[3],orgKey); //We don't need this for HEAD, but strictly speaking, we need to test that the "content" is there, even if we are not returning any file.
                             if (result)//Error
                             {
 #ifdef ERROR_LOG

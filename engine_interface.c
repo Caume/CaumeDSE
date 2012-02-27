@@ -60,7 +60,6 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
     char ***memDBResultMeta=NULL;
     char **resultMemTable=NULL;
     char **colSQLDBfNames=NULL;
-    char *errMsg=NULL;
     char *currentDocumentId=NULL;
     char *bkpFName=NULL;
     char *sqlTableName="data"; //default table name for memory databases
@@ -94,8 +93,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
                       from memDBResultData and memDBResultMeta.
                       //WIPING SENSITIVE DATA IN MEMORY AFTER USE in colSQLDBfNames!*/
 
-    result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols,
-                       &errMsg);
+    result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols);
     if(result) // Error
     {
         cmeSecureDBToMemDBFree(); //CLEANUP.
@@ -182,14 +180,14 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
             return(6);
         }
         result=cmeMemTable(memDBcol[cont],"SELECT * FROM meta",&(memDBResultMeta[cont]),
-                           &numRowsMeta,&numColsMeta,&errMsg);
+                           &numRowsMeta,&numColsMeta);
         if(result) // Error
         {
             cmeSecureDBToMemDBFree(); //CLEANUP.
             return(7);
         }
         result=cmeMemTable(memDBcol[cont],"SELECT * FROM data",&(memDBResultData[cont]),
-                           &numRows,&numCols,&errMsg);
+                           &numRows,&numCols);
         if(result) // Error
         {
             cmeSecureDBToMemDBFree(); //CLEANUP.
@@ -257,7 +255,6 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
     int numCols=0;
     int dbNumCols=0;
     int *colsSQLDBIds=NULL;
-    char *errMsg=NULL;
     char *currentDocumentId=NULL;
     char *currentFName=NULL;
     char *sqlQuery=NULL;
@@ -290,8 +287,7 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
         fprintf(stdout,"CaumeDSE Debug: cmeDeleteSecureDB(), documentId %s already exists; "
                 "proceeding to delete it.\n",documentId);
 #endif
-        result=cmeMemTable(pResourcesDB,"SELECT * FROM documents;",&queryResult,&numRows,&numCols,
-                           &errMsg);
+        result=cmeMemTable(pResourcesDB,"SELECT * FROM documents;",&queryResult,&numRows,&numCols);
         if(result) // Error
         {
             cmeDeleteSecureDBFree();
@@ -340,13 +336,13 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
             cmeStrConstrAppend(&sqlQuery,"BEGIN;"
                                "DELETE FROM documents WHERE id=%d;"
                                "COMMIT;",colsSQLDBIds[cont]);
-            result=cmeSQLRows(pResourcesDB,sqlQuery,NULL,NULL,&errMsg);
+            result=cmeSQLRows(pResourcesDB,sqlQuery,NULL,NULL);
             cmeFree(sqlQuery);
             if (result)
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeDeleteSecureDB(), cmeSQLRows() Error, can't "
-                        "delete secureDB column, query: %s; Error: %s!\n",sqlQuery,errMsg);
+                        "delete secureDB column, query: %s!\n",sqlQuery);
 #endif
                 cmeDeleteSecureDBFree();
                 return(4);
@@ -395,7 +391,6 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
     int numRows=0;
     int numColumns=0;
     char *query=NULL;
-    char *errMsg=NULL;
     char *decryptedValue=NULL;
     char **resultsRegTmp=NULL;
     char **sqlTable=NULL;
@@ -415,12 +410,12 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
     //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
     cmeStrConstrAppend(&query,"PRAGMA empty_result_callbacks = ON; SELECT * FROM %s;",
                        tableName);
-    result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns,&errMsg);
+    result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeGetUnprotectDBRegister(), cmeMemTable() Error, can't "
-                "execute query %s in table:%s; Error: %s\n",query,tableName,errMsg);
+                "execute query %s in table:%s!\n",query,tableName);
 #endif
         cmeGetUnprotectDBRegisterFree();
         return(1);
@@ -552,7 +547,6 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
     int numColumns=0;
     char *regId=NULL;
     char *query=NULL;
-    char *errMsg=NULL;
     char *decryptedValue=NULL;
     char **resultsRegTmp=NULL;
     char **sqlTable=NULL;
@@ -573,13 +567,13 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
     //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
     cmeStrConstrAppend(&query,"PRAGMA empty_result_callbacks = ON; SELECT * FROM %s;",
                        tableName);
-    result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns,&errMsg);
+    result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
     cmeFree(query);
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeDeleteUnprotectDBRegister(), cmeMemTable() Error, can't "
-                "execute query %s in table:%s; Error: %s\n",query,tableName,errMsg);
+                "execute query %s in table:%s!\n",query,tableName);
 #endif
         cmeDeleteUnprotectDBRegisterFree();
         return(1);
@@ -666,7 +660,7 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
             }
             cmeStrConstrAppend(&query,"DELETE FROM %s WHERE id=%s;",tableName,regId);
             cmeFree(regId);
-            result=cmeSQLRows(pDB,(const char *)query,NULL,NULL,&errMsg);
+            result=cmeSQLRows(pDB,(const char *)query,NULL,NULL);
             cmeFree(query);
             if (result) //Error
             {
@@ -690,7 +684,6 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
     char *sqlStatement=NULL;
     char *protectedValue=NULL;
     char *salt=NULL;
-    char *errMsg=NULL;
     #define cmePostProtectDBRegisterFree() \
         do { \
             cmeFree(sqlStatement); \
@@ -742,12 +735,12 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
         }
     }
     cmeStrConstrAppend (&sqlStatement,",'%s'); COMMIT;",salt); //Last part.
-    result=cmeSQLRows(pDB,sqlStatement,NULL,NULL,&errMsg);
+    result=cmeSQLRows(pDB,sqlStatement,NULL,NULL);
     if (result) //Error.
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), cmeSQLRows() Error, can't "
-                "create register in table: %s with sql statement %s! Error: %s\n",tableName,sqlStatement,errMsg);
+                "create register in table: %s with sql statement %s!\n",tableName,sqlStatement);
 #endif
         cmePostProtectDBRegisterFree();
         return(2);
@@ -769,7 +762,6 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
     int encryptedValueLen=0;
     char *regId=NULL;
     char *query=NULL;
-    char *errMsg=NULL;
     char *decryptedValue=NULL;
     char *encryptedValue=NULL;
     char *valueSalt=NULL;
@@ -796,13 +788,13 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
     //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
     cmeStrConstrAppend(&query,"PRAGMA empty_result_callbacks = ON; SELECT * FROM %s;",
                        tableName);
-    result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns,&errMsg);
+    result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
     cmeFree(query);
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmePutProtectDBRegister(), cmeMemTable() Error, can't "
-                "execute query %s in table:%s; Error: %s\n",query,tableName,errMsg);
+                "execute query %s in table:%s!\n",query,tableName);
 #endif
         cmePutProtectDBRegisterFree();
         return(1);
@@ -942,7 +934,7 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
             }
             cmeStrConstrAppend(&query," WHERE id=%s;",regId); //Last part.
             cmeFree(regId);
-            result=cmeSQLRows(pDB,(const char *)query,NULL,NULL,&errMsg);
+            result=cmeSQLRows(pDB,(const char *)query,NULL,NULL);
             cmeFree(query);
             if (result) //Error
             {

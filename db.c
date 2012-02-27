@@ -272,7 +272,7 @@ int cmeSQLIterate (const char *args,int numCols,char **pStrResults,char **pColNa
 }
 
 int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
-                PerlInterpreter *myPerl, char **pErrmsg)
+                PerlInterpreter *myPerl)
 {
     int result,cont,cont2,numCols;
     int regCount=0;
@@ -471,21 +471,21 @@ int cmeResultMemTableClean ()
 }
 
 int cmeMemTable (sqlite3 *db, const char *sqlQuery,char ***pQueryResult,
-                 int *numRows, int *numColumns, char **pErrmsg)
+                 int *numRows, int *numColumns)
 {
-    int result;
+    int result;    char *pzErrmsg=NULL; // TODO (OHR#2#): Delete pErrmsg from parameters; passing back errors from sqlite3 is complicated since associated memory needs to be freed with sqlite3_free. We will deal with those errors only within functions that call sqlite functions directly!
     //TODO (ANY#8#): replace call to sqlite3_get_table() with calls to sqlite3_exec() and use PRAGMA table_info
     // This is because sqlite3_get_table is apparently obsolete (??) and should be avoided, according to docs.
     result=sqlite3_get_table(db, sqlQuery, pQueryResult, numRows, numColumns,
-                             pErrmsg);
+                             &pzErrmsg);
             //NOTE: numRows does not consider the header row at index 0.
             //sqlite3_get_table allways includes a header row; real number of rows= numRows+1 !
-    if (*pErrmsg!=NULL) // Then we have a problem...
+    if (pzErrmsg!=NULL) // Then we have a problem...
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeSQLTable(), sqlite3_get_table() error: %s\n",
-                *pErrmsg);
-        sqlite3_free(*pErrmsg);
+                pzErrmsg);
+        sqlite3_free(pzErrmsg);
 #endif
         return(1);
     }
@@ -513,7 +513,6 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
     int exitcode=0;
     int currentRow=1;
     char *sqlInsertQuery=NULL;
-    char *errMsg=NULL;
     char *sqlCreateCols=NULL;
     char *sqlInsertCols=NULL;
     const char *defaultTableName="data";
@@ -542,12 +541,12 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
     }
     cmeStrConstrAppend(&sqlInsertQuery,"BEGIN TRANSACTION; CREATE TABLE %s (%s); COMMIT;",
                        sqlTableName,sqlCreateCols); // Create table 'memtable'
-    result=cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL,&errMsg);
+    result=cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL);
     if (result) //Check Error Type
     {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeMemTableToMemDB(), cmeSQLRows() Error, can't "
-                    "create table: %s (%s) - %s\n",sqlTableName,sqlCreateCols,errMsg);
+                    "create table: %s (%s) !\n",sqlTableName,sqlCreateCols);
 #endif
             exitcode=1;
     }
@@ -577,11 +576,11 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
                 result=cmeStrConstrAppend(&sqlInsertQuery,");"); //Finish INSERT statement.
             }
             result=cmeStrConstrAppend(&sqlInsertQuery,"COMMIT;"); // Last part of block
-            if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL,&errMsg)) //insert row.
+            if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL)) //insert row.
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeMemTableToMemDB(), cmeSQLRows() Error, can't "
-                        "insert values, sqlquery: %s in table: %s - %s\n",sqlInsertQuery,sqlTableName,errMsg);
+                        "insert values, sqlquery: %s in table: %s !\n",sqlInsertQuery,sqlTableName);
 #endif
                 exitcode=2;
                 break;
@@ -613,11 +612,11 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
             result=cmeStrConstrAppend(&sqlInsertQuery,");"); //Finish INSERT statement.
         }
         result=cmeStrConstrAppend(&sqlInsertQuery,"COMMIT;"); // Last part of block.
-        if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL,&errMsg)) //insert row.
+        if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL)) //insert row.
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeMemTableToMemDB(), cmeSQLRows() Error, can't "
-                    "insert values, sqlquery: %s in table: %s - %s\n",sqlInsertQuery,sqlTableName,errMsg);
+                    "insert values, sqlquery: %s in table: %s !\n",sqlInsertQuery,sqlTableName);
 #endif
             exitcode=3;
         }
@@ -748,7 +747,6 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     char *currentDataId=NULL;
     char *currentDataEncAlg=NULL;
     char *sqlQuery=NULL;
-    char *errMsg=NULL;
     unsigned char *rndBytes=NULL;
     const EVP_CIPHER *cipher=NULL;
     //MEMORY CLEANUP MACRO for local function.
@@ -786,12 +784,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         } while (0)
 
     //Get information from table meta (we assume tables meta and data have not been protected yet).
-    result=cmeMemTable(memSecureDB,"SELECT * FROM meta;",&memProtectMetaData,&numRowsPMeta,&numColsPMeta,&errMsg);
+    result=cmeMemTable(memSecureDB,"SELECT * FROM meta;",&memProtectMetaData,&numRowsPMeta,&numColsPMeta);
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeMemTable() Error"
-                "can't execute 'SELECT * FROM meta;'; Error: %s !\n",errMsg);
+                "can't execute 'SELECT * FROM meta;'!\n");
 #endif
         cmeMemSecureDBProtectFree();
         return(1);
@@ -800,12 +798,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), cmeMemTable() loaded memSecureDB, table meta.\n");
 #endif
     //Get information from table data (we assume tables meta and data have not been protected yet).
-    result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memData,&numRowsData,&numColsData,&errMsg);
+    result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memData,&numRowsData,&numColsData);
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeMemTable() Error"
-                "can't execute 'SELECT * FROM data;'; Error: %s !\n",errMsg);
+                "can't execute 'SELECT * FROM data;'!\n");
 #endif
         cmeMemSecureDBProtectFree();
         return(2);
@@ -826,7 +824,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         cmeStrConstrAppend(&sqlQuery,"BEGIN;"
                            "UPDATE data SET salt='%s' WHERE id=%s; COMMIT;",currentDataSalt[cont-1],currentDataId);
         cmeFree(currentDataId);
-        result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL,&errMsg);
+        result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
         if (result) //Error
         {
 #ifdef ERROR_LOG
@@ -929,7 +927,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                     cmeStrConstrAppend(&sqlQuery,",otphDkey='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
                                        cmeIDDColumnFileData_otphDKey]);
                     cmeStrConstrAppend(&sqlQuery," WHERE id=%s; COMMIT;",currentDataId); //Last part of query.
-                    result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL,&errMsg);
+                    result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                     cmeFree(currentEncB64Data);
                     if (result) //Error
                     {
@@ -1060,7 +1058,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                     //Last part of query; Execute query.
                     cmeStrConstrAppend(&sqlQuery," WHERE id=%s; COMMIT;",
                                        currentDataId); //Last part of query. Overwrite salt if necessary (other protections overwrite it as well).
-                    result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL,&errMsg);
+                    result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                     cmeFree(sqlQuery);
                     if (result) //Error
                     {
@@ -1218,7 +1216,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         cmeFree(currentEncB64Data);
         //Last part of query
         cmeStrConstrAppend(&sqlQuery,",salt='%s' WHERE id=%s; COMMIT;",currentMetaSalt,currentMetaId);
-        result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL,&errMsg);
+        result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
         cmeFree(sqlQuery);
         if (result) //Error
         {
@@ -1268,7 +1266,6 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
     char *currentDataSalt=NULL;
     char *currentDataEncAlg=NULL;
     char *sqlQuery=NULL;
-    char *errMsg=NULL;
     const EVP_CIPHER *cipher=NULL;
     //MEMORY CLEANUP MACRO for local function.
     #define cmeMemSecureDBUnprotectFree() \
@@ -1299,12 +1296,12 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
         } while (0)
 
     //Get information from table meta (we assume tables meta and data are protected).
-    result=cmeMemTable(memSecureDB,"SELECT * FROM meta;",&memProtectMetaData,&numRowsPMeta,&numColsPMeta,&errMsg);
+    result=cmeMemTable(memSecureDB,"SELECT * FROM meta;",&memProtectMetaData,&numRowsPMeta,&numColsPMeta);
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeMemTable() Error"
-                "can't execute 'SELECT * FROM meta;'; Error: %s !\n",errMsg);
+                "can't execute 'SELECT * FROM meta;'!\n");
 #endif
         cmeMemSecureDBUnprotectFree();
         return(1);
@@ -1313,12 +1310,12 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
     fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBUnprotect(), cmeMemTable() loaded memSecureDB, table meta.\n");
 #endif
     //Get information from table data (we assume tables meta and data are protected).
-    result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memData,&numRowsData,&numColsData,&errMsg);
+    result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memData,&numRowsData,&numColsData);
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeMemTable() Error"
-                "can't execute 'SELECT * FROM data;'; Error: %s !\n",errMsg);
+                "can't execute 'SELECT * FROM data;'!\n");
 #endif
         cmeMemSecureDBUnprotectFree();
         return(2);
@@ -1395,7 +1392,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
         cmeStrConstrAppend(&sqlQuery,",userId='%s'",currentMetaUserId);
         cmeStrConstrAppend(&sqlQuery,",orgId='%s'",currentMetaOrgId);
         cmeStrConstrAppend(&sqlQuery,",salt='%s' WHERE id=%s; COMMIT;",currentMetaSalt,currentMetaId);
-        result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL,&errMsg);
+        result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
         if (result) //Error
         {
 #ifdef ERROR_LOG
@@ -1460,7 +1457,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                 cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE data SET"); //First part of query.
                 cmeStrConstrAppend(&sqlQuery," rowOrder='%s'",currentData);
                 cmeStrConstrAppend(&sqlQuery," WHERE id=%s; COMMIT;",currentDataId); //Last part of query.
-                result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL,&errMsg);
+                result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                 cmeFree(currentData);
                 if (result) //Error
                 {
@@ -1477,12 +1474,12 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
             cmeFree(currentDataEncAlg);
             cmeMemTableFinal(memData); //Free current table and reload.
             //Get shuffled (rowOrder unprotected) information from table data (we assume rowOrder has been unprotected).
-            result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memData,&numRowsData,&numColsData,&errMsg);
+            result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memData,&numRowsData,&numColsData);
             if (result) //Error
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeMemTable() Error"
-                        "can't execute 'SELECT * FROM data;' for shuffled data; Error: %s !\n",errMsg);
+                        "can't execute 'SELECT * FROM data;' for shuffled data!\n");
 #endif
                 cmeMemSecureDBUnprotectFree();
                 return(11);
@@ -1530,7 +1527,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                                    cmeIDDColumnFileData_otphDKey]);
                 cmeStrConstrAppend(&sqlQuery," WHERE id=%s; COMMIT;",memData[cmeIDDColumnFileDataNumCols*cont2+
                                    cmeIDDanydb_id]); //Last part of query.
-                result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL,&errMsg);
+                result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                 if (result) //Error
                 {
 #ifdef ERROR_LOG
@@ -1592,7 +1589,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                 cmeStrConstrAppend(&sqlQuery," userId='%s'",currentDataUserId);
                 cmeStrConstrAppend(&sqlQuery,",orgId='%s'",currentDataOrgId);
                 cmeStrConstrAppend(&sqlQuery,",salt='%s' WHERE id=%s; COMMIT;",currentDataSalt,currentDataId);
-                result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL,&errMsg);
+                result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                 if (result) //Error
                 {
 #ifdef ERROR_LOG
@@ -1659,7 +1656,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                                        currentData,currentDataId);  //Update query.
                     memset(currentData,0,strlen(currentData));      // Clear sensitive data
                     cmeFree(currentData);
-                    result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL,&errMsg);
+                    result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                     if (result) //Error
                     {
 #ifdef ERROR_LOG
@@ -1936,7 +1933,6 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
     char *currentMetaUserId=NULL;
     char *currentMetaOrgId=NULL;
     char *sqlQuery=NULL;
-    char *errMsg=NULL;
     sqlite3 *tmpPtr=NULL;       //Just a tmp pointer; no need for cmeFree().
     //MEMORY CLEANUP MACRO for local function.
     #define cmeMemSecureDBReintegrateFree() \
@@ -1999,12 +1995,12 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
     for (cont=0;cont<dbNumCols;cont++)
     {
         //Get information from table meta (we assume tables meta and data are protected).
-        result=cmeMemTable(memSecureDB[cont],"SELECT * FROM meta;",&(memProtectMetaData[cont]),&numRowsPMeta,&numColsPMeta,&errMsg);
+        result=cmeMemTable(memSecureDB[cont],"SELECT * FROM meta;",&(memProtectMetaData[cont]),&numRowsPMeta,&numColsPMeta);
         if (result) //Error
         {
     #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeMemTable() Error"
-                    "can't execute 'SELECT * FROM meta;'; Error: %s !\n",errMsg);
+                    "can't execute 'SELECT * FROM meta;'!\n");
     #endif
             cmeMemSecureDBReintegrateFree();
             return(1);
@@ -2013,12 +2009,12 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
         fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBReintegrate(), cmeMemTable() loaded memSecureDB, table meta.\n");
     #endif
         //Get information from table data (we assume tables meta and data are protected).
-        result=cmeMemTable(memSecureDB[cont],"SELECT * FROM data;",&(memData[cont]),&(numRowsData[cont]),&numColsData,&errMsg);
+        result=cmeMemTable(memSecureDB[cont],"SELECT * FROM data;",&(memData[cont]),&(numRowsData[cont]),&numColsData);
         if (result) //Error
         {
     #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeMemTable() Error"
-                    "can't execute 'SELECT * FROM data;'; Error: %s !\n",errMsg);
+                    "can't execute 'SELECT * FROM data;'!\n");
     #endif
             cmeMemSecureDBReintegrateFree();
             return(2);
@@ -2099,11 +2095,11 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                                                    memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_hashProtected],
                                                    memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_signProtected],
                                                    memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_otphDKey]);
-                                if (cmeSQLRows(memSecureDB[cont3],sqlQuery,NULL,NULL,&errMsg)) //insert row.
+                                if (cmeSQLRows(memSecureDB[cont3],sqlQuery,NULL,NULL)) //insert row.
                                 {
 #ifdef ERROR_LOG
                                     fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeSQLRows() Error, can't "
-                                            "insert row in secured DB data table! Error: %s\n",errMsg);
+                                            "insert row in secured DB data table!\n");
 #endif
                                     cmeFree(sqlQuery);
                                     return(5);

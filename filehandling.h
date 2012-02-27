@@ -62,7 +62,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                           const char *userId,const char *orgId,const char *orgKey, const char **attribute,
                           const char **attributeData, const int numAttribute,const int replaceDB,
                           const char *resourceInfo, const char *documentType, const char *documentId,
-                          const char *storageId, const char *storagePath, char **errMsg);
+                          const char *storageId, const char *storagePath);
 // Function that slices and encrypts a raw file into several parts.
 // ~ POST file.raw, script.perl, ...
 int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const char *orgId,const char *orgKey,
@@ -71,7 +71,8 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
 // Function that unprotects and stores a protected raw file in an unprotected, temporal file.
 // ~ GET file.raw, script.perl, ...
 int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
-                               const char *documentType, const char *documentPath, const char *orgKey);
+                               const char *documentType, const char *documentPath, const char *orgId,
+                               const char *storageId, const char *orgKey);
 // Function to overwrite and delete a file (meant for Temporal files in restricted/memory storage.
 // TODO (ANY#3#): Check and apply the appropriate kind of secure deletion mechanism.
 int cmeFileOverwriteAndDelete (const char *filePath);

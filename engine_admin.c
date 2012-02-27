@@ -55,7 +55,6 @@ int cmeSetupEngineAdminDBs ()
     char *currentDBName=NULL;
     char *sqlQuery=NULL;
     char *rndAdminOrgPwd=NULL;
-    char *errMsg=NULL;
     sqlite3 *currentDB=NULL;
     #define cmeSetupEngineAdminDBsFree() \
         do { \
@@ -122,11 +121,11 @@ int cmeSetupEngineAdminDBs ()
             cmeSetupEngineAdminDBsFree();
             return(2);
         }
-        if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL,&errMsg)) //Create a tables.
+        if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL)) //Create a tables.
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), cmeSQLRows() Error, can't "
-                    "create tables in DB file: %s! Error: %s\n",currentDBName,errMsg);
+                    "create tables in DB file: %s!\n",currentDBName);
 #endif
             cmeSetupEngineAdminDBsFree();
             return(3);
@@ -244,11 +243,11 @@ int cmeSetupEngineAdminDBs ()
             cmeSetupEngineAdminDBsFree();
             return(5);
         }
-        if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL,&errMsg)) //Create a tables.
+        if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL)) //Create a tables.
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), cmeSQLRows() Error, can't "
-                    "create tables in DB file: %s! Error: %s\n",currentDBName,errMsg);
+                    "create tables in DB file: %s!\n",currentDBName);
 #endif
             cmeSetupEngineAdminDBsFree();
             return(6);
@@ -294,11 +293,11 @@ int cmeSetupEngineAdminDBs ()
             cmeSetupEngineAdminDBsFree();
             return(8);
         }
-        if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL,&errMsg)) //Create a tables.
+        if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL)) //Create a tables.
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), cmeSQLRows() Error, can't "
-                    "create tables in DB file: %s! Error: %s\n",currentDBName,errMsg);
+                    "create tables in DB file: %s!\n",currentDBName);
 #endif
             cmeSetupEngineAdminDBsFree();
             return(9);
@@ -392,7 +391,6 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     sqlite3 *saveDB=NULL;
     char *currentDBName=NULL;
     char *sqlQuery=NULL;
-    char *errMsg=NULL;
     char *partId=NULL;              //Will contain the text equivalent of the part number of each column file
     char *totalParts=NULL;          //Will contain the text equivalent total parts per column of each column file
     char *lastModified=NULL;        //Will contain the text equivalent of current date (timestamp)
@@ -490,11 +488,11 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
                                 currentSaltProtectedData[4],currentSaltProtectedData[5],currentSaltProtectedData[6],
                                 currentSaltProtectedData[11],currentSaltProtectedData[9],currentSaltProtectedData[12],
                                 currentSaltProtectedData[7],currentSaltProtectedData[8]);
-            if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL,&errMsg)) //insert row.
+            if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL)) //insert row.
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeSQLRows() Error, can't "
-                        "insert row in DB file %s! Error: %s\n",currentDBName,errMsg);
+                        "insert row in DB file %s!\n",currentDBName);
 #endif
                 cmeRegisterSecureDBFree();
                 return(2);
@@ -516,12 +514,12 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     result=cmeMemTable(currentDB,"PRAGMA empty_result_callbacks = ON; " //TODO (OHR#4#): Make sure we include this at least once to receive empty databases w/ column names.
                        "SELECT userId, orgId, salt, resourceInfo, columnFile, type, documentId, storageId,"
                        " orgResourceId, partHash, totalParts, partId, lastModified, columnId FROM documents;",
-                       &sqlTable,&numRows,&numColumns,&errMsg); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
+                       &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
-                "'select * from documents' in resourceDB:%s; Error: %s\n",currentDBName,errMsg);
+                "'select * from documents' in resourceDB:%s!\n",currentDBName);
 #endif
         cmeRegisterSecureDBFree();
         return(4);
@@ -534,12 +532,12 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     cmeMemTableFinal(sqlTable);
     result=cmeMemTable(currentDB,"SELECT userId, orgId, salt, resourceInfo, certificate, publicKey,"
                        "userResourceId, basicAuthPwdHash, oauthConsumerKey, oauthConsumerSecret, orgResourceId FROM users;",
-                       &sqlTable,&numRows,&numColumns,&errMsg); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
+                       &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
-                "'select * from users' in resourceDB:%s; Error: %s\n",currentDBName,errMsg);
+                "'select * from users' in resourceDB:%s!\n",currentDBName);
 #endif
         cmeRegisterSecureDBFree();
         return(5);
@@ -548,12 +546,12 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     cmeMemTableFinal(sqlTable);
     result=cmeMemTable(currentDB,"SELECT userId, orgId, salt, resourceInfo, certificate,"
                        "publicKey, orgResourceId FROM organizations;",
-                       &sqlTable,&numRows,&numColumns,&errMsg); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
+                       &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
-                "'select * from organizations' in resourceDB:%s; Error: %s\n",currentDBName,errMsg);
+                "'select * from organizations' in resourceDB:%s!\n",currentDBName);
 #endif
         cmeRegisterSecureDBFree();
         return(6);
@@ -562,12 +560,12 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     cmeMemTableFinal(sqlTable);
     result=cmeMemTable(currentDB,"SELECT userId, orgId, salt, resourceInfo, location, type, storageId, "
                        "accessPath, accessUser, accessPassword, orgResourceId FROM storage;",
-                       &sqlTable,&numRows,&numColumns,&errMsg); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
+                       &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
-                "'select * from storage' in resourceDB:%s; Error: %s\n",currentDBName,errMsg);
+                "'select * from storage' in resourceDB:%s!\n",currentDBName);
 #endif
         cmeRegisterSecureDBFree();
         return(7);

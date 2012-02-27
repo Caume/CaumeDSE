@@ -1,3 +1,23 @@
+2012-02-27 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+        * filehandling.c: cleaned up and fixed some comments.
+
+	* filehandling.c (cmeSecureFileToTmpRAWFile): deleted unused
+	variable resultMemTable. Solved TODO; added orgResourceId and
+	storageId checks and corresponding parameters.
+
+	* filehandling.h (cmeSecureFileToTmpRAWFile cmeCSVFileToSecureDB):
+	adjusted function call parameters.
+
+	* webservice_interface.c (cmeWebServiceProcessContentClass):
+	adjusted function call parameters for cmeSecureFileToTmpRAWFile.
+
+	* db.c db.h engine_admin.c engine_interface.c filehandling.c
+	webservice_interface.c function_test.c (cmeMemTable cmeSQLRows
+	cmeCSVFileToSecureDB): replaced pErrmsg/errMsg parameter with local
+	variable.  SQLite3 Error msg handling will be done only within
+	cmeMemTable function.
+
 2012-02-24 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* perl_interpreter.c (cmePerlParserCmdLineInit,
