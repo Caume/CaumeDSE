@@ -1,3 +1,14 @@
+2012-02-28 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+        * webservice_interface.c filehandling.c: cleaned up and fixed some
+        comments/fprintfs.
+
+	* webservice_interface.c (cmeRAWFileToSecureFile): added
+	currentFilePartPath to cmeRAWFileToSecureFileFree for consistency
+
+	* engine_admin.c (cmeWebServiceSetup): reordered MHD_start_daemon
+	parameters for clarity.
+
 2012-02-27 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
         * filehandling.c: cleaned up and fixed some comments.

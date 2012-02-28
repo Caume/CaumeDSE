@@ -475,8 +475,8 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
     sqlite3 *resourcesDB=NULL;
     sqlite3 *existsDB=NULL;
     sqlite3_int64 existRows=0;
-    char **elements=NULL;
-    char **SQLDBfNames=NULL;
+    char **elements=NULL;               //Note: elements will be freed via the special function cmeCSVFileRowsToMemTableFinal() within the corresponding loop; it is not included in cmeCSVFileToSecureDBFree()
+    char **SQLDBfNames=NULL;            //Will hold the names of each file part
     char **SQLDBfHashes=NULL;           //Will hold the hashes of each file part.
     char **colNames=NULL;
     char *currentRawFileContent=NULL;   //Will hold the binary contents of each created file part during the hashing process.
@@ -775,7 +775,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeSQLRows() Error, can't "
-                        "VACCUM DB file %d: %s!\n",cont,SQLDBfNames[cont]);
+                        "VACUUM DB file %d: %s!\n",cont,SQLDBfNames[cont]);
 #endif
                 cmeCSVFileToSecureDBFree();
                 return(14);
@@ -810,7 +810,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
         cmeFree(bkpFName);
     }
     result=cmeRegisterSecureDBorFile ((const char **)SQLDBfNames, numSQLDBfNames, NULL, (const char **)SQLDBfHashes,totalParts,orgKey, userId, orgId, resourceInfo,
-                                       documentType,documentId,storageId,orgId); // FIXME (OHR#1#): Fix parameters to get all info from API parameters!
+                                       documentType,documentId,storageId,orgId);
     if (result) //error
     {
 #ifdef ERROR_LOG
@@ -846,6 +846,7 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
             cmeFree(tmpMemDataBuffer); \
             cmeFree(tmpMemCiphertext); \
             cmeFree(tmpMemB64Ciphertext); \
+            cmeFree(currentFilePartPath); \
             if (filePartNames) \
             { \
                 for (cont=0;cont<numParts;cont++) \

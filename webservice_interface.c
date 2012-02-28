@@ -6121,7 +6121,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                                             "_partHash","_totalParts","_partId","_lastModified","_columnId"};
     const char *validPOSTSaveColumns[3]={"userId","orgId","*resourceInfo"};
     const char *validPUTSaveColumns[3]={"userId","orgId","*resourceInfo"};
-    const char *attributes[]={"shuffle","protect"};                                         // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user! via API.
+    const char *attributes[]={"shuffle","protect"};                           // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user, via API!
     const char *attributesData[]={"aes-128-cbc","aes-128-cbc"};
     #define cmeWebServiceProcessDocumentResourceFree() \
         do { \
@@ -6178,9 +6178,6 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                 pDB=NULL; \
             } \
         } while (0) //Local free() macro.
-
- //   *responseText=NULL;           //Note that caller must sanitize this input and free this information.
- //   *responseFilePath=NULL;
 
     columnValues=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnNames=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
@@ -7426,9 +7423,8 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
         cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
                                           columnValuesToMatch, columnNamesToMatch, columnValues, columnNames, &numMatchArgs, &numSaveArgs,
                                           &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
-        if ((numMatchArgs>=3)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId, userId and >=1 Match)
+        if ((numMatchArgs>=3)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId, userId and >=3 Match)
         {
-            //TODO (OHR#1#): cmeWebServiceProcessDocumentClass GET - validate user roles; if authorized to perform user GET then proceed.
             result=cmeDBOpen(dbFilePath,&pDB);
             if (!result) //if OK
             {
