@@ -1361,7 +1361,7 @@ Jelani,Wyatt,9,53897
 Bernard,Jackson,10,140408
 
 	Example 1.3)	Sample myscript.pl file (should have been uploaded
-			as a file of type script.pl before the request). 
+			as a file of type script.perl before the request). 
 			This particular scripts sums every number in the
 			salary columns and stores in this same column the
 			partial results (i.e.  the last value contains the

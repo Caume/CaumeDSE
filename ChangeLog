@@ -1,3 +1,15 @@
+2012-03-01 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* CaumeDSE: Tested the whole project against buffer overflows and
+	underflows by linking the debug version with the duma library and
+	gdb.  No problems were found.
+
+        * README: cleaned up and fixed some typos.
+
+	* webservice_interface.c (cmeWebServiceRequestCompleted): solved
+	TODO; implemented file overwrite before delete for temporary files
+	(e.g.  in secureTmp).
+
 2012-02-28 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
         * webservice_interface.c filehandling.c: cleaned up and fixed some
