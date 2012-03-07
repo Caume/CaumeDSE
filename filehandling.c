@@ -876,6 +876,10 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
     result=cmeLoadStrFromFile(&tmpMemDataBuffer,rawFileName,&tmpMemDataLen); //Read file into memory
     if (result) //Error reading file into memory.
     {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeRAWFileToSecureFile(), cmeLoadStrFromFile() error cannot "
+                "read raw file: %s !\n",rawFileName);
+#endif
         cmeRAWFileToSecureFileFree();
         return(1);
     }
@@ -911,14 +915,22 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
             bufferLen=cmeMaxRAWDataInPart;
         }
         // TODO (OHR#3#): Replace calls to cmeCipherByteString() + cmeStrToB64() with a single call to cmeProtectDBValue().
-        //Encrypt memory data with orgKey and default encryption algorithm:
+        //Protect memory data with orgKey and default encryption algorithm:
+        result=cmeProtectByteString(pFilePartStart,&tmpMemB64Ciphertext,cmeDefaultEncAlg,&(filePartSalts[cont]),orgKey,
+                                    &written,bufferLen);
+                                    /**
         result=cmeCipherByteString((unsigned char*)pFilePartStart,(unsigned char**)&tmpMemCiphertext,(unsigned char **)&(filePartSalts[cont]),
-                                    bufferLen,&written,cmeDefaultEncAlg,orgKey,'e');
-        if (result) //Error encrypting data in memory
+                                    bufferLen,&written,cmeDefaultEncAlg,orgKey,'e'); **/
+        if (result) //Error protecting data in memory
         {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeRAWFileToSecureFile(), cmeProtectByteString() error cannot "
+                "protect file part number %d, with algorithm %s !\n",cont,cmeDefaultEncAlg);
+#endif
             cmeRAWFileToSecureFileFree();
             return(2);
         }
+        /**
         //Convert encrypted data to Base64 representation:
         result=cmeStrToB64((unsigned char *)tmpMemCiphertext,(unsigned char **)&tmpMemB64Ciphertext,written,&written2);
         if (result) //Error converting encrypted data to B64 encoded data
@@ -926,9 +938,10 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
             cmeRAWFileToSecureFileFree();
             return(3);
         }
-        cmeFree(tmpMemCiphertext); //Free encrypted data; we don't need it any more.
-        cmeWriteStrToFile(tmpMemB64Ciphertext,currentFilePartPath,written2);  //Write encrypted data to currentFilePartPath file.
-        cmeDigestByteString((const unsigned char *)tmpMemB64Ciphertext,(unsigned char **)&(filePartHashes[cont]),written2,&written,cmeDefaultHshAlg); //Calculate hash on file part in memory.
+        cmeFree(tmpMemCiphertext); //Free encrypted data; we don't need it any more. **/
+
+        cmeWriteStrToFile(tmpMemB64Ciphertext,currentFilePartPath,written);  //Write encrypted data to currentFilePartPath file.
+        cmeDigestByteString((const unsigned char *)tmpMemB64Ciphertext,(unsigned char **)&(filePartHashes[cont]),written,&written2,cmeDefaultHshAlg); //Calculate hash on file part in memory.
         cmeFree(tmpMemB64Ciphertext); //Free B64 encoded, encryptede data; we don't need it any more.
         cmeFree(currentFilePartPath);
     }

@@ -118,6 +118,12 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     cmeFree (salt);
     cmeFree (ciphertext);
     cmeFree (deciphertext);
+    cmeProtectByteString((const char*)cleartext,(char **)&ciphertext,"aes-256-cbc",(char **)&salt,"Password",&written,strlen((char *)cleartext));
+    cmeUnprotectByteString((const char *)ciphertext,(char **)&deciphertext,"aes-256-cbc",(char **)&salt,"Password",&written,written);
+    printf("Unprotected text: %s  \n",deciphertext);
+    cmeFree (salt);
+    cmeFree (ciphertext);
+    cmeFree (deciphertext);
 }
 
 void testCryptoDigest_Str(unsigned char *bufIn)

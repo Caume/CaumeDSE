@@ -78,11 +78,9 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey);
 // Function to remove protections on individual secureDB Column Files.
 int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey);
 // Function to protect (encrypt and B64 codify) a text string. Note that source length is determined by strlen(). For byte strings use cmeProtectByteString() instead!
-// TODO (ANY#4#): Replace with a function that calls strlen() + a call to cmeProtectByteString(). No need to have an almost identical copy of the function.
 int cmeProtectDBValue (const char *value, char **protectedValue, const char *encAlg, char **salt,
                        const char *orgKey, int *protectedValueLen);
 // Function to unprotect (decodify B64 and unencrypt) a text string. Note that source length is determined by strlen(). For byte strings use cmeUnprotectByteString() instead!
-// TODO (ANY#4#): Replace with a function that calls strlen() + a call to cmeUnprotectByteString(). No need to have an almost identical copy of the function.
 int cmeUnprotectDBValue (const char *protectedValue, char **value, const char *encAlg, char **salt,
                          const char *orgKey, int *valueLen);
 // Function to salt+protect (add salt to value, encrypt and B64 codify) a text string.

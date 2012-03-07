@@ -552,15 +552,21 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
 
 int cmeProtectByteString (const char *value, char **protectedValue, const char *encAlg, char **salt,
                           const char *orgKey, int *protectedValueLen, const int valueLen)
-{   //TODO (OHR#2#): Replace everywhere to protect a byte string with a call to this function.
+{
     int result,written;
     char *currentEncData=NULL;
+    #define cmeProtectByteStringFree() \
+        do { \
+            cmeFree(currentEncData); \
+        } while (0) //Local free() macro
+
     if (value==NULL) //Error: no value to encrypt
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeProtectByteString(), cmeCipherByteString() Error, can't "
                 "encrypt NULL byte string with algorithm %s!\n",encAlg);
 #endif
+        cmeProtectByteStringFree();
         return(1);
     }
     result=cmeCipherByteString((unsigned char *)value,(unsigned char **)&currentEncData,(unsigned char **)salt,
@@ -571,6 +577,7 @@ int cmeProtectByteString (const char *value, char **protectedValue, const char *
         fprintf(stderr,"CaumeDSE Error: cmeProtectByteString(), cmeCipherByteString() Error, can't "
                 "encrypt 'byte string' %s with algorithm %s!\n",value,encAlg);
 #endif
+        cmeProtectByteStringFree();
         return(2);
     }
 #ifdef DEBUG
@@ -579,16 +586,16 @@ int cmeProtectByteString (const char *value, char **protectedValue, const char *
 #endif
     result=cmeStrToB64((unsigned char *)currentEncData,(unsigned char **)protectedValue,
                        written,protectedValueLen);
-    cmeFree(currentEncData);
+    cmeProtectByteStringFree();
     return (0);
 }
 
 int cmeUnprotectByteString (const char *protectedValue, char **value, const char *encAlg, char **salt,
                             const char *orgKey, int *valueLen, const int protectedValueLen)
-{   //TODO (OHR#2#): Replace everywhere to unprotect a DB value with a call to this function.
+{
     int result,written;
     char *currentEncData=NULL;
-    #define cmeUnProtectDBValueFree() \
+    #define cmeUnProtectByteStringFree() \
         do { \
             cmeFree(currentEncData); \
         } while (0) //Local free() macro
@@ -602,7 +609,7 @@ int cmeUnprotectByteString (const char *protectedValue, char **value, const char
         fprintf(stderr,"CaumeDSE Debug: cmeUnprotectByteString(), cmeCipherByteString() Warning, can't "
                 "decrypt 'byte string' = NULL, with algorithm %s and key %s!\n",encAlg,orgKey);
 #endif
-        cmeUnProtectDBValueFree();
+        cmeUnProtectByteStringFree();
         return(0); //Not an error, just a warning!
     }
     result=cmeB64ToStr((unsigned char *)protectedValue,(unsigned char **)&currentEncData,
@@ -624,11 +631,11 @@ int cmeUnprotectByteString (const char *protectedValue, char **value, const char
     else //Decryption successful.
     {
 #ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: cmeUnprotectDBSValue(), decrypted 'byte string': "
+        fprintf(stdout,"CaumeDSE Debug: cmeUnprotectByteString(), decrypted 'byte string': "
                 "%s with algorithm %s -> %s.\n",protectedValue,encAlg,*value);
 #endif
     }
-    cmeUnProtectDBValueFree();
+    cmeUnProtectByteStringFree();
     return (0);
 }
 

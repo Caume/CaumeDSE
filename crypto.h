@@ -80,10 +80,10 @@ int cmeGetRndSaltAnySize (char **rndHexSalt, int size);
 int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, unsigned char **salt,
                          const int srcLen, int *dstWritten, const char *algorithm, const char *ctPassword,
                          const char mode);
-// Function to protect (encrypt and B64 codify) a byte string.
+// Function to protect (encrypt and B64 encode) a byte string.
 int cmeProtectByteString (const char *value, char **protectedValue, const char *encAlg, char **salt,
                           const char *orgKey, int *protectedValueLen, const int valueLen);
-// Function to unprotect (decodify B64 and unencrypt) a byte string.
+// Function to unprotect (decode B64 and decrypt) a byte string.
 int cmeUnprotectByteString (const char *protectedValue, char **value, const char *encAlg, char **salt,
                             const char *orgKey, int *valueLen, const int protectedValueLen);
 // Function to hash a byte string in blocks of evpBufferSize.

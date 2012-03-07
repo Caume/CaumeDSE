@@ -1,3 +1,45 @@
+2012-03-07 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* db.c (cmeProtectDBSaltedValue,cmeProtectDBValue): replaced
+	cmeCipherByteString + cmeStrToB64 with the already existent wrapper
+	function cmeProtectByteString; simplify and improve clarity.
+
+	* db.c (cmeMemSecureDBProtect): replaced cmeCipherByteString +
+	cmeStrToB64 with the already existent wrapper function
+	cmeProtectDBValue; simplify and improve clarity.
+
+	* db.c (cmeMemSecureDBReintegrate): replaced cmeB64ToStr +
+	cmeCipherByteString with the already existent wrapper function
+	cmeUnprotectDBValue; simplify and improve clarity.
+
+	* db.c (cmeUnprotectDBSaltedValue,cmeUnprotectDBValue): replaced
+	cmeB64ToStr + cmeCipherByteString with the already existent wrapper
+	function cmeUnprotectByteString; simplify and improve clarity.
+
+	* db.c (cmeMemSecureDBProtect): added rndBytes to Free macro, for
+	consistency.
+
+	* db.h (cmeProtectDBValue,cmeUnprotectDBValue): solved TODO,
+	replaced cmeCipherByteString + B64 conversion function with wrapper
+	function; simplify and improve clarity.
+
+	* crypto.h: fixed/modified some comments.
+
+	* crypto.c (cmeProtectByteString,cmeUnprotectByteString): fixed and
+	standardized Free macros.  Solved TODO, replaced cmeCipherByteString
+	with calls to cmeProtectByteString, cmeUnprotectByteString,
+	cmeProtectDBValue and cmeUnprotectDBValue.
+
+	* filehandling.c (cmeRAWFileToSecureFile); replaced
+	cmeCipherByteString + cmeStrToB64 with the already existent wrapper
+	function cmeProtectByteString; simplify and improve clarity.  Also
+	added error logging.
+
+	* function_tests.c (testCryptoSymmetric): added tests for
+	cmeProtectByteString and cmeUnprotectByteString.
+
+	* Makefile: removed file from distribution.
+
 2012-03-01 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* CaumeDSE: Tested the whole project against buffer overflows and
