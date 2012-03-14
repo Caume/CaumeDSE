@@ -1,3 +1,23 @@
+2012-03-13 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* engine_admin.c (cmeWebServiceCheckPermissions): fixed some
+	comments.
+
+	* webservice_interface.c (cmeWebServiceProcessRequest): solved
+	FIXME, moved processing of cmeWebServiceProcessEngineResource after
+	authentication and authorization, validating engineCommands resource
+	class.
+
+	* webservice_interface.c (cmeWebServiceProcessEngineResource):
+	deleted redundant authorization checks.
+
+	* common.h (cmeWSMsgEngineOptions) fixed definition.
+
+	* db.c (cmeMemSecureDBReintegrate) deleted unused variable written2.
+
+	* README (engineCommands,setEnginePower) documented new
+	functionality to enable or disable a running engine
+
 2012-03-07 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* db.c (cmeProtectDBSaltedValue,cmeProtectDBValue): replaced

@@ -433,19 +433,6 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         } while (0) //Local free() macro.
 
     //TODO (OHR#2#): Sanitizing function for all inputs (filter:  ",',;,=,`)
-    if (numUrlElements==0) //Engine resource and engine commands
-    {   // FIXME (ANY#1#): This should be an error now. We must put instead some if statements that check for engineCommands, transactions and meta at numUrlElements=1
-        result=cmeWebServiceProcessEngineResource(responseText, responseCode,
-                                                  url, argumentElements, method, &powerStatus);
-        if (result)
-        {
-            return(1);
-        }
-        else
-        {
-            return(0);
-        }
-    }
     if ((numUrlElements==1)&&(strcmp("favicon.ico",urlElements[0])==0)&&(strcmp("GET",method)==0)) //Process favicon.ico; powerStatus='on' not required.
     {
 #ifdef DEBUG
@@ -459,6 +446,18 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         *responseCode=200; //Response: OK
         cmeWebServiceProcessRequestFree();
         return (0);
+    }
+    if (numUrlElements==0) //Error; depth does not match a valid value
+    {
+        cmeStrConstrAppend(responseText,"<b>404 ERROR Resource not found.</b><br><br>"
+                   "Resource depth %d. method: '%s', url: '%s'",numUrlElements,method,url);
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, Resource not found."
+                "Resource depth %d. method: '%s', url: '%s'\n",numUrlElements,method,url);
+#endif
+        cmeWebServiceProcessRequestFree();
+        *responseCode=404; //Response: Error 404 (resource not found).
+        return(1);
     }
     //Get user credentials (parameters userId, orgId, orgKey and newOrgKey).
     cont=0;
@@ -744,6 +743,22 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             cmeWebServiceProcessRequestFree();
             *responseCode=404;
             return(14);
+        }
+    }
+    if ((numUrlElements==1)&&(strcmp(urlElements[0],"engineCommands")==0)) // engine command resource (ignore powerStatus)
+    {
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
+                    "engine command resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+#endif
+        result=cmeWebServiceProcessEngineResource(responseText, responseCode, url, argumentElements, method, &powerStatus);
+        if (result) //Error, return error code + 100.
+        {
+            return(result+100);
+        }
+        else
+        {
+            return(0);
         }
     }
     //Good so far, now process the URL according to the resource depth level:
@@ -1164,25 +1179,10 @@ int cmeWebServiceProcessEngineResource (char **responseText, int *responseCode, 
                     cmeWebServiceProcessEngineResourceFree();
                     return(0);
                 }
-            } // TODO (ANY#2#): Check if this verification is still necessary:
-            else if (!strcmp(argumentElements[cont],"userId")) //parameter userId found!.
-            {
-                cmeStrConstrAppend(&userId,"%s",argumentElements[cont+1]);
-                numCorrectArgs++;
-            }
-            else if (!strcmp(argumentElements[cont],"orgId")) //parameter orgId found!.
-            {
-                cmeStrConstrAppend(&orgId,"%s",argumentElements[cont+1]);
-                numCorrectArgs++;
-            }
-            else if (!strcmp(argumentElements[cont],"orgKey")) //parameter orgKey found!.
-            {
-                cmeStrConstrAppend(&orgKey,"%s",argumentElements[cont+1]);
-                numCorrectArgs++;
             }
             cont+=2;
         }
-        if ((numCorrectArgs==4)&&(strcmp(engineCommand,"setEnginePower")==0)) //Command 'setEnginePower' successful
+        if ((numCorrectArgs==1)&&(strcmp(engineCommand,"setEnginePower")==0)) //Command 'setEnginePower' successful
         {
             *powerStatus=tmpPowerStatus;
             *responseCode=200;
@@ -1207,112 +1207,33 @@ int cmeWebServiceProcessEngineResource (char **responseText, int *responseCode, 
     }
     else if(!strcmp(method,"GET")) //Method = GET is ok, process:
     {
-        numCorrectArgs=0;
-        cont=0;
-        while ((cont<cmeWSURIMaxArguments)&&(argumentElements[cont])&&(numCorrectArgs<3)) //Check for parameters
+        if (*powerStatus)
         {
-            if (!strcmp(argumentElements[cont],"userId")) //parameter userId found!.
-            {
-                cmeStrConstrAppend(&userId,"%s",argumentElements[cont+1]);
-                numCorrectArgs++;
-            }
-            else if (!strcmp(argumentElements[cont],"orgId")) //parameter orgId found!.
-            {
-                cmeStrConstrAppend(&orgId,"%s",argumentElements[cont+1]);
-                numCorrectArgs++;
-            }
-            else if (!strcmp(argumentElements[cont],"orgKey")) //parameter orgKey found!.
-            {
-                cmeStrConstrAppend(&orgKey,"%s",argumentElements[cont+1]);
-                numCorrectArgs++;
-            }
-            cont+=2;
+            cmeStrConstrAppend(responseText,"<b>200 Engine power status is 'on'.<br");
         }
-
-        if (numCorrectArgs==3) //OK
+        else
         {
-            if (*powerStatus)
-            {
-                cmeStrConstrAppend(responseText,"<b>200 Engine power status is 'on'.<br");
-            }
-            else
-            {
-                cmeStrConstrAppend(responseText,"<b>200 Engine power status is 'off'.<br");
-            }
+            cmeStrConstrAppend(responseText,"<b>200 Engine power status is 'off'.<br");
+        }
 #ifdef DEBUG
-            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessEngineResource(), engine command successful: "
-                        " 'GET'; engine is %d.\n",*powerStatus);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessEngineResource(), engine command successful: "
+                    " 'GET'; engine is %d.\n",*powerStatus);
 #endif
-            cmeWebServiceProcessEngineResourceFree();
-            *responseCode=200;
-            return(0);
-        }
-        else //incorrect # of parameters
-        {
-            cmeStrConstrAppend(responseText,"<b>409 ERROR Conflicting number of arguments."
-                               "</b><br><br>The provided number of arguments is incorrect. "
-                               "METHOD: '%s' URL: '%s'."
-                                "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgEngineOptions,
-                                cmeInternalDBDefinitionsVersion);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessEngineResource(), Error, incorrect number of arguments"
-                    " Method: '%s', URL: '%s'!\n",method,url);
-#endif
-            cmeWebServiceProcessEngineResourceFree();
-            *responseCode=409;
-            return(2);
-        }
+        cmeWebServiceProcessEngineResourceFree();
+        *responseCode=200;
+        return(0);
     }
     else if(!strcmp(method,"OPTIONS")) //Method = OPTIONS is ok, process:
     {
-        numCorrectArgs=0;
-        cont=0;
-        while ((cont<cmeWSURIMaxArguments)&&(argumentElements[cont])&&(numCorrectArgs<3)) //Check for parameters
-        {
-            if (!strcmp(argumentElements[cont],"userId")) //parameter userId found!.
-            {
-                cmeStrConstrAppend(&userId,"%s",argumentElements[cont+1]);
-                numCorrectArgs++;
-            }
-            else if (!strcmp(argumentElements[cont],"orgId")) //parameter orgId found!.
-            {
-                cmeStrConstrAppend(&orgId,"%s",argumentElements[cont+1]);
-                numCorrectArgs++;
-            }
-            else if (!strcmp(argumentElements[cont],"orgKey")) //parameter orgKey found!.
-            {
-                cmeStrConstrAppend(&orgKey,"%s",argumentElements[cont+1]);
-                numCorrectArgs++;
-            }
-            cont+=2;
-        }
-        if (numCorrectArgs==3) //OK
-        {
-            cmeStrConstrAppend(responseText,"<b>200 OK - Options for engine resources:</b><br>"
-                               "%sLatest IDD version: <code>%s</code>",cmeWSMsgEngineOptions,cmeInternalDBDefinitionsVersion);
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for engine resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",cmeWSMsgEngineOptions,cmeInternalDBDefinitionsVersion);
 #ifdef DEBUG
-            fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessEngineResource(), OPTIONS successful for user resource."
-                    " Method: '%s', URL: '%s'!\n",method,url);
+        fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessEngineResource(), OPTIONS successful for user resource."
+                " Method: '%s', URL: '%s'!\n",method,url);
 #endif
-            cmeWebServiceProcessEngineResourceFree();
-            *responseCode=200;
-            return(0);
-        }
-        else //incorrect # of parameters
-        {
-            cmeStrConstrAppend(responseText,"<b>409 ERROR Conflicting number of arguments."
-                               "</b><br><br>The provided number of arguments is incorrect. "
-                               "METHOD: '%s' URL: '%s'."
-                                "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgEngineOptions,
-                                cmeInternalDBDefinitionsVersion);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessEngineResource(), Error, incorrect number of arguments"
-                    " Method: '%s', URL: '%s'!\n",method,url);
-#endif
-            cmeWebServiceProcessEngineResourceFree();
-            *responseCode=409;
-            return(3);
-        }
+        cmeWebServiceProcessEngineResourceFree();
+        *responseCode=200;
+        return(0);
     }
     else //Error, unsupported method
     {
@@ -1327,7 +1248,7 @@ int cmeWebServiceProcessEngineResource (char **responseText, int *responseCode, 
 #endif
         cmeWebServiceProcessEngineResourceFree();
         *responseCode=405;
-        return(4);
+        return(2);
     }
 }
 

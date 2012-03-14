@@ -278,7 +278,7 @@ The resource hierarchy is listed below:
 ~|  |  |  |  |  |  /{tableRow} |  |
 ~|  |  |  |  |  /tableColumns  |  |
 ~|  |  |  |  |  |  /{tableColumn} |
-~|  /engineCommands|  |  |  |  |  |
+ |  /engineCommands|  |  |  |  |  |
 ~|  /transactions  |  |  |  |  |  |
  |  |  |  |  |  |  |  |  |  |  |  |
  0  1  2  3  4  5  6  7  8  9  10 12 (resource/resourceType level)
@@ -745,7 +745,13 @@ dataMBOut
 	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
 	volume of data sent as part of the answer to a request, in MB.  Part
 	of the transaction log.
-	
+
+setEnginePower
+	Resources/ResourceTypes: engineCommands
+
+	Prefixes: match (_) only. This parameter activates (value = on,
+	default) or deactivates (value = off) engine requests with the PUT
+	method.
 
 3.3 Optional parameters
 
@@ -812,6 +818,31 @@ multipart/form-data format.  Any POST request can be encoded in this way
 multipart/form-data parameters).  However, you must use multipart/form-data
 encoding if you are uploading a file (See {document} resource examples
 below).
+
+engineCommands
+	Supported HTTP methods: GET PUT OPTIONS
+
+	Supported ATTRIBUTE PARAMETERS:
+		MATCH: 
+			<NONE>
+		UPDATE: 
+			*setEnginePower
+		RESPONSE HEADERS:
+			Engine-results: <engine active status>
+	RESPONSE BODY:
+		<Attribute table for matching resources>
+
+	Example 1)      Deactivate engine
+		METHOD:    
+			PUT
+		URI:
+			https://localhost/engineCommands?userId=EngineAdmin&
+			orgId=EngineOrg&orgKey=
+			6DA74D788E0A33A0272252796EF0748A&setEnginePower=off
+		REQUEST HEADERS:
+			<NONE> 
+		REQUEST BODY:  
+			<EMPTY>
 
 organizations
 	Supported HTTP methods: GET PUT HEAD DELETE OPTIONS

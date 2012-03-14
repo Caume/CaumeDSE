@@ -1824,7 +1824,7 @@ int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const c
 int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                                const int dbNumCols, int *dbNumReintegratedCols)
 {
-    int cont,cont2,cont3,cont4,result,written,written2;
+    int cont,cont2,cont3,cont4,result,written;
     int numColsData=0;
     int numColsPMeta=0;
     int numRowsPMeta=0;

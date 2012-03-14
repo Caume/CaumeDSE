@@ -828,7 +828,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
     for (cont=0; cont<numUrlElements; cont++) //Process all URL elements starting from level 0 (organizations, dbNames...). Note that Web site is not included in URL.
     {
         cmeFree(currentTableName);
-        if (!(cont&1)) //Even #; means that the urlElement at this position is a classname that can be looked used as a roleTableName.
+        if (!(cont&1)) //Even #; means that the urlElement at this position is a classname that can be looked up used as a roleTableName.
         {
             cmeStrConstrAppend(&currentTableName,"%s",urlElements[cont]);
             result=1;

@@ -197,7 +197,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 
 #define cmeWSHTMLPageEnd "</body></html>" //Standard Webpage closing tags.
 #define cmeWSMsgEngineOptions "Allowed Methods: <code>GET,PUT,OPTIONS</code><br>" \
-                            "Syntax: <code> HTTPS:&#47;&#47;{engine}?" \
+                            "Syntax: <code> HTTPS:&#47;&#47;{engine}/engineCommands?" \
                             "userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;<br>" \
                             "*setEnginePower=&lt;on|off&gt;]<br></code>" //Engine resource options.
 
