@@ -1,3 +1,27 @@
+2012-03-30 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* crypto.c (cmeSeedPrng): Added some comments and a TODO, in
+	relation to randomness sources for seeding the PRNG.
+
+	* crypto.c (cmeCipherByteString): Made all references to the size of
+	the byte salt, relative to constant evpSaltBufferSize.
+
+	* common.h (cmeDefaultIDBytesLen): Added comment on the use of this
+	constant.
+
+	* common.h (cmeDefaultSecureDBSaltLen): Created a salt length
+	constant specific for meta and data salts within secure databases
+	(they were using cmeDefaultIDBytesLen, which is for a different
+	purpose: define the lenght of random file names for secured files
+	and databases).
+
+	* filehandling.c (cmeRAWFileToSecureFile): Cleaned up some
+	previously commented code.
+
+	*db.c (cmeMemSecureDBProtect): Replaced calls to cmePrngGetBytes() and
+	cmeBytesToHexstr() with a single call to cmeGetRndSaltAnySize();
+	also used cmeDefaultSecureDBSaltLen instead of cmeDefaultIDBytesLen.
+
 2012-03-13 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* engine_admin.c (cmeWebServiceCheckPermissions): fixed some

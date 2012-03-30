@@ -97,7 +97,8 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeDefaultRolesDBName "RolesDB"             //Default filename for ResourcesDB sqlite3 filename.
 #define cmeDefaultLogsDBName "LogsDB"               //Default filename for ResourcesDB sqlite3 filename.
 #define cmeStorageProvider 0            //Default Cloud storage provider {0=local/standard filesystem}.
-#define cmeDefaultIDBytesLen 16         //Default size for CaumeDSE Byte based IDs {e.g. random DB filenames}.
+#define cmeDefaultIDBytesLen 16         //Default size for CaumeDSE Byte based IDs {e.g. random DB filenames}. Note that it is also used by cmeGetRndSalt for this purpose.
+#define cmeDefaultSecureDBSaltLen 16    //Default salt length for meta and data salts within secure databases.
 #define cmeDefaultValueSaltLen 8        //Default size for prep-ended bytes for internal databases' encrypted values.
 #define cmeDefaultValueSaltCharLen 2*cmeDefaultValueSaltLen             //Default size for CaumeDSE ByteHexStr value salts used in protected DBs.
 #define cmeDefaultSqlBufferLen 8192         //Default size of Buffer for SQL queries. {8192}

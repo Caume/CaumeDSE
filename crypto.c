@@ -340,9 +340,8 @@ int cmePKCS5v15 (const EVP_CIPHER *cipher, const unsigned char *salt,
     }
 }
 
-int cmeSeedPrng ()
-{
-    if(!RAND_load_file("/dev/random",prngSeedBytes)) //Get information from best entropy source
+int cmeSeedPrng (){   // TODO (OHR#5#): Check if another random source is needed, especially for OSes that do not have /dev/random and /dev/urandom.
+    if(!RAND_load_file("/dev/random",prngSeedBytes)) //Get information from best entropy source. But note that implementation varies from OS to OS! (http://en.wikipedia.org/wiki//dev/random)
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeSeedPrng(), Error seeding PRNG with RAND_load_file()"
@@ -398,7 +397,7 @@ int cmePrngGetBytes (unsigned char **buffer, int num)
 }
 
 int cmeGetRndSalt (char **rndHexSalt)
-{   //TODO (OHR#3#): Replace everywhere code to create rnd hex string with a call to this function.
+{
     char *rndBytes=NULL;
 
     cmePrngGetBytes((unsigned char **)&rndBytes,cmeDefaultIDBytesLen);  //Get random bytes for salt
@@ -431,7 +430,7 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
     unsigned char *key=NULL;
     unsigned char *iv=NULL;
     unsigned char *byteSalt=NULL;
-    unsigned char hexStr8byteSalt[17];     //space for an hex str representation of an 8 byte salt
+    unsigned char hexStrbyteSalt[evpSaltBufferSize*2+1];     //Space for an hex str representation of an evpSaltBufferSize long, byte salt
     EVP_CIPHER_CTX *ctx=NULL;
     const EVP_CIPHER *cipher=NULL; //Note that cipher is a pointer to a constant cipher function in OPENSSL.
     #define cmeCipherByteStringFree() \
@@ -487,14 +486,14 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
         }
         else
         {
-            strncpy((char *)hexStr8byteSalt,(char *)*salt,16);
-            hexStr8byteSalt[16]='\0';
-            if ((cmeHexstrToBytes(&byteSalt,hexStr8byteSalt))) // Error, salt is not a hexStr representation!
+            strncpy((char *)hexStrbyteSalt,(char *)*salt,evpSaltBufferSize*2);
+            hexStrbyteSalt[evpSaltBufferSize*2]='\0';
+            if ((cmeHexstrToBytes(&byteSalt,hexStrbyteSalt))) // Error, salt is not a hexStr representation!
             {
 
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), salt is not a "
-                        "hexStr representation; string: %s !\n",hexStr8byteSalt);
+                        "hexStr representation; string: %s !\n",hexStrbyteSalt);
 #endif
                 cmeCipherByteStringFree();
                 return(3);
@@ -503,9 +502,9 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
     }
     else if (mode=='d') //Decryption mode
     {
-        strncpy((char *)hexStr8byteSalt,(char *)*salt,16);
-        hexStr8byteSalt[16]='\0';
-        if ((cmeHexstrToBytes(&byteSalt,hexStr8byteSalt))) // Error, salt is not a hexStr representation!
+        strncpy((char *)hexStrbyteSalt,(char *)*salt,evpSaltBufferSize*2);
+        hexStrbyteSalt[evpSaltBufferSize*2]='\0';
+        if ((cmeHexstrToBytes(&byteSalt,hexStrbyteSalt))) // Error, salt is not a hexStr representation!
         {
             cmeCipherByteStringFree();
             return(4);

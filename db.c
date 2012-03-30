@@ -814,9 +814,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     currentDataSalt=(char **)malloc(sizeof(char **)*(numRowsData));  //Salt array will be freed at the end of function.
     for (cont=1;cont<=numRowsData;cont++)
     {
-        cmePrngGetBytes(&rndBytes,cmeDefaultIDBytesLen);   //Prepare Salt for current row in data table
-        cmeBytesToHexstr(rndBytes,(unsigned char **)&(currentDataSalt[cont-1]),cmeDefaultIDBytesLen);
-        cmeFree(rndBytes);
+        cmeGetRndSaltAnySize(&(currentDataSalt[cont-1]),cmeDefaultSecureDBSaltLen);
         //Update Salt info in data table.
         cmeFree(sqlQuery);
         cmeStrConstrAppend(&currentDataId,"%s",memData[cmeIDDColumnFileDataNumCols*cont+cmeIDDanydb_id]);
@@ -842,9 +840,8 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     //Apply each protection mecanism on the whole table
     for (cont=1; cont<=numRowsPMeta; cont++) //Iterate on each protection row in meta.
     {
-        cmePrngGetBytes(&rndBytes,cmeDefaultIDBytesLen);   //Create meta.salt
-        cmeBytesToHexstr(rndBytes,(unsigned char **) &currentMetaSalt,cmeDefaultIDBytesLen);
-        cmeFree(rndBytes);
+        cmeGetRndSaltAnySize(&currentMetaSalt,cmeDefaultSecureDBSaltLen);
+
         cmeStrConstrAppend(&currentMetaAttribute,"%s",memProtectMetaData[cont*              //Get meta.attribute
                            cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute]);
         cmeStrConstrAppend(&currentMetaAttributeData,"%s",memProtectMetaData[cont*          //Get meta.attributeData
