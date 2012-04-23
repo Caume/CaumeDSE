@@ -134,7 +134,7 @@ int cmeGetCipher (const EVP_CIPHER** cipher, const char *algorithm)
 {
     *cipher = EVP_get_cipherbyname(algorithm);
     //NOTE: results from EVP_get_cipherbyname are pointers to const cipher desc. in Openssl memory (can't free()).
-    if (cipher == NULL)
+    if (*cipher==NULL)
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: evpGetCipher(), algorithm %s not found!\n",algorithm);
@@ -317,24 +317,37 @@ int cmeCipherFinal(EVP_CIPHER_CTX **ctx, unsigned char *out, int *outl, const ch
     return (0);
 }
 
-int cmePKCS5v15 (const EVP_CIPHER *cipher, const unsigned char *salt,
-                 const unsigned char *password, int passwordl, int count,
-                 unsigned char *key,unsigned char *iv)
+int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
+              const unsigned char *password, int passwordLen,unsigned char *key,unsigned char *iv)
 {
     int result;
-    EVP_MD *md = (EVP_MD*) EVP_md5();
-    result=EVP_BytesToKey(cipher,md,salt,password,passwordl,count,key,iv);
+    EVP_MD *md=NULL;
+    unsigned char buf[1024];
+    int keyLen=EVP_CIPHER_key_length(cipher);   //Get cipher key length.
+    int ivLen=EVP_CIPHER_iv_length(cipher);     //Get cipher iv length.
+
+    if (cmeDefaultPBKDFVersion==1)
+    {   //Use PBKDF1 with cipher=cmeDefaultEncAlg + MD5 + count=1 (compatible with command line password KDF from OpenSSL):
+        md = (EVP_MD *)EVP_get_digestbyname("md5");
+        result=EVP_BytesToKey(cipher,md,salt,password,passwordLen,1,key,iv);
+    }
+    else
+    {   //Use PBKDF2 with HMAC_SHA1 + count=cmeDefaultPBKDFCount (not compatible with command line password KDF from OpenSSL):
+        result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,cmeDefaultPBKDFCount,keyLen+ivLen,buf);
+        memcpy(key,buf,keyLen);
+        memcpy(iv,buf+keyLen,ivLen);
+    }
     if (result==0)  //0= failure, n=size of generated key (success)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: evpPKCS5v15(), EVP_BytesToKey() 0 length key!\n");
+        fprintf(stderr,"CaumeDSE Error: cmePBKDF(), PBKDF ver. %d -> 0 length key!\n",cmeDefaultPBKDFVersion);
 #endif
         return (1);
     }
     else
     {
 #ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: evpPKCS5v15(), EVP_BytesToKey() -> %d bytes key.\n",result);
+        fprintf(stdout,"CaumeDSE Debug: cmePBKDF(), PBKDF ver. %d -> %d bytes key, %d bytes iv.\n",cmeDefaultPBKDFVersion,keyLen,ivLen);
 #endif
         return(0);
     }
@@ -528,7 +541,7 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
     memset(*dstBuf,0,srcLen+cipherBlockLen+1);     // we add 1 block more (for encryption padding). + 1 for null ending for unencrypted strings
     key=(unsigned char *)malloc(keyLen);
     iv=(unsigned char *)malloc(ivLen);
-    if ((cmePKCS5v15(cipher,byteSalt,(unsigned char *)ctPassword,strlen(ctPassword),1,key,iv))) //Error setting key & IV.
+    if ((cmePBKDF(cipher,byteSalt,evpSaltBufferSize,(unsigned char *)ctPassword,strlen(ctPassword),key,iv))) //Error setting key & IV.
     {
         cmeCipherByteStringFree();
         return(7);

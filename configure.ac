@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.68])
-AC_INIT([CaumeDSE], [0.88.alpha], [omar.herrera@kinakuta.com.mx])
+AC_INIT([CaumeDSE], [0.89.alpha], [omar.herrera@kinakuta.com.mx])
 AM_INIT_AUTOMAKE([dist-bzip2 color-tests readme-alpha 1.5])
 AC_CONFIG_SRCDIR([function_tests.c])
 AC_CONFIG_HEADERS([config.h])
@@ -147,10 +147,15 @@ AC_ARG_ENABLE([BYPASSTLSAUTHINHTTP],
 	[  --enable-BYPASSTLSAUTHINHTTP     Accepts sessions in HTTP when TLS authentication is used; USE ONLY FOR TESTING PURPOSES!],
 	[BYTLS=1],
 	[BYTLS=0])
+AC_ARG_ENABLE([OLDPBKDF1],
+	[  --enable-OLDPBKDF1     Uses Password Based Key Derivation Function (i.e. PKCS5v1.5, compatible with openssl's command line tool but NOT RECOMMENDED) instead of PBKDF2 (PKCS5v2.0)],
+	[PBKDF=1],
+	[PBKDF=2])
                         
 # Set required configuration defines y config.h
 AC_DEFINE_UNQUOTED([PATH_DATADIR], ["$DATADIR"], [Path for default data and system databases.])
 AC_DEFINE_UNQUOTED([BYPASS_TLS_IN_HTTP], [$BYTLS], [Enables (1) or disables (0) bypassing TLS authentication when it is required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)])
+AC_DEFINE_UNQUOTED([PBKDF1_OPENSSL_CLI_COMPATIBILITY], [$PBKDF], [Enables (1) or disables (2) Use of old Password Based Key Derivation Function (PKCS5v1.5)])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

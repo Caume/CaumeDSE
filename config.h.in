@@ -169,6 +169,10 @@
 /* Path for default data and system databases. */
 #undef PATH_DATADIR
 
+/* Enables (1) or disables (2) Use of old Password Based Key Derivation
+   Function (PKCS5v1.5) */
+#undef PBKDF1_OPENSSL_CLI_COMPATIBILITY
+
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
 

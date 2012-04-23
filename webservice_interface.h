@@ -60,7 +60,7 @@ struct cmeWebServiceConnectionInfoStruct
     int threadStatus; //signal to the thread that it is ok to clean stuff here. 0=in progress, 1=thread done,waiting, 2=thread done, closing.
 };
 
-//Structure to hold conten reader information to be shared during ContentReader iterations.
+//Structure to hold content reader information to be shared during ContentReader iterations.
 struct cmeWebServiceContentReaderStruct
 {
     FILE *fpResponseFile;

@@ -96,16 +96,31 @@ int main(int argc, char *argv[], char *env[])
 {
     unsigned char *bufIn=NULL;
     unsigned char *bufOut=NULL;
-    //static PerlInterpreter *cdsePerl=NULL;
     char *title=NULL;
+    const char algorithm[]=cmeDefaultEncAlg;
+    const EVP_CIPHER *cipher=NULL;
+    #define mainFree() \
+        do { \
+            cmeFree(title); \
+            cmeFree(title); \
+            end(&bufIn,&bufOut,&cdsePerl); \
+            PERL_SYS_TERM(); \
+        } while (0) //Local free() macro
 
     PERL_SYS_INIT3(&argc,&argv,&env);
     setup(&bufIn,&bufOut,&cdsePerl);  //Setup/allocate general stuff.
-    cmeStrConstrAppend(&title,"Caume Data Security Engine, ver. %s - (c) 2010-2011 by Omar Alejandro Herrera Reyna.\n",cmeEngineVersion);
+    cmeStrConstrAppend(&title,"Caume Data Security Engine, ver. %s - %s.\n",cmeEngineVersion,cmeCopyright);
     printf("%s",title);
-
-    testEngMgmnt();
-#ifdef DEBUG
+    if (cmeGetCipher(&cipher,algorithm))
+    { // Error, cmeDefaultEncAlg points to an unsupported encryption algorithm identifier.
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: main(), cmeGetCipher(), unsupported algorithm id"
+                " %s specified in cmeDefaultEncAlg!\n",cmeDefaultEncAlg);
+#endif
+        mainFree();
+        return(1);
+    }
+    testEngMgmnt();#ifdef DEBUG    // TODO (OHR#2#): Move tests to their own executable and add test checking to the configure script.
     testCryptoSymmetric(bufIn,bufOut);
     testCryptoDigest_Str(bufIn);
     testPerl(cdsePerl);
@@ -117,8 +132,6 @@ int main(int argc, char *argv[], char *env[])
 #else
     testWebServices();
 #endif
-    end(&bufIn,&bufOut,&cdsePerl);  //Close/Free general stuff.
-    PERL_SYS_TERM();
-    cmeFree(title);
+    mainFree();
     return (0);
 }

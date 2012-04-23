@@ -65,9 +65,8 @@ int cmeCipherUpdate (EVP_CIPHER_CTX* ctx, unsigned char* out, int* outl,
 // Wrapper Function for OpenSSl's EVP_EncryptFinal_ex() and EVP_DecryptFinal_ex()
 int cmeCipherFinal(EVP_CIPHER_CTX **ctx, unsigned char *out, int *outl, const char mode);
 // Wrapper Function for OpenSSL's EVP_BytesToKey(). This is compatible with command line 'openssl enc' command.
-int cmePKCS5v15 (const EVP_CIPHER *cipher, const unsigned char *salt,
-                 const unsigned char *password, int passwordl, int count,
-                 unsigned char *key,unsigned char *iv);
+int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
+              const unsigned char *password, int passwordLen,unsigned char *key,unsigned char *iv);
 // Wrapper function for OpenSSL's RAND_load_file()
 int cmeSeedPrng ();
 // Wrapper function for OpenSSL's RAND_bytes()

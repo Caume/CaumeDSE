@@ -1,3 +1,77 @@
+2012-04-23 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* common.h (prngSeedBytes,evpSaltBufferSize,cmeDefaultValueSaltLen):
+	Changed default settings to 16 bytes.
+
+	* common.h (cmeDefaultHshAlg): Changed default hash algorithm to
+	sha-512.
+
+	* common.h (cmeCopyright,cmeWSHTMLPageStart): Created Copyright
+	define and modified cmeWSHTMLPageStart notice to use it.
+
+	* common.h (cmeDefaultPBKDFCount): Created default count for the key
+	derivation function cmePBKDF.
+
+	* common.h (cmeDefaultPBKDFVersion): Added default PBKDF version.
+
+	* function_tests.c (testCSV): Changed attributesData to use
+	cmeDefaultEncAlg instead of the fixed algortihm string
+	"aes-128-cbc".
+
+	* function_tests.c (testCryptoSymmetric): Changed fixed tests with
+	"aes-256-cbc" to test the algorithm specified by cmeDefaultEncAlg.
+
+	* webservice_interface.c (cmeWebServiceProcessDocumentResource):
+	Changed attributesData to use cmeDefaultEncAlg instead of the fixed
+	algortihm string "aes-128-cbc".
+
+	* configure.ac (AC_INIT): Updated version to 0.89.alpha
+
+	* configure.ac (OLDPBKDF1): Added --enable parameter to use old
+	PBKDF v1 (PKCS5v.1.5) instead of PBKDF2 (PKCS5v2.0).  PBKDF2 is now
+	the default.
+
+	* main.c: changed Copyright notice to use cmeCopyright define.
+ 
+	* main.c: Cleaned up some comments and added function to check that
+	cmeDefaultEncAlg is a supported algorithm.
+
+	* main.c: Added standard free macro.
+
+	* db.c (cmeMemSecureDBReintegrate): fixed pointer to unallocated
+	region in pointer packing loop.
+
+	* db.c (cmeMemSecureDBReintegrate, cmeMemSecureDBProtect,
+	cmeMemSecureDBUnprotect): Replaced calls to cmeProtectDBValue and
+	cmeUnprotectDBValue with calls to cmeProtectDBSaltedValue and
+	cmeUnprotectDBSaltedValue.  This adds salts to values before
+	encryption within secure databases (i.e.  protected csv files).
+
+	* crypto.c (cmeGetCipher): Fixed validation of encryption algorithm
+	id.
+
+	* crypto.c, crypto.h, function_tests.c (cmePBKDF): Renamed to
+	cmePBKDF the key derivation function (was cmePKCS5v15).
+
+	* crypto.c (cmePBKDF): Added and set as default PBKDF2 support.
+
+	* sqlite/: updated the included sqlite version to v.3.7.11.
+
+	* TEST/: updated test files and test DB (compatible with new PBKDF2
+	method)
+
+	* README (OLDPBKDF1): added information on configure parameter
+	--enable-OLDPBKDF1, which enables old PBKDF1 to be used instead of
+	PBKDF2 (which is now the default).
+
+	* README (IV. Architecture and functionality): updated status of
+	current PBKDF algorithm.
+
+	* README (orgKEy): updated the default key for the TEST database.
+
+	* INSTALL (orgKey): added the default credentials for the test
+	database directly in this file.
+
 2012-03-30 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* crypto.c (cmeSeedPrng): Added some comments and a TODO, in

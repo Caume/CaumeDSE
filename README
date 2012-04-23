@@ -1,4 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 0.88.alpha
+Caume Data Security Engine (CaumeDSE) version 0.89.alpha
 
 NOTE: Please read section II, in regard to the APLHA status
 of this software and its implications!
@@ -207,17 +207,19 @@ The architecture of CaumeDSE is composed of several layers:
 	   before being encrypted with one salt per register, and a second
 	   salt per value (salts per register are not encrypted).  Since
 	   encryption keys are rather handled as passwords, internally these
-	   keys are processed using PKCS1.5 to generate a temporary key and
-	   its corresponding initialization vector (iv) that are the ones
+	   keys are processed using PBKDF2 (PKCS5v2.0 with HMAC-SHA1 + a
+	   counter greater than 1) to generate a temporary key and its
+	   corresponding initialization vector (iv) that are the ones
 	   actually being used by the encryption/decryption algorithms. 
-	   This KEY/IV generation mechanism is compatible with the OpenSSL's
-	   command line tool (i.e.  you can actually decrypt manually each
-	   file and database register if you have all the necessary
-	   information with this tool).  Resource indexes are shuffled when
-	   new elements are added (for CSV files, columns are reconstructed
-	   maintaining the order of their registers, but the order in which
-	   columns appear changes.  Scripts should therefore access columns
-	   by name and not by their position).
+	   This KEY/IV generation mechanism is not compatible anymore with
+	   the OpenSSL's command line tool (You will need to generate
+	   manually the keys and iv with this method before you can decrypt
+	   manually each file and database register with this tool). 
+	   Resource indexes are shuffled when new elements are added (for
+	   CSV files, columns are reconstructed maintaining the order of
+	   their registers, but the order in which columns appear changes. 
+	   Scripts should therefore access columns by name and not by their
+	   position).
 
 	6. Resource processing - All data processing including encryption
 	   and decryption takes place in memory (with a few exceptions, such
@@ -294,7 +296,7 @@ registered in organization EngineOrg at the CaumeDSE instance in ip address
 192.168.1.1, you would do an HTTPS GET request with an URI similar to this:
 
 https://192.168.1.1/organizations/EngineOrg/users/EngineAdmin?userId=EngineAdmin&
-orgId=EngineOrg&orgKey=6DA74D788E0A33A0272252796EF0748A
+orgId=EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 
 Check section V for access methods, parameters and examples for each
 resource/ resourceType requests and their expected results.
@@ -352,7 +354,7 @@ certificate value to 'undefined' you would use a PUT request that would look
 similar to this one:
 
 https://192.168.1.1/organizations/EngineOrg/users?userId=EngineAdmin&
-orgId=EngineOrg&orgKey=6DA74D788E0A33A0272252796EF0748A&_resourceInfo=new&
+orgId=EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB&_resourceInfo=new&
 *certificate=undefined
 
 Attribute parameters could be considered resources contained by the
@@ -838,7 +840,7 @@ engineCommands
 		URI:
 			https://localhost/engineCommands?userId=EngineAdmin&
 			orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A&setEnginePower=off
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&setEnginePower=off
 		REQUEST HEADERS:
 			<NONE> 
 		REQUEST BODY:  
@@ -864,7 +866,7 @@ organizations
 			GET
 		URI:
 			https://localhost/organizations?userId=EngineAdmin&
-			orgId=EngineOrg&orgKey=6DA74D788E0A33A0272252796EF0748A
+			orgId=EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 			&_publicKey=undefined&outputType=csv
 		REQUEST HEADERS:
 			<NONE>
@@ -893,7 +895,7 @@ organizations
 		URI:
 			https://192.168.0.1/organizations/BusinessOrg?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A&*resourceInfo=
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*resourceInfo=
 			new%20organization&*certificate=undefined&*publicKey=
 			undefined&newOrgKey=3132333440414243
 		REQUEST HEADERS: 
@@ -907,7 +909,7 @@ organizations
 		URI:
 			https://localhost/organizations/EngineOrg?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -920,7 +922,7 @@ organizations
 		URI:
 			https://localhost/organizations/EngineOrg?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A&*publicKey=
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*publicKey=
 			serial%3A10F46D308B39
 		REQUEST HEADERS:
 			<NONE>
@@ -951,7 +953,7 @@ users
 		URI:
 			https://localhost/organizations/EngineOrg/users?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -992,7 +994,7 @@ users
 		URI:
 			https://localhost/organizations/EngineOrg/users/user1?
 			userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1008,7 +1010,7 @@ users
 		URI:
 			https://192.168.0.1/organizations/BusinessOrg/
 			BusinessAdmin?userId=EngineAdmin&orgId=EngineOrg&
-			orgKey=6DA74D788E0A33A0272252796EF0748A&*resourceInfo=
+			orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*resourceInfo=
 			Administrator&*certificate=undefined&*publicKey=
 			undefined&*basicAuthPwdHash=undefined&
 			*oauthConsumerKey=undefined&*oauthConsumerSecret=
@@ -1044,7 +1046,7 @@ users
 		URI:
 			https://localhost/organizations/EngineOrg/users/
 			EngineAdmin/roleTables/users?userId=EngineAdmin&orgId=
-			EngineOrg&orgKey=6DA74D788E0A33A0272252796EF0748A
+			EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1064,7 +1066,7 @@ users
 			https://192.168.0.1/organizations/BusinessOrg/
 			BusinessAdmin/roleTables/users?userId=EngineAdmin&
 			orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A&*_get=1&*_post=0&
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*_get=1&*_post=0&
 			*_put=1&*_delete=0&*_head=1&*_options=1&newOrgKey=
 			3132333440414243
 		REQUEST HEADERS:
@@ -1093,7 +1095,7 @@ storage
 		URI:
 			https://localhost/organizations/EngineOrg/storage?
 			userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A&_type=local
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&_type=local
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1106,7 +1108,7 @@ storage
 		URI:
 			https://localhost/organizations/EngineOrg/storage?
 			userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A&_location=localhost
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&_location=localhost
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1133,7 +1135,7 @@ storage
 		URI:
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage?userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A&_type=local
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&_type=local
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1145,7 +1147,7 @@ storage
 		URI:
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage?userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A&*resourceInfo=
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*resourceInfo=
 			storage%202&*location=localhost&*type=local&*accessPath
 			=/opt/storage2&*accessUser=undefined&*accessPassword=
 			undefined
@@ -1192,7 +1194,7 @@ documents
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.raw/documents?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1205,7 +1207,7 @@ documents
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.csv/documents?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1233,7 +1235,7 @@ documents
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.raw/documents/
 			myfile.bin?userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1267,7 +1269,7 @@ file: <input name="file" type="file" value="myfile.bin"><br>
 userId: <input name="userId" type="text" value="EngineAdmin"><br>
 orgId: <input name="orgId" type="text" value="EngineOrg"><br>
 orgKey: <input name="orgKey" type="password" value=
-"6DA74D788E0A33A0272252796EF0748A"><br>
+"5BA87FBA53CEFA5EAA154EAA4ABEE2FB"><br>
 *resourceInfo: <input name="*resourceInfo" type="text" value=
 "This is a raw file"><br>
 <input type="submit" value=" Send "></form>
@@ -1293,7 +1295,7 @@ EngineOrg
 -----------------------------204285202715621161041257990753
 Content-Disposition: form-data; name="orgKey"
 
-6DA74D788E0A33A0272252796EF0748A
+5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 
 -----------------------------204285202715621161041257990753
 Content-Disposition: form-data; name="*resourceInfo"
@@ -1308,7 +1310,7 @@ This is a raw file
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.raw/documents/
 			myfile.bin?userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1355,7 +1357,7 @@ This is a raw file
 			EngineStorage/documentTypes/file.csv/documents/
 			payroll.csv/parserScripts/myscript.pl?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			6DA74D788E0A33A0272252796EF0748A&outputType=csv
+			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&outputType=csv
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1469,7 +1471,7 @@ content
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.csv/documents/
 			payroll.csv/content?userId=EngineAdmin&orgId=EngineOrg
-			&orgKey=6DA74D788E0A33A0272252796EF0748A&outputType=csv
+			&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB&outputType=csv
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1494,7 +1496,7 @@ favicon.ico
 			GET
 		URI:
 			https://localhost/favicon.ico?userId=EngineAdmin&orgId=
-			EngineOrg&orgKey=6DA74D788E0A33A0272252796EF0748A
+			EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1557,3 +1559,12 @@ TESTING PURPOSES ONLY) with:
 
 	--enable-BYPASSTLSAUTHINHTTP
 
+If you want to enable the use of the old Password Based Key Derivation
+Function PBKDF1 (i.e.  PKCS5v1.5, which is compatible with openssl's command
+line tool but is NOT RECOMMENDED; it uses MD5+the default cipher algorithm
+and a counter = 1) use the following configure switch.
+
+	--enable-OLDPBKDF1
+
+The default Password Based Key DErivation Function standard is now PBKDF2
+(PKCS5v2.0, which uses HMAC-SHA1 + a default counter much greater than 1).

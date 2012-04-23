@@ -52,12 +52,12 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 
 //TODO (OHR#8#): Replace calls to malloc with audited, simple, wrapper function.
 //TODO (OHR#9#): Define function to read Globals in main.c from config file
-#define prngSeedBytes 8
+#define prngSeedBytes 16
 #define evpMaxHashStrLen 2*64+1         //Max length for character representation of hex bytestr hash {RECOMMENDED: 2*64+1}. At 2 chars per byte, SHA-512 requires 64 bytes, + 1 ending null char.
 #define evpMaxHashBytesLen 64           //Max length for byte representation of hash {RECOMMENDED: 64}. SHA-512 requires 64 bytes.
 #define evpBufferSize 1024              //Default Cipher buffer size {4096}
 #define evpMaxKeyIvLen 64               //Max size for Key and IV arrays {64 bytes allows keys of up to 512 bits}
-#define evpSaltBufferSize 8             //EVP_BytesToKey{} uses 8 bytes long salts to derive key and iv
+#define evpSaltBufferSize 16             //EVP_BytesToKey{} uses this many bytes long salts to derive key and iv.
 #define bioReadBufferSize 4096          //Buffer Size for BIO_read {RECOMMENDED: 4096}.
 #ifdef BYPASS_TLS_IN_HTTP
 #define cmeBypassTLSAuthenticationInHTTP BYPASS_TLS_IN_HTTP //Enable/disable bypassing TLS authentication with non TLS sessions {i.e. HTTP} with config. script {1=ON, 0=OFF}.
@@ -99,18 +99,23 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeStorageProvider 0            //Default Cloud storage provider {0=local/standard filesystem}.
 #define cmeDefaultIDBytesLen 16         //Default size for CaumeDSE Byte based IDs {e.g. random DB filenames}. Note that it is also used by cmeGetRndSalt for this purpose.
 #define cmeDefaultSecureDBSaltLen 16    //Default salt length for meta and data salts within secure databases.
-#define cmeDefaultValueSaltLen 8        //Default size for prep-ended bytes for internal databases' encrypted values.
+#define cmeDefaultValueSaltLen 16        //Default size for prep-ended bytes for internal databases' encrypted values.
 #define cmeDefaultValueSaltCharLen 2*cmeDefaultValueSaltLen             //Default size for CaumeDSE ByteHexStr value salts used in protected DBs.
 #define cmeDefaultSqlBufferLen 8192         //Default size of Buffer for SQL queries. {8192}
 #define cmeDefaultEncAlg "aes-256-cbc"      //Default algorithm for symmetric encryption in engine admin. databases.
-#define cmeDefaultHshAlg "sha1"             //Default algorithm for bytestring hashing {digest}.
+#define cmeDefaultHshAlg "sha512"             //Default algorithm for bytestring hashing {digest}.
 #define cmeDefaultInsertSqlRows 512         //Default # of rows to be inserted into a sqlite3 db at a time {within a Begin - Commit block}.
 #define cmeDefaultWebservicePort 80         //Default port for regular HTTP web services.
 #define cmeDefaultWebServiceSSLPort 443     //Default port for TLS/SSL web services.
 #define cmeDefaultThreadWaitSeconds 0                     //Default number of seconds to wait for thread synchronization.
 #define cmeDefaultPerlIterationFunction     "cmePERLProcessRow"               //Name for the perl iteration function to be called when parsing SQL results with PERL
 #define cmeDefaultPerlColNameSetupFunction  "cmePERLProcessColumnNames"       //Name for the perl iteration function to be called when parsing SQL results with PERL
-
+#define cmeDefaultPBKDFCount 1000           //Default count for the key derivation function, cmePBKDF.
+#ifdef PBKDF1_OPENSSL_CLI_COMPATIBILITY
+#define cmeDefaultPBKDFVersion PBKDF1_OPENSSL_CLI_COMPATIBILITY //Enable use of old PBKDF1 that is compatible with Openssl command line password KDF {i.e. PKCS5v1.5: MD5 + count=1}. NOT RECOMMENDED!
+#else
+#define cmeDefaultPBKDFVersion 2 //Default PBKDF2 (PKCS5 v2: HMAC-SHA1 + count=cmeDefaultPBKDFCount). Recommended setting.
+#endif /*PBKDF1_OPENSSL_CLI_COMPATIBILITY*/
 
 #define cmeAdminDefaultUserId "EngineAdmin"            //Default userId for first administrator account.
 #define cmeAdminDefaultStorageId "EngineStorage"       //Default storageId for first administrator account.
@@ -186,6 +191,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeIDDRolesDBAnyTable_userResourceId 10         //Column index {0 based} for WSID column
 #define cmeIDDRolesDBAnyTable_orgResourceId 11          //Column index {0 based} for WSID column
 #define cmeIDDURIMaxDepth 12                            //Max. # of elements in an URI {excluding parameters}.
+#define cmeCopyright "Copyright 2010-2012 by Omar Alejandro Herrera Reyna."   //Copyright string.
 
 #ifdef PACKAGE_VERSION
 #define cmeEngineVersion PACKAGE_VERSION
@@ -194,7 +200,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #endif /*PACKAGE_VERSION*/
 #define cmeWSHTMLPageStart "<html><head><title>Caume Data Security Engine </title></head>" \
  "<body><p><b>Caume DSE version " cmeEngineVersion "</b>"\
- "<br> &copy; 2010-2012 by Omar Alejandro Herrera Reyna.</p><br><br>" //Standard Webpage Title, open tags and (c).
+ "<br>" cmeCopyright "</p><br><br>" //Standard Webpage Title, open tags and (c).
 
 #define cmeWSHTMLPageEnd "</body></html>" //Standard Webpage closing tags.
 #define cmeWSMsgEngineOptions "Allowed Methods: <code>GET,PUT,OPTIONS</code><br>" \
@@ -239,7 +245,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 
 #define cmeWSMsgDocumentTypeOptions  "Allowed Methods: <code>OPTIONS</code><br>" \
                                      "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/{documentType}" \
-                                     "&lt;file.csv|file.raw|script.perl&gt;" \
+                                     "/&lt;file.csv|file.raw|script.perl&gt;" \
                                      "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                      "OptionalParameters...]<br></code><br>" //Document Type resource options.
 

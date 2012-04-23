@@ -12,7 +12,7 @@ Installing from the source code is straightforward:
 	* PERL (version 5.10.0 or higher)
 	* Libmicrohttpd (version 0.9.17 or higher, which in turn requires 
 	  GnuTLS for TLS support version 2.6.6 or higher).
-	* OpenSSL (version 0.98 should work, 1.00 or higher is preferred)
+	* OpenSSL (version 0.98 should work, 1.01 or higher is preferred)
 
 Note: SQLITE is compiled and integrated ath the same time that CaumeDSE
 (Replace files within the sqlite directory with the latest amalgamation 
@@ -32,6 +32,12 @@ distribution if needed).
    add the following parameter when calling the configure script:
 
 	--enable-TESTDATABASE
+
+   Note that the default credentials for the test databaes are: 
+	userId: EngineAdmin
+	orgId: EngineOrg
+	storageId: EngineStorage
+	orgKey: 5BA87FBA53CEFA5EAA154EAA4ABEE2FB
 	
 3. Compile with gcc (or other C compiler) and make by issuing the following
    command:	
@@ -82,9 +88,6 @@ circumstances!) just use the configure script parameter mentioned in step 2
 of the Installation procedure (WARNING: YOU WILL OVERWRITE THE PROGRAM DATABASES! 
 make backups first). Note that this test DB expects EngineStorage files to be
 in /opt/cdse.
-
-The KEY for this test organization will be located in 
-/opt/cdse/secureTmp/EngineOrg.key.txt in clear text.
 
 Digital certificates requests an a p12 certificate ready to install in a 
 browser for EngineAdmin are included in TEST/testCertAuth (ca.pem, server.key

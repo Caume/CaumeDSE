@@ -49,7 +49,7 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     int cont,cont2,written,ctSize;
     unsigned char password[10]= "Password";
     unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
-    char algorithm[] = "des-ede3-cbc";
+    char algorithm[] = cmeDefaultEncAlg;
     unsigned char *key=NULL;
     unsigned char *iv=NULL;
     unsigned char *ciphertext=NULL;
@@ -64,7 +64,7 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     ciphertext=(unsigned char *)malloc(1024);
 
     cmeGetCipher(&cipher,algorithm);
-    cmePKCS5v15(cipher,NULL,password,8,1,key,iv);
+    cmePBKDF(cipher,NULL,0,password,8,key,iv);
     cmeCipherInit(&ctx,NULL,cipher,key,iv,'e');
     cont2=0;
     ctSize=strlen((char*)cleartext);
@@ -110,16 +110,16 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
             iv =078BE05EDFE25CD0
     **/
 
-    cmeCipherByteString(cleartext,&ciphertext,&salt,strlen((char *)cleartext),&written,"aes-256-cbc", "Password", 'e');
+    cmeCipherByteString(cleartext,&ciphertext,&salt,strlen((char *)cleartext),&written,cmeDefaultEncAlg, "Password", 'e');
     printf("Generated salt: %s \n",salt);
     //cmeFree(salt);
-    cmeCipherByteString(ciphertext,&deciphertext,&salt,written,&written,"aes-256-cbc", "Password", 'd');
+    cmeCipherByteString(ciphertext,&deciphertext,&salt,written,&written,cmeDefaultEncAlg, "Password", 'd');
     printf("Decrypted text: %s  \n",deciphertext);
     cmeFree (salt);
     cmeFree (ciphertext);
     cmeFree (deciphertext);
-    cmeProtectByteString((const char*)cleartext,(char **)&ciphertext,"aes-256-cbc",(char **)&salt,"Password",&written,strlen((char *)cleartext));
-    cmeUnprotectByteString((const char *)ciphertext,(char **)&deciphertext,"aes-256-cbc",(char **)&salt,"Password",&written,written);
+    cmeProtectByteString((const char*)cleartext,(char **)&ciphertext,cmeDefaultEncAlg,(char **)&salt,"Password",&written,strlen((char *)cleartext));
+    cmeUnprotectByteString((const char *)ciphertext,(char **)&deciphertext,cmeDefaultEncAlg,(char **)&salt,"Password",&written,written);
     printf("Unprotected text: %s  \n",deciphertext);
     cmeFree (salt);
     cmeFree (ciphertext);
@@ -327,7 +327,7 @@ void testCSV ()
     char **elements=NULL;
     char **pQueryResult=NULL;
     const char *attributes[]={"shuffle","protect"};
-    const char *attributesData[]={"aes-128-cbc","aes-128-cbc"};
+    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
     sqlite3 *resultDB=NULL;
     sqlite3 *pResourcesDB=NULL;
 

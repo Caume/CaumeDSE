@@ -878,12 +878,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                     //Encrypt rowOrder and update memSQL table Data:
                     cmeStrConstrAppend(&currentDataId,"%s",memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]);
                     //Protect 'rowOrder' (data table):
-                    result=cmeProtectDBValue(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_rowOrder], &currentEncB64Data,
+                    result=cmeProtectDBSaltedValue(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_rowOrder], &currentEncB64Data,
                                              currentDataEncAlg, &(currentDataSalt[cont2-1]), orgKey, &written);
                     if (result) //Error
                     {
 #ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBValue() Error, can't "
+                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBSaltedValue() Error, can't "
                                 "protect 'rowOrder' in data table: %s with algorithm %s!\n",
                                 memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_rowOrder],currentDataEncAlg);
 #endif
@@ -959,12 +959,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                 {
                     cmeStrConstrAppend(&currentDataId,"%s",memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]);
                     //Protect 'value' (data table):
-                    result=cmeProtectDBValue(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value], &currentEncB64Data,
+                    result=cmeProtectDBSaltedValue(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value], &currentEncB64Data,
                                              currentDataEncAlg, &(currentDataSalt[cont2-1]), orgKey, &written);
                     if (result) //Error
                     {
 #ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBValue() Error, can't "
+                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBSaltedValue() Error, can't "
                                 "protect 'value' in data table: %s with algorithm %s!\n",
                                 memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],currentDataEncAlg);
 #endif
@@ -978,12 +978,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                     cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE data SET value='%s'",currentEncB64Data); //First part of query.
                     cmeFree(currentEncB64Data);
                     //Protect 'userId' (data table):
-                    result=cmeProtectDBValue (memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_userId], &currentEncB64Data,
+                    result=cmeProtectDBSaltedValue (memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_userId], &currentEncB64Data,
                                               currentDataEncAlg, &(currentDataSalt[cont2-1]), orgKey, &written);
                     if (result) //Error
                     {
 #ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBValue() Error, can't "
+                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBSaltedValue() Error, can't "
                                 "protect 'userId' in data table: %s with algorithm %s!\n",
                                 memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_userId],currentDataEncAlg);
 #endif
@@ -997,12 +997,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                     cmeStrConstrAppend(&sqlQuery,",userId='%s'",currentEncB64Data); //First part of query.
                     cmeFree(currentEncB64Data);
                     //Protect 'orgId' (data table):
-                    result=cmeProtectDBValue(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_orgId], &currentEncB64Data,
+                    result=cmeProtectDBSaltedValue(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_orgId], &currentEncB64Data,
                                              currentDataEncAlg, &(currentDataSalt[cont2-1]), orgKey, &written);
                     if (result) //Error
                     {
 #ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBValue() Error, can't "
+                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBSaltedValue() Error, can't "
                                 "protect 'orgId' in data table: %s with algorithm %s!\n",
                                 memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_orgId],currentDataEncAlg);
 #endif
@@ -1075,12 +1075,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         }
         //Finally, protect columnFile.Meta attribute, attributeData, userId and orgId in each row in meta table.
         //Protect Meta "attribute":
-        result=cmeProtectDBValue(currentMetaAttribute, &currentEncB64Data,
+        result=cmeProtectDBSaltedValue(currentMetaAttribute, &currentEncB64Data,
                                  cmeDefaultEncAlg, &currentMetaSalt, orgKey, &written);
         if (result) //Error
         {
 #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBValue() Error, can't "
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBSaltedValue() Error, can't "
                     "protect Meta attribute: %s with algorithm %s!\n",currentMetaAttribute,cmeDefaultEncAlg);
 #endif
             cmeMemSecureDBProtectFree();
@@ -1094,12 +1094,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE meta SET attribute='%s'",currentEncB64Data);
         cmeFree(currentEncB64Data);
         //Protect Meta "attributeData":
-        result=cmeProtectDBValue(currentMetaAttributeData, &currentEncB64Data,
+        result=cmeProtectDBSaltedValue(currentMetaAttributeData, &currentEncB64Data,
                                 cmeDefaultEncAlg, &currentMetaSalt, orgKey, &written);
         if (result) //Error
         {
 #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBValue() Error, can't "
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBSaltedValue() Error, can't "
                     "protect Meta attributeData: %s with algorithm %s!\n",currentMetaAttributeData,cmeDefaultEncAlg);
 #endif
             cmeMemSecureDBProtectFree();
@@ -1112,12 +1112,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         cmeStrConstrAppend(&sqlQuery,",attributeData='%s'",currentEncB64Data);
         cmeFree(currentEncB64Data);
         //Protect Meta "userId":
-        result=cmeProtectDBValue(currentMetaUserId, &currentEncB64Data,
+        result=cmeProtectDBSaltedValue(currentMetaUserId, &currentEncB64Data,
                                 cmeDefaultEncAlg, &currentMetaSalt, orgKey, &written);
         if (result) //Error
         {
 #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBValue() Error, can't "
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBSaltedValue() Error, can't "
                     "protect Meta userId: %s with algorithm %s!\n",currentMetaUserId,cmeDefaultEncAlg);
 #endif
             cmeMemSecureDBProtectFree();
@@ -1130,12 +1130,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         cmeStrConstrAppend(&sqlQuery,",userId='%s'",currentEncB64Data);
         cmeFree(currentEncB64Data);
         //Protect Meta "orgId":
-        result=cmeProtectDBValue(currentMetaOrgId, &currentEncB64Data,
+        result=cmeProtectDBSaltedValue(currentMetaOrgId, &currentEncB64Data,
                                 cmeDefaultEncAlg, &currentMetaSalt, orgKey, &written);
         if (result) //Error
         {
 #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBValue() Error, can't "
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeProtectDBSaltedValue() Error, can't "
                     "protect Meta orgId: %s with algorithm %s!\n",currentMetaOrgId,cmeDefaultEncAlg);
 #endif
             cmeMemSecureDBProtectFree();
@@ -1263,11 +1263,11 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                            cmeIDDColumnFileMetaNumCols+cmeIDDanydb_salt]);
         cmeStrConstrAppend(&currentEncB64Data,"%s",memProtectMetaData[cont*            //Get prot. meta.attribute
                            cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute]);
-        result=cmeUnprotectDBValue(currentEncB64Data,&currentMetaAttribute,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
+        result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentMetaAttribute,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
         if (result) //Error
         {
 #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBValue() Error, can't "
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBSaltedValue() Error, can't "
                     "decrypt 'attribute' in meta table, B64str: %s with algorithm %s!\n",
                     currentEncB64Data,cmeDefaultEncAlg);
 #endif
@@ -1277,11 +1277,11 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
         cmeFree(currentEncB64Data);
         cmeStrConstrAppend(&currentEncB64Data,"%s",memProtectMetaData[cont*            //Get prot. meta.attributeData
                            cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attributeData]);
-        result=cmeUnprotectDBValue(currentEncB64Data,&currentMetaAttributeData,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
+        result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentMetaAttributeData,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
         if (result) //Error
         {
 #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBValue() Error, can't "
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBSaltedValue() Error, can't "
                     "decrypt 'attributeData' in meta table, B64str: %s with algorithm %s!\n",
                     currentEncB64Data,cmeDefaultEncAlg);
 #endif
@@ -1291,11 +1291,11 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
         cmeFree(currentEncB64Data);
         cmeStrConstrAppend(&currentEncB64Data,"%s",memProtectMetaData[cont*            //Get prot. meta.userId
                            cmeIDDColumnFileMetaNumCols+cmeIDDanydb_userId]);
-        result=cmeUnprotectDBValue(currentEncB64Data,&currentMetaUserId,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
+        result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentMetaUserId,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
         if (result) //Error
         {
 #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBValue() Error, can't "
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBSaltedValue() Error, can't "
                     "decrypt 'userId' in meta table, B64str: %s with algorithm %s!\n",
                     currentEncB64Data,cmeDefaultEncAlg);
 #endif
@@ -1305,11 +1305,11 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
         cmeFree(currentEncB64Data);
         cmeStrConstrAppend(&currentEncB64Data,"%s",memProtectMetaData[cont*            //Get prot. meta.orgId
                            cmeIDDColumnFileMetaNumCols+cmeIDDanydb_orgId]);
-        result=cmeUnprotectDBValue(currentEncB64Data,&currentMetaOrgId,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
+        result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentMetaOrgId,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
         if (result) //Error
         {
 #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBValue() Error, can't "
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBSaltedValue() Error, can't "
                     "decrypt 'orgId' in meta table, B64str: %s with algorithm %s!\n",
                     currentEncB64Data,cmeDefaultEncAlg);
 #endif
@@ -1371,13 +1371,13 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                                      cmeIDDColumnFileData_rowOrder]); //Get encrypted B64str.
                 //Unprotect 'rowOrder' (data table).
 
-                result=cmeUnprotectDBValue(currentEncB64Data,&currentData,currentDataEncAlg,&(memData[cmeIDDColumnFileDataNumCols*cont2+
+                result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentData,currentDataEncAlg,&(memData[cmeIDDColumnFileDataNumCols*cont2+
                                            cmeIDDanydb_salt]),orgKey,&written);
                 cmeFree(currentEncB64Data);
                 if (result) //Error
                 {
 #ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBValue() Error, can't "
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBSaltedValue() Error, can't "
                             "decrypt 'rowOrder' in data table with algorithm %s!\n",currentDataEncAlg);
 #endif
                     cmeMemSecureDBUnprotectFree();
@@ -1489,11 +1489,11 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                 cmeStrConstrAppend(&currentEncB64Data,"%s",memData[cont2*            //Get prot. data.userId
                                    cmeIDDColumnFileDataNumCols+cmeIDDanydb_userId]);
 
-                result=cmeUnprotectDBValue(currentEncB64Data,&currentDataUserId,cmeDefaultEncAlg,&currentDataSalt,orgKey,&written);
+                result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentDataUserId,cmeDefaultEncAlg,&currentDataSalt,orgKey,&written);
                 if (result) //Error
                 {
 #ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBValue() Error, can't "
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBSaltedValue() Error, can't "
                             "decrypt 'userId' in data table, B64str: %s with algorithm %s!\n",
                             currentEncB64Data,cmeDefaultEncAlg);
 #endif
@@ -1503,11 +1503,11 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                 cmeFree(currentEncB64Data);
                 cmeStrConstrAppend(&currentEncB64Data,"%s",memData[cont2*            //Get prot. data.orgId
                                    cmeIDDColumnFileDataNumCols+cmeIDDanydb_orgId]);
-                result=cmeUnprotectDBValue(currentEncB64Data,&currentDataOrgId,cmeDefaultEncAlg,&currentDataSalt,orgKey,&written);
+                result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentDataOrgId,cmeDefaultEncAlg,&currentDataSalt,orgKey,&written);
                 if (result) //Error
                 {
 #ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBValue() Error, can't "
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBSaltedValue() Error, can't "
                             "decrypt 'orgId' in data table, B64str: %s with algorithm %s!\n",
                             currentEncB64Data,cmeDefaultEncAlg);
 #endif
@@ -1545,12 +1545,12 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
             //Unprotect 'value' in data table with corresponding encryption algorithm.
             cmeStrConstrAppend(&currentEncB64Data,"%s",memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+
                                cmeIDDColumnFileMeta_attributeData]); // Get encrypted, B64 str representation of encr. alg.
-            result=cmeUnprotectDBValue(currentEncB64Data,&currentDataEncAlg,cmeDefaultEncAlg,&(memProtectMetaData[cont*
+            result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentDataEncAlg,cmeDefaultEncAlg,&(memProtectMetaData[cont*
                                         cmeIDDColumnFileMetaNumCols+cmeIDDanydb_salt]),orgKey,&written);
             if (result) //Error
             {
 #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBValue() Error, can't "
+                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBSaltedValue() Error, can't "
                         "decrypt encryption algorithm in meta table: %s with algorithm %s!\n",
                         currentEncB64Data,cmeDefaultEncAlg);
 #endif
@@ -1568,12 +1568,12 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                     //Protect 'value (data table).
                     cmeStrConstrAppend(&currentEncB64Data,"%s",memData[cmeIDDColumnFileDataNumCols*cont2+
                                        cmeIDDColumnFileData_value]); // Get encrypted, B64 str representation of encr. alg.
-                    result=cmeUnprotectDBValue(currentEncB64Data,&currentData,currentDataEncAlg,&(memData[cmeIDDColumnFileDataNumCols*
+                    result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentData,currentDataEncAlg,&(memData[cmeIDDColumnFileDataNumCols*
                                                cont2+cmeIDDanydb_salt]),orgKey,&written);
                     if (result) //Error
                     {
 #ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBValue() Error, can't "
+                        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeUnprotectDBSaltedValue() Error, can't "
                                 "decrypt 'value' in data table: %s with algorithm %s!\n",
                                 currentEncB64Data,currentDataEncAlg);
 #endif
@@ -1934,11 +1934,11 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                                cmeIDDColumnFileMetaNumCols+cmeIDDanydb_salt]);
             cmeStrConstrAppend(&currentEncB64Data,"%s",memProtectMetaData[cont][cont2*            //Get prot. meta.attribute
                                cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute]);
-            result=cmeUnprotectDBValue(currentEncB64Data,&currentMetaAttribute,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
+            result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentMetaAttribute,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
             if (result) //Error
             {
     #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeUnprotectDBValue() Error, can't "
+                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeUnprotectDBSaltedValue() Error, can't "
                         "unprotect 'attribute' in meta table, B64str: %s with algorithm %s!\n",
                         currentEncB64Data,cmeDefaultEncAlg);
     #endif
@@ -1948,11 +1948,11 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
             cmeFree(currentEncB64Data);
             cmeStrConstrAppend(&currentEncB64Data,"%s",memProtectMetaData[cont][cont2*            //Get prot. meta.attributeData
                                cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attributeData]);
-            result=cmeUnprotectDBValue(currentEncB64Data,&currentMetaAttributeData,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
+            result=cmeUnprotectDBSaltedValue(currentEncB64Data,&currentMetaAttributeData,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
             if (result) //Error
             {
     #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeUnprotectDBValue() Error, can't "
+                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeUnprotectDBSaltedValue() Error, can't "
                         "decrypt 'attributeData' in meta table, B64str: %s with algorithm %s!\n",
                         currentEncB64Data,cmeDefaultEncAlg);
     #endif
@@ -2021,7 +2021,7 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
         if (!memColumnName[cont])//Empty column; we must move the first reintegrated column pointer to here
         {
             cont2=cont;
-            while ((!memColumnName[cont2])&&(cont2<dbNumCols))
+            while ((!memColumnName[cont2])&&(cont2<(dbNumCols-1)))
             {
                 cont2++;
             }

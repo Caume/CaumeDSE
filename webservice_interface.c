@@ -6043,7 +6043,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
     const char *validPOSTSaveColumns[3]={"userId","orgId","*resourceInfo"};
     const char *validPUTSaveColumns[3]={"userId","orgId","*resourceInfo"};
     const char *attributes[]={"shuffle","protect"};                           // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user, via API!
-    const char *attributesData[]={"aes-128-cbc","aes-128-cbc"};
+    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
     #define cmeWebServiceProcessDocumentResourceFree() \
         do { \
             cmeFree(orgKey); \
