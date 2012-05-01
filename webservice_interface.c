@@ -1126,7 +1126,8 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 int cmeWebServiceProcessEngineResource (char **responseText, int *responseCode, const char *url,
                                         const char **argumentElements, const char *method, int *powerStatus)
 {   //IDD v.1.0.20 definitions
-    int cont, numCorrectArgs, tmpPowerStatus;
+    int cont, numCorrectArgs;
+    int tmpPowerStatus=1;
     char *userId=NULL;
     char *orgId=NULL;
     char *orgKey=NULL;

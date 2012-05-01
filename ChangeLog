@@ -1,3 +1,37 @@
+2012-05-01 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* filehandling.c (cmeFileOverwriteAndDelete): Changed error into
+	warning (debug) when the filepointer is null.
+
+	* filehandling.c (cmeFileOverwriteAndDelete): fixed error outputs. 
+	Error logging should be done to stderr, not to stdout as debug
+	output.	
+	
+	* engine_interface.c (cmeGetUnprotectDBRegister): replaced
+	cmeUnprotectDBValue + manual salt skipping with
+	cmeUnprotectDBSaltedValue function, which skips the salt already in a
+	standardized way.
+
+	* engine_interface.c (cmeGetUnprotectDBRegister,
+	cmePutProtectDBRegister): Changed error output into warning (debug)
+	when cmeUnprotectDBSaltedValue fails.
+
+	* filehandling.c (cmeSecureFileToTmpRAWFile): fixed compiler warning
+	when calling fwrite without storing result.
+
+	* filehandling.c (cmeCSVFileToSecureDB): fixed compiler warning
+	"'totalParts' may be used uninitialized in this function".
+
+	* db.c (cmeMemSecureDBProtect): fixed warning "'cont2' may be used
+	uninitialized in this function".
+
+	* function_tests.c (testCryptoSymmetric): fixed compiler warning
+	when calling fwrite without storing result.
+
+	* webservice_interface.c (cmeWebServiceProcessEngineResource): fixed
+	compiler warning "'tmpPowerStatus' may be used uninitialized in this
+	function". This one might have actually caused some problems.
+
 2012-04-23 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* common.h (prngSeedBytes,evpSaltBufferSize,cmeDefaultValueSaltLen):

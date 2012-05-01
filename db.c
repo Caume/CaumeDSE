@@ -728,7 +728,8 @@ int cmeMemTableOrder(char **sqlTable, const int numRows, const int numCols, cons
 
 int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
 {
-    int cont,cont2,result,written;
+    int cont,result,written;
+    int cont2=0;
     int numColsData=0;
     int numRowsData=0;
     int numColsPMeta=0;

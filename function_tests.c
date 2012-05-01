@@ -46,7 +46,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 
 void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
 {
-    int cont,cont2,written,ctSize;
+    int cont,cont2,written,ctSize,result;
     unsigned char password[10]= "Password";
     unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
     char algorithm[] = cmeDefaultEncAlg;
@@ -91,7 +91,7 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     fp=fopen("/opt/cdse/testfiles/enciphered.bin","wb");
     if (fp)
     {
-        fwrite(ciphertext,cont2,1,fp);
+        result=fwrite(ciphertext,cont2,1,fp);
         fflush(fp);
         fclose(fp);
     }

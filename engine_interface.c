@@ -440,27 +440,13 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
                     {
                         if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
                             &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
-                        {   //If cmeUnprotectDBValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
-                            if(!cmeUnprotectDBValue(sqlTable[cont*numColumns+cont2],&decryptedValue,cmeDefaultEncAlg,
-                                                    &(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen))
+                        {   //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
+                            if(!cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,cmeDefaultEncAlg,
+                                                          &(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen))
                             {
-                                if (strlen(decryptedValue)>=cmeDefaultValueSaltCharLen) //Double check that we have the right length.
-                                {   //We skip the first 16 characters of the 8 byte hexstr salt that is included at the beginning.
-                                    if (strcmp(&(decryptedValue[cmeDefaultValueSaltCharLen]),columnValues[cont3])==0)  //Matches value filter.
-                                    {
-                                        numMatch++;
-                                    }
-                                }
-                                else
-                                {   //We don't skip the first 16 characters of the 8 byte hexstr salt that is included at the beginning.
-                                    if (strcmp(decryptedValue,columnValues[cont3])==0)  //Matches value filter.
-                                    {
-                                        numMatch++;
-                                    }
-#ifdef DEBUG
-                                    fprintf(stderr,"CaumeDSE Debug: cmeGetUnprotectDBRegister(), cmeUnprotectDBValue() Warning, value '%s' "
-                                            "of column name '%s' has incorrect valuesalt size!\n",decryptedValue,sqlTable[cont2]);
-#endif
+                                if (strcmp(decryptedValue,columnValues[cont3])==0)  //Matches value filter.
+                                {
+                                    numMatch++;
                                 }
                             }
                             cmeFree(decryptedValue);
@@ -498,30 +484,18 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
                 (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]=NULL; //cmeStrContrAppend requires this for new strings.
                 if ((cont2 !=cmeIDDanydb_salt)&&(cont2!=cmeIDDanydb_id))
                 {   //If SALT or id, we just copy, everything else gets decrypted
-                    result=cmeUnprotectDBValue(sqlTable[cont*numColumns+cont2],&decryptedValue,
-                                            cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),
-                                            orgKey,&valueLen);
+                    result=cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,
+                                                     cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),
+                                                     orgKey,&valueLen);
                     if (result)
                     {
-#ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeGetUnprotectDBRegister(), cmeUnprotectDBValue() Error, "
+#ifdef DEBUG
+                        fprintf(stdout,"CaumeDSE Warning: cmeGetUnprotectDBRegister(), cmeUnprotectDBSaltedValue() Error, "
                                 "decrypting value! Errorcode %d, valueLen %d.\n",result,valueLen);
 #endif
                     }
-                    if (strlen(decryptedValue)>=cmeDefaultValueSaltCharLen) //Double check that we have the right length
-                    {
-                        cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                        "%s",&(decryptedValue[cmeDefaultValueSaltCharLen])); //We skip the first 16 characters of the 8 byte hexstr salt that is included at the beginning.
-                    }
-                    else
-                    {
-                        cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                        "%s",decryptedValue); //We don't skip the first 16 characters of the 8 byte hexstr salt that is included at the beginning.
-#ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeGetUnprotectDBRegister(), cmeUnprotectDBValue() Error, value '%s' "
-                                "of column name '%s' has incorrect valuesalt size!\n",decryptedValue,sqlTable[cont2]);
-#endif
-                    }
+                    cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                    "%s",decryptedValue);
                     cmeFree(decryptedValue);
                 }
                 else // Salt,id -> only copy value (nothing to decrypt).
@@ -532,7 +506,6 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
             }
         }
     }
-
     return(0);
 }
 
@@ -820,25 +793,11 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                         if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
                             &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
                         {
-                            cmeUnprotectDBValue(sqlTable[cont*numColumns+cont2],&decryptedValue,cmeDefaultEncAlg,
+                            cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,cmeDefaultEncAlg,
                                                 &(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen);
-                            if (strlen(decryptedValue)>=cmeDefaultValueSaltCharLen) //Double check that we have the right length.
-                            {   //We skip the first 16 characters of the 8 byte hexstr salt that is included at the beginning.
-                                if (strcmp(&(decryptedValue[cmeDefaultValueSaltCharLen]),columnValues[cont3])==0)  //Matches value filter.
-                                {
-                                    numMatch++;
-                                }
-                            }
-                            else
-                            {   //We don't skip the first 16 characters of the 8 byte hexstr salt that is included at the beginning.
-                                if (strcmp(decryptedValue,columnValues[cont3])==0)  //Matches value filter.
-                                {
-                                    numMatch++;
-                                }
-#ifdef ERROR_LOG
-                                fprintf(stderr,"CaumeDSE Error: cmePutProtectDBRegister(), cmeUnprotectDBValue() Error, value '%s' "
-                                        "of column name '%s' has incorrect valuesalt size!\n",decryptedValue,sqlTable[cont2]);
-#endif
+                            if (strcmp(decryptedValue,columnValues[cont3])==0)  //Matches value filter.
+                            {
+                                numMatch++;
                             }
                             cmeFree(decryptedValue);
                         }
@@ -875,23 +834,11 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                 (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]=NULL; //cmeStrContrAppend requires this for new strings.
                 if ((cont2 !=cmeIDDanydb_salt)&&(cont2!=cmeIDDanydb_id))
                 {   //If SALT or id, we just copy, everything else gets decrypted
-                    cmeUnprotectDBValue(sqlTable[cont*numColumns+cont2],&decryptedValue,
-                                        cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),
-                                        orgKey,&valueLen);
-                    if (strlen(decryptedValue)>=cmeDefaultValueSaltCharLen) //Double check that we have the right length
-                    {
-                        cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                        "%s",&(decryptedValue[cmeDefaultValueSaltCharLen])); //We skip the first 16 characters of the 8 byte hexstr salt that is included at the beginning.
-                    }
-                    else
-                    {
-                        cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                        "%s",decryptedValue); //We don't skip the first 16 characters of the 8 byte hexstr salt that is included at the beginning.
-#ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmePutProtectDBRegister(), cmeUnprotectDBValue() Error, value '%s' "
-                                "of column name '%s' has incorrect valuesalt size!\n",decryptedValue,sqlTable[cont2]);
-#endif
-                    }
+                    cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,
+                                              cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),
+                                              orgKey,&valueLen);
+                    cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                    "%s",decryptedValue);
                     cmeFree(decryptedValue);
                 }
                 else // Salt,id -> only copy value (nothing to decrypt).

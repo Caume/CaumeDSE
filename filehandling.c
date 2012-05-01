@@ -466,7 +466,8 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                           const char *resourceInfo, const char *documentType, const char *documentId,
                           const char *storageId, const char *storagePath)
 {
-    int cont,cont2,cont3,rContLimit,result,totalParts,readBytes,written;
+    int cont,cont2,cont3,rContLimit,result,readBytes,written;
+    int totalParts=0;
     int rowStart=0;
     int numSQLDBfNames=0;               //with column slicing this will be (*numcols)*((((*processedRows)/cmeMaxCSVRowsInPart))+(((*processedRows)%cmeMaxCSVRowsInPart > 0)? 1 : 0 ))
     int cycleProcessedRows=0;
@@ -1142,9 +1143,16 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
         for (cont=1;cont<=dbNumCols;cont++) //Go through each part number in order
         {
             for (cont2=0;cont2<dbNumCols;cont2++) //Look for the file part that corresponds to the current order number
-                if ((memFilePartsOrder[cont2])==(cont)) //Found it! Writte its data to the tmpRAWFile.
+                if ((memFilePartsOrder[cont2])==(cont)) //Found it! Write its data to the tmpRAWFile.
                 {
-                    fwrite(memFilePartsData[cont2],1,memFilePartsDataSize[cont2],fpTmpRAWFile);
+                    result=fwrite(memFilePartsData[cont2],1,memFilePartsDataSize[cont2],fpTmpRAWFile);
+                    if(!result) //Error writing to secure tmp file.
+                    {
+#ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), fwrite() error, cannot "
+                                "write to secure tmp file!\n");
+#endif
+                    }
                 }
         }
         fclose(fpTmpRAWFile);
@@ -1168,8 +1176,8 @@ int cmeFileOverwriteAndDelete (const char *filePath)
     fp=fopen(filePath,"w");
     if(!fp) //Error
     {
-#ifdef ERROR_LOG
-        fprintf(stdout,"CaumeDSE Error: cmeFileOverwriteAndDelete(), can't open file %s for overwriting!\n",filePath);
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Warning: cmeFileOverwriteAndDelete(), can't open file %s for overwriting!\n",filePath);
 #endif
         return(1);
     }
@@ -1177,7 +1185,7 @@ int cmeFileOverwriteAndDelete (const char *filePath)
     if (result) //Error
     {
 #ifdef ERROR_LOG
-        fprintf(stdout,"CaumeDSE Error: cmeFileOverwriteAndDelete(), fseek() Error!\n");
+        fprintf(stderr,"CaumeDSE Error: cmeFileOverwriteAndDelete(), fseek() Error!\n");
 #endif
         fclose(fp);
         return(2);
@@ -1193,13 +1201,13 @@ int cmeFileOverwriteAndDelete (const char *filePath)
     if (result) //Error
     {
 #ifdef ERROR_LOG
-        fprintf(stdout,"CaumeDSE Error: cmeFileOverwriteAndDelete(), remove() error, cannot delete file '%s'!\n",
+        fprintf(stderr,"CaumeDSE Error: cmeFileOverwriteAndDelete(), remove() error, cannot delete file '%s'!\n",
                 filePath);
 #endif
         return(3);
     }
 #ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: cmeFileOverwriteAndDelete(), file '%s' of length %ld overwritten and deleted.\n",
+        fprintf(stderr,"CaumeDSE Debug: cmeFileOverwriteAndDelete(), file '%s' of length %ld overwritten and deleted.\n",
                 filePath,fileLen);
 #endif
     return(0);
