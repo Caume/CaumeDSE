@@ -48,7 +48,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 //Function to create Engine's internal databases for management.
 int cmeSetupEngineAdminDBs ();
 //Function to register a secure DB in databasesDB, colsDB table.
-int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfNames, const char **SQLDBfSalts, const char **SQLDBpartHash,
+int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfNames, const char **SQLDBfSalts, const char **SQLDBpartMAC,
                                const int numSQLDBparts, const char *orgKey, const char *userId, const char *orgId, const char *resourceInfo,
                                const char *type, const char *documentId, const char *storageId, const char *orgResourceId);
 //Function to setup WebServices on specified TCP port (HTTP or HTTPS) using libmicrohttpd.

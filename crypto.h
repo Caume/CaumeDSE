@@ -88,5 +88,17 @@ int cmeUnprotectByteString (const char *protectedValue, char **value, const char
 // Function to hash a byte string in blocks of evpBufferSize.
 int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, const int srcLen,
                          int *dstWritten, const char *algorithm);
+// Function to return the size (in bytes) of digest for the specified hash algorithm.
+int cmeDigestLen (const char *algorithm, int *digestLen);
+// Wrapper Function for OpenSSL's HMAC_Init_ex().
+int cmeHMACInit (HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key, int keyLen);
+// Wrapper Function for OpenSSL's HMAC_Update().
+int cmeHMACUpdate (HMAC_CTX *ctx, const void *in, size_t inl);
+// Wrapper Function for OpenSSl's HMAC_Final().
+int cmeHMACFinal(HMAC_CTX **ctx, unsigned char *out, unsigned int *outl);
+// Function to create an HMAC MAC of byte string, in blocks of evpBufferSize.
+int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, const int srcLen,
+                       int *dstWritten, const char *algorithm, char **salt, const char *userKey);
+
 
 #endif // CRYPTO_H_INCLUDED

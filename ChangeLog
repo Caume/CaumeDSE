@@ -1,3 +1,80 @@
+2012-05-08 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* crypto.c,crypto.h (cmeHMACInit,cmeHMACUpdate,cmeHMACFinal): Added
+	MAC wrapper functions.
+
+	* crypto.c,crypto.h (cmeHMACByteString): Added integrated function
+	to create HMAC MACs out of byte strings.
+
+	* crypto.c (cmeDigestByteString): Modified digestBytes to be
+	assigned dynamically EVP_MAX_MD_SIZE bytes and wiped after use,
+	instead of using a static buffer.
+
+	* crypto.c (cmeDigestLen): Added function to return the size of the
+	digest produced by the specified digest algorithm.
+
+	* main.c,function_tests.c,function_tests.h (testCryptoHMAC): Added
+	tests for HMAC functions.
+	
+	* function_tests.c (testCryptoDigest_Str): Modified printed
+	messages, also changed fixed digest buffer length to use
+	EVP_MAX_MD_SIZE.
+
+	* common.h (cmeDefaultMACAlg): Added define for default id of digest
+	algorithm to be used by HMAC functions.
+
+	* common.h (cmeIDDResourcesDBDocuments_partMAC): Updated internal
+	database definitions to reflect the use of MAC instead of Hashes in
+	field names.
+
+	* common.h (cmeDefaultPBKDFCount): Incremented default value from
+	1,000 to 2,000 (RFC 2898 recommends at least 1000).  Higher values
+	are safer but they have a huge impact on performance, since each
+	encrypted element has a different salt.  Therefore, we need to
+	derive a key for encryptiting or decrypting each element with PBKDF.
+
+	* common.h (cmeInternalDBDefinitionsVersion): Updated internal
+	database definitions versions; included DB column names as defines. 
+	This should ease future modifications and allows us to keep IDD
+	definitions in a single place.
+
+	* filehandling.c (cmeCSVFileToSecureDB,cmeRAWFileToSecureFile):
+	Replaced hashing functions with HMAC MAC functions; MACs of each
+	encrypted file part are stored where hashes were stored before.
+
+	* filehandling.c (cmeSecureFileToTmpRAWFile,cmeSecureDBToMemDB):
+	Added MAC verification of encrypted parts before decryption.  Also
+	added some debug and error output.
+
+	* filehandling.c (cmeSecureDBToMemDB): Cleaned code and fixed sqlite
+	file closing at exit points, as well as memory allocation and
+	handling.
+
+	* webservice_interface.c,engine_admin.c (partMAC): Replaced
+	references to partHash in Internal Database Definitions with
+	partMAC.  We will be using a MAC (after encryption) instead of just
+	plain hashes.
+
+	* db.c,filehandling.c: replaced references to hash db ids with
+	references to MAC db ids.
+
+	* engine_interface.c (cmePostProtectDBRegister,
+	cmeGetUnprotectDBRegisters,cmePutProtectDBRegisters,
+	cmeDeleteSecureDB,cmeDeleteUnprotectDBRegisters): Modified functions
+	so that protected value now consists of the concatenation of the MAC
+	of the encrypted value and the encrypted value (instead of just the
+	encrypted value).  Also optimized result gathering by eliminating
+	double decryption while matching search patterns.
+
+	* engine_admin.c (cmeRegisterSecureDBorFile): Added MAC support and
+	fixed table shuffling and copying that takes place on insertion of
+	new registers
+
+	* INSTALL, README (orgKEy): changed the default key for TEST
+	database.
+
+	* configure.ac (AC_INIT): Updated version to 0.90.alpha
+
 2012-05-01 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* filehandling.c (cmeFileOverwriteAndDelete): Changed error into

@@ -904,12 +904,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                     cmeStrConstrAppend(&sqlQuery,",value='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
                                        cmeIDDColumnFileData_value]);
                     cmeStrConstrAppend(&sqlQuery,",rowOrder='%s'",currentEncB64Data);
-                    cmeStrConstrAppend(&sqlQuery,",hash='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDColumnFileData_hash]);
-                    cmeStrConstrAppend(&sqlQuery,",hashProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDColumnFileData_hashProtected]);
+                    cmeStrConstrAppend(&sqlQuery,",MAC='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
+                                       cmeIDDColumnFileData_MAC]);
+                    cmeStrConstrAppend(&sqlQuery,",MACProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
+                                       cmeIDDColumnFileData_MACProtected]);
                     cmeStrConstrAppend(&sqlQuery,",sign='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDColumnFileData_signature]);
+                                       cmeIDDColumnFileData_sign]);
                     cmeStrConstrAppend(&sqlQuery,",signProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
                                        cmeIDDColumnFileData_signProtected]);
                     cmeStrConstrAppend(&sqlQuery,",otphDkey='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
@@ -1062,17 +1062,17 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         {
             //TODO (OHR#5#): signProtected; requires userId to get certificate/private key (check issues with private key)
         }
-        // Check if protection attribute = "hash".
+        // Check if protection attribute = "MAC".
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
                      cmeIDDColumnFileMeta_attribute_5, sizeof(cmeIDDColumnFileMeta_attribute_5)))
         {
-            //TODO (OHR#3#): hash
+            //TODO (OHR#3#): MAC
         }
-        // Check if protection attribute = "hashProtected".
+        // Check if protection attribute = "MACProtected".
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
                      cmeIDDColumnFileMeta_attribute_6, sizeof(cmeIDDColumnFileMeta_attribute_6)))
         {
-            //TODO (OHR#3#): hashProtected
+            //TODO (OHR#3#): MACProtected
         }
         //Finally, protect columnFile.Meta attribute, attributeData, userId and orgId in each row in meta table.
         //Protect Meta "attribute":
@@ -1449,12 +1449,12 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                                    cmeIDDColumnFileData_value]);
                 cmeStrConstrAppend(&sqlQuery,",rowOrder='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
                                    cmeIDDColumnFileData_rowOrder]);
-                cmeStrConstrAppend(&sqlQuery,",hash='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_hash]);
-                cmeStrConstrAppend(&sqlQuery,",hashProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_hashProtected]);
+                cmeStrConstrAppend(&sqlQuery,",MAC='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
+                                   cmeIDDColumnFileData_MAC]);
+                cmeStrConstrAppend(&sqlQuery,",MACProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
+                                   cmeIDDColumnFileData_MACProtected]);
                 cmeStrConstrAppend(&sqlQuery,",sign='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_signature]);
+                                   cmeIDDColumnFileData_sign]);
                 cmeStrConstrAppend(&sqlQuery,",signProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
                                    cmeIDDColumnFileData_signProtected]);
                 cmeStrConstrAppend(&sqlQuery,",otphDkey='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
@@ -1632,17 +1632,17 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
         {
             //TODO (OHR#5#): signProtected; requires userId to get certificate/private key (check issues with private key)
         }
-        // Check if protection attribute = "hash".
+        // Check if protection attribute = "MAC".
         else if (!strncmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_5,
                           sizeof(cmeIDDColumnFileMeta_attribute_5)))
         {
-            //TODO (OHR#3#): hash
+            //TODO (OHR#3#): MAC
         }
-        // Check if protection attribute = "hashProtected".
+        // Check if protection attribute = "MACProtected".
         else if (!strncmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_6,
                           sizeof(cmeIDDColumnFileMeta_attribute_6)))
         {
-            //TODO (OHR#3#): hashProtected
+            //TODO (OHR#3#): MACProtected
         }
         //Free stuff in this FOR loop
         cmeFree(currentMetaAttribute);
@@ -1978,7 +1978,7 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                             for (cont4=1;cont4<=numRowsData[cont];cont4++) //Insert rows, skipping column names
                             {
                                 cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION;"
-                                                   " INSERT INTO data (id,userId,orgId,salt,value,rowOrder,hash,sign,hashProtected,signProtected,otphDkey)"
+                                                   " INSERT INTO data (id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey)"
                                                    " VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
                                                    "COMMIT;",
                                                    memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_userId],
@@ -1986,9 +1986,9 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                                                    memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_salt],
                                                    memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_value],
                                                    memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_rowOrder],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_hash],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_signature],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_hashProtected],
+                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MAC],
+                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_sign],
+                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MACProtected],
                                                    memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_signProtected],
                                                    memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_otphDKey]);
                                 if (cmeSQLRows(memSecureDB[cont3],sqlQuery,NULL,NULL)) //insert row.

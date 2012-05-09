@@ -1,0 +1,16 @@
+2012-05-08 0.90.alpha
+
+	* Implemented HMAC for MACs using a key derived from PBKDF (v2 is
+	the default with 2000 rounds and sha256) and the same salt that is
+	being used for encrypting/decrypting files or register elements.
+
+	* Implemented Encrypt-Then-MAC on all registers in secure internal
+	databases (with verification before decrypting).
+
+	* Implemented Encrypt-Then-MAC for protected databases (e.g.
+	imported CSV files) and for RAW files; it is applied to the whole
+	binary file. MAC is also verified before decrypting the file.
+
+	* Some bug fixes.
+	
+	* Updated version to 0.90.alpha

@@ -35,7 +35,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
     the public domain (http://www.sqlite.org/copyright.html).
 
     This product includes software from the GNU Libmicrohttpd project, Copyright
-    Â© 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
+    © 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
     2008, 2009, 2010 , 2011, 2012 Free Software Foundation, Inc.
 
     This product includes software from Perl5, which is Copyright (C) 1993-2005,
@@ -659,13 +659,13 @@ int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, co
     int cont2=0;
     int exitcode=0;
     int written=0;
-    unsigned char digestBytes[64] ={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                                    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,};
+    unsigned char *digestBytes=NULL;
     EVP_MD_CTX *ctx=NULL;     //Note that ctx will be freed normally by cmeDigestFinal(), but we need to free it if we exit before cmeDigestFinal() is called.
     EVP_MD *digest=NULL;      //Note that digest is a pointer to a constant digest function in OPENSSL.
     #define cmeDigestByteStringFree() \
         do  { \
                 cmeFree(ctx); \
+                cmeFree(digestBytes); \
             } while (0) //Local free() macro
 
     if (srcBuf==NULL) //Error, source buffer can't be null!
@@ -684,6 +684,7 @@ int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, co
         cmeDigestByteStringFree();
         return(2);
     }
+    digestBytes=(unsigned char *)malloc(EVP_MAX_MD_SIZE);
     if(!(*dstBuf=(unsigned char *)malloc(evpMaxHashStrLen))) //Error allocating memory!
     {                                                             //Note that Caller must free *dstBuf!
 #ifdef ERROR_LOG
@@ -709,8 +710,220 @@ int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, co
     exitcode+=result;
     cmeBytesToHexstr(digestBytes,dstBuf,written); //convert byte array to Byte HexStr.
     *dstWritten=strlen((const char *)*dstBuf);
+    memset(digestBytes,0,EVP_MAX_MD_SIZE); //Clear memory of resulting digest bytes.
     cmeDigestByteStringFree();
     return (exitcode);
 }
 
+int cmeHMACInit (HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key, int keyLen)
+{
+    int result;
 
+    *ctx=(HMAC_CTX *)malloc(sizeof(HMAC_CTX));
+    HMAC_CTX_init(*ctx);   //Initialize HMAC context.
+    result= HMAC_Init_ex(*ctx,key,keyLen,digest,engine);
+    if (result==0)  //1= success, 0=failure
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeHMACInit(), HMAC_Init_ex() failure!\n");
+#endif
+        return (1);
+    }
+    else
+    {
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeHMACInit(), HMAC_Init_ex() success.\n");
+#endif
+        return (0);
+    }
+}
+
+int cmeHMACUpdate (HMAC_CTX *ctx, const void *in, size_t inl)
+{
+    int result;
+
+    result=HMAC_Update(ctx,in,inl);
+    if (result==0)  //1= success, 0=failure
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeHMACUpdate(), HMAC_Update() failure!\n");
+#endif
+        return (1);
+    }
+    else
+    {
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeHMACUpdate(), HMAC_Update() success.\n");
+#endif
+        return (0);
+    }
+}
+
+int cmeHMACFinal(HMAC_CTX **ctx, unsigned char *out, unsigned int *outl)
+{
+    int result;
+
+    result=HMAC_Final(*ctx,out,outl);
+    cmeFree(*ctx);
+    if (result==0)  //1= success, 0=failure
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeHMACFinal(), HMAC_Final() failure!\n");
+#endif
+        return (1);
+    }
+    else
+    {
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeHMACFinal(), HMAC_Final() success.\n");
+#endif
+       return (0);
+    }
+}
+
+int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, const int srcLen,
+                       int *dstWritten, const char *algorithm, char **salt, const char *userKey)
+{
+    int result=0;
+    int cont=0;
+    int cont2=0;
+    int exitcode=0;
+    int written=0;
+    int keyLen=0;
+    int ivLen=0;
+    unsigned char *key=NULL;
+    unsigned char *iv=NULL;
+    unsigned char *digestBytes=NULL;
+    unsigned char *byteSalt=NULL;
+    unsigned char hexStrbyteSalt[evpSaltBufferSize*2+1];     //Space for an hex str representation of an evpSaltBufferSize long, byte salt
+    HMAC_CTX *ctx=NULL;                 //Note that ctx will be freed normally by cmeHMACFinal(), but we need to free it if we exit before cmeHMACFinal() is called.
+    EVP_MD *digest=NULL;          //Note that digest is a pointer to a constant digest function in OPENSSL.
+    const EVP_CIPHER *cipher=NULL;      //Note that cipher is a pointer to a constant cipher function in OPENSSL.
+    #define cmeHMACByteStringFree() \
+        do  { \
+                cmeFree(ctx); \
+                cmeFree(digestBytes); \
+                if (key) \
+                { \
+                    memset(key,0,keyLen); \
+                    cmeFree(key); \
+                } \
+                if (iv) \
+                { \
+                    memset(iv,0,ivLen); \
+                    cmeFree(iv); \
+                } \
+                if (byteSalt) \
+                { \
+                    memset(byteSalt,0,evpSaltBufferSize); \
+                    cmeFree(byteSalt); \
+                } \
+            } while (0) //Local free() macro
+
+    if (srcBuf==NULL) //Error, source buffer can't be null!
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), srcBuf is NULL!\n");
+#endif
+        cmeDigestByteStringFree();
+        return(1);
+    }
+    if ((cmeGetCipher(&cipher,cmeDefaultEncAlg))) //Use default encryption algorithm's key length for PBKDF.
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), incorrect digest algorithm; %s!\n",algorithm);
+#endif
+        cmeDigestByteStringFree();
+        return(2);
+    }
+    if ((cmeGetDigest(&digest,algorithm))) //Verify algorithm and create digest object.
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), incorrect digest algorithm; %s!\n",algorithm);
+#endif
+        cmeDigestByteStringFree();
+        return(3);
+    }
+    digestBytes=(unsigned char *)malloc(EVP_MAX_MD_SIZE);
+    if(!(*dstBuf=(unsigned char *)malloc(evpMaxHashStrLen))) //Error allocating memory!
+    {                                                             //Note that Caller must free *dstBuf!
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), Error in memory allocation!\n");
+#endif
+        cmeDigestByteStringFree();
+        return(4);
+    }
+    memset(*dstBuf,0,evpMaxHashStrLen);
+
+    if (!(*salt)) //if salt==NULL, We need to generate salt and return it in hexStr format.
+    {             //Otherwise we use the salt provided by the caller.
+        cmePrngGetBytes(&byteSalt,evpSaltBufferSize);
+        cmeBytesToHexstr(byteSalt,(unsigned char **)salt,evpSaltBufferSize); //We need to return str representation of salt.
+                                                           //Note:Caller must free memory for salt!
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeHMACByteString(), salt parameter is NULL; "
+                "defining new random salt: %s.\n",*salt);
+#endif
+    }
+    else
+    {
+        strncpy((char *)hexStrbyteSalt,(char *)*salt,evpSaltBufferSize*2);
+        hexStrbyteSalt[evpSaltBufferSize*2]='\0';
+        if ((cmeHexstrToBytes(&byteSalt,hexStrbyteSalt))) // Error, salt is not a hexStr representation!
+        {
+
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), salt is not a "
+                    "hexStr representation; string: %s !\n",hexStrbyteSalt);
+#endif
+            cmeDigestByteStringFree();
+            return(3);
+        }
+    }
+    keyLen=EVP_CIPHER_key_length(cipher); //Get cipher key length.
+    ivLen=EVP_CIPHER_iv_length(cipher); //Get cipher iv length.
+    key=(unsigned char *)malloc(keyLen);
+    iv=(unsigned char *)malloc(ivLen);
+    if ((cmePBKDF(cipher,byteSalt,evpSaltBufferSize,(unsigned char *)userKey,strlen(userKey),key,iv))) //Error setting key & IV.
+    {
+        cmeDigestByteStringFree();
+        return(7);
+    }
+
+    ///keyLen=strlen(key);
+    cmeHMACInit(&ctx,NULL,digest,(const char *)key,keyLen);
+    cont2=0;
+    for (cont=0; cont<(srcLen/evpBufferSize); cont++) //Process all blocks of size evpBufferSize.
+    {
+        cmeHMACUpdate(ctx,srcBuf+cont2,evpBufferSize);
+        cont2 += evpBufferSize;
+    }
+    if (srcLen%evpBufferSize) //Process last chunk with size < evpBufferSize.
+    {
+        cmeHMACUpdate(ctx,srcBuf+cont2,(srcLen%evpBufferSize));
+        cont2 += (srcLen%evpBufferSize);
+    }
+    result=cmeHMACFinal(&ctx,digestBytes,(unsigned int *)&written);
+    exitcode+=result;
+    cmeBytesToHexstr(digestBytes,dstBuf,written); //Convert byte array to Byte HexStr.
+    *dstWritten=strlen((const char *)*dstBuf);
+    memset(digestBytes,0,EVP_MAX_MD_SIZE); //Clear memory of resulting MAC bytes.
+    cmeDigestByteStringFree();
+    return (exitcode);
+}
+
+int cmeDigestLen (const char *algorithm, int *digestLen)
+{
+    EVP_MD *digest=NULL;      //Note that digest is a pointer to a constant digest function in OPENSSL.
+
+    *digestLen=0;
+    if ((cmeGetDigest(&digest,algorithm))) //Verify algorithm and point to digest object.
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeDigestLen(), incorrect digest algorithm; %s!\n",algorithm);
+#endif
+        return(1);
+    }
+    *digestLen=EVP_MD_size(digest);
+    return (0);
+}

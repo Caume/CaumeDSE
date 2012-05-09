@@ -6036,8 +6036,8 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
     const int numColumns=15;            //Number of columns in corresponding resource table.
     const int numDuplicateMatchColumns=4;   //Columns by which we detect duplicates, in this case: "orgResourceId","storageId","type" and "documentId"; must be the first to be added to columnValuesToMatch and columnNamesToMatch
     const int numValidGETALLMatch=9;    //9 parameters + 4 (storageId,type,orgResourceId,documentId) from URL
-    const int numValidPOSTSave=3;       //3 parameters + 4 (storageId,type,orgResourceId,documentId) from URL; columnFile, partHash, totalParts, partId, columnId, lastModified are set automatically
-    const int numValidPUTSave=3;        //3 parameters + 4 (storageId,type,orgResourceId,documentId) from URL; columnFile, partHash, totalParts, partId, columnId, lastModified can't be updated (otherwise file indexes might break).
+    const int numValidPOSTSave=3;       //3 parameters + 4 (storageId,type,orgResourceId,documentId) from URL; columnFile, partMAC, totalParts, partId, columnId, lastModified are set automatically
+    const int numValidPUTSave=3;        //3 parameters + 4 (storageId,type,orgResourceId,documentId) from URL; columnFile, partMAC, totalParts, partId, columnId, lastModified can't be updated (otherwise file indexes might break).
     const char *tableName="documents";
     const char *validGETALLMatchColumns[9]={"_userId","_orgId","_resourceInfo","_columnFile",
                                             "_partHash","_totalParts","_partId","_lastModified","_columnId"};
@@ -6136,7 +6136,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
         cmeStrConstrAppend(&(columnValues[4]),"");
         cmeStrConstrAppend(&(columnNames[4]),"columnFile");
         cmeStrConstrAppend(&(columnValues[5]),"");
-        cmeStrConstrAppend(&(columnNames[5]),"partHash");
+        cmeStrConstrAppend(&(columnNames[5]),"partMAC");
         cmeStrConstrAppend(&(columnValues[6]),"");
         cmeStrConstrAppend(&(columnNames[6]),"totalParts");
         cmeStrConstrAppend(&(columnValues[7]),"");
@@ -7117,7 +7117,7 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
     char **resultRegisterCols=NULL;
     const int numColumns=15;            //Number of columns in corresponding resource table.
     const int numValidGETALLMatch=10;   //10 parameters + 3 (storageId,orgResourceId,type) from URL
-    const int numValidPUTSave=3;        //3 parameters + 3 (storageId,orgResourceId,type) from URL; columnFile, partHash, totalParts, partId, lastModified, columnId can't be updated (otherwise file indexes might break).
+    const int numValidPUTSave=3;        //3 parameters + 3 (storageId,orgResourceId,type) from URL; columnFile, partMAC, totalParts, partId, lastModified, columnId can't be updated (otherwise file indexes might break).
     const char *tableName="documents";
     const char *validGETALLMatchColumns[10]={"_userId","_orgId","_resourceInfo","_columnFile",
                                             "_partHash","_totalParts","_partId","_lastModified",

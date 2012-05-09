@@ -35,7 +35,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
     the public domain (http://www.sqlite.org/copyright.html).
 
     This product includes software from the GNU Libmicrohttpd project, Copyright
-    Â© 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
+    © 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
     2008, 2009, 2010 , 2011, 2012 Free Software Foundation, Inc.
 
     This product includes software from Perl5, which is Copyright (C) 1993-2005,
@@ -46,8 +46,10 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 
 int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *documentId,
                         const char *orgKey, const char *storagePath)
-{
-    int cont,cont2,result,written,written2;
+{   //IDD v.1.0.21
+    int cont,cont2,result,written,written2,MACLen;
+    int readBytes=0;
+    int partMACmismatch=0;
     int numRows=0;
     int numCols=0;
     int numRowsMeta=0;
@@ -60,163 +62,302 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
     char ***memDBResultMeta=NULL;
     char **resultMemTable=NULL;
     char **colSQLDBfNames=NULL;
+    char **colSQLDBfSalts=NULL;
+    char **memFilePartsMACs=NULL;
     char *currentDocumentId=NULL;
+    char *currentRawFileContent=NULL;
+    char *protectedValueMAC=NULL;
     char *bkpFName=NULL;
     char *sqlTableName="data"; //default table name for memory databases
     unsigned char *decodedEncryptedString=NULL;
     sqlite3 **memDBcol=NULL;
-    //TODO (OHR#2#): EVERYWHERE - Change breaks for returns(), In all functions! Use the following multiline macro template.
     //MEMORY CLEANUP MACRO for local function.
     #define cmeSecureDBToMemDBFree() \
         do { \
             cmeFree(currentDocumentId); \
+            cmeFree(currentRawFileContent); \
+            cmeFree(protectedValueMAC); \
             cmeFree(resultMemTable); \
             cmeFree (bkpFName); \
             cmeFree (decodedEncryptedString); \
-            for (cont=0;cont<dbNumCols;cont++) \
+            if (memDBcol) \
+            { \
+                for(cont=0;cont<dbNumCols;cont++) \
+                { \
+                    if (memDBcol[cont]) \
+                    { \
+                        cmeDBClose(memDBcol[cont]); \
+                        memDBcol[cont]=NULL; \
+                    } \
+                } \
+                cmeFree(memDBcol); \
+            } \
+            for (cont=0;cont<dbNumReintegratedCols;cont++) \
             { \
                 if (memDBResultData) \
                 { \
-                    cmeMemTableFinal(memDBResultData[cont]); \
+                    if (memDBResultData[cont]) \
+                    { \
+                        cmeMemTableFinal(memDBResultData[cont]); \
+                    } \
                 } \
                 if (memDBResultMeta) \
                 { \
-                    cmeMemTableFinal(memDBResultMeta[cont]); \
+                    if (memDBResultMeta[cont]) \
+                    { \
+                        cmeMemTableFinal(memDBResultMeta[cont]); \
+                    } \
                 } \
+            } \
+            for (cont=0;cont<dbNumCols;cont++) \
+            { \
                 if (colSQLDBfNames) \
                 { \
                     cmeFree(colSQLDBfNames[cont]); \
                 } \
+                if (memFilePartsMACs) \
+                { \
+                    cmeFree(memFilePartsMACs[cont]); \
+                } \
+                if (colSQLDBfSalts) \
+                { \
+                    cmeFree(colSQLDBfSalts[cont]); \
+                } \
             } \
+            cmeFree(memDBResultData); \
+            cmeFree(memDBResultMeta); \
             cmeFree(colSQLDBfNames); \
+            cmeFree(memFilePartsMACs); \
+            cmeFree(colSQLDBfSalts); \
         } while (0) /*NOTE: No need to free each element in resultMemTable, as they are just pointers to elements
                       from memDBResultData and memDBResultMeta.
                       //WIPING SENSITIVE DATA IN MEMORY AFTER USE in colSQLDBfNames!*/
 
-    result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols);
-    if(result) // Error
-    {
-        cmeSecureDBToMemDBFree(); //CLEANUP.
-        return(1);
-    }
-    //Get list of column files from ResourcesDB
-    colSQLDBfNames=(char **)malloc(sizeof(char *)*cmeMaxCSVColumns*cmeMaxCSVPartsPerColumn); //We reserve memory for the estimated max. number of column parts to handle.
-    for (cont=0;cont<cmeMaxCSVColumns*cmeMaxCSVPartsPerColumn;cont++) // TODO (ANY#2#): Replace MAX method with a more efficient way to allocate memory!
-    {
-        colSQLDBfNames[cont]=NULL; //Initialize pointers to column names.
-    }
-    for(cont=1;cont<=numRows;cont++) //First row in a cmeSQLTable contains the names of columns; we skip them.
-    {
-        result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],     //Protected value (B64+encrypted+salted)
-                                         &currentDocumentId,                //Unencrypted result (documentId)
-                                         cmeDefaultEncAlg,
-                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),  //Salt used to protect value
-                                         orgKey,&written);
-        if (result)  //Error
-        {
-            cmeSecureDBToMemDBFree(); //CLEANUP.
-            return(2);
-        }
-        if ((!(strncmp(currentDocumentId,documentId,strlen(currentDocumentId))))&&
-            (strlen(currentDocumentId)==strlen(documentId)))  //This column is part of the table!
-        {
-            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],     //Protected value (B64+encrypted+salted)
-                                             &(colSQLDBfNames[dbNumCols]),       //Unencrypted result (columnFile)
-                                             cmeDefaultEncAlg,
-                                             &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),  //Salt used to protect value
-                                             orgKey,&written2);
-            if (result)  //Error
-            {
-                cmeSecureDBToMemDBFree(); //CLEANUP.
-                return(3);
-            }
-            else
-            {
-                dbNumCols++;
-            }
-        }
-        //TODO (OHR#2#): EVERYWHERE - Research memset() replacement to ensure delete with volatile; assess mlock ().
-        memset(currentDocumentId,0,written);   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
-        cmeFree(currentDocumentId);
-    }
-    memDBcol=(sqlite3 **)malloc(sizeof(sqlite3 *)*dbNumCols);
-    memDBResultMeta=(char ***)malloc(sizeof(char **)*dbNumCols);
-    memDBResultData=(char ***)malloc(sizeof(char **)*dbNumCols);
-    for (cont=0;cont<dbNumCols;cont++)
-    {
-        memDBcol[cont]=NULL;
-        memDBResultMeta[cont]=NULL;
-        memDBResultData[cont]=NULL;
-    }
-    for (cont=0;cont<dbNumCols;cont++) //Load protected columns
-    {
-        cmeStrConstrAppend(&bkpFName,"%s%s",storagePath,colSQLDBfNames[cont]);
-        if (cmeDBCreateOpen(":memory:",&(memDBcol[cont])))
-        {
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeDBCreateOpen() Error, can't "
-                    "Create and Open memory DB to import secure colFiles; colFile No. %d!\n",cont);
-#endif
-            cmeDBClose(*resultDB);
-            cmeSecureDBToMemDBFree(); //CLEANUP.
-            return(4);
-        }
-        result=cmeMemDBLoadOrSave(memDBcol[cont],bkpFName,0);
-        if (result) //Error
-        {
-            cmeFree(bkpFName);
-            cmeSecureDBToMemDBFree(); //CLEANUP.
-            return(5);
-        }
-        cmeFree(bkpFName);
-    }
-    result=cmeMemSecureDBReintegrate(memDBcol,orgKey,dbNumCols,&dbNumReintegratedCols);
-    for (cont=0;cont<dbNumReintegratedCols;cont++)
-    {
-        result=cmeMemSecureDBUnprotect(memDBcol[cont],orgKey); //Unprotect secure column DB.
-        if (result) //Error
-        {
-            cmeSecureDBToMemDBFree(); //CLEANUP.
-            return(6);
-        }
-        result=cmeMemTable(memDBcol[cont],"SELECT * FROM meta",&(memDBResultMeta[cont]),
-                           &numRowsMeta,&numColsMeta);
-        if(result) // Error
-        {
-            cmeSecureDBToMemDBFree(); //CLEANUP.
-            return(7);
-        }
-        result=cmeMemTable(memDBcol[cont],"SELECT * FROM data",&(memDBResultData[cont]),
-                           &numRows,&numCols);
-        if(result) // Error
-        {
-            cmeSecureDBToMemDBFree(); //CLEANUP.
-            return(8);
-        }
-        cmeFree(bkpFName);
-    }
-    dbNumRows=numRows;
-    for (cont=0;cont<dbNumReintegratedCols;cont++) //Free stuff.
-    {
-        cmeDBClose(memDBcol[cont]);
-    }
-    cmeFree(memDBcol);
-    *resultDB=NULL;
+    *resultDB=NULL;  //Pointer to results must not point to anything previously! (Caller responsibility).
+    //Open empty result DB (we must return at least an empty database in case of error). Caller must close it.
     if (cmeDBCreateOpen(":memory:",resultDB))
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeDBCreateOpen() Error, can't "
                 "Create and Open memory DB to store unprotected DB created from colFiles!\n");
 #endif
-        cmeDBClose(*resultDB);
         cmeSecureDBToMemDBFree(); //CLEANUP.
-        return(9);
+        return(1);
     }
+    result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols);
+    if(result) // Error
+    {
+        cmeSecureDBToMemDBFree(); //CLEANUP.
+        return(2);
+    }
+    //We reserve memory for the first file part (and will increment memory as needed):
+    colSQLDBfNames=(char **)malloc(sizeof(char *));     //We reserve memory for the estimated max. number of column parts to handle.
+    colSQLDBfSalts=(char **)malloc(sizeof(char *));     //We reserve memory for the estimated max. number of column parts to handle.
+    memFilePartsMACs=(char **)malloc(sizeof(char *));   //We reserve memory for the estimated max. number of column parts to handle.
+    memDBcol=(sqlite3 **)malloc(sizeof(sqlite3 *));       //We reserve memory for column sqlite3 structure.
+    //Initialize first file part pointers:
+    memDBcol[0]=NULL;
+    colSQLDBfNames[0]=NULL;
+    colSQLDBfSalts[0]=NULL;
+    memFilePartsMACs[0]=NULL;
+    //Get MAC length in chars:
+    cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value (bytes).
+    MACLen*=2;                              //Convert byte length to HexStr length.
+    //Get list of column files from ResourcesDB:
+    for(cont=1;cont<=numRows;cont++) //First row in a cmeSQLTable contains the names of columns; we skip them.
+    {
+        //Unprotect documentId:
+        cmeFree(protectedValueMAC);
+        cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+                          (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen),
+                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],MACLen)) //MAC is correct; proceed with decryption.
+        {
+            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+                                             &currentDocumentId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                             orgKey,&written);
+            if (result)  //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeUnprotectDBSaltedValue() error, cannot "
+                        "decrypt documentId!\n");
+#endif
+                cmeSecureDBToMemDBFree(); //CLEANUP.
+                return(3);
+            }
+        }
+        else //MAC is incorrect; skip decryption process.
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Warning: cmeSecureSQLToMemDB(), cmeHMACByteString() cannot "
+                    "verify documentId MAC!\n");
+#endif
+            cmeStrConstrAppend(&currentDocumentId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+        }
+        //Check if register is part of the requested file. If so continue processing it:
+        if (!strcmp(currentDocumentId,documentId)) //This column is part of the table!
+        {
+            //Unprotect columnFile:
+            cmeFree(protectedValueMAC);
+            cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
+                              (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen),
+                              &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+            if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],MACLen)) //MAC is correct; proceed with decryption.
+            {
+                result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
+                                     &(colSQLDBfNames[dbNumCols]),cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                     orgKey,&written2);
+                if (result)  //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeUnprotectDBSaltedValue() error, cannot "
+                            "decrypt columnFile!\n");
+#endif
+                    cmeSecureDBToMemDBFree(); //CLEANUP.
+                    return(4);
+                }
+            }
+            else //MAC is incorrect; skip decryption process.
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeHMACByteString() error, cannot "
+                        "verify columnFile MAC!\n");
+#endif
+                cmeStrConstrAppend(&(colSQLDBfNames[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+            }
+            //Unprotect partMAC:
+            cmeFree(protectedValueMAC);
+            cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen,
+                              (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen),
+                              &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+            if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC],MACLen)) //MAC is correct; proceed with decryption.
+            {
+                result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen,
+                                     &(memFilePartsMACs[dbNumCols]),cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                     orgKey,&written2);
+                if (result)  //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeUnprotectDBSaltedValue() error, cannot "
+                            "decrypt partMAC!\n");
+#endif
+                    cmeSecureDBToMemDBFree(); //CLEANUP.
+                    return(5);
+                }
+            }
+            else //MAC is incorrect; skip decryption process.
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeHMACByteString() error, cannot "
+                        "verify partMAC MAC!\n");
+#endif
+                cmeStrConstrAppend(&(memFilePartsMACs[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+            }
+            //Copy salt:
+            cmeStrConstrAppend(&(colSQLDBfSalts[dbNumCols]),"%s",queryResult[(cont*numCols)+cmeIDDanydb_salt]);
+            //Increment number of columns found:
+            dbNumCols++;
+            //Grow reserved memory to hold next column element:
+            colSQLDBfNames=(char **)realloc(colSQLDBfNames,sizeof(char *)*(dbNumCols+1));
+            colSQLDBfSalts=(char **)realloc(colSQLDBfSalts,sizeof(char *)*(dbNumCols+1));
+            memFilePartsMACs=(char **)realloc(memFilePartsMACs,sizeof(char *)*(dbNumCols+1));
+            memDBcol=(sqlite3 **)malloc(sizeof(sqlite3 *)*(dbNumCols+1));
+            //Initialize recently allocated memory:
+            memDBcol[dbNumCols]=NULL;
+            colSQLDBfNames[dbNumCols]=NULL;
+            colSQLDBfSalts[dbNumCols]=NULL;
+            memFilePartsMACs[dbNumCols]=NULL;
+        }
+        //TODO (OHR#2#): EVERYWHERE - Research memset() replacement to ensure delete with volatile; assess mlock ().
+        if (currentDocumentId)
+        {
+            memset(currentDocumentId,0,strlen(currentDocumentId));   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
+        }
+        cmeFree(currentDocumentId);
+    }
+    for (cont=0;cont<dbNumCols;cont++) //Load protected columns
+    {
+        cmeStrConstrAppend(&bkpFName,"%s%s",storagePath,colSQLDBfNames[cont]);
+        //Verify MAC of raw column before unprotecting file:
+        cmeFree(protectedValueMAC);
+        cmeFree(currentRawFileContent);
+        result=cmeLoadStrFromFile(&currentRawFileContent,bkpFName,&readBytes);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeLoadStrFromFile() error cannot "
+                    "load raw column file part: %s !\n",bkpFName);
+#endif
+            cmeSecureDBToMemDBFree();
+            return(6);
+        }
+        result=cmeHMACByteString((const unsigned char *)currentRawFileContent,(unsigned char **)&protectedValueMAC,readBytes,&written,cmeDefaultMACAlg,&(colSQLDBfSalts[cont]),orgKey);
+        if (strcmp(protectedValueMAC,memFilePartsMACs[cont])) //Error!, MAC mismatch
+        {
+            partMACmismatch++; //Flag MAC mismatch for file part.
+        }
+        else //MAC OK; load column file.
+        {
+            if (cmeDBCreateOpen(":memory:",&(memDBcol[cont])))
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeDBCreateOpen() Error, can't "
+                        "Create and Open memory DB to import secure colFiles; colFile No. %d!\n",cont);
+#endif
+                cmeSecureDBToMemDBFree(); //CLEANUP.
+                return(7);
+            }
+            result=cmeMemDBLoadOrSave(memDBcol[cont],bkpFName,0);
+            if (result) //Error
+            {
+                cmeSecureDBToMemDBFree(); //CLEANUP.
+                return(8);
+            }
+        }
+        cmeFree(bkpFName);
+    }
+    if ((!dbNumCols)||partMACmismatch) //if file not found or file part MAC mismatch, exit.
+    {
+        cmeSecureDBToMemDBFree();
+        return(0);
+    }
+    //Reintegrate columns:
+    result=cmeMemSecureDBReintegrate(memDBcol,orgKey,dbNumCols,&dbNumReintegratedCols);
+    //Generate result table from reintegrated columns:
+    memDBResultMeta=(char ***)malloc(sizeof(char **)*dbNumReintegratedCols);    //We reserve memory for column meta attributes.
+    memDBResultData=(char ***)malloc(sizeof(char **)*dbNumReintegratedCols);    //We reserve memory for column data fields.
+    for (cont=0;cont<dbNumReintegratedCols;cont++)
+    {
+        memDBResultMeta[cont]=NULL;
+        memDBResultData[cont]=NULL;
+        result=cmeMemSecureDBUnprotect(memDBcol[cont],orgKey); //Unprotect secure column DB.
+        if (result) //Error
+        {
+            cmeSecureDBToMemDBFree(); //CLEANUP.
+            return(9);
+        }
+        result=cmeMemTable(memDBcol[cont],"SELECT * FROM meta",&(memDBResultMeta[cont]),
+                           &numRowsMeta,&numColsMeta);
+        if(result) // Error
+        {
+            cmeSecureDBToMemDBFree(); //CLEANUP.
+            return(10);
+        }
+        result=cmeMemTable(memDBcol[cont],"SELECT * FROM data",&(memDBResultData[cont]),
+                           &numRows,&numCols);
+        if(result) // Error
+        {
+            cmeSecureDBToMemDBFree(); //CLEANUP.
+            return(11);
+        }
+        cmeFree(bkpFName);
+    }
+    dbNumRows=numRows;
     resultMemTable=(char **)malloc(sizeof(char *)*dbNumReintegratedCols*(dbNumRows+1)); //Consider 1 extra row for column names!
     if (!resultMemTable) //Error
     {
         cmeSecureDBToMemDBFree(); //CLEANUP.
-        return(10);
+        return(12);
     }
     for (cont=0;cont<=dbNumRows;cont++) //Import all data into a single, memory based, database.
     {
@@ -237,12 +378,15 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
     if (result) //Error
     {
         cmeSecureDBToMemDBFree(); //CLEANUP.
-        return(11);
+        return(13);
     }
     //Free the rest of dynamically allocated resources that are no longer needed.
     for (cont=0;cont<dbNumReintegratedCols;cont++) //Wipe sensitive data after use
     {
-        memset(colSQLDBfNames[cont],0,written2);
+        if (colSQLDBfNames[cont])
+        {
+            memset(colSQLDBfNames[cont],0,strlen(colSQLDBfNames[cont]));
+        }
     }
     cmeSecureDBToMemDBFree();
     return(0);
@@ -250,7 +394,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
 
 int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char *orgKey, const char *storagePath)
 {
-    int cont,result,written,written2;
+    int cont,result,written,written2,MACLen;
     int numRows=0;
     int numCols=0;
     int dbNumCols=0;
@@ -258,6 +402,7 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
     char *currentDocumentId=NULL;
     char *currentFName=NULL;
     char *sqlQuery=NULL;
+    char *protectedValueMAC=NULL;
     char **colSQLDBfNames=NULL;
     char **queryResult=NULL;
     sqlite3_int64 existRows=0;
@@ -268,6 +413,7 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
             cmeFree(currentDocumentId); \
             cmeFree(currentFName); \
             cmeFree(sqlQuery); \
+            cmeFree(protectedValueMAC); \
             for (cont=0;cont<dbNumCols;cont++) \
             { \
                 if (colSQLDBfNames) \
@@ -283,6 +429,8 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
     cmeDBClose(existsDB);
     if (existRows>0) //We have the same documentId already in the database...
     {
+        cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value (bytes).
+        MACLen*=2; //Convert byte length to HexStr length.
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeDeleteSecureDB(), documentId %s already exists; "
                 "proceeding to delete it.\n",documentId);
@@ -294,41 +442,76 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
             return(1);
         }
         colSQLDBfNames=(char **)malloc(sizeof(char *)*cmeMaxCSVColumns);
-         for (cont=0;cont<cmeMaxCSVColumns;cont++)
+        for (cont=0;cont<cmeMaxCSVColumns;cont++)
         {
             colSQLDBfNames[cont]=NULL;
         }
         colsSQLDBIds=(int *)malloc(sizeof(int)*numRows);
         for(cont=1;cont<=numRows;cont++) //First row in a cmeSQLTable contains the names of columns; we skip them.
         {
-            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+7],     //Protected value (B64+encrypted+salted)
-                                         &currentDocumentId,                //Unencrypted result (documentId)
-                                         cmeDefaultEncAlg,
-                                         &(queryResult[(cont*numCols)+3]),  //Salt used to protect value
-                                         orgKey,&written);
-            if (result)  //Error
+            //Unprotect documentId:
+            cmeFree(protectedValueMAC);
+            cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+                              (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen),
+                              &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+            if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],MACLen)) //MAC is correct; proceed with decryption.
             {
-                cmeDeleteSecureDBFree();
-                return(2);
-            }
-            if ((!(strncmp(currentDocumentId,documentId,strlen(currentDocumentId))))&&
-                (strlen(currentDocumentId)==strlen(documentId)))  //This column is part of the table!
-            {
-                result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+5],     //Protected value (B64+encrypted+salted)
-                                                 &(colSQLDBfNames[dbNumCols]),       //Unencrypted result (columnFile)
-                                                 cmeDefaultEncAlg,
-                                                 &(queryResult[(cont*numCols)+3]),  //Salt used to protect value
-                                                 orgKey,&written2);
-                colsSQLDBIds[dbNumCols]=atoi(queryResult[cont*numCols]);            //Store register ID; register will be deleted from resourcesDB index.
+                result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+                                     &currentDocumentId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                     orgKey,&written);
                 if (result)  //Error
                 {
-                    cmeDeleteSecureDBFree();
-                    return(3);
+    #ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeDeleteSecureDB(), cmeUnprotectDBSaltedValue() error, cannot "
+                            "decrypt documentId!\n");
+    #endif
+                    cmeDeleteSecureDBFree(); //CLEANUP.
+                    return(2);
                 }
-                dbNumCols++;
+                if (!strcmp(currentDocumentId,documentId))//This column is part of the table!
+                {
+                    //Unprotect columnFile:
+                    cmeFree(protectedValueMAC);
+                    cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
+                                      (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen),
+                                      &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+                    if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],MACLen)) //MAC is correct; proceed with decryption.
+                    {
+                        result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
+                                             &(colSQLDBfNames[dbNumCols]),cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                             orgKey,&written2);
+                        if (result)  //Error
+                        {
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeDeleteSecureDB(), cmeUnprotectDBSaltedValue() error, cannot "
+                                    "decrypt documentId!\n");
+#endif
+                            cmeDeleteSecureDBFree(); //CLEANUP.
+                            return(3);
+                        }
+                    }
+                    else //MAC is incorrect; skip decryption process.
+                    {
+#ifdef DEBUG
+                        fprintf(stdout,"CaumeDSE Warning: cmeDeleteSecureDB(), cmeHMACByteString() cannot "
+                                "verify columnFile MAC!\n");
+#endif
+                        cmeStrConstrAppend(&(colSQLDBfNames[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+                    }
+                    colsSQLDBIds[dbNumCols]=atoi(queryResult[cont*numCols]+cmeIDDanydb_id);            //Store register ID; register will be deleted from resourcesDB index.
+                    dbNumCols++;
+                }
+                memset(currentDocumentId,0,written);   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
+                cmeFree(currentDocumentId);
             }
-            memset(currentDocumentId,0,written);   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
-            cmeFree(currentDocumentId);
+            else //MAC is incorrect; skip decryption process.
+            {
+    #ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Warning: cmeDeleteSecureDB(), cmeHMACByteString() cannot "
+                        "verify documentId MAC!\n");
+    #endif
+                cmeStrConstrAppend(&currentDocumentId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+            }
         }
         for(cont=0; cont <dbNumCols; cont++)
         {
@@ -385,26 +568,26 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
                                 const char **columnValues,const int numColumnValues, char ***resultRegisterCols,
                                 int *numResultRegisterCols, int *numResultRegisters, const char *orgKey)
 {
-    int result,cont,cont2,cont3;
+    int result,cont,cont2,cont3,MACLen;
     int valueLen=0;
     int numMatch=0;
     int numRows=0;
     int numColumns=0;
     char *query=NULL;
-    char *decryptedValue=NULL;
+    char *protectedValueMAC=NULL;
     char **resultsRegTmp=NULL;
     char **sqlTable=NULL;
     #define cmeGetUnprotectDBRegisterFree() \
         do { \
             cmeFree(query); \
-            cmeFree(decryptedValue); \
+            cmeFree(protectedValueMAC); \
             if (sqlTable) \
             { \
                 cmeMemTableFinal(sqlTable); \
             } \
         } while (0) //Local free() macro.
 
-    *numResultRegisters=0;
+    *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
     //TODO (OHR#3#): Check alternative for enabling tables with no results to return column names as 1st row;
     //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
@@ -421,43 +604,65 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
         return(1);
     }
     *numResultRegisterCols=numColumns;
-    *resultRegisterCols=(char **)malloc(sizeof(char *)*numColumns);  //Allocate space for columNames.
-    for (cont=0;cont<numColumns;cont++) //First copy all column names in the first row.
+    *resultRegisterCols=(char **)malloc(sizeof(char *)*numColumns*2);  //Allocate space for colum names and first row of result values.
+    cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value (bytes).
+    MACLen*=2; //Convert byte length to HexStr length.
+    for (cont=0;cont<numColumns;cont++) //First copy all column names in the first row and set to NULL the second row for result values.
     {
         (*resultRegisterCols)[cont]=NULL; //cmeStrContrAppend requires this for new strings.
         cmeStrConstrAppend(&((*resultRegisterCols)[cont]),"%s",sqlTable[cont]); //Add header names (row 0).
+        (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont]=NULL;
     }
     for (cont=1;cont<=numRows;cont++) //Process each row (ignore row 0 with column header names)
     {
         numMatch=0;
-        if (numColumnValues!=0) //If ==0, we process all rows (e.g. GET user class).
+        for (cont2=0;cont2<numColumns;cont2++) //Process each column - first search for filter matches.
         {
-            for (cont2=0;cont2<numColumns;cont2++) //Process each column - first search for filter matches.
+            cmeFree((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]); //Clear memory space before use.
+            if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
+                &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
             {
-                for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
+                if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
                 {
-                    if(strcmp(sqlTable[cont2],columnNames[cont3])==0) //Matches column name.
+                    cmeHMACByteString((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
+                                      &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey);
+                    if (!strncmp(protectedValueMAC,sqlTable[cont*numColumns+cont2],MACLen)) //MAC is correct; proceed with decryption.
                     {
-                        if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
-                            &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
-                        {   //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
-                            if(!cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,cmeDefaultEncAlg,
-                                                          &(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen))
+                        //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
+                        if(!cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2]+MACLen,&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                                      cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen))
+                        {
+                            for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
                             {
-                                if (strcmp(decryptedValue,columnValues[cont3])==0)  //Matches value filter.
+                                if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) && //Matches column name.
+                                    (strcmp((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
                                 {
                                     numMatch++;
                                 }
                             }
-                            cmeFree(decryptedValue);
                         }
-                        else  //We just compare ('salt' and 'id' column names).
-                        {
-                            if (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0)  //Matches value filter.
-                            {
-                                numMatch++;
-                            }
-                        }
+                    }
+                    cmeFree(protectedValueMAC);
+                }
+                else //Error: protectedValue length shouldn't be <= MACLen
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeGetUnprotectDBRegister(), Error, length "
+                            "of protected value (%u) <= length of MAC (%d) for default HMAC alg. %s!\n",
+                            (unsigned int)strlen(sqlTable[cont*numColumns+cont2]),MACLen,cmeDefaultMACAlg);
+#endif
+                }
+            }
+            else  //We just compare ('salt' and 'id' column names).
+            {
+                cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                   "%s",sqlTable[cont*numColumns+cont2]);
+                for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
+                {
+                    if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) && //Matches column name.
+                        (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                    {
+                        numMatch++;
                     }
                 }
             }
@@ -479,33 +684,14 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
                 cmeGetUnprotectDBRegisterFree();
                 return(2);
             }
-            for (cont2=0;cont2<numColumns;cont2++) //Copy all values (unencrypted)
+            for (cont2=0;cont2<numColumns;cont2++) //Clear new value pointers.
             {
                 (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]=NULL; //cmeStrContrAppend requires this for new strings.
-                if ((cont2 !=cmeIDDanydb_salt)&&(cont2!=cmeIDDanydb_id))
-                {   //If SALT or id, we just copy, everything else gets decrypted
-                    result=cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,
-                                                     cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),
-                                                     orgKey,&valueLen);
-                    if (result)
-                    {
-#ifdef DEBUG
-                        fprintf(stdout,"CaumeDSE Warning: cmeGetUnprotectDBRegister(), cmeUnprotectDBSaltedValue() Error, "
-                                "decrypting value! Errorcode %d, valueLen %d.\n",result,valueLen);
-#endif
-                    }
-                    cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                    "%s",decryptedValue);
-                    cmeFree(decryptedValue);
-                }
-                else // Salt,id -> only copy value (nothing to decrypt).
-                {
-                    cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                       "%s",sqlTable[cont*numColumns+cont2]);
-                }
             }
         }
     }
+    cmeGetUnprotectDBRegisterFree();
+    (*numResultRegisters)--; //Adjust number of results by eliminating the last row which is a placeholder for the next "potential" match.
     return(0);
 }
 
@@ -513,28 +699,27 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
                                 const char **columnValues,const int numColumnValues, char ***resultRegisterCols,
                                 int *numResultRegisterCols, int *numResultRegisters, const char *orgKey)
 {
-    int result,cont,cont2,cont3;
+    int result,cont,cont2,cont3,MACLen;
     int valueLen=0;
     int numMatch=0;
     int numRows=0;
     int numColumns=0;
+    char *protectedValueMAC=NULL;
     char *regId=NULL;
     char *query=NULL;
-    char *decryptedValue=NULL;
-    char **resultsRegTmp=NULL;
     char **sqlTable=NULL;
     #define cmeDeleteUnprotectDBRegisterFree() \
         do { \
             cmeFree(query); \
-            cmeFree(decryptedValue); \
             cmeFree(regId); \
+            cmeFree(protectedValueMAC); \
             if (sqlTable) \
             { \
                 cmeMemTableFinal(sqlTable); \
             } \
         } while (0) //Local free() macro.
 
-    *numResultRegisters=0;
+    *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
     //TODO (OHR#3#): Check alternative for enabling tables with no results to return column names as 1st row;
     //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
@@ -552,87 +737,78 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
         return(1);
     }
     *numResultRegisterCols=numColumns;
-    *resultRegisterCols=(char **)malloc(sizeof(char *)*numColumns);  //Allocate space for columNames.
+    *resultRegisterCols=(char **)malloc(sizeof(char *)*numColumns*2);  //Allocate space for colum names and first row of result values.
+    cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value (bytes).
+    MACLen*=2; //Convert byte length to HexStr length.
     for (cont=0;cont<numColumns;cont++) //First copy all column names in the first row.
     {
         (*resultRegisterCols)[cont]=NULL; //cmeStrContrAppend requires this for new strings.
         cmeStrConstrAppend(&((*resultRegisterCols)[cont]),"%s",sqlTable[cont]); //Add header names (row 0).
+        (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont]=NULL;
     }
     for (cont=1;cont<=numRows;cont++) //Process each row (ignore row 0 with column header names)
     {
         numMatch=0; //Reset match counter.
-        if (numColumnValues!=0) //If ==0, we process all rows (e.g. GET user class).
+        cmeFree(regId);
+        for (cont2=0;cont2<numColumns;cont2++) //Process each column - first search for filter matches.
         {
-            for (cont2=0;cont2<numColumns;cont2++) //Process each column - first search for filter matches.
+            cmeFree((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]); //Clear memory space before use.
+            if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
+                &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
             {
-                for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
+                if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
                 {
-                    if(strcmp(sqlTable[cont2],columnNames[cont3])==0) //Matches column name.
+                    cmeHMACByteString((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
+                                      &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey);
+                    if (!strncmp(protectedValueMAC,sqlTable[cont*numColumns+cont2],MACLen)) //MAC is correct; proceed with decryption.
                     {
-                        if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
-                            &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
+                        //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
+                        if(!cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2]+MACLen,&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                                      cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen))
                         {
-                            cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,cmeDefaultEncAlg,
-                                                &(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen);
-                            if (strcmp(decryptedValue,columnValues[cont3])==0)  //Matches value filter.
+                            for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
                             {
-                                numMatch++;
-                            }
-                            cmeFree(decryptedValue);
-                        }
-                        else  //We just compare ('salt' and 'id' column names).
-                        {
-                            if (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0)  //Matches value filter.
-                            {
-                                numMatch++;
+                                if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) &&      //Matches column name.
+                                    (strcmp((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                                {
+                                    numMatch++;
+                                }
                             }
                         }
                     }
+                    cmeFree(protectedValueMAC);
+                }
+                else //Error: protectedValue length shouldn't be <= MACLen
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeGetUnprotectDBRegister(), Error, length "
+                            "of protected value (%u) <= length of MAC (%d) for default HMAC alg. %s!\n",
+                            (unsigned int)strlen(sqlTable[cont*numColumns+cont2]),MACLen,cmeDefaultMACAlg);
+#endif
+                }
+            }
+            else  //We just compare ('salt' and 'id' column names).
+            {
+                cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                   "%s",sqlTable[cont*numColumns+cont2]);
+                for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
+                {
+                    if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) &&      //Matches column name.
+                        (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                    {
+                        numMatch++;
+                    }
+                }
+                if (cont2==cmeIDDanydb_id)
+                {
+                    cmeStrConstrAppend(&regId,"%s",sqlTable[cont*numColumns+cont2]);
                 }
             }
         }
-        if ((numMatch==numColumnValues)||(numColumnValues==0)) //We found all matches in a register; add the results to the result array.
+        if ((numMatch==numColumnValues)||(numColumnValues==0)) //We found all matches in a register; process this row.
         {
             (*numResultRegisters)++;
-            resultsRegTmp=(char **)realloc(*resultRegisterCols,sizeof(char *)*numColumns*((*numResultRegisters)+1));  //realocate space to allow one more register
-            if (resultsRegTmp)
-            {
-                *resultRegisterCols=resultsRegTmp;
-            }
-            else // Realloc error!!!
-            {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeDeleteUnprotectDBRegister(), realloc() Error, can't "
-                        "allocate new memory block of size: %lu\n",sizeof(char *)*numColumns*((*numResultRegisters)+1));
-#endif
-                cmeDeleteUnprotectDBRegisterFree();
-                return(2);
-            }
-
-            for (cont2=0;cont2<numColumns;cont2++) //Copy all values (unencrypted)
-            {
-                (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]=NULL; //cmeStrContrAppend requires this for new strings.
-                if ((cont2 !=cmeIDDanydb_salt)&&(cont2!=cmeIDDanydb_id))
-                {   //Decrypt saltes value (if value is not salted cmeUnprotectDBSaltedValue() will take care of it).
-                    cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,
-                                              cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),
-                                              orgKey,&valueLen);
-                    cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                        "%s",decryptedValue);
-                    cmeFree(decryptedValue);
-                }
-                else // Salt,id -> only copy value (nothing to decrypt).
-                {
-                    cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                       "%s",sqlTable[cont*numColumns+cont2]);
-                    if (cont2==cmeIDDanydb_id)
-                    {
-                        cmeStrConstrAppend(&regId,"%s",sqlTable[cont*numColumns+cont2]);
-                    }
-                }
-            }
             cmeStrConstrAppend(&query,"DELETE FROM %s WHERE id=%s;",tableName,regId);
-            cmeFree(regId);
             result=cmeSQLRows(pDB,(const char *)query,NULL,NULL);
             cmeFree(query);
             if (result) //Error
@@ -642,25 +818,28 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
                         "DELETE, statement: %s\n",query);
 #endif
                 cmeDeleteUnprotectDBRegisterFree();
-                return(3);
+                return(2);
             }
         }
     }
     cmeDeleteUnprotectDBRegisterFree();
+    (*numResultRegisters)--; //Adjust number of results by eliminating the last row which is a placeholder for the next "potential" match.
     return(0);
 }
 
 int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **columnNames,
                               const char **columnValues,const int numColumnValues, const char *orgKey)
 {   //NOTE: Authorization and parameter validation takes place outside (at web interface level!).
-    int cont,result,protectedValueLen;
+    int cont,result,protectedValueLen,protectedValueMACLen;
     char *sqlStatement=NULL;
     char *protectedValue=NULL;
+    char *protectedValueMAC=NULL;
     char *salt=NULL;
     #define cmePostProtectDBRegisterFree() \
         do { \
             cmeFree(sqlStatement); \
             cmeFree(protectedValue); \
+            cmeFree(protectedValueMAC); \
             cmeFree(salt); \
         } while (0) //Local free() macro.
 
@@ -699,8 +878,10 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
         if ((strcmp(columnNames[cont],"salt")!=0)&&(columnValues[cont]!=NULL)) //Skip salt, we will add it at the end.
         {
             cmeProtectDBSaltedValue(columnValues[cont],&protectedValue,cmeDefaultEncAlg,&salt,orgKey,&protectedValueLen);
-            cmeStrConstrAppend(&sqlStatement,"'%s'",protectedValue); //add encrypted (salted) column value to query.
+            cmeHMACByteString((const unsigned char *)protectedValue,(unsigned char **)&protectedValueMAC,protectedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,&salt,orgKey);
+            cmeStrConstrAppend(&sqlStatement,"'%s%s'",protectedValueMAC,protectedValue); //add MAC+Encrypted(salted) column value to query.
             cmeFree(protectedValue);
+            cmeFree(protectedValueMAC);
             if ((cont+1)<numColumnValues)  //Still one left...
             {
                 cmeStrConstrAppend(&sqlStatement,","); //add comma.
@@ -727,7 +908,7 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                                 const char **columnValuesUpdate,const int numColumnValuesUpdate, char ***resultRegisterCols,
                                 int *numResultRegisterCols, int *numResultRegisters, const char *orgKey)
 {
-    int result,cont,cont2,cont3;
+    int result,cont,cont2,cont3,MACLen,protectedValueMACLen;
     int valueLen=0;
     int numMatch=0;
     int numRows=0;
@@ -735,27 +916,23 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
     int encryptedValueLen=0;
     char *regId=NULL;
     char *query=NULL;
-    char *decryptedValue=NULL;
+    char *protectedValueMAC=NULL;
     char *encryptedValue=NULL;
-    char *valueSalt=NULL;
-    char *saltedValue=NULL;
     char **resultsRegTmp=NULL;
     char **sqlTable=NULL;
     #define cmePutProtectDBRegisterFree() \
         do { \
             cmeFree(query); \
             cmeFree(regId); \
-            cmeFree(decryptedValue); \
+            cmeFree(protectedValueMAC); \
             cmeFree(encryptedValue); \
-            cmeFree(valueSalt); \
-            cmeFree(saltedValue); \
             if (sqlTable) \
             { \
                 cmeMemTableFinal(sqlTable); \
             } \
         } while (0) //Local free() macro.
 
-    *numResultRegisters=0;
+    *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
     //TODO (OHR#3#): Check alternative for enabling tables with no results to return column names as 1st row;
     //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
@@ -773,42 +950,71 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
         return(1);
     }
     *numResultRegisterCols=numColumns;
-    *resultRegisterCols=(char **)malloc(sizeof(char *)*numColumns);  //Allocate space for columNames.
+    *resultRegisterCols=(char **)malloc(sizeof(char *)*numColumns*2);  //Allocate space for colum names and first row of result values.
+    cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value.
+    MACLen*=2; //Convert byte length to HexStr length.
     for (cont=0;cont<numColumns;cont++) //First copy all column names in the first row.
     {
         (*resultRegisterCols)[cont]=NULL; //cmeStrContrAppend requires this for new strings.
         cmeStrConstrAppend(&((*resultRegisterCols)[cont]),"%s",sqlTable[cont]); //Add header names (row 0).
+        (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont]=NULL;
     }
     for (cont=1;cont<=numRows;cont++) //Process each row (ignore row 0 with column header names)
     {
         numMatch=0;
-        if (numColumnValues!=0) //If ==0, we process all rows (e.g. PUT user class).
+        cmeFree(regId);
+        for (cont2=0;cont2<numColumns;cont2++) //Process each column - first search for filter matches.
         {
-            for (cont2=0;cont2<numColumns;cont2++) //Process each column - first search for filter matches.
+            cmeFree((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]); //Clear memory space before use.
+            if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
+                &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
             {
-                for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
+                if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
                 {
-                    if(strcmp(sqlTable[cont2],columnNames[cont3])==0) //Matches column name.
+                    cmeHMACByteString((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
+                                      &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey);
+                    if (!strncmp(protectedValueMAC,sqlTable[cont*numColumns+cont2],MACLen)) //MAC is correct; proceed with decryption.
                     {
-                        if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
-                            &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
+                        //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
+                        if(!cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2]+MACLen,&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                                      cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen))
                         {
-                            cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,cmeDefaultEncAlg,
-                                                &(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen);
-                            if (strcmp(decryptedValue,columnValues[cont3])==0)  //Matches value filter.
+                            for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
                             {
-                                numMatch++;
-                            }
-                            cmeFree(decryptedValue);
-                        }
-                        else  //We just compare ('salt' and 'id' column names).
-                        {
-                            if (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0)  //Matches value filter.
-                            {
-                                numMatch++;
+                                if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) && //Matches column name.
+                                    (strcmp((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                                {
+                                    numMatch++;
+                                }
                             }
                         }
                     }
+                    cmeFree(protectedValueMAC);
+                }
+                else //Error: protectedValue length shouldn't be <= MACLen
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmePutProtectDBRegister(), Error, length "
+                            "of protected value (%u) <= length of MAC (%d) for default HMAC alg. %s!\n",
+                            (unsigned int)strlen(sqlTable[cont*numColumns+cont2]),MACLen,cmeDefaultMACAlg);
+#endif
+                }
+            }
+            else  //We just compare ('salt' and 'id' column names).
+            {
+                cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                   "%s",sqlTable[cont*numColumns+cont2]);
+                for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
+                {
+                    if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) && //Matches column name.
+                        (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                    {
+                        numMatch++;
+                    }
+                }
+                if (cont2==cmeIDDanydb_id)
+                {
+                    cmeStrConstrAppend(&regId,"%s",sqlTable[cont*numColumns+cont2]);
                 }
             }
         }
@@ -829,27 +1035,9 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                 cmePutProtectDBRegisterFree();
                 return(2);
             }
-            for (cont2=0;cont2<numColumns;cont2++) //Copy all values (unencrypted)
+            for (cont2=0;cont2<numColumns;cont2++) //Clear new value pointers.
             {
                 (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]=NULL; //cmeStrContrAppend requires this for new strings.
-                if ((cont2 !=cmeIDDanydb_salt)&&(cont2!=cmeIDDanydb_id))
-                {   //If SALT or id, we just copy, everything else gets decrypted
-                    cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2],&decryptedValue,
-                                              cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),
-                                              orgKey,&valueLen);
-                    cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                    "%s",decryptedValue);
-                    cmeFree(decryptedValue);
-                }
-                else // Salt,id -> only copy value (nothing to decrypt).
-                {
-                    cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                       "%s",sqlTable[cont*numColumns+cont2]);
-                    if (cont2==cmeIDDanydb_id)
-                    {
-                        cmeStrConstrAppend(&regId,"%s",sqlTable[cont*numColumns+cont2]);
-                    }
-                }
             }
             cmeStrConstrAppend(&query,"UPDATE %s SET",tableName); //First part.
             for (cont2=0;cont2<numColumnValuesUpdate;cont2++)
@@ -862,17 +1050,16 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                         cmeStrConstrAppend(&query,",");
                     }
                 }
-                else //Encrypt first
+                else //Encrypt then MAC
                 {
-                    cmeGetRndSaltAnySize(&valueSalt,cmeDefaultValueSaltLen);    //Get random salt (16 character 8 byte hexstring).
-                    cmeStrConstrAppend(&saltedValue,"%s%s",valueSalt,columnValuesUpdate[cont2]);  //Append unencrypted value to random salt.
-                    cmeFree(valueSalt);
-                    cmeProtectDBValue(saltedValue,&encryptedValue,cmeDefaultEncAlg,
-                                      &((*resultRegisterCols)[(*numResultRegisters)*numColumns+cmeIDDanydb_salt]),
-                                      orgKey,&encryptedValueLen);   //Encrypt salted value.
-                    cmeFree(saltedValue);
-                    cmeStrConstrAppend(&query," %s='%s'",columnNamesUpdate[cont2],encryptedValue);  //Add encrypted (salted) value to query.
+                    cmeProtectDBSaltedValue(columnValuesUpdate[cont2],&encryptedValue,cmeDefaultEncAlg,
+                                            &((*resultRegisterCols)[((*numResultRegisters)-1)*numColumns+cmeIDDanydb_salt]),
+                                            orgKey,&encryptedValueLen); //Salt and encrypt value.
+                    cmeHMACByteString((const unsigned char *)encryptedValue,(unsigned char **)&protectedValueMAC,encryptedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,
+                                      &((*resultRegisterCols)[((*numResultRegisters)-1)*numColumns+cmeIDDanydb_salt]),orgKey);
+                    cmeStrConstrAppend(&query," %s='%s%s'",columnNamesUpdate[cont2],protectedValueMAC,encryptedValue);  //Add MAC+Encrypted(salted) column value to query.
                     cmeFree(encryptedValue);
+                    cmeFree(protectedValueMAC);
                     if ((cont2+1)<numColumnValuesUpdate) //Still another value left...
                     {
                         cmeStrConstrAppend(&query,",");
@@ -880,7 +1067,6 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                 }
             }
             cmeStrConstrAppend(&query," WHERE id=%s;",regId); //Last part.
-            cmeFree(regId);
             result=cmeSQLRows(pDB,(const char *)query,NULL,NULL);
             cmeFree(query);
             if (result) //Error
@@ -895,6 +1081,7 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
         }
     }
     cmePutProtectDBRegisterFree();
+    (*numResultRegisters)--; //Adjust number of results by eliminating the last row which is a placeholder for the next "potential" match.
     return(0);
 }
 

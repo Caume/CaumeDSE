@@ -296,7 +296,7 @@ registered in organization EngineOrg at the CaumeDSE instance in ip address
 192.168.1.1, you would do an HTTPS GET request with an URI similar to this:
 
 https://192.168.1.1/organizations/EngineOrg/users/EngineAdmin?userId=EngineAdmin&
-orgId=EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+orgId=EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
 
 Check section V for access methods, parameters and examples for each
 resource/ resourceType requests and their expected results.
@@ -354,7 +354,7 @@ certificate value to 'undefined' you would use a PUT request that would look
 similar to this one:
 
 https://192.168.1.1/organizations/EngineOrg/users?userId=EngineAdmin&
-orgId=EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB&_resourceInfo=new&
+orgId=EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC&_resourceInfo=new&
 *certificate=undefined
 
 Attribute parameters could be considered resources contained by the
@@ -840,7 +840,7 @@ engineCommands
 		URI:
 			https://localhost/engineCommands?userId=EngineAdmin&
 			orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&setEnginePower=off
+			0CDBB9AF76AF43BDB72E095989E612CC&setEnginePower=off
 		REQUEST HEADERS:
 			<NONE> 
 		REQUEST BODY:  
@@ -866,7 +866,7 @@ organizations
 			GET
 		URI:
 			https://localhost/organizations?userId=EngineAdmin&
-			orgId=EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			orgId=EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
 			&_publicKey=undefined&outputType=csv
 		REQUEST HEADERS:
 			<NONE>
@@ -895,7 +895,7 @@ organizations
 		URI:
 			https://192.168.0.1/organizations/BusinessOrg?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*resourceInfo=
+			0CDBB9AF76AF43BDB72E095989E612CC&*resourceInfo=
 			new%20organization&*certificate=undefined&*publicKey=
 			undefined&newOrgKey=3132333440414243
 		REQUEST HEADERS: 
@@ -909,7 +909,7 @@ organizations
 		URI:
 			https://localhost/organizations/EngineOrg?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			0CDBB9AF76AF43BDB72E095989E612CC
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -922,7 +922,7 @@ organizations
 		URI:
 			https://localhost/organizations/EngineOrg?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*publicKey=
+			0CDBB9AF76AF43BDB72E095989E612CC&*publicKey=
 			serial%3A10F46D308B39
 		REQUEST HEADERS:
 			<NONE>
@@ -953,7 +953,7 @@ users
 		URI:
 			https://localhost/organizations/EngineOrg/users?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			0CDBB9AF76AF43BDB72E095989E612CC
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -994,7 +994,7 @@ users
 		URI:
 			https://localhost/organizations/EngineOrg/users/user1?
 			userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			0CDBB9AF76AF43BDB72E095989E612CC
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1010,7 +1010,7 @@ users
 		URI:
 			https://192.168.0.1/organizations/BusinessOrg/
 			BusinessAdmin?userId=EngineAdmin&orgId=EngineOrg&
-			orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*resourceInfo=
+			orgKey=0CDBB9AF76AF43BDB72E095989E612CC&*resourceInfo=
 			Administrator&*certificate=undefined&*publicKey=
 			undefined&*basicAuthPwdHash=undefined&
 			*oauthConsumerKey=undefined&*oauthConsumerSecret=
@@ -1046,7 +1046,7 @@ users
 		URI:
 			https://localhost/organizations/EngineOrg/users/
 			EngineAdmin/roleTables/users?userId=EngineAdmin&orgId=
-			EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1066,7 +1066,7 @@ users
 			https://192.168.0.1/organizations/BusinessOrg/
 			BusinessAdmin/roleTables/users?userId=EngineAdmin&
 			orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*_get=1&*_post=0&
+			0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
 			*_put=1&*_delete=0&*_head=1&*_options=1&newOrgKey=
 			3132333440414243
 		REQUEST HEADERS:
@@ -1095,7 +1095,7 @@ storage
 		URI:
 			https://localhost/organizations/EngineOrg/storage?
 			userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&_type=local
+			0CDBB9AF76AF43BDB72E095989E612CC&_type=local
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1108,7 +1108,7 @@ storage
 		URI:
 			https://localhost/organizations/EngineOrg/storage?
 			userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&_location=localhost
+			0CDBB9AF76AF43BDB72E095989E612CC&_location=localhost
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1135,7 +1135,7 @@ storage
 		URI:
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage?userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&_type=local
+			0CDBB9AF76AF43BDB72E095989E612CC&_type=local
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1147,7 +1147,7 @@ storage
 		URI:
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage?userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&*resourceInfo=
+			0CDBB9AF76AF43BDB72E095989E612CC&*resourceInfo=
 			storage%202&*location=localhost&*type=local&*accessPath
 			=/opt/storage2&*accessUser=undefined&*accessPassword=
 			undefined
@@ -1194,7 +1194,7 @@ documents
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.raw/documents?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			0CDBB9AF76AF43BDB72E095989E612CC
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1207,7 +1207,7 @@ documents
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.csv/documents?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			0CDBB9AF76AF43BDB72E095989E612CC
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1235,7 +1235,7 @@ documents
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.raw/documents/
 			myfile.bin?userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			0CDBB9AF76AF43BDB72E095989E612CC
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1269,7 +1269,7 @@ file: <input name="file" type="file" value="myfile.bin"><br>
 userId: <input name="userId" type="text" value="EngineAdmin"><br>
 orgId: <input name="orgId" type="text" value="EngineOrg"><br>
 orgKey: <input name="orgKey" type="password" value=
-"5BA87FBA53CEFA5EAA154EAA4ABEE2FB"><br>
+"0CDBB9AF76AF43BDB72E095989E612CC"><br>
 *resourceInfo: <input name="*resourceInfo" type="text" value=
 "This is a raw file"><br>
 <input type="submit" value=" Send "></form>
@@ -1295,7 +1295,7 @@ EngineOrg
 -----------------------------204285202715621161041257990753
 Content-Disposition: form-data; name="orgKey"
 
-5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+0CDBB9AF76AF43BDB72E095989E612CC
 
 -----------------------------204285202715621161041257990753
 Content-Disposition: form-data; name="*resourceInfo"
@@ -1310,7 +1310,7 @@ This is a raw file
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.raw/documents/
 			myfile.bin?userId=EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			0CDBB9AF76AF43BDB72E095989E612CC
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1357,7 +1357,7 @@ This is a raw file
 			EngineStorage/documentTypes/file.csv/documents/
 			payroll.csv/parserScripts/myscript.pl?userId=
 			EngineAdmin&orgId=EngineOrg&orgKey=
-			5BA87FBA53CEFA5EAA154EAA4ABEE2FB&outputType=csv
+			0CDBB9AF76AF43BDB72E095989E612CC&outputType=csv
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1471,7 +1471,7 @@ content
 			https://localhost/organizations/EngineOrg/storage/
 			EngineStorage/documentTypes/file.csv/documents/
 			payroll.csv/content?userId=EngineAdmin&orgId=EngineOrg
-			&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB&outputType=csv
+			&orgKey=0CDBB9AF76AF43BDB72E095989E612CC&outputType=csv
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:
@@ -1496,7 +1496,7 @@ favicon.ico
 			GET
 		URI:
 			https://localhost/favicon.ico?userId=EngineAdmin&orgId=
-			EngineOrg&orgKey=5BA87FBA53CEFA5EAA154EAA4ABEE2FB
+			EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
 		REQUEST HEADERS:
 			<NONE>
 		REQUEST BODY:

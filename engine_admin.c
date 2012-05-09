@@ -95,7 +95,7 @@ int cmeSetupEngineAdminDBs ()
                                     "CREATE TABLE documents (id INTEGER PRIMARY KEY,"
                                     " userId TEXT, orgId TEXT, salt TEXT, resourceInfo TEXT,"
                                     " columnFile TEXT, type TEXT, documentId TEXT, storageId TEXT, orgResourceId TEXT,"
-                                    " partHash	TEXT, totalParts TEXT, partId TEXT, lastModified TEXT, columnId TEXT); "
+                                    " partMAC TEXT, totalParts TEXT, partId TEXT, lastModified TEXT, columnId TEXT); "
                                     "CREATE TABLE users (id INTEGER PRIMARY KEY,"
                                     " userId TEXT, orgId TEXT, salt TEXT, resourceInfo TEXT,"
                                     " certificate TEXT, publicKey TEXT, userResourceId TEXT, basicAuthPwdHash TEXT,"
@@ -376,12 +376,11 @@ int cmeSetupEngineAdminDBs ()
     return(0);
 }
 
-int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfNames, const char **SQLDBfSalts, const char **SQLDBpartHash,
+int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfNames, const char **SQLDBfSalts, const char **SQLDBpartMAC,
                                const int numSQLDBparts, const char *orgKey, const char *userId, const char *orgId, const char *resourceInfo,
                                const char *type, const char *documentId, const char *storageId, const char *orgResourceId)
-{   //IDD ver. 1.0.19 15nov2011
-    int cont,cont2,result;
-    int written=0;
+{   //IDD ver. 1.0.21
+    int cont,cont2,result,written,written2;
     int numRows=0;
     int numColumns=0;
     time_t timeStamp=0;
@@ -390,13 +389,15 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     sqlite3 *currentDB=NULL;
     sqlite3 *saveDB=NULL;
     char *currentDBName=NULL;
+    char *currentProtectedData=NULL;
+    char *currentDataMAC=NULL;
     char *sqlQuery=NULL;
     char *partId=NULL;              //Will contain the text equivalent of the part number of each column file
     char *totalParts=NULL;          //Will contain the text equivalent total parts per column of each column file
     char *lastModified=NULL;        //Will contain the text equivalent of current date (timestamp)
     char *columnId=NULL;            //Will contain the text equivalent of the column number, so that each part can be reassembled within the corresponding column.
     char **sqlTable=NULL;
-    unsigned char **currentSaltProtectedData=NULL;
+    unsigned char **currentMACProtectedSaltedData=NULL;
     unsigned char *hexStrSalt=NULL;
     #define cmeRegisterSecureDBFree() \
         do { \
@@ -407,13 +408,15 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
             cmeFree(lastModified); \
             cmeFree(columnId); \
             cmeFree(hexStrSalt); \
-            if (currentSaltProtectedData) \
+            cmeFree(currentProtectedData); \
+            cmeFree(currentDataMAC); \
+            if (currentMACProtectedSaltedData) \
             { \
-                for (cont2=0;cont2<numDocumentDBCols;cont2++) \
+                for (cont=0;cont<numDocumentDBCols;cont++) \
                 { \
-                    cmeFree(currentSaltProtectedData[cont2]); \
+                    cmeFree(currentMACProtectedSaltedData[cont]); \
                 } \
-                cmeFree(currentSaltProtectedData); \
+                cmeFree(currentMACProtectedSaltedData); \
             } \
             if (sqlTable) \
             { \
@@ -431,10 +434,10 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
             } \
         } while (0) //Local free() macro
 
-    currentSaltProtectedData=(unsigned char **)malloc((sizeof(unsigned char *))*numDocumentDBCols);
+    currentMACProtectedSaltedData=(unsigned char **)malloc((sizeof(unsigned char *))*numDocumentDBCols);
     for (cont=0;cont<numDocumentDBCols;cont++) //Initialize pointers.
     {
-        currentSaltProtectedData[cont]=NULL;
+        currentMACProtectedSaltedData[cont]=NULL;
     }
     cmeStrConstrAppend(&currentDBName,"%s%s",cmeDefaultFilePath,dbFName);
     result=cmeDBOpen(currentDBName,&currentDB);
@@ -455,39 +458,108 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
         for (cont=0; cont<numSQLDBfNames; cont++) //process column values and insert them into ResourcesDB
         {
             cmeFree(hexStrSalt);
-            if (SQLDBfSalts) //Salts were provided (e.g. for raw files)
+            if (SQLDBfSalts) //Salts were provided (e.g. for raw files), so use them
             {
                 cmeStrConstrAppend((char **)&hexStrSalt,"%s",SQLDBfSalts[cont]); //Use corresponding salt.
             }
+            else //Otherwise, generate own salt for current SQLDBfName.
+            {
+                cmeGetRndSaltAnySize((char **)&hexStrSalt,cmeDefaultSecureDBSaltLen);
+            }
             cmeFree(columnId);
             cmeStrConstrAppend(&columnId,"%d",(cont%(numSQLDBfNames/numSQLDBparts))+1);
-            cmeProtectDBSaltedValue(userId,(char **)&currentSaltProtectedData[0],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //userId.
-            cmeProtectDBSaltedValue(orgId,(char **)&currentSaltProtectedData[1],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //orgId.
-            cmeProtectDBSaltedValue(resourceInfo,(char **)&currentSaltProtectedData[2],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //resourceInfo.
-            cmeProtectDBSaltedValue(type,(char **)&currentSaltProtectedData[3],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //type.
-            cmeProtectDBSaltedValue(documentId,(char **)&currentSaltProtectedData[4],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //documentId.
-            cmeProtectDBSaltedValue(storageId,(char **)&currentSaltProtectedData[5],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //storageId.
-            cmeProtectDBSaltedValue(orgResourceId,(char **)&currentSaltProtectedData[6],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //orgResourceId.
-            cmeProtectDBSaltedValue(lastModified,(char **)&currentSaltProtectedData[7],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //lastModified.
-            cmeProtectDBSaltedValue(columnId,(char **)&currentSaltProtectedData[8],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //columnId.
-            cmeProtectDBSaltedValue(totalParts,(char **)&currentSaltProtectedData[9],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //totalParts.
             cmeFree(partId);
             cmeStrConstrAppend(&partId,"%d",(cont/(numSQLDBfNames/numSQLDBparts))+1);
-            cmeProtectDBSaltedValue(SQLDBfNames[cont],(char **)&currentSaltProtectedData[10],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //columnFile.
-            cmeProtectDBSaltedValue(SQLDBpartHash[cont],(char **)&currentSaltProtectedData[11],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //partHash.
-
-            cmeProtectDBSaltedValue(partId,(char **)&currentSaltProtectedData[12],cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written); //partId.
-            // Insert row in database.
+            //Encrypt with salt each column; then generate its MAC and finally concatenate MAC+EncryptedSaltedValue in currentMACProtectedSaltedData[]:
+            cmeProtectDBSaltedValue(userId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);            //userId.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[0],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(orgId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);             //orgId.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[1],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(resourceInfo,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);      //resourceInfo.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[2],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(type,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);              //type.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[3],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(documentId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);        //documentId.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[4],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(storageId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);         //storageId.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[5],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(orgResourceId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);     //orgResourceId.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[6],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(lastModified,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);      //lastModified.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[7],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(columnId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);          //columnId.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[8],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(totalParts,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);        //totalParts.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[9],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(SQLDBfNames[cont],&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);     //columnFile.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[10],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(SQLDBpartMAC[cont],&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);    //partMAC.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[11],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            cmeProtectDBSaltedValue(partId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);            //partId.
+            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[12],"%s%s",currentDataMAC,currentProtectedData);
+            cmeFree(currentDataMAC);
+            cmeFree(currentProtectedData);
+            // Insert row in database:
             cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; "
                                 "INSERT INTO documents (id, userId, orgId, salt, resourceInfo,"
-                                " columnFile, type, documentId, storageId, orgResourceId, partHash,"
+                                " columnFile, type, documentId, storageId, orgResourceId, partMAC,"
                                 " totalParts, partId, lastModified, columnId)"
                                 "VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
-                                "COMMIT;",currentSaltProtectedData[0],currentSaltProtectedData[1],hexStrSalt,
-                                currentSaltProtectedData[2],currentSaltProtectedData[10],currentSaltProtectedData[3],
-                                currentSaltProtectedData[4],currentSaltProtectedData[5],currentSaltProtectedData[6],
-                                currentSaltProtectedData[11],currentSaltProtectedData[9],currentSaltProtectedData[12],
-                                currentSaltProtectedData[7],currentSaltProtectedData[8]);
+                                "COMMIT;",currentMACProtectedSaltedData[0],currentMACProtectedSaltedData[1],hexStrSalt,
+                                currentMACProtectedSaltedData[2],currentMACProtectedSaltedData[10],currentMACProtectedSaltedData[3],
+                                currentMACProtectedSaltedData[4],currentMACProtectedSaltedData[5],currentMACProtectedSaltedData[6],
+                                currentMACProtectedSaltedData[11],currentMACProtectedSaltedData[9],currentMACProtectedSaltedData[12],
+                                currentMACProtectedSaltedData[7],currentMACProtectedSaltedData[8]);
             if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL)) //insert row.
             {
 #ifdef ERROR_LOG
@@ -498,7 +570,10 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
                 return(2);
             }
             cmeFree(sqlQuery);
-        //    }
+            for (cont2=0;cont2<numDocumentDBCols;cont2++) //Clear protected values placeholders for next iteration.
+            {
+                cmeFree(currentMACProtectedSaltedData[cont2]);
+            }
         }
     }
     result=cmeDBCreateOpen(":memory:",&saveDB);
@@ -511,15 +586,17 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
         cmeRegisterSecureDBFree();
         return(3);
     }
+    //Shuffle encrypted registers in document table after this insertion (we will copy the other tables as well):
+    //Process (copy+shuffle) table documents:
     result=cmeMemTable(currentDB,"PRAGMA empty_result_callbacks = ON; " //TODO (OHR#4#): Make sure we include this at least once to receive empty databases w/ column names.
                        "SELECT userId, orgId, salt, resourceInfo, columnFile, type, documentId, storageId,"
-                       " orgResourceId, partHash, totalParts, partId, lastModified, columnId FROM documents;",
+                       " orgResourceId, partMAC, totalParts, partId, lastModified, columnId FROM documents;",
                        &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
     if (result) //Error
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
-                "'select * from documents' in resourceDB:%s!\n",currentDBName);
+                "'select * from documents' in ResourcesDB: %s!\n",currentDBName);
 #endif
         cmeRegisterSecureDBFree();
         return(4);
@@ -530,6 +607,8 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     }
     result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"documents");
     cmeMemTableFinal(sqlTable);
+    sqlTable=NULL;
+    //Process (copy) table users:
     result=cmeMemTable(currentDB,"SELECT userId, orgId, salt, resourceInfo, certificate, publicKey,"
                        "userResourceId, basicAuthPwdHash, oauthConsumerKey, oauthConsumerSecret, orgResourceId FROM users;",
                        &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
@@ -537,13 +616,15 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
-                "'select * from users' in resourceDB:%s!\n",currentDBName);
+                "'select * from users' in ResourcesDB: %s!\n",currentDBName);
 #endif
         cmeRegisterSecureDBFree();
         return(5);
     }
     result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"users");
     cmeMemTableFinal(sqlTable);
+    sqlTable=NULL;
+    //Process (copy) table organizations:
     result=cmeMemTable(currentDB,"SELECT userId, orgId, salt, resourceInfo, certificate,"
                        "publicKey, orgResourceId FROM organizations;",
                        &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
@@ -551,13 +632,15 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
-                "'select * from organizations' in resourceDB:%s!\n",currentDBName);
+                "'select * from organizations' in ResourcesDB: %s!\n",currentDBName);
 #endif
         cmeRegisterSecureDBFree();
         return(6);
     }
     result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"organizations");
     cmeMemTableFinal(sqlTable);
+    sqlTable=NULL;
+    //Process (copy) table storage:
     result=cmeMemTable(currentDB,"SELECT userId, orgId, salt, resourceInfo, location, type, storageId, "
                        "accessPath, accessUser, accessPassword, orgResourceId FROM storage;",
                        &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
@@ -565,12 +648,47 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
-                "'select * from storage' in resourceDB:%s!\n",currentDBName);
+                "'select * from storage' in ResourcesDB: %s!\n",currentDBName);
 #endif
         cmeRegisterSecureDBFree();
         return(7);
     }
     result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"storage");
+    cmeMemTableFinal(sqlTable);
+    sqlTable=NULL;
+    //Process (copy) table filterWhitelist:
+    result=cmeMemTable(currentDB,"SELECT userId, orgId, salt, _get, _post, _put, _delete, _head, "
+                       "_options, userResourceId, orgResourceId FROM filterWhitelist;",
+                       &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
+    if (result) //Error
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
+                "'select * from filterWhitelist' in ResourcesDB: %s!\n",currentDBName);
+#endif
+        cmeRegisterSecureDBFree();
+        return(8);
+    }
+    result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"filterWhitelist");
+    cmeMemTableFinal(sqlTable);
+    sqlTable=NULL;
+    //Process (copy) table filterBlacklist:
+    result=cmeMemTable(currentDB,"SELECT userId, orgId, salt, _get, _post, _put, _delete, _head, "
+                       "_options, userResourceId, orgResourceId FROM filterBlacklist;",
+                       &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
+    if (result) //Error
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeMemTable() Error, can't "
+                "'select * from filterBlacklist' in ResourcesDB: %s!\n",currentDBName);
+#endif
+        cmeRegisterSecureDBFree();
+        return(9);
+    }
+    result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"filterBlacklist");
+    cmeMemTableFinal(sqlTable);
+    sqlTable=NULL;
+    //Save new ResourcesDB file and end:
     cmeMemDBLoadOrSave(saveDB,currentDBName,1);
     cmeRegisterSecureDBFree();
     return(0);

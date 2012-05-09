@@ -48,6 +48,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 //Test functions for the rest of the engine functions
 void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut);
 void testCryptoDigest_Str(unsigned char *bufIn);
+void testCryptoHMAC ();
 void testPerl (PerlInterpreter *myPerl);
 void testDB (PerlInterpreter* myPerl);
 void testCSV ();

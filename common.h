@@ -103,18 +103,19 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeDefaultValueSaltCharLen 2*cmeDefaultValueSaltLen             //Default size for CaumeDSE ByteHexStr value salts used in protected DBs.
 #define cmeDefaultSqlBufferLen 8192         //Default size of Buffer for SQL queries. {8192}
 #define cmeDefaultEncAlg "aes-256-cbc"      //Default algorithm for symmetric encryption in engine admin. databases.
-#define cmeDefaultHshAlg "sha512"             //Default algorithm for bytestring hashing {digest}.
+#define cmeDefaultHshAlg "sha256"           //Default algorithm for bytestring hashing {digest}.
+#define cmeDefaultMACAlg "sha256"             //Default algorithm for bytestring HMAC MACs .
 #define cmeDefaultInsertSqlRows 512         //Default # of rows to be inserted into a sqlite3 db at a time {within a Begin - Commit block}.
 #define cmeDefaultWebservicePort 80         //Default port for regular HTTP web services.
 #define cmeDefaultWebServiceSSLPort 443     //Default port for TLS/SSL web services.
 #define cmeDefaultThreadWaitSeconds 0                     //Default number of seconds to wait for thread synchronization.
 #define cmeDefaultPerlIterationFunction     "cmePERLProcessRow"               //Name for the perl iteration function to be called when parsing SQL results with PERL
 #define cmeDefaultPerlColNameSetupFunction  "cmePERLProcessColumnNames"       //Name for the perl iteration function to be called when parsing SQL results with PERL
-#define cmeDefaultPBKDFCount 1000           //Default count for the key derivation function, cmePBKDF.
+#define cmeDefaultPBKDFCount 2000           //Default count for the key derivation function, cmePBKDF. {Recommended: 2,000. Note: 10,000 = iOS4; iOS3 uses 2,000, RFC 2898 recommends at least 1,000, but note that high values hava a huge impact on performance since we use a different key (different salt with same organization key) for each element!}.
 #ifdef PBKDF1_OPENSSL_CLI_COMPATIBILITY
 #define cmeDefaultPBKDFVersion PBKDF1_OPENSSL_CLI_COMPATIBILITY //Enable use of old PBKDF1 that is compatible with Openssl command line password KDF {i.e. PKCS5v1.5: MD5 + count=1}. NOT RECOMMENDED!
 #else
-#define cmeDefaultPBKDFVersion 2 //Default PBKDF2 (PKCS5 v2: HMAC-SHA1 + count=cmeDefaultPBKDFCount). Recommended setting.
+#define cmeDefaultPBKDFVersion 2 //Default PBKDF2 (PKCS5 v2: HMAC-SHA1 + count=cmeDefaultPBKDFCount) {Recommended setting}.
 #endif /*PBKDF1_OPENSSL_CLI_COMPATIBILITY*/
 
 #define cmeAdminDefaultUserId "EngineAdmin"            //Default userId for first administrator account.
@@ -122,77 +123,129 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeAdminDefaultOrgId "EngineOrg"               //Default orgId for first administrator account.
                                                        //Note that there is NO default orgKey for EngineOrg... it will be generated randomly the first time the engine is run and won't be stored in clear {so take note!}.
 
-#define cmeInternalDBDefinitionsVersion "1.0.20 dic2011" //Version of internal DB definitions for engine
-//TODO (OHR#4#): Generalize use of IDD in the project (i.e. avoid direct use of numbers and col. names).
-#define cmeIDDanydb_id 0                        //Column index {0 based} for WSID column for most internal sqlite IDs
-#define cmeIDDanydb_userId 1                    //Column index {0 based} for WSID column for most internal sqlite IDs
-#define cmeIDDanydb_orgId 2                     //Column index {0 based} for WSID column for most internal sqlite IDs
-#define cmeIDDanydb_salt 3                      //Column index {0 based} for WSID column for most internal sqlite IDs
-#define cmeIDDColumnFileDataNumCols 11          //# of columns for Data tables in ColumnFile databases
-#define cmeIDDColumnFileMetaNumCols 6           //# of columns for Meta tables in ColumnFile databases
-#define cmeIDDColumnFileMeta_attribute 4            //Column index {0 based} for WSID column
-#define cmeIDDColumnFileMeta_attributeData 5        //Column index {0 based} for WSID column
-#define cmeIDDColumnFileData_value 4                //Column index {0 based} for WSID column
-#define cmeIDDColumnFileData_rowOrder 5             //Column index {0 based} for WSID column
-#define cmeIDDColumnFileData_hash 6                 //Column index {0 based} for WSID column
-#define cmeIDDColumnFileData_signature 7            //Column index {0 based} for WSID column
-#define cmeIDDColumnFileData_hashProtected 8        //Column index {0 based} for WSID column
-#define cmeIDDColumnFileData_signProtected 9        //Column index {0 based} for WSID column
-#define cmeIDDColumnFileData_otphDKey 10            //Column index {0 based} for WSID column
-#define cmeIDDColumnFileMeta_attribute_0 "name"             //Column value {0 based} for WSID column
-#define cmeIDDColumnFileMeta_attribute_1 "shuffle"          //Column value {0 based} for WSID column
-#define cmeIDDColumnFileMeta_attribute_2 "protect"          //Column value {0 based} for WSID column
-#define cmeIDDColumnFileMeta_attribute_3 "sign"             //Column value {0 based} for WSID column
-#define cmeIDDColumnFileMeta_attribute_4 "signProtected"    //Column value {0 based} for WSID column
-#define cmeIDDColumnFileMeta_attribute_5 "hash"             //Column value {0 based} for WSID column
-#define cmeIDDColumnFileMeta_attribute_6 "hashProtected"    //Column value {0 based} for WSID column
-#define cmeIDDResourcesDBDocumentsNumCols 15                //# of columns for User tables in ResourceDB databases
-#define cmeIDDResourcesDBDocuments_resourceInfo 4       //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_columnFile 5         //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_type 6               //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_documentId 7         //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_storageId 8          //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_orgResourceId 9      //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_partHash 10          //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_totalParts 11        //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_partId 12            //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_lastModified 13      //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBDocuments_columnId 14          //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBUsersNumCols 12                //# of columns for User tables in ResourceDB databases
-#define cmeIDDResourcesDBUsers_resourceInfo 4           //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBUsers_certificate 5            //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBUsers_publicKey 6              //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBUsers_userResourceId 7         //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBUsers_basicAuthPwdHash 8       //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBUsers_oauthConsumerKey 9       //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBUsers_oauthConsumerSecret 10   //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBUsers_orgResourceId 11         //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBStorageNumCols 12              //# of columns for Storage tables in ResourceDB databases
-#define cmeIDDResourcesDBStorage_resourceInfo 4         //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBStorage_location 5             //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBStorage_type 6                 //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBStorage_storageId 7            //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBStorage_accessPath 8           //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBStorage_accessUser 9           //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBStorage_accessPassword 10      //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBStorage_orgResourceId 11       //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBOrganizationsNumCols 8         //# of columns for Storage tables in ResourceDB databases
-#define cmeIDDResourcesDBOrganizations_resourceInfo 4   //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBOrganizations_certificate 5    //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBOrganizations_publicKey 6      //Column index {0 based} for WSID column
-#define cmeIDDResourcesDBOrganizations_orgResourceId 7  //Column index {0 based} for WSID column
-#define cmeIDDRolesDBAnyTableNumCols 12                 //# of columns for tables in RolesDB databases
-#define cmeIDDRolesDBAnyTable__get 4                    //Column index {0 based} for WSID column
-#define cmeIDDRolesDBAnyTable__post 5                   //Column index {0 based} for WSID column
-#define cmeIDDRolesDBAnyTable__put 6                    //Column index {0 based} for WSID column
-#define cmeIDDRolesDBAnyTable__delete 7                 //Column index {0 based} for WSID column
-#define cmeIDDRolesDBAnyTable__head 8                   //Column index {0 based} for WSID column
-#define cmeIDDRolesDBAnyTable__options 9                //Column index {0 based} for WSID column
-#define cmeIDDRolesDBAnyTable_userResourceId 10         //Column index {0 based} for WSID column
-#define cmeIDDRolesDBAnyTable_orgResourceId 11          //Column index {0 based} for WSID column
-#define cmeIDDURIMaxDepth 12                            //Max. # of elements in an URI {excluding parameters}.
-#define cmeCopyright "Copyright 2010-2012 by Omar Alejandro Herrera Reyna."   //Copyright string.
+#define cmeInternalDBDefinitionsVersion "1.0.21 May 2012" //Version of internal DB definitions for engine
+// TODO (OHR#4#): Standardize the use of IDD in the project (i.e. avoid direct use of numbers and col. names).
+#define cmeIDDanydb_id 0                        //Column index {0 based} for WSID column for most internal sqlite register id
+#define cmeIDDanydb_id_name "id"                //Column name for WSID column for most internal sqlite register id
+#define cmeIDDanydb_userId 1                    //Column index {0 based} for WSID column for most internal sqlite user id of creator
+#define cmeIDDanydb_userId_name "userId"        //Column name for WSID column for most internal sqlite user id of creator
+#define cmeIDDanydb_orgId 2                     //Column index {0 based} for WSID column for most internal sqlite organization id of creator
+#define cmeIDDanydb_orgId_name "orgId"          //Column name for WSID column for most internal sqlite organization id of creator
+#define cmeIDDanydb_salt 3                      //Column index {0 based} for WSID column for most internal sqlite register salt for encryption
+#define cmeIDDanydb_salt_name "salt"            //Column name for WSID column for most internal sqlite register salt for encryption
+#define cmeIDDColumnFileMetaNumCols 6                               //# of columns for Meta tables in ColumnFile databases
+#define cmeIDDColumnFileMeta_attribute 4                            //Column index {0 based} for WSID column attribute
+#define cmeIDDColumnFileMeta_attribute_name "attribute"             //Column name for WSID column attribute
+#define cmeIDDColumnFileMeta_attributeData 5                        //Column index {0 based} for WSID column attribute data
+#define cmeIDDColumnFileMeta_attributeData_name "attributeData"     //Column name for WSID column attribute data
+#define cmeIDDColumnFileDataNumCols 11                              //# of columns for Data tables in ColumnFile databases
+#define cmeIDDColumnFileData_value 4                                //Column index {0 based} for WSID column value
+#define cmeIDDColumnFileData_value_name "value"                     //Column name for WSID column value
+#define cmeIDDColumnFileData_rowOrder 5                             //Column index {0 based} for WSID column row order
+#define cmeIDDColumnFileData_rowOrder_name "rowOrder"               //Column name for WSID column row order
+#define cmeIDDColumnFileData_MAC 6                                  //Column index {0 based} for WSID column MAC {MAC of data before protection}
+#define cmeIDDColumnFileData_MAC_name "MAC"                         //Column name for WSID column MAC {MAC of data before protection}
+#define cmeIDDColumnFileData_sign 7                            //Column index {0 based} for WSID column digital signature {signed data before protection}
+#define cmeIDDColumnFileData_sign_name "sign"                  //Column name for WSID column digital signature {signed data before protection}
+#define cmeIDDColumnFileData_MACProtected 8                         //Column index {0 based} for WSID column MAC of protected data {MAC after protection}
+#define cmeIDDColumnFileData_MACProtected_name "MACProtected"       //Column name for WSID column MAC of protected data {MAC after protection}
+#define cmeIDDColumnFileData_signProtected 9                        //Column index {0 based} for WSID column digital signature of protected data (DS after protection}
+#define cmeIDDColumnFileData_signProtected_name "signProtected"     //Column name for WSID column digital signature of protected data (DS after protection}
+#define cmeIDDColumnFileData_otphDKey 10                            //Column index {0 based} for WSID column one-time-password homomorphic dynamic key {experimental homomorphic encryption of real numbers}
+#define cmeIDDColumnFileData_otphDKey_name "otphDKey"               //Column index {0 based} for WSID column one-time-password homomorphic dynamic key {experimental homomorphic encryption of real numbers}
+#define cmeIDDColumnFileMeta_attribute_0 "name"                 //Column value {0 based} for WSID column name attribute
+#define cmeIDDColumnFileMeta_attribute_1 "shuffle"              //Column value {0 based} for WSID column shuffle attribute
+#define cmeIDDColumnFileMeta_attribute_2 "protect"              //Column value {0 based} for WSID column protection attribute
+#define cmeIDDColumnFileMeta_attribute_3 "sign"                 //Column value {0 based} for WSID column digital signature before protection attribute
+#define cmeIDDColumnFileMeta_attribute_4 "signProtected"        //Column value {0 based} for WSID column digital signature after protection attribute
+#define cmeIDDColumnFileMeta_attribute_5 "MAC"                  //Column value {0 based} for WSID column MAC before protection attribute
+#define cmeIDDColumnFileMeta_attribute_6 "MACProtected"         //Column value {0 based} for WSID column MAC after protection attribute
+#define cmeIDDResourcesDBDocumentsNumCols 15                            //# of columns for User tables in ResourceDB databases
+#define cmeIDDResourcesDBDocuments_resourceInfo 4                       //Column index {0 based} for WSID column resource information
+#define cmeIDDResourcesDBDocuments_resourceInfo_name "resourceInfo"     //Column name for WSID column resource information
+#define cmeIDDResourcesDBDocuments_columnFile 5                         //Column index {0 based} for WSID column column file
+#define cmeIDDResourcesDBDocuments_columnFile_name "columnFile"         //Column name for WSID column column file
+#define cmeIDDResourcesDBDocuments_type 6                               //Column index {0 based} for WSID column type
+#define cmeIDDResourcesDBDocuments_type_name "type"                     //Column name for WSID column type
+#define cmeIDDResourcesDBDocuments_documentId 7                         //Column index {0 based} for WSID column document id
+#define cmeIDDResourcesDBDocuments_documentId_name "documentId"         //Column name for WSID column document id
+#define cmeIDDResourcesDBDocuments_storageId 8                          //Column index {0 based} for WSID column storage id
+#define cmeIDDResourcesDBDocuments_storageId_name "storageId"           //Column name for WSID column storage id
+#define cmeIDDResourcesDBDocuments_orgResourceId 9                      //Column index {0 based} for WSID column organization resource id
+#define cmeIDDResourcesDBDocuments_orgResourceId_name "orgResourceId"   //Column name for WSID column organization resource id
+#define cmeIDDResourcesDBDocuments_partMAC 10                           //Column index {0 based} for WSID column MAC of file part (MAC after encryption}
+#define cmeIDDResourcesDBDocuments_partMAC_name "partMAC"               //Column name for WSID column MAC of file part (MAC after encryption}
+#define cmeIDDResourcesDBDocuments_totalParts 11                        //Column index {0 based} for WSID column total file parts
+#define cmeIDDResourcesDBDocuments_totalParts_name "totalParts"         //Column name for WSID column total file parts
+#define cmeIDDResourcesDBDocuments_partId 12                            //Column index {0 based} for WSID column file part id
+#define cmeIDDResourcesDBDocuments_partId_name "partId"                 //Column name for WSID column file part id
+#define cmeIDDResourcesDBDocuments_lastModified 13                      //Column index {0 based} for WSID column last modified date {UNIX/POSIX time}
+#define cmeIDDResourcesDBDocuments_lastModified_name "lastModified"     //Column name for WSID column last modified date {UNIX/POSIX time}
+#define cmeIDDResourcesDBDocuments_columnId 14                          //Column index {0 based} for WSID column column id
+#define cmeIDDResourcesDBDocuments_columnId_name "columnId"             //Column name for WSID column column id
+#define cmeIDDResourcesDBUsersNumCols 12                                //# of columns for User tables in ResourceDB databases
+#define cmeIDDResourcesDBUsers_resourceInfo 4                           //Column index {0 based} for WSID column resource information
+#define cmeIDDResourcesDBUsers_resourceInfo_name "resourceInfo"         //Column name for WSID column resource information
+#define cmeIDDResourcesDBUsers_certificate 5                            //Column index {0 based} for WSID column user digital certificate
+#define cmeIDDResourcesDBUsers_certificate_name "certificate"           //Column name for WSID column user digital certificate
+#define cmeIDDResourcesDBUsers_publicKey 6                              //Column index {0 based} for WSID column user publick key
+#define cmeIDDResourcesDBUsers_publicKey_name "publicKey"               //Column name for WSID column user publick key
+#define cmeIDDResourcesDBUsers_userResourceId 7                         //Column index {0 based} for WSID column user resource id
+#define cmeIDDResourcesDBUsers_userResourceId_name "userResourceId"     //Column name for WSID column user resource id
+#define cmeIDDResourcesDBUsers_basicAuthPwdHash 8                       //Column index {0 based} for WSID column user 'basic authentication' password hash
+#define cmeIDDResourcesDBUsers_basicAuthPwdHash_name "basicAuthPwdHash" //Column name for WSID column user 'basic authentication' password hash
+#define cmeIDDResourcesDBUsers_oauthConsumerKey 9                       //Column index {0 based} for WSID column user OAUTH consumer key
+#define cmeIDDResourcesDBUsers_oauthConsumerKey_name "oauthConsumerKey" //Column name for WSID column user OAUTH consumer key
+#define cmeIDDResourcesDBUsers_oauthConsumerSecret 10                   //Column index {0 based} for WSID column user OAUTH consumer secret
+#define cmeIDDResourcesDBUsers_oauthConsumerSecret_name "oauthConsumerSecret"   //Column index {0 based} for WSID column user OAUTH consumer secret
+#define cmeIDDResourcesDBUsers_orgResourceId 11                         //Column index {0 based} for WSID column user organization resource id
+#define cmeIDDResourcesDBUsers_orgResourceId_name "orgResourceId"       //Column name for WSID column user organization resource id
+#define cmeIDDResourcesDBStorageNumCols 12                              //# of columns for Storage tables in ResourceDB databases
+#define cmeIDDResourcesDBStorage_resourceInfo 4                         //Column index {0 based} for WSID column storage resource information
+#define cmeIDDResourcesDBStorage_resourceInfo_name "resourceInfo"       //Column name for WSID column storage resource information
+#define cmeIDDResourcesDBStorage_location 5                             //Column index {0 based} for WSID column storage location
+#define cmeIDDResourcesDBStorage_location_name "location"               //Column name for WSID column storage location
+#define cmeIDDResourcesDBStorage_type 6                                 //Column index {0 based} for WSID column storage type
+#define cmeIDDResourcesDBStorage_type_name "type"                       //Column name for WSID column storage type
+#define cmeIDDResourcesDBStorage_storageId 7                            //Column index {0 based} for WSID column storage id
+#define cmeIDDResourcesDBStorage_storageId_name "storageId"             //Column name for WSID column storage id
+#define cmeIDDResourcesDBStorage_accessPath 8                           //Column index {0 based} for WSID column storage access path
+#define cmeIDDResourcesDBStorage_accessPath_name "accessPath"           //Column name for WSID column storage access path
+#define cmeIDDResourcesDBStorage_accessUser 9                           //Column index {0 based} for WSID column storage access user id
+#define cmeIDDResourcesDBStorage_accessUser_name "accessUser"           //Column name for WSID column storage access user id
+#define cmeIDDResourcesDBStorage_accessPassword 10                      //Column index {0 based} for WSID column storae access user password/key/secret
+#define cmeIDDResourcesDBStorage_accessPassword_name "accessPassword"   //Column name for WSID column storae access user password/key/secret
+#define cmeIDDResourcesDBStorage_orgResourceId 11                       //Column index {0 based} for WSID column storage organization resource id
+#define cmeIDDResourcesDBStorage_orgResourceId_name "orgResourceId"     //Column name for WSID column storage organization resource id
+#define cmeIDDResourcesDBOrganizationsNumCols 8                         //# of columns for Storage tables in ResourceDB databases
+#define cmeIDDResourcesDBOrganizations_resourceInfo 4                   //Column index {0 based} for WSID column organization resource information
+#define cmeIDDResourcesDBOrganizations_resourceInfo_name "resourceInfo" //Column name for WSID column organization resource information
+#define cmeIDDResourcesDBOrganizations_certificate 5                    //Column index {0 based} for WSID column organization digital certificate
+#define cmeIDDResourcesDBOrganizations_certificate_name "certificate"   //Column name for WSID column organization digital certificate
+#define cmeIDDResourcesDBOrganizations_publicKey 6                      //Column index {0 based} for WSID column organization public key
+#define cmeIDDResourcesDBOrganizations_publicKey_name "publicKey"       //Column name for WSID column organization public key
+#define cmeIDDResourcesDBOrganizations_orgResourceId 7                  //Column index {0 based} for WSID column organization resource id that created this organization
+#define cmeIDDResourcesDBOrganizations_orgResourceId_name "orgResourceId"   //Column name for WSID column organization resource id that created this organization
+#define cmeIDDRolesDBAnyTableNumCols 12                             //# of columns for tables in RolesDB databases
+#define cmeIDDRolesDBAnyTable__get 4                                //Column index {0 based} for WSID column GET method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__get_name "_get"                      //Column name for WSID column GET method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__post 5                               //Column index {0 based} for WSID column POST method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__post_name "_post"                    //Column name for WSID column POST method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__put 6                                //Column index {0 based} for WSID column PUT method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__put_name "_put"                      //Column name for WSID column PUT method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__delete 7                             //Column index {0 based} for WSID column DELETE method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__delete_name "_delete"                //Column name for WSID column DELETE method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__head 8                               //Column index {0 based} for WSID column HEAD method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__head_name "_head"                    //Column name for WSID column HEAD method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__options 9                            //Column index {0 based} for WSID column OPTIONS method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable__options_name "_options"              //Column name for WSID column OPTIONS method permissions ('1'=allow, '0'=disallow)
+#define cmeIDDRolesDBAnyTable_userResourceId 10                     //Column index {0 based} for WSID column user resource id for which permissions apply
+#define cmeIDDRolesDBAnyTable_userResourceId_name "userResourceId"  //Column name for WSID column user resource id for which permissions apply
+#define cmeIDDRolesDBAnyTable_orgResourceId 11                      //Column index {0 based} for WSID column organization resource id of user for which permissions apply
+#define cmeIDDRolesDBAnyTable_orgResourceId_name "orgResourceId"    //Column name for WSID column organization resource id of user for which permissions apply
+#define cmeIDDURIMaxDepth 12                                        //Max. # of elements in an URI {excluding parameters}.
 
+#define cmeCopyright "Copyright 2010-2012 by Omar Alejandro Herrera Reyna."   //Copyright string.
 #ifdef PACKAGE_VERSION
 #define cmeEngineVersion PACKAGE_VERSION
 #else

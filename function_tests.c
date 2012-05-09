@@ -133,25 +133,26 @@ void testCryptoDigest_Str(unsigned char *bufIn)
     unsigned char *digest_str=NULL;
     EVP_MD_CTX *ctx2=NULL;
     EVP_MD *digest=NULL;
-    unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
-    unsigned char b64str[] ="UmVtYXJrcw0KVGhlIGNsZWFyZXJyIGZ1bmN0aW9uIHJlc2V0cyB0aGUgZXJyb3Ig\n"
-                            "aW5kaWNhdG9yIGFuZCBlbmQtb2YtZmlsZSBpbmRpY2F0b3IgZm9yIHN0cmVhbS4g\n"
-                            "RXJyb3IgaW5kaWNhdG9ycyBhcmUgbm90IGF1dG9tYXRpY2FsbHkgY2xlYXJlZDsg\n"
-                            "b25jZSB0aGUgZXJyb3IgaW5kaWNhdG9yIGZvciBhIHNwZWNpZmllZCBzdHJlYW0g\n"
-                            "aXMgc2V0LCBvcGVyYXRpb25zIG9uIHRoYXQgc3RyZWFtIGNvbnRpbnVlIHRvIHJl\n"
-                            "dHVybiBhbiBlcnJvciB2YWx1ZSB1bnRpbCBjbGVhcmVyciwgZnNlZWssIGZzZXRw\n"
-                            "b3MsIG9yIHJld2luZCBpcyBjYWxsZWQuDQoNCklmIHN0cmVhbSBpcyBOVUxMLCB0\n"
-                            "aGUgaW52YWxpZCBwYXJhbWV0ZXIgDQoNCg0KDQo=\n";
-    char algorithm2[] = "md5";
+    const unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
+    const unsigned char b64str[] =  "UmVtYXJrcw0KVGhlIGNsZWFyZXJyIGZ1bmN0aW9uIHJlc2V0cyB0aGUgZXJyb3Ig\n"
+                                    "aW5kaWNhdG9yIGFuZCBlbmQtb2YtZmlsZSBpbmRpY2F0b3IgZm9yIHN0cmVhbS4g\n"
+                                    "RXJyb3IgaW5kaWNhdG9ycyBhcmUgbm90IGF1dG9tYXRpY2FsbHkgY2xlYXJlZDsg\n"
+                                    "b25jZSB0aGUgZXJyb3IgaW5kaWNhdG9yIGZvciBhIHNwZWNpZmllZCBzdHJlYW0g\n"
+                                    "aXMgc2V0LCBvcGVyYXRpb25zIG9uIHRoYXQgc3RyZWFtIGNvbnRpbnVlIHRvIHJl\n"
+                                    "dHVybiBhbiBlcnJvciB2YWx1ZSB1bnRpbCBjbGVhcmVyciwgZnNlZWssIGZzZXRw\n"
+                                    "b3MsIG9yIHJld2luZCBpcyBjYWxsZWQuDQoNCklmIHN0cmVhbSBpcyBOVUxMLCB0\n"
+                                    "aGUgaW52YWxpZCBwYXJhbWV0ZXIgDQoNCg0KDQo=\n";
+    const char algorithm2[] = cmeDefaultHshAlg;
     char *resultStr=NULL;
     unsigned char *bufOut=NULL;
 
-    digest_bytes=(unsigned char *)malloc(200);
+    digest_bytes=(unsigned char *)malloc(EVP_MAX_MD_SIZE);
     cmeGetDigest(&digest,algorithm2);
     cmeDigestInit(&ctx2,NULL,digest);
     cont2=0;
     ctSize=strlen((char *)cleartext);
-    printf ("---ctSize: %d\n",ctSize);
+    printf ("--- HASH parameters - algorithm: %s\n",cmeDefaultHshAlg);
+    printf ("--- HASH cleartext Size: %d\n",ctSize);
     for (cont=0; cont<(ctSize/evpBufferSize); cont++)
     {
         memcpy(bufIn,&cleartext[cont2],evpBufferSize);
@@ -166,15 +167,15 @@ void testCryptoDigest_Str(unsigned char *bufIn)
     }
     cmeDigestFinal(&ctx2,digest_bytes,(unsigned int *)&written);
     cont3 = written;
-    printf ("---dgSize (bytes): %d\n",cont3);
+    printf ("--- HASH digest Size (bytes): %d\n",cont3);
 
     cmeBytesToHexstr(digest_bytes,&digest_str,cont3);
-    printf ("digest: \n%s\n",digest_str);
+    printf ("HASH digest: \n%s\n",digest_str);
 
     cmeFree(digest_str); //Now we repeat the process with the integrated function in 1 step
     cmeDigestByteString(cleartext,&digest_str,strlen((const char *)cleartext),&written,algorithm2);
-    printf ("---dgSize (chars) with integrated function: %d\n",written);
-    printf ("digest with integrated function: \n%s\n",digest_str);
+    printf ("--- HASH digest Size (chars) with integrated function: %d\n",written);
+    printf ("HASH digest with integrated function: \n%s\n",digest_str);
 
     memset(bufIn,0,evpBufferSize);
     memcpy(bufIn,digest_bytes,cont3);
@@ -216,14 +217,67 @@ void testCryptoDigest_Str(unsigned char *bufIn)
     cmeB64ToStr(bufIn,&bufOut,cont3,&written);
     printf ("B64ToStr:\n%s\n",bufOut);
 
-    cmeStrConstrAppend (&resultStr, "Hola %d",2);
-    cmeStrConstrAppend (&resultStr, " Mundo!\n %s\n","Cruel");
+    cmeStrConstrAppend (&resultStr, "Hello %d",2);
+    cmeStrConstrAppend (&resultStr, " World!\n %s\n","Goodbye World");
     printf("cmeStrConstrAppend () test: %s",resultStr);
     cmeFree (resultStr);
 
     cmeFree(bufOut);
     cmeFree(digest_bytes);
     cmeFree(digest_str);
+}
+
+void testCryptoHMAC ()
+{
+    int cont,cont2,written,ctSize;
+    int localBuferSize=10;                  //Set local buffer size smaller than cleartext length to test HMAC iteration.
+    unsigned char localBuffer[10];
+    unsigned char *HMACBytes=NULL;
+    unsigned char *HMACStr=NULL;
+    HMAC_CTX *ctx=NULL;
+    EVP_MD *digest=NULL;
+    const unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
+    const char dgstAlg[] = cmeDefaultMACAlg;
+    const char key[] = "HMAC test key";
+    const char *salt = "C02002FD232CCA6809840668C26DB385";
+
+    HMACBytes=(unsigned char *)malloc(EVP_MAX_MD_SIZE);
+    if (cmeGetDigest(&digest,dgstAlg))
+    {
+        printf ("TESTS: testCryptoHMAC (), Error in cmeGetDigest() with default MAC algorithm %s!\n",cmeDefaultMACAlg);
+        return;
+    }
+    cmeHMACInit(&ctx,NULL,digest,key,strlen(key));
+    cont2=0;
+    ctSize=strlen((char *)cleartext);
+    printf ("--- HMAC parameters - algorithm: %s, user key: %s\n",cmeDefaultMACAlg,key);
+    printf ("--- HMAC Cleartext Size: %d\n",ctSize);
+    for (cont=0; cont<(ctSize/localBuferSize); cont++)
+    {
+        memcpy(localBuffer,&cleartext[cont2],localBuferSize);
+        cmeHMACUpdate(ctx,localBuffer,localBuferSize);
+        cont2 += localBuferSize;
+    }
+    if (ctSize % localBuferSize)
+    {
+        memcpy(localBuffer,&cleartext[cont2],ctSize % localBuferSize);
+        cmeHMACUpdate(ctx,localBuffer,ctSize % localBuferSize);
+        cont2 += (ctSize % localBuferSize);
+    }
+    cmeHMACFinal(&ctx,HMACBytes,(unsigned int *)&written);
+    printf ("--- HMAC MAC Size (bytes): %d\n",written);
+
+    cmeBytesToHexstr(HMACBytes,&HMACStr,written);
+    printf ("HMAC MAC: %s\n",HMACStr);
+
+    printf ("--- HMAC parameters - algorithm: %s, password (PBKDF): %s, salt (PBKDF): %s\n",cmeDefaultMACAlg,key,salt);
+    cmeFree(HMACStr); //Now we repeat the process with the integrated function in 1 step
+    cmeHMACByteString(cleartext,&HMACStr,strlen((const char *)cleartext),&written,dgstAlg,(char **)&salt,key);
+    printf ("--- HMAC MAC Size (chars) with integrated function: %d\n",written);
+    printf ("HMAC MAC with integrated function (derives key from PBKDF): %s\n",HMACStr);
+
+    cmeFree(HMACBytes);
+    cmeFree(HMACStr);
 }
 
 void testPerl (PerlInterpreter *myPerl)

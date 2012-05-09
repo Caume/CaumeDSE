@@ -123,6 +123,7 @@ int main(int argc, char *argv[], char *env[])
     testEngMgmnt();#ifdef DEBUG    // TODO (OHR#2#): Move tests to their own executable and add test checking to the configure script.
     testCryptoSymmetric(bufIn,bufOut);
     testCryptoDigest_Str(bufIn);
+    testCryptoHMAC();
     testPerl(cdsePerl);
     testDB(cdsePerl);
     testCSV();

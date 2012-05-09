@@ -477,8 +477,9 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
     sqlite3 *existsDB=NULL;
     sqlite3_int64 existRows=0;
     char **elements=NULL;               //Note: elements will be freed via the special function cmeCSVFileRowsToMemTableFinal() within the corresponding loop; it is not included in cmeCSVFileToSecureDBFree()
-    char **SQLDBfNames=NULL;            //Will hold the names of each file part
-    char **SQLDBfHashes=NULL;           //Will hold the hashes of each file part.
+    char **SQLDBfNames=NULL;            //Will hold the name of each file part.
+    char **SQLDBfMACs=NULL;             //Will hold the MAC of each file part.
+    char **SQLDBfSalts=NULL;            //Will hold the salt of each file part.
     char **colNames=NULL;
     char *currentRawFileContent=NULL;   //Will hold the binary contents of each created file part during the hashing process.
     char *resourcesDBName=NULL;
@@ -487,9 +488,9 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
     char *bkpFName=NULL;
     char *securedRowOrder=NULL;
     char *securedValue=NULL;
-    char *hash=NULL;                    //'data' table values depending on attributes selected.
+    char *MAC=NULL;                    //'data' table values depending on attributes selected.
     char *salt=NULL;
-    char *hashProtected=NULL;
+    char *MACProtected=NULL;
     char *sign=NULL;
     char *signProtected=NULL;
     char *otphDkey=NULL;
@@ -503,9 +504,9 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             cmeFree(bkpFName); \
             cmeFree(securedRowOrder); \
             cmeFree(securedValue); \
-            cmeFree(hash); \
+            cmeFree(MAC); \
             cmeFree(salt); \
-            cmeFree(hashProtected); \
+            cmeFree(MACProtected); \
             cmeFree(sign); \
             cmeFree(signProtected); \
             cmeFree(otphDkey); \
@@ -537,13 +538,21 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                 } \
                 cmeFree(SQLDBfNames); \
             } \
-            if (SQLDBfHashes) \
+            if (SQLDBfMACs) \
             { \
                 for (cont=0;cont<numSQLDBfNames;cont++) \
                 { \
-                    cmeFree(SQLDBfHashes[cont]); \
+                    cmeFree(SQLDBfMACs[cont]); \
                 } \
-                cmeFree(SQLDBfHashes); \
+                cmeFree(SQLDBfMACs); \
+            } \
+            if (SQLDBfSalts) \
+            { \
+                for (cont=0;cont<numSQLDBfNames;cont++) \
+                { \
+                    cmeFree(SQLDBfSalts[cont]); \
+                } \
+                cmeFree(SQLDBfSalts); \
             } \
             if (colNames) \
             { \
@@ -630,8 +639,9 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                 return(5);
             }
             SQLDBfNames=(char **)malloc(sizeof(char *)*numSQLDBfNames);
-            SQLDBfHashes=(char **)malloc(sizeof(char *)*numSQLDBfNames);
-            if ((!SQLDBfNames)||(!SQLDBfHashes))
+            SQLDBfMACs=(char **)malloc(sizeof(char *)*numSQLDBfNames);
+            SQLDBfSalts=(char **)malloc(sizeof(char *)*numSQLDBfNames);
+            if ((!SQLDBfNames)||(!SQLDBfMACs)||(!SQLDBfSalts))
             {
                 cmeCSVFileToSecureDBFree();
                 return(6);
@@ -639,7 +649,9 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             for(cont=0;cont<numSQLDBfNames;cont++) //Reset memory pointers
             {
                 SQLDBfNames[cont]=NULL;
-                SQLDBfHashes[cont]=NULL;
+                SQLDBfMACs[cont]=NULL;
+                SQLDBfSalts[cont]=NULL;
+                cmeGetRndSaltAnySize(&(SQLDBfSalts[cont]),cmeDefaultValueSaltLen); //Get current salt for encryption (random hexstr).
             }
             for (cont=0;cont<numSQLDBfNames;cont++) //Create random filenames for column parts.
             {
@@ -656,7 +668,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                 }
                 cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE data "
                                     "(id INTEGER PRIMARY KEY, userId TEXT, orgId TEXT, salt TEXT,"
-                                    " value TEXT, rowOrder TEXT, hash TEXT, sign TEXT, hashProtected TEXT,"
+                                    " value TEXT, rowOrder TEXT, MAC TEXT, sign TEXT, MACProtected TEXT,"
                                     " signProtected TEXT, otphDkey TEXT);"
                                     "COMMIT;");
                 if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'data'.
@@ -728,24 +740,24 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                     value=elements[cont2+((*numCols)*(cont3+cont*cmeMaxCSVRowsInPart))];
                     //Setup attributes defaults.
                     cmeStrConstrAppend(&securedRowOrder,"%d",cont3+rowStart+cont*cmeMaxCSVRowsInPart);
-                    cmeStrConstrAppend(&hash,"%s",nullParam); // TODO (OHR#2#): Calculate hash, hash protected and stuff. Probably outside this function.
-                    cmeStrConstrAppend(&hashProtected,"%s",nullParam);
+                    cmeStrConstrAppend(&MAC,"%s",nullParam); // TODO (OHR#2#): Calculate MAC, MAC protected and stuff. Probably outside this function.
+                    cmeStrConstrAppend(&MACProtected,"%s",nullParam);
                     cmeStrConstrAppend(&sign,"%s",nullParam);
                     cmeStrConstrAppend(&signProtected,"%s",nullParam);
                     cmeStrConstrAppend(&otphDkey,"%s",nullParam);
                     cmeStrConstrAppend(&salt,"%s",nullParam);   //salt should allways be defined!!.
                     cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; INSERT INTO data "
-                                                "(id,userId,orgId,salt,value,rowOrder,hash,sign,hashProtected,signProtected,otphDkey)"
+                                                "(id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey)"
                                                 " VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
-                                                "COMMIT;",userId,orgId,salt,value,securedRowOrder,hash,sign,
-                                                hashProtected,signProtected,otphDkey);
+                                                "COMMIT;",userId,orgId,salt,value,securedRowOrder,MAC,sign,
+                                                MACProtected,signProtected,otphDkey);
                     //Free stuff;
                     cmeFree(salt);
                     cmeFree(otphDkey);
                     cmeFree(signProtected);
                     cmeFree(sign);
-                    cmeFree(hashProtected);
-                    cmeFree(hash);
+                    cmeFree(MACProtected);
+                    cmeFree(MAC);
                     cmeFree(securedRowOrder);
                     if (cmeSQLRows((ppDB[(*numCols)*cont+cont2]),sqlQuery,NULL,NULL)) //Insert row.
                     {
@@ -795,7 +807,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             cmeCSVFileToSecureDBFree();
             return(15);
         }
-        //Get hash of recently created file:
+        //Get MAC of recently created file:
         result=cmeLoadStrFromFile(&currentRawFileContent,bkpFName,&readBytes);
         if (result)
         {
@@ -806,11 +818,11 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             cmeCSVFileToSecureDBFree();
             return(16);
         }
-        result=cmeDigestByteString((const unsigned char *)currentRawFileContent,(unsigned char **)&(SQLDBfHashes[cont]),readBytes,&written,cmeDefaultHshAlg);
+        result=cmeHMACByteString((const unsigned char *)currentRawFileContent,(unsigned char **)&(SQLDBfMACs[cont]),readBytes,&written,cmeDefaultMACAlg,&(SQLDBfSalts[cont]),orgKey);
         cmeFree(currentRawFileContent);
         cmeFree(bkpFName);
     }
-    result=cmeRegisterSecureDBorFile ((const char **)SQLDBfNames, numSQLDBfNames, NULL, (const char **)SQLDBfHashes,totalParts,orgKey, userId, orgId, resourceInfo,
+    result=cmeRegisterSecureDBorFile ((const char **)SQLDBfNames, numSQLDBfNames,(const char **)SQLDBfSalts, (const char **)SQLDBfMACs,totalParts,orgKey, userId, orgId, resourceInfo,
                                        documentType,documentId,storageId,orgId);
     if (result) //error
     {
@@ -828,7 +840,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
 int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const char *orgId,const char *orgKey,
                             const char *resourceInfo, const char *documentType, const char *documentId,
                             const char *storageId, const char *storagePath)
-{   //IDD v.1.0.20
+{   //IDD v.1.0.21
     int cont,result,written,written2,lastPartSize;
     int bufferLen=0;
     int numParts=0;
@@ -839,7 +851,7 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
     char *currentFilePartPath=NULL; //This will hold the whole file path for the current file part.
     const char *pFilePartStart=NULL;      //This will point to the start of each file slice (no need to free this ptr).
     char **filePartNames=NULL;      //This will hold the random file part names.
-    char **filePartHashes=NULL;     //This will hold the hashes for all file parts.
+    char **filePartMACs=NULL;       //This will hold the MACs for all file parts.
     char **filePartSalts=NULL;      //This will hold the salts for all file parts.
 
     #define cmeRAWFileToSecureFileFree() \
@@ -856,13 +868,13 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
                 } \
                 cmeFree(filePartNames); \
             } \
-            if (filePartHashes) \
+            if (filePartMACs) \
             { \
                 for (cont=0;cont<numParts;cont++) \
                 { \
-                    cmeFree(filePartHashes[cont]); \
+                    cmeFree(filePartMACs[cont]); \
                 } \
-                cmeFree(filePartHashes); \
+                cmeFree(filePartMACs); \
             } \
             if (filePartSalts) \
             { \
@@ -892,11 +904,11 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
         numParts++;
     }
     filePartNames=(char **)malloc(sizeof(char *)*numParts); //Reserve memory for file part name pointers.
-    filePartHashes=(char **)malloc(sizeof(char *)*numParts); //Reserve memory for file part hash pointers.
+    filePartMACs=(char **)malloc(sizeof(char *)*numParts); //Reserve memory for file part MAC pointers.
     filePartSalts=(char **)malloc(sizeof(char *)*numParts); //Reserve memory for file part salt pointers.
     for(cont=0;cont<numParts; cont++) // Initialize pointers.
     {
-        filePartHashes[cont]=NULL;
+        filePartMACs[cont]=NULL;
         filePartNames[cont]=NULL;
         filePartSalts[cont]=NULL;
         cmeGetRndSalt(&(filePartNames[cont]));  //Get current file name (random hexstr).
@@ -915,7 +927,6 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
         {
             bufferLen=cmeMaxRAWDataInPart;
         }
-        // TODO (OHR#3#): Replace calls to cmeCipherByteString() + cmeStrToB64() with a single call to cmeProtectDBValue().
         //Protect memory data with orgKey and default encryption algorithm:
         result=cmeProtectByteString(pFilePartStart,&tmpMemB64Ciphertext,cmeDefaultEncAlg,&(filePartSalts[cont]),orgKey,
                                     &written,bufferLen);
@@ -929,12 +940,13 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
             return(2);
         }
         cmeWriteStrToFile(tmpMemB64Ciphertext,currentFilePartPath,written);  //Write encrypted data to currentFilePartPath file.
-        cmeDigestByteString((const unsigned char *)tmpMemB64Ciphertext,(unsigned char **)&(filePartHashes[cont]),written,&written2,cmeDefaultHshAlg); //Calculate hash on file part in memory.
+        cmeHMACByteString((const unsigned char *)tmpMemB64Ciphertext,(unsigned char **)&(filePartMACs[cont]),written,&written2,
+                          cmeDefaultHshAlg,&(filePartSalts[cont]),orgKey); //Calculate MAC on file part in memory.
         cmeFree(tmpMemB64Ciphertext); //Free B64 encoded, encryptede data; we don't need it any more.
         cmeFree(currentFilePartPath);
     }
     //Register parts as a secure file in engine DBs
-    result=cmeRegisterSecureDBorFile ((const char **)filePartNames,numParts,(const char **)filePartSalts,(const char **)filePartHashes,
+    result=cmeRegisterSecureDBorFile ((const char **)filePartNames,numParts,(const char **)filePartSalts,(const char **)filePartMACs,
                                       numParts,orgKey,userId,orgId,resourceInfo,documentType,documentId,storageId,orgId);
     if (result)//Error
     {
@@ -948,23 +960,26 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
 int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
                                const char *documentType, const char *documentPath, const char *orgId,
                                const char *storageId, const char *orgKey)
-{
-    int cont,cont2,result,written;
+{   //IDD v.1.0.21
+    int cont,cont2,result,written,written2,MACLen;
     int numRows=0;
     int numCols=0;
     int dbNumCols=0;
+    int partMACmismatch=0;
     FILE *fpTmpRAWFile=NULL;
     int *memFilePartsOrder=NULL;        //Dynamic array to store the corresponding order of the file part.
     int *memFilePartsDataSize=NULL;     //Dynamic array to store the corresponding size in bytes, of the file part.
     char **memFilePartsData=NULL;       //Dynamic array to store unencrypted data of each part of the protected file.
     char **queryResult=NULL;
     char **colSQLDBfNames=NULL;         //Dynamic array to store part filenames of the protected RAWFile.
+    char **memFilePartsMACs=NULL;
     char *currentDocumentId=NULL;
     char *currentDocumentType=NULL;
     char *currentOrgResourceId=NULL;
     char *currentStorageId=NULL;
     char *currentPartId=NULL;
     char *currentEncryptedData=NULL;
+    char *protectedValueMAC=NULL;
     char *bkpFName=NULL;
     unsigned char *decodedEncryptedString=NULL;
     //MEMORY CLEANUP MACRO for local function.
@@ -980,6 +995,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
             cmeFree(decodedEncryptedString); \
             cmeFree(memFilePartsOrder); \
             cmeFree(memFilePartsDataSize); \
+            cmeFree(protectedValueMAC); \
             for (cont=0;cont<dbNumCols;cont++) \
             { \
                 if (colSQLDBfNames) \
@@ -990,9 +1006,14 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
                 { \
                     cmeFree(memFilePartsData[cont]); \
                 } \
+                if (memFilePartsMACs) \
+                { \
+                    cmeFree(memFilePartsMACs[cont]); \
+                } \
             } \
             cmeFree(colSQLDBfNames); \
             cmeFree(memFilePartsData); \
+            cmeFree(memFilePartsMACs); \
             if (fpTmpRAWFile) \
             { \
                 fclose(fpTmpRAWFile); \
@@ -1006,90 +1027,234 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
         cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
         return(1);
     }
-    //We reserve memory for the estimated max. number of column parts to handle:
+    //We reserve memory for the first file part (and will increment memory as needed):
     colSQLDBfNames=(char **)malloc(sizeof(char *));
     memFilePartsOrder=(int *)malloc(sizeof(int));
     memFilePartsDataSize=(int *)malloc(sizeof(int));
     memFilePartsData=(char **)malloc(sizeof(char *));
+    memFilePartsMACs=(char **)malloc(sizeof(char *));
     *colSQLDBfNames=NULL; //Initialize pointer to first column name.
     *memFilePartsOrder=0; //Initialize pointer to first part order number.
     *memFilePartsDataSize=0;
     *memFilePartsData=NULL; //Initialize pointer to first part data byte string (unencrypted data).
+    *memFilePartsMACs=NULL; //Initialize pointer to first part data MAC of encrypted data.
+    cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value (bytes).
+    MACLen*=2; //Convert byte length to HexStr length.
     //Get list of column files from ResourcesDB:
     for(cont=1;cont<=numRows;cont++) //First row in a cmeSQLTable contains the names of columns; we skip them.
     {
-        result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],     //Protected value (B64+encrypted+salted)
-                                         &currentDocumentId,                                //Unencrypted result (docuentId)
-                                         cmeDefaultEncAlg,
-                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect register.
-                                         orgKey,&written);
-        if (result)  //Error
+        //Unprotect documentId:
+        cmeFree(protectedValueMAC);
+        cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+                          (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen),
+                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],MACLen)) //MAC is correct; proceed with decryption.
         {
-            cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-            return(2);
+            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+                                 &currentDocumentId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                 orgKey,&written);
+            if (result)  //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeUnprotectDBSaltedValue() error, cannot "
+                        "decrypt documentId!\n");
+#endif
+                cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+                return(2);
+            }
         }
-        result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type],     //Protected value (B64+encrypted+salted)
-                                         &currentDocumentType,                                //Unencrypted result (document type)
-                                         cmeDefaultEncAlg,
-                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect register.
-                                         orgKey,&written);
-        if (result)  //Error
+        else //MAC is incorrect; skip decryption process.
         {
-            cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-            return(3);
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Warning: cmeSecureFileToTmpRAWFile(), cmeHMACByteString() cannot "
+                    "verify documentId MAC!\n");
+#endif
+            cmeStrConstrAppend(&currentDocumentId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
         }
-        result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId],     //Protected value (B64+encrypted+salted)
-                                         &currentOrgResourceId,                                //Unencrypted result (document orgResourceId)
-                                         cmeDefaultEncAlg,
-                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect register.
-                                         orgKey,&written);
-        if (result)  //Error
+        //Unprotect documentType:
+        cmeFree(protectedValueMAC);
+        cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type]+MACLen,
+                          (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type]+MACLen),
+                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type],MACLen)) //MAC is correct; proceed with decryption.
         {
-            cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-            return(4);
+            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type]+MACLen,
+                                 &currentDocumentType,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                 orgKey,&written);
+            if (result)  //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeUnprotectDBSaltedValue() error, cannot "
+                        "decrypt documentType!\n");
+#endif
+                cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+                return(3);
+            }
         }
-        result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId],     //Protected value (B64+encrypted+salted)
-                                         &currentStorageId,                                //Unencrypted result (document type)
-                                         cmeDefaultEncAlg,
-                                         &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),   //Salt used to protect register.
-                                         orgKey,&written);
-        if (result)  //Error
+        else //MAC is incorrect; skip decryption process.
         {
-            cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-            return(5);
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Warning: cmeSecureFileToTmpRAWFile(), cmeHMACByteString() cannot "
+                    "verify documentType MAC!\n");
+#endif
+            cmeStrConstrAppend(&currentDocumentType,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
         }
+        //Unprotect orgResourceId:
+        cmeFree(protectedValueMAC);
+        cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId]+MACLen,
+                          (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId]+MACLen),
+                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId],MACLen)) //MAC is correct; proceed with decryption.
+        {
+            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId]+MACLen,
+                                 &currentOrgResourceId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                 orgKey,&written);
+            if (result)  //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeUnprotectDBSaltedValue() error, cannot "
+                        "decrypt orgResourceId!\n");
+#endif
+                cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+                return(4);
+            }
+        }
+        else //MAC is incorrect; skip decryption process.
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Warning: cmeSecureFileToTmpRAWFile(), cmeHMACByteString() cannot "
+                    "verify orgResourceId MAC!\n");
+#endif
+            cmeStrConstrAppend(&currentOrgResourceId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+        }
+        //Unprotect storageId:
+        cmeFree(protectedValueMAC);
+        cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId]+MACLen,
+                          (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId]+MACLen),
+                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId],MACLen)) //MAC is correct; proceed with decryption.
+        {
+            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId]+MACLen,
+                                 &currentStorageId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                 orgKey,&written);
+            if (result)  //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeUnprotectDBSaltedValue() error, cannot "
+                        "decrypt storageId!\n");
+#endif
+                cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+                return(5);
+            }
+        }
+        else //MAC is incorrect; skip decryption process.
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Warning: cmeSecureFileToTmpRAWFile(), cmeHMACByteString() cannot "
+                    "verify storageId MAC!\n");
+#endif
+            cmeStrConstrAppend(&currentStorageId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+        }
+        //Verify that this part belongs to the requested document. If so continue processing it:
         if ((!(strcmp(currentDocumentId,documentId)))&&(!(strcmp(currentDocumentType,documentType)))
             &&(!(strcmp(currentOrgResourceId,orgId)))&&(!(strcmp(currentStorageId,storageId))))  //This part belongs to the protected RAWFile -> process!
         {
-            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],     //Protected value (B64+encrypted+salted)
-                                             &(colSQLDBfNames[dbNumCols]),       //Unencrypted result (columnFile)
-                                             cmeDefaultEncAlg,
-                                             &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),  //Salt used to protect register.
-                                             orgKey,&written);
-            if (result)  //Error
+            //Unprotect columnFile:
+            cmeFree(protectedValueMAC);
+            cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
+                              (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen),
+                              &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+            if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],MACLen)) //MAC is correct; proceed with decryption.
             {
-                cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-                return(6);
+                result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
+                                     &(colSQLDBfNames[dbNumCols]),cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                     orgKey,&written);
+                if (result)  //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeUnprotectDBSaltedValue() error, cannot "
+                            "decrypt columnFile!\n");
+#endif
+                    cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+                    return(6);
+                }
             }
-            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partId],     //Protected value (B64+encrypted+salted)
-                                             &currentPartId,       //Unencrypted result (partId, as a text string)
-                                             cmeDefaultEncAlg,
-                                             &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),  //Salt used to protect register.
-                                             orgKey,&written);
-            if (result)  //Error
+            else //MAC is incorrect; skip decryption process.
             {
-                cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-                return(7);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeHMACByteString() error, cannot "
+                        "verify columnFile MAC!\n");
+#endif
+                cmeStrConstrAppend(&(colSQLDBfNames[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
             }
-            memFilePartsOrder[dbNumCols]=atoi(currentPartId); //Set order number.
-            memset(currentPartId,0,written);   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
-            cmeFree(currentPartId); //Free currentPartId for next cycle.
+            //Unprotect partId:
+            cmeFree(protectedValueMAC);
+            cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partId]+MACLen,
+                              (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partId]+MACLen),
+                              &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+            if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partId],MACLen)) //MAC is correct; proceed with decryption.
+            {
+                result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partId]+MACLen,
+                                     &currentPartId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                     orgKey,&written);
+                if (result)  //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeUnprotectDBSaltedValue() error, cannot "
+                            "decrypt partId!\n");
+#endif
+                    cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+                    return(7);
+                }
+            }
+            else //MAC is incorrect; skip decryption process.
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeHMACByteString() error, cannot "
+                        "verify partId MAC!\n");
+#endif
+                cmeStrConstrAppend(&currentPartId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+            }
+            memFilePartsOrder[dbNumCols]=atoi(currentPartId);   //Set order number.
+            if (currentPartId)
+            {
+                memset(currentPartId,0,written);                    //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
+            }
+            cmeFree(currentPartId);                             //Free currentPartId for next cycle.
+            //Unprotect partMAC:
+            cmeFree(protectedValueMAC);
+            cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen,
+                              (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen),
+                              &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+            if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC],MACLen)) //MAC is correct; proceed with decryption.
+            {
+                result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen,
+                                     &(memFilePartsMACs[dbNumCols]),cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                     orgKey,&written);
+                if (result)  //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeUnprotectDBSaltedValue() error, cannot "
+                            "decrypt partMAC!\n");
+#endif
+                    cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+                    return(8);
+                }
+            }
+            else //MAC is incorrect; skip decryption process.
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeHMACByteString() error, cannot "
+                        "verify partMAC MAC!\n");
+#endif
+                cmeStrConstrAppend(&(memFilePartsMACs[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+            }
             //Read and unprotect each RAWFile part:
-            if(!documentPath)//If path is NULL, use default path
+            if(!documentPath) //If path is NULL, use default path.
             {
                 cmeStrConstrAppend(&bkpFName,"%s%s",cmeDefaultFilePath,colSQLDBfNames[dbNumCols]); //Set full path for the encrypted RAWFile part.
             }
-            else //Otherwise use provided path
+            else //Otherwise use provided path.
             {
                 cmeStrConstrAppend(&bkpFName,"%s%s",documentPath,colSQLDBfNames[dbNumCols]); //Set full path for the encrypted RAWFile part.
             }
@@ -1097,36 +1262,58 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
             if (result)  //Error
             {
                 cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
-                return(8);
-            }
-            result=cmeUnprotectByteString(currentEncryptedData,&(memFilePartsData[dbNumCols]),cmeDefaultEncAlg,
-                                            &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey,
-                                            &(memFilePartsDataSize[dbNumCols]),written);
-            memset(bkpFName,0,strlen(bkpFName));   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
-            cmeFree(bkpFName);  //Free bkpFName for next cycle.
-            if (result)  //Error
-            {
-                cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
                 return(9);
             }
-            cmeFree(currentEncryptedData); //Free currentEncryptedData for the next cycle.
+            //Unprotect currentEncryptedData (current encrypted part file):
+            cmeFree(protectedValueMAC);
+            cmeHMACByteString((const unsigned char*)currentEncryptedData,(unsigned char **)&protectedValueMAC,written,
+                              &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+            if (!strncmp(protectedValueMAC,memFilePartsMACs[dbNumCols],MACLen)) //MAC is correct; proceed with decryption.
+            {
+                result=cmeUnprotectByteString(currentEncryptedData,&(memFilePartsData[dbNumCols]),cmeDefaultEncAlg,
+                                              &(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey,
+                                              &(memFilePartsDataSize[dbNumCols]),written);
+                if (result)  //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeUnprotectDBSaltedValue() error, cannot "
+                            "decrypt current encrypted part file!\n");
+#endif
+                    cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
+                    return(10);
+                }
+            }
+            else //MAC is incorrect; skip decryption process.
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSecureFileToTmpRAWFile(), cmeHMACByteString() error, cannot "
+                        "verify MAC of current encrypted part file!\n");
+#endif
+                cmeStrConstrAppend(&(memFilePartsData[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+                partMACmismatch++; //Flag MAC mismatch for file part.
+            }
+            memset(bkpFName,0,strlen(bkpFName));    //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
+            cmeFree(bkpFName);                      //Free bkpFName for next cycle.
+            cmeFree(currentEncryptedData);          //Free currentEncryptedData for the next cycle.
             dbNumCols++;
-            //Grow Arrays to hold next element (worst case: the last array element is never used):
+            //Grow Arrays to hold next element:
             colSQLDBfNames=(char **)realloc(colSQLDBfNames,sizeof(char *)*(dbNumCols+1));
             memFilePartsOrder=(int *)realloc(memFilePartsOrder,sizeof(int)*(dbNumCols+1));
             memFilePartsDataSize=(int *)realloc(memFilePartsDataSize,sizeof(int)*(dbNumCols+1));
             memFilePartsData=(char **)realloc(memFilePartsData,sizeof(char *)*(dbNumCols+1));
-            //Initialize new allocated memory
+            memFilePartsMACs=(char **)realloc(memFilePartsMACs,sizeof(char *)*(dbNumCols+1));
+            //Initialize new allocated memory:
             colSQLDBfNames[dbNumCols]=NULL;
             memFilePartsOrder[dbNumCols]=0;
             memFilePartsDataSize[dbNumCols]=0;
             memFilePartsData[dbNumCols]=NULL;
+            memFilePartsMACs[dbNumCols]=NULL;
         }
         memset(currentDocumentId,0,strlen(currentDocumentId));   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
         cmeFree(currentDocumentId);
     }
     *tmpRAWFile=NULL;
-    if(dbNumCols) //If we found at least 1 column part, process the file...
+    if(dbNumCols && (!partMACmismatch)) //If we found at least 1 column part and no MAC mismatch, process the file...
     {
         cmeGetRndSalt(tmpRAWFile); //Get random HEX byte string for temporary file. Note that caller is responsible for freeing *tmpRAWFile
         cmeStrConstrAppend(&bkpFName,"%s%s",cmeDefaultSecureTmpFilePath,*tmpRAWFile); //Set full path for temporal, unencrypted RAWFile.

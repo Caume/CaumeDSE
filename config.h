@@ -156,7 +156,7 @@
 #define PACKAGE_NAME "CaumeDSE"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "CaumeDSE 0.89.alpha"
+#define PACKAGE_STRING "CaumeDSE 0.90.alpha"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "caumedse"
@@ -165,7 +165,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "0.89.alpha"
+#define PACKAGE_VERSION "0.90.alpha"
 
 /* Path for default data and system databases. */
 #define PATH_DATADIR "/opt/cdse"
@@ -178,7 +178,7 @@
 #define STDC_HEADERS 1
 
 /* Version number of package */
-#define VERSION "0.89.alpha"
+#define VERSION "0.90.alpha"
 
 /* Define for Solaris 2.5.1 so the uint64_t typedef from <sys/synch.h>,
    <pthread.h>, or <semaphore.h> is not used. If the typedef were allowed, the
