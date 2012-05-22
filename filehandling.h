@@ -63,6 +63,12 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                           const char **attributeData, const int numAttribute,const int replaceDB,
                           const char *resourceInfo, const char *documentType, const char *documentId,
                           const char *storageId, const char *storagePath);
+// Function that imports a memory table into several, security preprocessed, SQLite Databases (e.g. after inserting/updating a contentRow).
+int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int numRows,
+                           const char *userId,const char *orgId,const char *orgKey, const char **attribute,
+                           const char **attributeData, const int numAttribute, const int replaceDB,
+                           const char *resourceInfo, const char *documentType, const char *documentId,
+                           const char *storageId, const char *storagePath);
 // Function that slices and encrypts a raw file into several parts.
 // ~ POST file.raw, script.perl, ...
 int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const char *orgId,const char *orgKey,

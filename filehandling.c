@@ -484,7 +484,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
     char *currentRawFileContent=NULL;   //Will hold the binary contents of each created file part during the hashing process.
     char *resourcesDBName=NULL;
     char *sqlQuery=NULL;
-    char *value=NULL;
+    char *value=NULL;                   //Just a pointer to elements within elements[]. No need to free.
     char *bkpFName=NULL;
     char *securedRowOrder=NULL;
     char *securedValue=NULL;
@@ -500,7 +500,6 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
         do { \
             cmeFree(resourcesDBName); \
             cmeFree(sqlQuery); \
-            cmeFree(value); \
             cmeFree(bkpFName); \
             cmeFree(securedRowOrder); \
             cmeFree(securedValue); \
@@ -562,7 +561,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                 } \
                 cmeFree(colNames); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     cmeStrConstrAppend(&resourcesDBName,"%s%s",cmeDefaultFilePath,resourcesDBFName);
     result=cmeDBOpen(resourcesDBName,&resourcesDB);
@@ -625,7 +624,14 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
         for (cont=0;cont<(*numCols);cont++)
         {
             colNames[cont]=NULL;    //Set all ptrs. to NULL as required by cmeStrConstrAppend().
-            cmeStrConstrAppend(&(colNames[cont]),"%s",elements[cont]);
+            if(!strcmp(elements[cont],"id")) //Found column named "id"!
+            {
+                cmeStrConstrAppend(&(colNames[cont]),"_id"); //"id" name is reserved for internal databases; so we change it!
+            }
+            else //Otherwise, just copy the column name provided.
+            {
+                cmeStrConstrAppend(&(colNames[cont]),"%s",elements[cont]);
+            }
         }
         // TODO (OHR#6#): Create & call function to create DB files in memory for CSV column imports.
         if (!(SQLDBfNames)) //Create (and open) DB files in memory if they have not been created.
@@ -745,7 +751,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                     cmeStrConstrAppend(&sign,"%s",nullParam);
                     cmeStrConstrAppend(&signProtected,"%s",nullParam);
                     cmeStrConstrAppend(&otphDkey,"%s",nullParam);
-                    cmeStrConstrAppend(&salt,"%s",nullParam);   //salt should allways be defined!!.
+                    cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect().
                     cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; INSERT INTO data "
                                                 "(id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey)"
                                                 " VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
@@ -853,7 +859,6 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
     char **filePartNames=NULL;      //This will hold the random file part names.
     char **filePartMACs=NULL;       //This will hold the MACs for all file parts.
     char **filePartSalts=NULL;      //This will hold the salts for all file parts.
-
     #define cmeRAWFileToSecureFileFree() \
         do { \
             cmeFree(tmpMemDataBuffer); \
@@ -884,7 +889,7 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
                 } \
                 cmeFree(filePartSalts); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     result=cmeLoadStrFromFile(&tmpMemDataBuffer,rawFileName,&tmpMemDataLen); //Read file into memory
     if (result) //Error reading file into memory.
@@ -1019,7 +1024,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
                 fclose(fpTmpRAWFile); \
                 fpTmpRAWFile=NULL; \
             } \
-        } while (0)
+        } while (0); //Local free() macro.
 
     result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols);
     if(result) // Error
@@ -1430,4 +1435,351 @@ void cmeContentReaderFreeCallback (void *cls)
         fprintf(stdout,"CaumeDSE Debug: cmeContentReaderFreeCallback(), file closed successfully; end of ContentReaderCallback.\n");
 #endif
 }
+int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int numRows,
+                           const char *userId,const char *orgId,const char *orgKey, const char **attribute,
+                           const char **attributeData, const int numAttribute, const int replaceDB,
+                           const char *resourceInfo, const char *documentType, const char *documentId,
+                           const char *storageId, const char *storagePath)
+{
+    int cont,cont2,cont3,rContLimit,result,readBytes,written;
+    int skipIdColumn=0;
+    int totalParts=0;
+    int numSQLDBfNames=0;               //with column slicing this will be (*numcols)*(((numRows/cmeMaxCSVRowsInPart))+((numRows%cmeMaxCSVRowsInPart > 0)? 1 : 0 ))
+    sqlite3 **ppDB=NULL;
+    sqlite3 *resourcesDB=NULL;
+    sqlite3 *existsDB=NULL;
+    sqlite3_int64 existRows=0;
+    char **SQLDBfNames=NULL;            //Will hold the name of each file part.
+    char **SQLDBfMACs=NULL;             //Will hold the MAC of each file part.
+    char **SQLDBfSalts=NULL;            //Will hold the salt of each file part.
+    char **colNames=NULL;
+    char *currentRawFileContent=NULL;   //Will hold the binary contents of each created file part during the hashing process.
+    char *resourcesDBName=NULL;
+    char *sqlQuery=NULL;
+    char *value=NULL;                  //just a pointer to data in memTable; no need to free.
+    char *bkpFName=NULL;
+    char *securedRowOrder=NULL;
+    char *securedValue=NULL;
+    char *MAC=NULL;                    //'data' table values depending on attributes selected.
+    char *salt=NULL;
+    char *MACProtected=NULL;
+    char *sign=NULL;
+    char *signProtected=NULL;
+    char *otphDkey=NULL;
+    const char *nullParam="";
+    const char resourcesDBFName[]="ResourcesDB";
+    #define cmeMemTableToSecureDBFree() \
+        do { \
+            cmeFree(resourcesDBName); \
+            cmeFree(sqlQuery); \
+            cmeFree(bkpFName); \
+            cmeFree(securedRowOrder); \
+            cmeFree(securedValue); \
+            cmeFree(MAC); \
+            cmeFree(salt); \
+            cmeFree(MACProtected); \
+            cmeFree(sign); \
+            cmeFree(signProtected); \
+            cmeFree(otphDkey); \
+            cmeFree(currentRawFileContent); \
+            if (resourcesDB) \
+            { \
+                cmeDBClose(resourcesDB); \
+                resourcesDB=NULL; \
+            } \
+            if (existsDB) \
+            { \
+                cmeDBClose(existsDB); \
+                existsDB=NULL; \
+            } \
+            if (ppDB) \
+            { \
+                for (cont=0;cont<numSQLDBfNames;cont++) \
+                { \
+                    cmeDBClose(ppDB[cont]); \
+                    ppDB[cont]=NULL; \
+                } \
+                cmeFree(ppDB); \
+            } \
+            if (SQLDBfNames) \
+            { \
+                for (cont=0;cont<numSQLDBfNames;cont++) \
+                { \
+                    cmeFree(SQLDBfNames[cont]); \
+                } \
+                cmeFree(SQLDBfNames); \
+            } \
+            if (SQLDBfMACs) \
+            { \
+                for (cont=0;cont<numSQLDBfNames;cont++) \
+                { \
+                    cmeFree(SQLDBfMACs[cont]); \
+                } \
+                cmeFree(SQLDBfMACs); \
+            } \
+            if (SQLDBfSalts) \
+            { \
+                for (cont=0;cont<numSQLDBfNames;cont++) \
+                { \
+                    cmeFree(SQLDBfSalts[cont]); \
+                } \
+                cmeFree(SQLDBfSalts); \
+            } \
+            if (colNames) \
+            { \
+                for (cont=0;cont<numCols;cont++) \
+                { \
+                    cmeFree(colNames[cont]); \
+                } \
+                cmeFree(colNames); \
+            } \
+        } while (0); //Local free() macro.
 
+    cmeStrConstrAppend(&resourcesDBName,"%s%s",cmeDefaultFilePath,resourcesDBFName);
+    result=cmeDBOpen(resourcesDBName,&resourcesDB);
+    if (result) //Error
+    {
+        cmeMemTableToSecureDBFree();
+        return(1);
+    }
+    result=cmeSecureDBToMemDB(&existsDB,resourcesDB,documentId,orgKey,storagePath); // TODO (OHR#2#): Replace with a method that doesn't need to load the whole document in memory to increase efficiency (we just need to check that the document exists).
+    cmeFree(resourcesDBName);
+    if (result) //Error
+    {
+        cmeMemTableToSecureDBFree();
+        return(2);
+    }
+    existRows=sqlite3_last_insert_rowid(existsDB);
+    cmeDBClose(existsDB);
+    existsDB=NULL;
+    if (existRows>0) //We have the same documentId already in the database...
+    {
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeCVSFileToSecureDB(), documentId %s already exists; "
+                "replace instruction: %d\n",documentId,replaceDB);
+#endif
+        if (!replaceDB)
+        {
+            cmeMemTableToSecureDBFree();
+            return(3);
+        }
+        else //delete old secureDB first, and then replace
+        {
+            result=cmeDeleteSecureDB(resourcesDB,documentId,orgKey,storagePath);
+        }
+    }
+    cmeDBClose(resourcesDB);
+    resourcesDB=NULL;
+    colNames=(char **)malloc((sizeof(char *))*numCols); //Reserve space and copy column names.
+    for (cont=0;cont<numCols;cont++)
+    {
+        colNames[cont]=NULL;    //Set all ptrs. to NULL as required by cmeStrConstrAppend().
+        cmeStrConstrAppend(&(colNames[cont]),"%s",memTable[cont]);
+    }
+    // TODO (OHR#6#): Create & call function to create DB files in memory for memTable column imports.
+    if (!strcmp(colNames[0],"id")) //id column exists; we need to skip it.
+    {
+        skipIdColumn=1;
+    }
+    if (!(SQLDBfNames)) //Create (and open) DB files in memory if they have not been created.
+    {
+        totalParts=((numRows/cmeMaxCSVRowsInPart)+((numRows%cmeMaxCSVRowsInPart > 0)? 1 : 0 ));
+        numSQLDBfNames=(numCols-skipIdColumn)*totalParts;
+        ppDB=(sqlite3 **)malloc(sizeof(sqlite3 *)*numSQLDBfNames);
+        if (!ppDB)
+        {
+            cmeMemTableToSecureDBFree();
+            return(4);
+        }
+        SQLDBfNames=(char **)malloc(sizeof(char *)*numSQLDBfNames);
+        SQLDBfMACs=(char **)malloc(sizeof(char *)*numSQLDBfNames);
+        SQLDBfSalts=(char **)malloc(sizeof(char *)*numSQLDBfNames);
+        if ((!SQLDBfNames)||(!SQLDBfMACs)||(!SQLDBfSalts))
+        {
+            cmeMemTableToSecureDBFree();
+            return(5);
+        }
+        for(cont=0;cont<numSQLDBfNames;cont++) //Reset memory pointers
+        {
+            SQLDBfNames[cont]=NULL;
+            SQLDBfMACs[cont]=NULL;
+            SQLDBfSalts[cont]=NULL;
+            cmeGetRndSaltAnySize(&(SQLDBfSalts[cont]),cmeDefaultValueSaltLen); //Get current salt for encryption (random hexstr).
+        }
+        for (cont=0;cont<numSQLDBfNames;cont++) //Create random filenames for column parts.
+        {
+            cmeGetRndSalt(&(SQLDBfNames[cont]));
+            //TODO (OHR#8#): Create SQLDBfNames collision handling routine. Just in case.
+            if (cmeDBCreateOpen(":memory:",&(ppDB[cont])))
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeDBCreateOpen() Error, can't "
+                        "Create and Open memory DB corresponding to DB file: %s !\n",SQLDBfNames[cont]);
+#endif
+                cmeMemTableToSecureDBFree();
+                return(6);
+            }
+            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE data "
+                                "(id INTEGER PRIMARY KEY, userId TEXT, orgId TEXT, salt TEXT,"
+                                " value TEXT, rowOrder TEXT, MAC TEXT, sign TEXT, MACProtected TEXT,"
+                                " signProtected TEXT, otphDkey TEXT);"
+                                "COMMIT;");
+            if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'data'.
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeSQLRows() Error, can't "
+                        "create table 'data' in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
+#endif
+                cmeMemTableToSecureDBFree();
+                return(7);
+            }
+            cmeFree(sqlQuery);  //Free memory that was used for queries.
+            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE meta "
+                                "(id INTEGER PRIMARY KEY, userId TEXT, orgID TEXT, salt TEXT,"
+                                " attribute TEXT, attributeData TEXT); COMMIT;");
+            if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'meta'.
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeSQLRows() Error, can't "
+                        "create table 'meta' in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
+#endif
+                cmeMemTableToSecureDBFree();
+                return(8);
+            }
+            cmeFree(sqlQuery);  //Free memory that was used for queries.
+        }
+        for (cont=0;cont<numSQLDBfNames;cont++) //Insert data into meta table.
+        {   //Insert 'name' attribute.
+            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; "
+                                "INSERT INTO meta (id, userId, orgId, attribute, attributeData) "
+                                "VALUES (NULL,'%s','%s','name','%s');",userId,orgId,
+                                colNames[(cont%(numCols-skipIdColumn))+skipIdColumn]);
+            for (cont2=0; cont2<numAttribute; cont2++) //Append other security attributes.
+            {
+                cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect()
+                cmeStrConstrAppend(&sqlQuery,"INSERT INTO meta (id, userId, orgId, salt, attribute, attributeData) "
+                                        "VALUES (NULL,'%s','%s','%s','%s','%s');",userId,orgId,salt,
+                                        attribute[cont2],attributeData[cont2]);
+                cmeFree(salt);
+            }
+            cmeStrConstrAppend(&sqlQuery,"COMMIT;");
+            if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Insert row.
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeSQLRows() Error, can't "
+                        "insert row in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
+#endif
+                cmeMemTableToSecureDBFree();
+                return(9);
+            }
+            cmeFree(sqlQuery); //Free memory that was used for queries.
+        }
+    }
+    //TODO (OHR#6#): Create and call function to insert data into tables (move code there).
+    for (cont=0;cont<totalParts;cont++) //Process each column part.
+    {
+        for (cont2=0+skipIdColumn;cont2<numCols;cont2++) //Process each column (we skip the first column if it is "id").
+        {
+            if ((cont+1)*cmeMaxCSVRowsInPart>numRows) // Last part? yes-> then set rContLimit to the remaining rows.
+            {
+                rContLimit=numRows-(cont*cmeMaxCSVRowsInPart);
+            }
+            else
+            {
+                rContLimit=(numRows>cmeMaxCSVRowsInPart)?cmeMaxCSVRowsInPart:numRows;
+            }
+            for(cont3=1;cont3<=rContLimit;cont3++) //Skip header row in memTable[]; process each row.
+            {
+                value=(char *)memTable[cont2+((numCols)*(cont3+cont*cmeMaxCSVRowsInPart))];
+                //Setup attributes defaults:
+                cmeStrConstrAppend(&securedRowOrder,"%d",cont3+cont*cmeMaxCSVRowsInPart);
+                cmeStrConstrAppend(&MAC,"%s",nullParam); // TODO (OHR#2#): Calculate MAC, MAC protected and stuff. Probably outside this function.
+                cmeStrConstrAppend(&MACProtected,"%s",nullParam);
+                cmeStrConstrAppend(&sign,"%s",nullParam);
+                cmeStrConstrAppend(&signProtected,"%s",nullParam);
+                cmeStrConstrAppend(&otphDkey,"%s",nullParam);
+                cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect().
+                cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; INSERT INTO data "
+                                            "(id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey)"
+                                            " VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
+                                            "COMMIT;",userId,orgId,salt,value,securedRowOrder,MAC,sign,
+                                            MACProtected,signProtected,otphDkey);
+                //Free stuff:
+                cmeFree(salt);
+                cmeFree(otphDkey);
+                cmeFree(signProtected);
+                cmeFree(sign);
+                cmeFree(MACProtected);
+                cmeFree(MAC);
+                cmeFree(securedRowOrder);
+                if (cmeSQLRows((ppDB[(numCols-skipIdColumn)*cont+cont2-skipIdColumn]),sqlQuery,NULL,NULL)) //Insert row.
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeSQLRows() Error, can't "
+                            "insert row in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
+#endif
+                    cmeMemTableToSecureDBFree();
+                    return(10);
+                }
+                cmeFree(sqlQuery);  //Free memory that was used for queries.
+            }
+        }
+    }
+    for (cont=0;cont<numSQLDBfNames; cont++)  //Create backup DB files; copy Memory DBs there.
+    {
+        if (numAttribute)  //If security attributes are defined, override corresponding defaults.
+        {
+            result=cmeMemSecureDBProtect(ppDB[cont],orgKey);
+            cmeStrConstrAppend(&sqlQuery,"VACUUM;"); //Reconstruct DB without slack space w/ unprotected data!
+            if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Vacuum DB col.
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeSQLRows() Error, can't "
+                        "VACUUM DB file %d: %s!\n",cont,SQLDBfNames[cont]);
+#endif
+                cmeMemTableToSecureDBFree();
+                return(11);
+            }
+            cmeFree(sqlQuery);  //Free memory that was used for queries.
+        }
+        cmeFree(bkpFName);
+        cmeStrConstrAppend(&bkpFName,"%s%s",storagePath,SQLDBfNames[cont]);
+        result=cmeMemDBLoadOrSave(ppDB[cont],bkpFName,1);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeMemDBLoadOrSave() error cannot "
+                    "load/save file: %s; Save: %d!\n",bkpFName,1);
+#endif
+            cmeMemTableToSecureDBFree();
+            return(12);
+        }
+        //Get MAC of recently created file:
+        result=cmeLoadStrFromFile(&currentRawFileContent,bkpFName,&readBytes);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeLoadStrFromFile() error cannot "
+                    "load recently created file part: %s !\n",bkpFName);
+#endif
+            cmeMemTableToSecureDBFree();
+            return(13);
+        }
+        result=cmeHMACByteString((const unsigned char *)currentRawFileContent,(unsigned char **)&(SQLDBfMACs[cont]),readBytes,&written,cmeDefaultMACAlg,&(SQLDBfSalts[cont]),orgKey);
+        cmeFree(currentRawFileContent);
+        cmeFree(bkpFName);
+    }
+    result=cmeRegisterSecureDBorFile((const char **)SQLDBfNames, numSQLDBfNames,(const char **)SQLDBfSalts, (const char **)SQLDBfMACs,totalParts,orgKey,userId,orgId,resourceInfo,
+                                     documentType,documentId,storageId,orgId);
+    if (result) //error
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeRegisterSecureDB() error cannot "
+                "register documentId %s with documentType %s; Error#: %d!\n",documentId,documentType,result);
+#endif
+        cmeMemTableToSecureDBFree();
+        return(14);
+    }
+    cmeMemTableToSecureDBFree();
+    return (0);
+}

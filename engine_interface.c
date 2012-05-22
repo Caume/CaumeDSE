@@ -129,7 +129,8 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
             cmeFree(colSQLDBfNames); \
             cmeFree(memFilePartsMACs); \
             cmeFree(colSQLDBfSalts); \
-        } while (0) /*NOTE: No need to free each element in resultMemTable, as they are just pointers to elements
+        } while (0); //Local free() macro.
+                     /*NOTE: No need to free each element in resultMemTable, as they are just pointers to elements
                       from memDBResultData and memDBResultMeta.
                       //WIPING SENSITIVE DATA IN MEMORY AFTER USE in colSQLDBfNames!*/
 
@@ -422,7 +423,7 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
                 } \
             } \
             cmeFree(colSQLDBfNames); \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     result=cmeSecureDBToMemDB(&existsDB,pResourcesDB,documentId,orgKey,storagePath);
     existRows=sqlite3_last_insert_rowid(existsDB);
@@ -585,7 +586,7 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
             { \
                 cmeMemTableFinal(sqlTable); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
@@ -717,7 +718,7 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
             { \
                 cmeMemTableFinal(sqlTable); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
@@ -841,7 +842,7 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
             cmeFree(protectedValue); \
             cmeFree(protectedValueMAC); \
             cmeFree(salt); \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     cmeStrConstrAppend (&sqlStatement,"BEGIN TRANSACTION; INSERT INTO %s (id,",tableName); //First part. id goes by default.
     for (cont=0; cont<numColumnValues; cont++)
@@ -930,7 +931,7 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
             { \
                 cmeMemTableFinal(sqlTable); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
@@ -1179,3 +1180,54 @@ int cmeProcessURLMatchSaveParameters (const char *urlMethod, const char **argume
     return (0);
 }
 
+int cmeConstructContentRow (const char **argumentElements, const char **columnNames, const int numColumns,
+                            const char *registerId, char ***newContentRow)
+{
+    int cont,cont2;
+    char *nameNoBrackets=NULL;
+    #define cmeConstructContentRowFree() \
+        do { \
+            cmeFree(nameNoBrackets); \
+        } while (0); //Local free() macro.
+
+    *newContentRow=(char **)malloc(sizeof(char*)*numColumns); //Reserve memory for new contentRow (size=numColumns). Note that caller must free it.
+    for (cont=0;cont<numColumns;cont++) //Clear newContentRow data.
+    {
+        (*newContentRow)[cont]=NULL;
+    }
+    cmeStrConstrAppend(&(*newContentRow[0]),"%s",registerId); //Set id=registerId in new contentRow.
+    cont=0;
+    while ((cont<cmeWSURIMaxArguments)&&(argumentElements[cont])) //Check for contentRow parameters [<number>] or [<name>].
+    {
+        if ((argumentElements[cont][0]!='[')||(argumentElements[cont][strlen(argumentElements[cont])-1]!=']')) //argument name is not contained within brackets.
+        {
+            cont+=2;
+            continue; //Not a contentRow parameter; check next argument name.
+        }
+        cmeFree(nameNoBrackets);
+        cmeStrConstrAppend(&nameNoBrackets,"%.*s",strlen(argumentElements[cont])-2,argumentElements[cont]+1); //Copy substring (all except start and en brackets).
+        for(cont2=1;cont2<numColumns;cont2++) //Compare against each column name; we skip first column, which is always the register's id.
+        {
+            if(!strcmp(columnNames[cont2],nameNoBrackets)) //found match.
+            {
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeConstructContentRow(), contentRow parameter found by name: '%s', value: '%s'.\n",
+                        argumentElements[cont],argumentElements[cont+1]);
+#endif
+                cmeStrConstrAppend(&((*newContentRow)[cont2]),"%s",argumentElements[cont+1]);
+                break;
+            }
+        }
+        cont+=2;
+    }
+    //Replace any NULL fields with empty strings.
+    for (cont=0;cont<numColumns;cont++)
+    {
+        if(!((*newContentRow)[cont]))
+        {
+            cmeStrConstrAppend(&((*newContentRow)[cont]),"");
+        }
+    }
+    cmeConstructContentRowFree();
+    return (0);
+}

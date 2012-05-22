@@ -1,3 +1,13 @@
+2012-05-22 0.90.alpha
+
+	* Implemented resource handling for individual rows in documents of
+	type file.csv, via the contentRow resource (see README for details). 
+	You can now append new rows (POST), read individual rows (GET),
+	delete individual rows (DELETE), confirm that individual rows exist
+	(HEAD) or update some folumn values of a specific row (PUT).
+
+	* Some fixes and code clean up
+
 2012-05-08 0.90.alpha
 
 	* Implemented HMAC for MACs using a key derived from PBKDF (v2 is

@@ -74,7 +74,6 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeMaxCSVColumns 256            //Max # of column parts in a CSV file
 #define cmeMaxCSVPartsPerColumn 10000   //Max {estimated} number of parts that a CSV table can hold {required by cmeSecureDBtoMemDB}.
 #define cmeMaxRAWDataInPart 4000        //Max number of bytes in a secure file slice {part}, estimated from smallest SQLITE secureDB column files. {RECOMMENDED: 5120}
-// FIXME (OHR#2#): Fix cmeCipherByteString(). Right now, the Final mehtod fails when cmeMaxRAWDataInPart (aka srcLen) > evpBufferSize. It shouldn't.
 #define cmeDefaultContentReaderCallbackPageSize 1024*32     //Default Page size for ContentReaderCallback functions.    {RECOMMENDED: 1024*32}
 
 #ifdef PATH_DATADIR
@@ -325,19 +324,25 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
                                               "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                               "OptionalParameters...]<br></code><br>" //Parser Script resource options.
 
-
 #define cmeWSMsgContentClassOptions "Allowed Methods: <code>GET,HEAD,OPTIONS</code><br>" \
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/{documentType}" \
                                     "/documents/{document}/content" \
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                     "OptionalParameters...]<br></code><br>" //Parser Script resource options.
+
+#define cmeWSMsgContenRowOptions  "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
+                                 "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/file.csv" \
+                                 "/documents/{document}/content/contentRows/{contentRow}" \
+                                 "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                 "OptionalParameters...]<br></code><br>" //contentRow resource options.
+
 /**
 #define cmeWSMsgServerErrorPage     cmeWSHTMLPageStart "<b>500 ERROR Internal server error.</b><br>" cmeWSHTMLPageEnd
 **/
 
 
 #define cmeWSHTTPMaxHeaders 32                      //Max. # of HTTP headers elements {pairs} to process.
-#define cmeWSURIMaxArguments 32                     //Max. # of URI arguments {pairs} to process.
+#define cmeWSURIMaxArguments 512                    //Max. # of URI arguments {pairs} to process.
 #define cmeWSURIMaxMatchSaveArguments 15            //Max. # of arguments available in tables {depends on IDD version!}
 #define cmeWSEncoding_CSV 1                         //CSV+plaintext encoding for WS response.
 #define cmeWSEncoding_XML 4                         //XML+plaintext encoding for WS response.

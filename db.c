@@ -181,7 +181,7 @@ int cmeSQLIterate (const char *args,int numCols,char **pStrResults,char **pColNa
                } \
                cmeFree(perlResults); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     cmeStrConstrAppend(&fName,"%s",(char *)args);
     maxResults=numCols;
@@ -286,7 +286,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
         do { \
             cmeFree(columnNames); \
             cmeFree(columnValues); \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     if (myPerl==NULL) //No Callback function defined
     {
@@ -749,7 +749,6 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     char *sqlQuery=NULL;
     unsigned char *rndBytes=NULL;
     const EVP_CIPHER *cipher=NULL;
-    //MEMORY CLEANUP MACRO for local function.
     #define cmeMemSecureDBProtectFree() \
         do { \
             cmeFree(currentEncB64Data); \
@@ -781,7 +780,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                 } \
                 cmeFree(currentDataSalt); \
             } \
-        } while (0)
+        } while (0); //Local free() macro.
 
     //Get information from table meta (we assume tables meta and data have not been protected yet).
     result=cmeMemTable(memSecureDB,"SELECT * FROM meta;",&memProtectMetaData,&numRowsPMeta,&numColsPMeta);
@@ -1227,7 +1226,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                 cmeMemTableFinal(memProtectMetaData); \
                 memProtectMetaData=NULL; \
             } \
-        } while (0)
+        } while (0); //Local free() macro.
 
     //Get information from table meta (we assume tables meta and data are protected).
     result=cmeMemTable(memSecureDB,"SELECT * FROM meta;",&memProtectMetaData,&numRowsPMeta,&numColsPMeta);
@@ -1732,7 +1731,7 @@ int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const cha
         do { \
             cmeFree(valueSalt); \
             cmeFree(saltedValue); \
-        } while (0) //Local free() macro
+        } while (0); //Local free() macro
 
     if (value==NULL) //Error: no value to encrypt
     {
@@ -1771,7 +1770,7 @@ int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const c
     #define cmeUnProtectDBSaltedValueFree() \
         do { \
             cmeFree(saltedValue); \
-        } while (0) //Local free() macro
+        } while (0); //Local free() macro
 
     *value=NULL;
     if (!protectedValue) //WARNING: null input!
@@ -1883,7 +1882,7 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                 } \
                 cmeFree(memProtectMetaData); \
             } \
-        } while (0)
+        } while (0); //Local free() macro.
 
     *dbNumReintegratedCols=dbNumCols;
     numRowsData=(int *)malloc(sizeof(int)*dbNumCols);

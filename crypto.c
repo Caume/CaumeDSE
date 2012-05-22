@@ -273,7 +273,7 @@ int cmeCipherFinal(EVP_CIPHER_CTX **ctx, unsigned char *out, int *outl, const ch
         do { \
             EVP_CIPHER_CTX_cleanup(*ctx); \
             *ctx=NULL; \
-        } while (0) //Local free() macro. Call to EVP_CIPHER_CTX_cleanup() to securely dispose of context memory!
+        } while (0); //Local free() macro. Call to EVP_CIPHER_CTX_cleanup() to securely dispose of context memory!
 
     if ((mode!='d')&&(mode!='e'))
     {
@@ -464,7 +464,7 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
                     cmeFree(byteSalt); \
                 } \
                 cmeFree(ctx); \
-            } while (0) //Local free() macro
+            } while (0); //Local free() macro
 
     if (srcBuf==NULL) //Error, source buffer can't be null!
     {
@@ -570,7 +570,7 @@ int cmeProtectByteString (const char *value, char **protectedValue, const char *
     #define cmeProtectByteStringFree() \
         do { \
             cmeFree(currentEncData); \
-        } while (0) //Local free() macro
+        } while (0); //Local free() macro
 
     if (value==NULL) //Error: no value to encrypt
     {
@@ -610,7 +610,7 @@ int cmeUnprotectByteString (const char *protectedValue, char **value, const char
     #define cmeUnProtectByteStringFree() \
         do { \
             cmeFree(currentEncData); \
-        } while (0) //Local free() macro
+        } while (0); //Local free() macro
 
     *value=NULL;
     if (!protectedValue) //WARNING: null input!
@@ -666,7 +666,7 @@ int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, co
         do  { \
                 cmeFree(ctx); \
                 cmeFree(digestBytes); \
-            } while (0) //Local free() macro
+            } while (0); //Local free() macro
 
     if (srcBuf==NULL) //Error, source buffer can't be null!
     {
@@ -818,7 +818,7 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
                     memset(byteSalt,0,evpSaltBufferSize); \
                     cmeFree(byteSalt); \
                 } \
-            } while (0) //Local free() macro
+            } while (0); //Local free() macro
 
     if (srcBuf==NULL) //Error, source buffer can't be null!
     {

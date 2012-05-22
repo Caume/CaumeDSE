@@ -111,7 +111,7 @@ int cmeStrToB64(unsigned char *bufIn, unsigned char **bufOut, int biLen, int *wr
     #define cmeStrToB64Free() \
         do { \
             BIO_free_all(b64); \
-        } while (0)
+        } while (0); //Local free() macro.
 
 
     bio = BIO_new(BIO_s_mem());
@@ -143,7 +143,7 @@ int cmeB64ToStr(unsigned char *bufIn, unsigned char **bufOut, int biLen, int *wr
     #define cmeB64ToStrFree() \
         do { \
             BIO_free_all(bio); \
-        } while (0)
+        } while (0); //Local free() macro.
 
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeB64ToStr(), Read B64 string (%d chars long).\n",biLen);
@@ -173,7 +173,7 @@ int cmeStrConstrAppend (char **resultStr, const char *addString, ...)
     #define cmeStrConstrAppendFree() \
         do { \
             cmeFree(tmpAddString); \
-        } while (0) //Local free() macro
+        } while (0); //Local free() macro
 
     tmpAddString=(char *)malloc(sqlBufLen); //Create addString with parameters
     if(!tmpAddString) //Error in malloc
@@ -277,7 +277,7 @@ int cmeStrSqlINSERTConstruct (char **resultQuery, const char *tableName, const c
     return (0);  //Note that caller must free resultQuery!
 }
 
-int cmeStrSqlUPDATEonstruct (char **resultQuery, const char *tableName, const char **colNamesValuesPairs,
+int cmeStrSqlUPDATEConstruct (char **resultQuery, const char *tableName, const char **colNamesValuesPairs,
                             const int numColumns, const char *matchColumn, const char *matchValue)
 {
     int cont;

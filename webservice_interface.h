@@ -123,6 +123,10 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
 int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
                                       const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                       const char *storagePath);
+//Function to process contentRow requests and parameters.
+int cmeWebServiceProcessContentRowResource (char **responseText, char ***responseHeaders, int *responseCode,
+                                            const char *url, const char **urlElements, const char **argumentElements, const char *method,
+                                            const char *storagePath);
 //IN-CALLBACK function to iterate message chunks of POST requests.
 int cmeWebServicePOSTIteration (void *coninfo_cls, enum MHD_ValueKind kind, const char *key,
                                        const char *filename, const char *content_type,

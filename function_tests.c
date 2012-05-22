@@ -380,6 +380,7 @@ void testCSV ()
     char fName2[]="/opt/cdse/testfiles/CSVtest2.csv";
     char **elements=NULL;
     char **pQueryResult=NULL;
+    char **pQueryResult2=NULL;
     const char *attributes[]={"shuffle","protect"};
     const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
     sqlite3 *resultDB=NULL;
@@ -419,7 +420,7 @@ void testCSV ()
                           "password1",attributes, attributesData,2,0,"Payroll Database; Confidential.",
                           "file.csv", "AcmeIncPayroll.csv", "storage1",cmeDefaultFilePath);
     result=cmeCSVFileToSecureDB(fName2,1,&numCols,&processedRows,"User123","CaumeDSE",
-                          "password1",attributes, attributesData,2,0,"Payroll Database 2; Tests.",
+                          "password2",attributes, attributesData,2,1,"Payroll Database 2; Tests.",
                           "file.csv", "AcmeIncPayroll Tests.csv","storage2",cmeDefaultFilePath);
     result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
                           "password1",attributes, attributesData,2,1,"Payroll Database; Confidential.",
@@ -428,10 +429,8 @@ void testCSV ()
     {
         return;
     }
-
     cmeSecureDBToMemDB (&resultDB, pResourcesDB,"AcmeIncPayroll.csv","password1",cmeDefaultFilePath);
-
-    printf("--- Retrieved data from secure table:\n");
+    printf("--- Retrieved data from secure table (CSV file to secure DB):\n");
     result=cmeMemTable(resultDB,"SELECT * FROM data;",&pQueryResult,&numRows,&numCols);
     for (cont=0;cont<=numRows;cont++)
     {
@@ -441,9 +440,24 @@ void testCSV ()
         }
         printf("\n");
     }
+    result=cmeMemTableToSecureDB((const char **)pQueryResult,numCols,numRows,"User123","CaumeDSE",
+                                 "password2",attributes, attributesData,2,1,"Payroll Database 2; Tests.",
+                                 "file.csv", "AcmeIncPayroll Tests.csv","storage2",cmeDefaultFilePath);
+    cmeSecureDBToMemDB (&resultDB, pResourcesDB,"AcmeIncPayroll Tests.csv","password2",cmeDefaultFilePath);
+    printf("--- Retrieved data from secure table (Memory Table to secure DB):\n");
+    result=cmeMemTable(resultDB,"SELECT * FROM data;",&pQueryResult2,&numRows,&numCols);
+    for (cont=0;cont<=numRows;cont++)
+    {
+        for (cont2=0;cont2<numCols;cont2++)
+        {
+            printf("[%s]",pQueryResult2[(cont*numCols)+cont2]);
+        }
+        printf("\n");
+    }
     cmeMemTableFinal(pQueryResult);
+    cmeMemTableFinal(pQueryResult2);
     cmeDBClose(resultDB);
-    //result=cmeDeleteSecureDB(pResourcesDB,"AcmeIncPayroll.csv", "P4ssW0rd");
+    //result=cmeDeleteSecureDB(pResourcesDB,"AcmeIncPayroll Tests.csv", "password2",cmeDefaultFilePath);
     cmeDBClose(pResourcesDB);
 }
 

@@ -69,7 +69,7 @@ int cmeStrConstrAppend (char **resultStr, const char *addString, ...);
 int cmeStrSqlINSERTConstruct (char **resultQuery, const char *tableName, const char **colNamesValuesPairs,
                               const int numColumns);
 // Function to construct an UPDATE query (SQL)
-int cmeStrSqlUPDATEonstruct (char **resultQuery, const char *tableName, const char **colNamesValuesPairs,
+int cmeStrSqlUPDATEConstruct (char **resultQuery, const char *tableName, const char **colNamesValuesPairs,
                             const int numColumns, const char *matchColumn, const char *matchValue);
 // Function to create a string with an HTML representation of a MemTable
 int cmeMemTableToHTMLTableStr (const char** srcMemTable,char **resultHTMLTableStr,int numColumns,int numRows);

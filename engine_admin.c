@@ -66,7 +66,7 @@ int cmeSetupEngineAdminDBs ()
                 cmeDBClose(currentDB); \
                 currentDB=NULL; \
             } \
-        } while (0) //Local free() macro
+        } while (0); //Local free() macro
 
     //Prepare: ResourcesDB
     cmeStrConstrAppend(&currentDBName,"%s%s",cmeDefaultFilePath,dbFName1); //Create full path
@@ -432,7 +432,7 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
                 cmeDBClose(saveDB); \
                 saveDB=NULL; \
             } \
-        } while (0) //Local free() macro
+        } while (0); //Local free() macro
 
     currentMACProtectedSaltedData=(unsigned char **)malloc((sizeof(unsigned char *))*numDocumentDBCols);
     for (cont=0;cont<numDocumentDBCols;cont++) //Initialize pointers.
@@ -710,7 +710,7 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
             { \
                 MHD_stop_daemon (webServiceDaemon); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     if (useSSL) //HTTPS
     {
@@ -815,7 +815,7 @@ int cmeWebServiceInitAdminSetup (const char *orgKey)
             { \
                 cmeFree(columnValuesToMatch[cont]); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     cmeStrConstrAppend(&(columnValues[6]),"%s",cmeAdminDefaultUserId);
     cmeStrConstrAppend(&(columnValues[7]),"%s",cmeAdminDefaultOrgId);
@@ -939,7 +939,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                 } \
                 cmeFree(resultRegisterCols); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     *responseCode=0;
     //Check that all resource classes listed in the URL are valid:
@@ -1111,7 +1111,7 @@ int cmeWebServiceInitOrgSetup (const char *orgKey)
             { \
                 cmeFree(columnValuesToMatch[cont]); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     cmeStrConstrAppend(&(columnValues[0]),"Default DSE organization");
     cmeStrConstrAppend(&(columnValues[1]),"TBD");
@@ -1201,7 +1201,7 @@ int cmeWebServiceInitStorageSetup (const char *orgKey)
             { \
                 cmeFree(columnValuesToMatch[cont]); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     cmeStrConstrAppend(&(columnValues[0]),"Default DSE storage");
     cmeStrConstrAppend(&(columnValues[1]),"localhost");
@@ -1297,7 +1297,7 @@ int cmeWebServiceInitAdminIdSetup (const char *orgKey)
             { \
                 cmeFree(columnValuesToMatch[cont]); \
             } \
-        } while (0) //Local free() macro.
+        } while (0); //Local free() macro.
 
     cmeStrConstrAppend(&(columnValues[0]),"Default DSE storage");
     cmeStrConstrAppend(&(columnValues[1]),"TBD");

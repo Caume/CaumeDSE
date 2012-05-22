@@ -105,7 +105,7 @@ int main(int argc, char *argv[], char *env[])
             cmeFree(title); \
             end(&bufIn,&bufOut,&cdsePerl); \
             PERL_SYS_TERM(); \
-        } while (0) //Local free() macro
+        } while (0); //Local free() macro
 
     PERL_SYS_INIT3(&argc,&argv,&env);
     setup(&bufIn,&bufOut,&cdsePerl);  //Setup/allocate general stuff.

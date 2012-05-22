@@ -1,3 +1,44 @@
+2012-05-22 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* common.h (cmeMaxRAWDataInPart): Closed pending FIXME,
+	cmeMaxRAWDataInPart > evpBufferSize works fine.
+
+	* common.h (cmeWSMsgContenRowOptions): Added contentRow resource
+	options.
+
+	* common.h (cmeWSURIMaxArguments): Increased Max. number of URI
+	arguments from 32 to 512, so that contentRow parameters may fit in
+	a single call within a POST or PUT request).
+
+	* webservice_interface.c,webservice_interface.h
+	(cmeWebServiceProcessContentRowResource): Added web service to
+	process contentRow resource requests.
+
+	* engine_interface.c,engine_interface.h (cmeConstructContentRow):
+	Added function to construct new content rows based on row index
+	parameters (i.e.  [<column_0_based_idx_gt_0>] or [<column_name>]).
+
+	* filehandling.c,filehandling.h (cmeMemTableToSecureDB): Added
+	function to convert a memory table into a secure DB (analogous to
+	cmeCSVFileToSecureDB).
+
+	* filehandling.c (cmeCSVFileToSecureDB): Fixed some comments;
+	eliminated value from local free() macro.  Added a column name check
+	for 'id', to ensure that this name is reserved for internal
+	databases.
+
+	* function_tests.c (testCSV): Added test for cmeMemTableToSecureDB.
+
+	* *.c (local free() macro): Corrected sintaxis; added semicolon
+	after while (0).
+
+	* README (resource hierarchy): Updated status of {contentRow} and
+	fixed index level.
+
+	* README (): Added specifications and examples for {contentRow}
+	resource requests.
+
+
 2012-05-08 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* crypto.c,crypto.h (cmeHMACInit,cmeHMACUpdate,cmeHMACFinal): Added

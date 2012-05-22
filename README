@@ -267,10 +267,10 @@ The resource hierarchy is listed below:
 ~|  |  |  |  |  |  |  |  |  /parserScripts
  |  |  |  |  |  |  |  |  |  |  /{parserScript}
  |  |  |  |  |  |  |  |  |  /content
-~|  |  |  |  |  |  |  |  |  |  /contentRows
-~|  |  |  |  |  |  |  |  |  |  |  /{contentRow}
-~|  |  |  |  |  |  |  |  |  |  /contentColumns
-~|  |  |  |  |  |  |  |  |  |  |  /{contentColumn}
+~|  |  |  |  |  |  |  |  |  /contentRows
+ |  |  |  |  |  |  |  |  |  |  /{contentRow}
+~|  |  |  |  |  |  |  |  |  /contentColumns
+~|  |  |  |  |  |  |  |  |  |  /{contentColumn}
  |  /favicon.ico|  |  |  |  |  |  |
 ~|  /dbNames |  |  |  |  |  |  |  |
 ~|  |  /{dbName}|  |  |  |  |  |  |
@@ -283,7 +283,7 @@ The resource hierarchy is listed below:
  |  /engineCommands|  |  |  |  |  |
 ~|  /transactions  |  |  |  |  |  |
  |  |  |  |  |  |  |  |  |  |  |  |
- 0  1  2  3  4  5  6  7  8  9  10 12 (resource/resourceType level)
+    0  1  2  3  4  5  6  7  8  9  10 (resource/resourceType level)
 
 ~ = Not implemented (might be implemented in the future).
 
@@ -805,6 +805,12 @@ file
 	requests will contain the attribute parameters and the file contents
 	encoded in multipart/form-data format within the body.
 
+3.5 Optional Column index parameters for content rows (file.csv)
+
+[column_name]
+	Specifies the value for the specified 'column_name'. The column name
+	must match an existing column name within a document resource of
+	type file.csv.
 
 V. REST (Resource) API reference
 --------------------------------
@@ -1477,6 +1483,82 @@ content
 		REQUEST BODY:
 			<EMPTY>
 
+{contentRow}
+	Supported HTTP methods: POST PUT GET HEAD DELETE OPTIONS
+
+	Supported ATTRIBUTE PARAMETERS: 
+		MATCH:
+			_userId _orgId _resourceInfo _columnFile _partHash
+			_totalParts _partId _lastModified _columnId
+		UPDATE:
+			[column_name]
+		UPDATE NOTES:
+			For POST, {contentRow} must be exactly the next
+			available numeric row (it behaves as an append);
+			existing column for which a new value was not
+			specified will recieve a new empty string. 
+
+			For PUT, {contentRow} must be in the range 1 - last
+			row; existing columns for which a new value was not
+			specified will retain their previous value.
+		SUPPORTED FILE TYPES:
+			file.csv
+		RESPONSE HEADERS:
+			Engine-results: <number of matching registers>
+		RESPONSE BODY:
+			<Row contents or result of operation>
+
+	Example 1)	Get row 456 of document document.csv (of type file.csv);
+			get results in csv format.
+		METHOD:
+			GET
+		URI:
+			https://localhost/organizations/EngineOrg/storage/
+			EngineStorage/documentTypes/file.csv/documents/
+			document.csv/contentRows/456?userId=EngineAdmin&orgId=
+			EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+			&outputType=csv
+		REQUEST HEADERS:
+			<NONE>
+		REQUEST BODY:
+			<EMPTY>
+
+	Example 2)	Update columns salary (with 100.20 as new value) and
+			name (with James Duncan as new value) at row 100 of
+			document document.csv (of type file.csv).  Existing
+			columns lastName and employeeId will retain their
+			previous values.
+		METHOD:
+			PUT
+		URI:
+			https://localhost/organizations/EngineOrg/storage/
+			EngineStorage/documentTypes/file.csv/documents/
+			document.csv/contentRows/100?userId=EngineAdmin&orgId=
+			EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+			&[salary]=100.20&[name]=James
+		REQUEST HEADERS:
+			<NONE>
+		REQUEST BODY:
+			<EMPTY>	
+
+	Example 3)	Add row 101 (assuming there are currently 100 rows,
+			not counting column names) with column salary empty,
+			column lastName with value Robertson, column name
+			with value Sam and column employeeId with value 101,
+			to document document.csv (of type file.csv).
+		METHOD:
+			POST
+		URI:
+			https://localhost/organizations/EngineOrg/storage/
+			EngineStorage/documentTypes/file.csv/documents/
+			document.csv/contentRows/101?userId=EngineAdmin&orgId=
+			EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+			&[name]=Sam&[lastName]=Robertson&[employeeId]=100
+		REQUEST HEADERS:
+			<NONE>
+		REQUEST BODY:
+			<EMPTY>	
+
 
 favicon.ico
 	Supported HTTP methods: GET
@@ -1491,7 +1573,7 @@ favicon.ico
 		RESPONSE BODY:
 			<Icon image of the CaumeDSE (typically used by browsers
 			)>
-	Example 1) 	Get contents of the favicon.ico file
+	Example 1) 	Get contents of the favicon.ico file.
 		METHOD:
 			GET
 		URI:
@@ -1544,7 +1626,7 @@ chrooted environment.
 Note that running in DEBUG mode not only makes use of HTTP (and then
 switches to HTTPS after the first [enter] is pressed) which does not encrypt
 incoming connections, but also dumps to the console sensitive information
-including passwords.  To change to release mode (which also performs much
+including passwords.  To change to release mode (which also performs
 faster), use the following parameter when running ./configure:
 
 	--enable-RELEASE
