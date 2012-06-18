@@ -467,6 +467,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                           const char *storageId, const char *storagePath)
 {
     int cont,cont2,cont3,rContLimit,result,readBytes,written;
+    int numEntries=0;
     int totalParts=0;
     int rowStart=0;
     int numSQLDBfNames=0;               //with column slicing this will be (*numcols)*((((*processedRows)/cmeMaxCSVRowsInPart))+(((*processedRows)%cmeMaxCSVRowsInPart > 0)? 1 : 0 ))
@@ -474,8 +475,6 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
     int rowEnd=cmeCSVRowBuffer-1;
     sqlite3 **ppDB=NULL;
     sqlite3 *resourcesDB=NULL;
-    sqlite3 *existsDB=NULL;
-    sqlite3_int64 existRows=0;
     char **elements=NULL;               //Note: elements will be freed via the special function cmeCSVFileRowsToMemTableFinal() within the corresponding loop; it is not included in cmeCSVFileToSecureDBFree()
     char **SQLDBfNames=NULL;            //Will hold the name of each file part.
     char **SQLDBfMACs=NULL;             //Will hold the MAC of each file part.
@@ -494,6 +493,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
     char *sign=NULL;
     char *signProtected=NULL;
     char *otphDkey=NULL;
+    char *sanitizedStr=NULL;
     const char *nullParam="";
     const char resourcesDBFName[]="ResourcesDB";
     #define cmeCSVFileToSecureDBFree() \
@@ -510,15 +510,11 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             cmeFree(signProtected); \
             cmeFree(otphDkey); \
             cmeFree(currentRawFileContent); \
+            cmeFree(sanitizedStr); \
             if (resourcesDB) \
             { \
                 cmeDBClose(resourcesDB); \
                 resourcesDB=NULL; \
-            } \
-            if (existsDB) \
-            { \
-                cmeDBClose(existsDB); \
-                existsDB=NULL; \
             } \
             if (ppDB) \
             { \
@@ -570,17 +566,8 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
         cmeCSVFileToSecureDBFree();
         return(1);
     }
-    result=cmeSecureDBToMemDB(&existsDB,resourcesDB,documentId,orgKey,storagePath); // TODO (OHR#2#): Replace with a method that doesn't need to load the whole document in memory to increase efficiency (we just need to check that the document exists).
-    cmeFree(resourcesDBName);
-    if (result) //Error
-    {
-        cmeCSVFileToSecureDBFree();
-        return(2);
-    }
-    existRows=sqlite3_last_insert_rowid(existsDB);
-    cmeDBClose(existsDB);
-    existsDB=NULL;
-    if (existRows>0) //We have the same documentId already in the database...
+    result=cmeExistsDocumentId(resourcesDB,documentId,orgKey,&numEntries);
+    if (numEntries>0) //We have the same documentId already in the database...
     {
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeCVSFileToSecureDB(), documentId %s already exists; "
@@ -705,16 +692,39 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             {   //Insert 'name' attribute.
                 cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; "
                                     "INSERT INTO meta (id, userId, orgId, attribute, attributeData) "
-                                    "VALUES (NULL,'%s','%s','name','%s');",userId,orgId,
-                                    colNames[cont%(*numCols)]);
+                                    "VALUES (NULL");
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(userId,&sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(orgId,&sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeStrConstrAppend(&sqlQuery,",'name'");    //Add literal 'name' for attribute.
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(colNames[cont%(*numCols)],&sanitizedStr);  //Sanitize parameter attributeData for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeStrConstrAppend(&sqlQuery,");");    //End sql statement string.
+                cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt will be calculated and included in cmeMemSecureDBProtect()
                 for (cont2=0; cont2<numAttribute; cont2++) //Append other security attributes.
                 {
-                    cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect()
                     cmeStrConstrAppend(&sqlQuery,"INSERT INTO meta (id, userId, orgId, salt, attribute, attributeData) "
-                                            "VALUES (NULL,'%s','%s','%s','%s','%s');",userId,orgId,salt,
-                                            attribute[cont2],attributeData[cont2]);
-                    cmeFree(salt);
+                                    "VALUES (NULL");
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(userId,&sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(orgId,&sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                    cmeStrConstrAppend(&sqlQuery,",'%s'",salt);    //Add literal salt.
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(attribute[cont2],&sanitizedStr);   //Sanitize parameter attribute for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(attributeData[cont2],&sanitizedStr);  //Sanitize parameter attributeData for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                    cmeStrConstrAppend(&sqlQuery,");");    //End sql statement string.
                 }
+                cmeFree(salt);
                 cmeStrConstrAppend(&sqlQuery,"COMMIT;");
                 if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Insert row.
                 {
@@ -744,7 +754,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                 for(cont3=1;cont3<=rContLimit;cont3++) //Skip header row in elements[]; process each row.
                 {
                     value=elements[cont2+((*numCols)*(cont3+cont*cmeMaxCSVRowsInPart))];
-                    //Setup attributes defaults.
+                    //Setup attribute defaults.
                     cmeStrConstrAppend(&securedRowOrder,"%d",cont3+rowStart+cont*cmeMaxCSVRowsInPart);
                     cmeStrConstrAppend(&MAC,"%s",nullParam); // TODO (OHR#2#): Calculate MAC, MAC protected and stuff. Probably outside this function.
                     cmeStrConstrAppend(&MACProtected,"%s",nullParam);
@@ -754,8 +764,19 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                     cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect().
                     cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; INSERT INTO data "
                                                 "(id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey)"
-                                                " VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
-                                                "COMMIT;",userId,orgId,salt,value,securedRowOrder,MAC,sign,
+                                                " VALUES (NULL");
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(userId,&sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(orgId,&sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                    cmeStrConstrAppend(&sqlQuery,",'%s'",salt);    //Add literal salt.
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(value,&sanitizedStr);   //Sanitize parameter value for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                    cmeStrConstrAppend(&sqlQuery,",'%s','%s','%s','%s','%s','%s');" //Add remaining parameters.
+                                                "COMMIT;",securedRowOrder,MAC,sign,
                                                 MACProtected,signProtected,otphDkey);
                     //Free stuff;
                     cmeFree(salt);
@@ -1442,13 +1463,12 @@ void cmeContentReaderFreeCallback (void *cls)
                            const char *storageId, const char *storagePath)
 {
     int cont,cont2,cont3,rContLimit,result,readBytes,written;
+    int numEntries=0;
     int skipIdColumn=0;
     int totalParts=0;
     int numSQLDBfNames=0;               //with column slicing this will be (*numcols)*(((numRows/cmeMaxCSVRowsInPart))+((numRows%cmeMaxCSVRowsInPart > 0)? 1 : 0 ))
     sqlite3 **ppDB=NULL;
     sqlite3 *resourcesDB=NULL;
-    sqlite3 *existsDB=NULL;
-    sqlite3_int64 existRows=0;
     char **SQLDBfNames=NULL;            //Will hold the name of each file part.
     char **SQLDBfMACs=NULL;             //Will hold the MAC of each file part.
     char **SQLDBfSalts=NULL;            //Will hold the salt of each file part.
@@ -1466,6 +1486,7 @@ void cmeContentReaderFreeCallback (void *cls)
     char *sign=NULL;
     char *signProtected=NULL;
     char *otphDkey=NULL;
+    char *sanitizedStr=NULL;
     const char *nullParam="";
     const char resourcesDBFName[]="ResourcesDB";
     #define cmeMemTableToSecureDBFree() \
@@ -1481,16 +1502,12 @@ void cmeContentReaderFreeCallback (void *cls)
             cmeFree(sign); \
             cmeFree(signProtected); \
             cmeFree(otphDkey); \
+            cmeFree(sanitizedStr); \
             cmeFree(currentRawFileContent); \
             if (resourcesDB) \
             { \
                 cmeDBClose(resourcesDB); \
                 resourcesDB=NULL; \
-            } \
-            if (existsDB) \
-            { \
-                cmeDBClose(existsDB); \
-                existsDB=NULL; \
             } \
             if (ppDB) \
             { \
@@ -1542,17 +1559,8 @@ void cmeContentReaderFreeCallback (void *cls)
         cmeMemTableToSecureDBFree();
         return(1);
     }
-    result=cmeSecureDBToMemDB(&existsDB,resourcesDB,documentId,orgKey,storagePath); // TODO (OHR#2#): Replace with a method that doesn't need to load the whole document in memory to increase efficiency (we just need to check that the document exists).
-    cmeFree(resourcesDBName);
-    if (result) //Error
-    {
-        cmeMemTableToSecureDBFree();
-        return(2);
-    }
-    existRows=sqlite3_last_insert_rowid(existsDB);
-    cmeDBClose(existsDB);
-    existsDB=NULL;
-    if (existRows>0) //We have the same documentId already in the database...
+    result=cmeExistsDocumentId(resourcesDB,documentId,orgKey,&numEntries);
+    if (numEntries>0) //We have the same documentId already in the database...
     {
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeCVSFileToSecureDB(), documentId %s already exists; "
@@ -1583,7 +1591,14 @@ void cmeContentReaderFreeCallback (void *cls)
     }
     if (!(SQLDBfNames)) //Create (and open) DB files in memory if they have not been created.
     {
-        totalParts=((numRows/cmeMaxCSVRowsInPart)+((numRows%cmeMaxCSVRowsInPart > 0)? 1 : 0 ));
+        if ((numRows==0)&&((numCols-skipIdColumn)>=1)) //We have a new table with column names and no rows.
+        {
+            totalParts=1;
+        }
+        else
+        {
+            totalParts=((numRows/cmeMaxCSVRowsInPart)+((numRows%cmeMaxCSVRowsInPart > 0)? 1 : 0 ));
+        }
         numSQLDBfNames=(numCols-skipIdColumn)*totalParts;
         ppDB=(sqlite3 **)malloc(sizeof(sqlite3 *)*numSQLDBfNames);
         if (!ppDB)
@@ -1651,17 +1666,40 @@ void cmeContentReaderFreeCallback (void *cls)
         for (cont=0;cont<numSQLDBfNames;cont++) //Insert data into meta table.
         {   //Insert 'name' attribute.
             cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; "
-                                "INSERT INTO meta (id, userId, orgId, attribute, attributeData) "
-                                "VALUES (NULL,'%s','%s','name','%s');",userId,orgId,
-                                colNames[(cont%(numCols-skipIdColumn))+skipIdColumn]);
+                                    "INSERT INTO meta (id, userId, orgId, attribute, attributeData) "
+                                    "VALUES (NULL");
+            cmeFree(sanitizedStr);
+            cmeSanitizeStrForSQL(userId,&sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
+            cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+            cmeFree(sanitizedStr);
+            cmeSanitizeStrForSQL(orgId,&sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
+            cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+            cmeStrConstrAppend(&sqlQuery,",'name'");    //Add literal 'name' for attribute.
+            cmeFree(sanitizedStr);
+            cmeSanitizeStrForSQL(colNames[(cont%(numCols-skipIdColumn))+skipIdColumn],&sanitizedStr);  //Sanitize parameter attributeData for use in SQL statement.
+            cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+            cmeStrConstrAppend(&sqlQuery,");");    //End sql statement string.
+            cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect()
             for (cont2=0; cont2<numAttribute; cont2++) //Append other security attributes.
             {
-                cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect()
                 cmeStrConstrAppend(&sqlQuery,"INSERT INTO meta (id, userId, orgId, salt, attribute, attributeData) "
-                                        "VALUES (NULL,'%s','%s','%s','%s','%s');",userId,orgId,salt,
-                                        attribute[cont2],attributeData[cont2]);
-                cmeFree(salt);
+                                    "VALUES (NULL");
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(userId,&sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(orgId,&sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeStrConstrAppend(&sqlQuery,",'%s'",salt);    //Add literal salt.
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(attribute[cont2],&sanitizedStr);   //Sanitize parameter attribute for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(attributeData[cont2],&sanitizedStr);  //Sanitize parameter attributeData for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeStrConstrAppend(&sqlQuery,");");    //End sql statement string.
             }
+            cmeFree(salt);
             cmeStrConstrAppend(&sqlQuery,"COMMIT;");
             if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Insert row.
             {
@@ -1701,8 +1739,19 @@ void cmeContentReaderFreeCallback (void *cls)
                 cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect().
                 cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; INSERT INTO data "
                                             "(id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey)"
-                                            " VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
-                                            "COMMIT;",userId,orgId,salt,value,securedRowOrder,MAC,sign,
+                                            " VALUES (NULL");
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(userId,&sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(orgId,&sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeStrConstrAppend(&sqlQuery,",'%s'",salt);    //Add literal salt.
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(value,&sanitizedStr);   //Sanitize parameter value for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                cmeStrConstrAppend(&sqlQuery,",'%s','%s','%s','%s','%s','%s');" //Add remaining parameters.
+                                            "COMMIT;",securedRowOrder,MAC,sign,
                                             MACProtected,signProtected,otphDkey);
                 //Free stuff:
                 cmeFree(salt);
@@ -1769,8 +1818,16 @@ void cmeContentReaderFreeCallback (void *cls)
         cmeFree(currentRawFileContent);
         cmeFree(bkpFName);
     }
-    result=cmeRegisterSecureDBorFile((const char **)SQLDBfNames, numSQLDBfNames,(const char **)SQLDBfSalts, (const char **)SQLDBfMACs,totalParts,orgKey,userId,orgId,resourceInfo,
-                                     documentType,documentId,storageId,orgId);
+    if (!resourceInfo) //ResourceInfo is null; use nullParam instead.
+    {
+        result=cmeRegisterSecureDBorFile((const char **)SQLDBfNames, numSQLDBfNames,(const char **)SQLDBfSalts, (const char **)SQLDBfMACs,totalParts,orgKey,userId,orgId,nullParam,
+                                        documentType,documentId,storageId,orgId);
+    }
+    else //ResourceInfo exists; use it.
+    {
+        result=cmeRegisterSecureDBorFile((const char **)SQLDBfNames, numSQLDBfNames,(const char **)SQLDBfSalts, (const char **)SQLDBfMACs,totalParts,orgKey,userId,orgId,resourceInfo,
+                                        documentType,documentId,storageId,orgId);
+    }
     if (result) //error
     {
 #ifdef ERROR_LOG

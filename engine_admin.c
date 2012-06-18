@@ -550,7 +550,7 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             // Insert row in database:
-            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; "
+            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; " //Parameters sanitized by protection (Encryption+B64 conversion).
                                 "INSERT INTO documents (id, userId, orgId, salt, resourceInfo,"
                                 " columnFile, type, documentId, storageId, orgResourceId, partMAC,"
                                 " totalParts, partId, lastModified, columnId)"

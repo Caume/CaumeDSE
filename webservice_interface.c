@@ -1049,18 +1049,8 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             {
                 return(0);
             }
-            /**
-            cmeStrConstrAppend(responseText,"<b>403 ERROR No methods are currently available for this resource type.</b><br><br>"
-               "Resource: '%s'. method: '%s', url: '%s'",urlElements[numUrlElements-1],method,url);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, no methods are currently available for this resource type."
-                    "Unknown resource: '%s'. Method: '%s', url: '%s'\n",urlElements[numUrlElements-1],method,url);
-#endif
-            cmeWebServiceProcessRequestFree();
-            *responseCode=403; //Response: Error 404 (resource not found).
-            return (19); **/
         }
-        else if ((numUrlElements==10)&&(strcmp(urlElements[9],"contentColumns")==0))// contentColumns class resource
+        else if ((numUrlElements==9)&&(strcmp(urlElements[8],"contentColumns")==0))// contentColumns class resource
         {
 #ifdef DEBUG
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
@@ -1076,21 +1066,22 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             *responseCode=403; //Response: Error 404 (resource not found).
             return (20);
         }
-        else if ((numUrlElements==11)&&(strcmp(urlElements[9],"contentColumns")==0))// contentColumn resource
+        else if ((numUrlElements==10)&&(strcmp(urlElements[8],"contentColumns")==0))// contentColumn resource
         {
 #ifdef DEBUG
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
-                        "outputDocument resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+                        "contentColumn resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-            cmeStrConstrAppend(responseText,"<b>403 ERROR No methods are currently available for this resource type.</b><br><br>"
-               "Resource: '%s'. method: '%s', url: '%s'",urlElements[numUrlElements-1],method,url);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, no methods are currently available for this resource type."
-                    "Unknown resource: '%s'. Method: '%s', url: '%s'\n",urlElements[numUrlElements-1],method,url);
-#endif
-            cmeWebServiceProcessRequestFree();
-            *responseCode=403; //Response: Error 404 (resource not found).
-            return (21);
+            result=cmeWebServiceProcessContentColumnResource (responseText, responseHeaders, responseCode, url,
+                                                              urlElements, argumentElements, method, storagePath);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
         }
         else //ERROR: unknown resource type
         {
@@ -6223,7 +6214,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                     if (!postImportFile) //Error, File argument not found!
                     {
                         cmeStrConstrAppend(responseText,"<b>400 ERROR Bad request.</b><br>"
-                                           "Document resource not included in request! "
+                                           "Document resource file not included in request! "
                                            "METHOD: '%s' URL: '%s'."
                                             "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgDocumentOptions,
                                             cmeInternalDBDefinitionsVersion);
@@ -7974,7 +7965,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         *responseCode=500;
                         return(4);
                     }
-                    result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
+                    cmeResultMemTableClean();
+                    result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                                cmeDefaultPerlIterationFunction,cdsePerl); //Select
                     if (!result) //OK
                     {
@@ -8172,7 +8164,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         *responseCode=500;  //No responseText in HEAD!
                         return(13);
                     }
-                    result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
+                    cmeResultMemTableClean();
+                    result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                                       cmeDefaultPerlIterationFunction,cdsePerl); //Select
                     if (!result) //OK
                     {
@@ -8581,7 +8574,7 @@ int cmeWebServiceConfirmUserId (const char *userResourceId, const char *orgKey)
 int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
                                       const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                       const char *storagePath)
-{   //IDD ver. 1.0.20 definitions.
+{   //IDD ver. 1.0.21
     int cont,result;
     int keyArg=0;
     int orgArg=0;
@@ -8732,32 +8725,54 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                         *responseCode=500;
                         return(1);
                     }
-                    result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
+                    cmeResultMemTableClean();
+                    result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                                       NULL,NULL); //Select all data; no parser script.
-                    if (!result) //OK
+                    if (result==2) //Internal logic error (e.g. no data).
                     {
-                        //Construct responseText and create response headers according to the user's outputType (optional) request:
-                        result=cmeConstructWebServiceTableResponse ((const char **)cmeResultMemTable, cmeResultMemTableCols, cmeResultMemTableRows,
-                                                                    argumentElements, url, method, urlElements[7],
-                                                                    responseHeaders, responseText, responseCode);
+                        cmeStrConstrAppend(responseText,"<b>404 ERROR resource document not found.</b><br>"
+                                               "Internal server error number '%d'."
+                                               "METHOD: '%s' URL: '%s'."
+                                                "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentClassOptions,
+                                                cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+                        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentClass(), GET successful but "
+                                "no records for documentId '%s' found.\n",urlElements[7]);
+#endif
+                        cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                        cmeFileOverwriteAndDelete(*responseFilePath);
                         cmeWebServiceProcessContentClassFree();
+                        *responseCode=404;
                         return(0);
                     }
-                    else //Error
+                    if (result) //Error (!=2)
                     {
                         cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
                                            "Internal server error number '%d'."
                                            "METHOD: '%s' URL: '%s'."
                                             "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentClassOptions,
                                             cmeInternalDBDefinitionsVersion);
-    #ifdef ERROR_LOG
+#ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentClass(), Error, internal server error '%d'."
                                 " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters error!\n",result,method,url);
-    #endif
+#endif
                         cmeWebServiceProcessContentClassFree();
                         *responseCode=500;
                         return(2);
                     }
+                    if ((cmeResultMemTableCols==0)&&(cmeResultMemTableRows==0))//0 Rows tables return 0 columns in SQLite. To be sure we use an SQLite pragma to retrieve column names only.
+                    {
+                        //Call function to get just the column names in the cmeResultMemTable:
+                        result=cmeMemTableWithTableColumnNames(resultDB,"data");
+                    }
+                    //OK, construct responseText and create response headers according to the user's outputType (optional) request:
+                    result=cmeConstructWebServiceTableResponse ((const char **)cmeResultMemTable, cmeResultMemTableCols, cmeResultMemTableRows,
+                                                                argumentElements, url, method, urlElements[7],
+                                                                responseHeaders, responseText, responseCode);
+                    cmeWebServiceProcessContentClassFree();
+                    *responseCode=200;
+                    return(0);
                 }
                 else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
                 {
@@ -8930,32 +8945,22 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                         *responseCode=500;
                         return(8);
                     }
-                    result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
+                    cmeResultMemTableClean();
+                    result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                                       NULL,NULL); //Select all data; no parser script.
-                    if (!result) //OK
+                    if (result==2) //Error SQLITE_INTERNAL Logic (e.g. document not found)
                     {
-                        if (cmeResultMemTableRows) // Found >0 rows.
-                        {
-                            //In HEAD method we just get counters.
-                            *responseCode=200;
+                        *responseCode=404;
 #ifdef DEBUG
-                            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentClass(), HEAD successful.\n");
+                        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentClass(), HEAD successful but "
+                                "document not found.\n");
 #endif
-                        }
-                        else //Found 0 rows.
-                        {
-                            *responseCode=404;
-#ifdef DEBUG
-                            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentClass(), HEAD successful but "
-                                    "no records found.\n");
-#endif
-                        }
                         cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",cmeResultMemTableRows);
+                        cmeStrConstrAppend(&((*responseHeaders)[1]),"0");
                         cmeWebServiceProcessContentClassFree();
                         return(0);
                     }
-                    else //Error
+                    if (result) //Error (!=2)
                     {
 #ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentClass(), Error, internal server error '%d'."
@@ -8965,6 +8970,27 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                         *responseCode=500;  //No responseText with HEAD method!
                         return(9);
                     }
+                    //OK:
+                    if (cmeResultMemTableRows) // Found >0 rows.
+                    {
+                        //In HEAD method we just get counters.
+                        *responseCode=200;
+#ifdef DEBUG
+                        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentClass(), HEAD successful.\n");
+#endif
+                    }
+                    else //Found 0 rows.
+                    {
+                        *responseCode=404;
+#ifdef DEBUG
+                        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentClass(), HEAD successful but "
+                                "no records found.\n");
+#endif
+                    }
+                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",cmeResultMemTableRows);
+                    cmeWebServiceProcessContentClassFree();
+                    return(0);
                 }
                 else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
                 {
@@ -9416,6 +9442,8 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             } \
         } while (0); //Local free() macro.
 
+    //Clear result Mem table from any previous queries:
+    cmeResultMemTableClean();
     //Check that type =file.csv (we can only work with this type of document resources):
     if (strcmp("file.csv",urlElements[5])) //Error, file type is invalid. Abort
     {
@@ -9522,7 +9550,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                                     cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
-                        " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
+                        " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
                 cmeWebServiceProcessContentClassFree();
                 *responseCode=500;
@@ -9564,7 +9592,8 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 *responseCode=500;
                 return(4);
             }
-            result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
+            cmeResultMemTableClean();
+            result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                               NULL,NULL); //Select all data; no parser script.
             if (result) //Error
             {
@@ -9580,6 +9609,11 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 cmeWebServiceProcessContentClassFree();
                 *responseCode=500;
                 return(5);
+            }
+            if ((cmeResultMemTableCols==0)&&(cmeResultMemTableRows==0))//0 Rows tables return 0 columns in SQLite. To be sure we use an SQLite pragma to retrieve column names only.
+            {
+               //Call function to get just the column names in the cmeResultMemTable:
+               result=cmeMemTableWithTableColumnNames(resultDB,"data");
             }
             if (atoi(urlElements[9])!=cmeResultMemTableRows+1) //Error, specified row is out of range for a POST. Stop processing.
             {
@@ -9700,7 +9734,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                                     cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
-                        " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
+                        " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
                 cmeWebServiceProcessContentClassFree();
                 *responseCode=500;
@@ -9742,7 +9776,8 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 *responseCode=500;
                 return(10);
             }
-            result=cmeSQLRows(resultDB,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;",
+            cmeResultMemTableClean();
+            result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                               NULL,NULL); //Select all data; no parser script.
             if (result) //Error
             {
@@ -9878,7 +9913,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                                     cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
-                        " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
+                        " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
                 cmeWebServiceProcessContentClassFree();
                 *responseCode=500;
@@ -9918,8 +9953,8 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 *responseCode=500;
                 return(16);
             }
-            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; SELECT * FROM data WHERE id='%d'; COMMIT;",atoi(urlElements[9])); //We sanitize the numeric input by using atoi().
-            cmeResultMemTableClean(); //We need to ensure that table is clean, otherwise we might get the previous query.
+            cmeResultMemTableClean();
+            cmeStrConstrAppend(&sqlQuery,"SELECT * FROM data WHERE id='%d';",atoi(urlElements[9])); //We sanitize the numeric input by using atoi().
             result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Select the requested row only; no parser script.
             if (result) //Error
             {
@@ -10036,7 +10071,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                                     cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
-                        " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
+                        " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
                 cmeWebServiceProcessContentClassFree();
                 *responseCode=500;
@@ -10076,8 +10111,8 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 *responseCode=500;
                 return(21);
             }
-            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; SELECT * FROM data WHERE id='%d'; COMMIT;",atoi(urlElements[9])); //We sanitize the numeric input by using atoi().
-            cmeResultMemTableClean(); //We need to ensure that table is clean, otherwise we might get the previous query.
+            cmeResultMemTableClean();
+            cmeStrConstrAppend(&sqlQuery,"SELECT * FROM data WHERE id='%d';",atoi(urlElements[9])); //We sanitize the numeric input by using atoi().
             result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Select the requested row only; no parser script.
             if (result) //Error
             {
@@ -10187,7 +10222,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                                     cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
-                        " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
+                        " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
                 cmeWebServiceProcessContentClassFree();
                 *responseCode=500;
@@ -10230,8 +10265,8 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 return(26);
             }
             //Get all rows and check that requested row is within bounds:
-            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; SELECT * FROM data; COMMIT;");
-            cmeResultMemTableClean(); //We need to ensure that table is clean, otherwise we might get the previous query.
+            cmeResultMemTableClean();
+            cmeStrConstrAppend(&sqlQuery,"SELECT * FROM data;");
             result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Select the requested row only; no parser script.
             if ((atoi(urlElements[9])>cmeResultMemTableRows)||(atoi(urlElements[9])<1)) //Error, specified row is out of range for DELETE. Stop processing.
             {
@@ -10249,8 +10284,8 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 return(27);
             }
             //OK, now get all rows, excepted the one being deleted:
-            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; SELECT * FROM data WHERE id <> '%d'; COMMIT;",atoi(urlElements[9])); //We sanitize the numeric input by using atoi().
-            cmeResultMemTableClean(); //We need to ensure that table is clean, otherwise we might get the previous query.
+            cmeResultMemTableClean();
+            cmeStrConstrAppend(&sqlQuery,"SELECT * FROM data WHERE id <> '%d';",atoi(urlElements[9])); //We sanitize the numeric input by using atoi().
             result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Select the requested row only; no parser script.
             if (result) //Error
             {
@@ -10371,5 +10406,1237 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
         cmeWebServiceProcessContentRowResourceFree();
         *responseCode=405;
         return(31);
+    }
+}
+
+int cmeWebServiceProcessContentColumnResource (char **responseText, char ***responseHeaders, int *responseCode,
+                                               const char *url, const char **urlElements, const char **argumentElements, const char *method,
+                                               const char *storagePath)
+{   //IDD ver. 1.0.21 definitions.
+    int cont,cont2,result;
+    int columnExists=0;
+    int numColsContentRow=0;
+    int keyArg=0;
+    int orgArg=0;
+    int usrArg=0;
+    int newKeyArg=0;
+    int numSaveArgs=0;
+    int numMatchArgs=0;
+    int numResultRegisterCols=0;
+    int numResultRegisters=0;
+    int requestedColNameIDX=0;
+    sqlite3 *pDB=NULL;
+    sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
+    char *orgKey=NULL;                  //requester orgKey.
+    char *userId=NULL;                  //requester userId.
+    char *orgId=NULL;                   //requester orgId.
+    char *newOrgKey=NULL;               //requester newOrgKey (optional).
+    char *salt=NULL;
+    char **columnValues=NULL;           //Values to be created/updated (POST/PUT)
+    char **columnNames=NULL;            //Names of columns of values to be created/updated (POST/PUT)
+    char **columnValuesToMatch=NULL;    //Values to match a register to operate upon (GET/PUT)
+    char **columnNamesToMatch=NULL;     //Names of columns for values to match a register (GET/PUT)
+    char **newContentRow=NULL;          //Data of new content row (POST/PUT).
+    char *dbFilePath=NULL;
+    char *columnFileFullPath=NULL;      //Temp. storage for full path of columnFile for method DELETE.
+    char *resourceInfoText=NULL;        //Stores the previous resourceInfo value (POST/PUT)
+    char *sqlQuery=NULL;
+    char *sanitizedSQLStr=NULL;         //Storage for sanitized SQL parameter to be used directly in SQL queries.
+    char **resultRegisterCols=NULL;
+    const int numColumns=cmeIDDResourcesDBDocumentsNumCols;            //Number of columns in corresponding resource table.
+    const int numValidGETALLMatch=9;    //9 parameters + 4 (storageId,type,orgResourceId,documentId) from URL
+    const int numValidPOSTSave=3;       //3 parameters + 4 (storageId,type,orgResourceId,documentId) from URL; columnFile, partMAC, totalParts, partId, columnId, lastModified are set automatically
+    const char *tableName="documents";
+    const char *validGETALLMatchColumns[9]={"_userId","_orgId","_resourceInfo","_columnFile",
+                                            "_partHash","_totalParts","_partId","_lastModified","_columnId"};
+    const char *validPOSTSaveColumns[3]={"userId","orgId"};
+    const char *attributes[]={"shuffle","protect"};                           // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user, via API!
+    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    #define cmeWebServiceProcessContentColumnResourceFree() \
+        do { \
+            cmeFree(orgKey); \
+            cmeFree(userId); \
+            cmeFree(orgId); \
+            cmeFree(newOrgKey); \
+            cmeFree(dbFilePath); \
+            cmeFree(salt); \
+            cmeFree(columnFileFullPath); \
+            cmeFree(resourceInfoText); \
+            cmeFree(sqlQuery); \
+            cmeFree(sanitizedSQLStr); \
+            if ((newContentRow)&&(numColsContentRow)) \
+            { \
+               for (cont=0;cont<numColsContentRow;cont++) \
+               { \
+                   cmeFree(newContentRow[cont]); \
+               } \
+               cmeFree(newContentRow); \
+            } \
+            if (resultRegisterCols) \
+            { \
+               for (cont=0;cont<numResultRegisterCols*(numResultRegisters+1);cont++) \
+               { \
+                   cmeFree(resultRegisterCols[cont]); \
+               } \
+               cmeFree(resultRegisterCols); \
+            } \
+            if (columnValues) \
+            { \
+               for (cont=0; cont<numColumns;cont++) \
+               { \
+                   cmeFree(columnValues[cont]); \
+               } \
+               cmeFree(columnValues); \
+            } \
+            if (columnNames) \
+            { \
+               for (cont=0;cont<numColumns;cont++) \
+               { \
+                   cmeFree(columnNames[cont]); \
+               } \
+               cmeFree(columnNames); \
+            } \
+            if (columnValuesToMatch) \
+            { \
+               for (cont=0;cont<numColumns;cont++) \
+               { \
+                   cmeFree(columnValuesToMatch[cont]); \
+               } \
+               cmeFree(columnValuesToMatch); \
+            } \
+            if (columnNamesToMatch) \
+            { \
+               for (cont=0;cont<numColumns;cont++) \
+               { \
+                   cmeFree(columnNamesToMatch[cont]); \
+               } \
+               cmeFree(columnNamesToMatch); \
+            } \
+            if (pDB) \
+            { \
+                cmeDBClose(pDB); \
+                pDB=NULL; \
+            } \
+            if (resultDB) \
+            { \
+                cmeDBClose(resultDB); \
+                resultDB=NULL; \
+            } \
+        } while (0); //Local free() macro.
+
+    //Check that type =file.csv (we can only work with this type of document resources):
+    if (strcmp("file.csv",urlElements[5])) //Error, file type is invalid. Abort
+    {
+        cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>"
+                           "File type must be 'file.csv' "
+                           "METHOD: '%s' URL: '%s'."
+                            "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContentColumnOptions,
+                            cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+        fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, forbidden request, file type != 'file.csv'!"
+                " Method: '%s', URL: '%s'!\n",method,url);
+#endif
+        cmeWebServiceProcessContentColumnResourceFree();
+        *responseCode=403;
+        return(1);
+    }
+    result=cmeSanitizeStrForSQL(urlElements[9],&sanitizedSQLStr); //Sanitize contentColumn name so that it can be used in SQL queries.
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Sanitized (i.e. doubled single quotes) of "
+            "content column parameter: '%s' -> '%s'.\n",urlElements[9],sanitizedSQLStr);
+#endif
+    columnValues=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
+    columnNames=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
+    columnValuesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, column values to match (GET/PUT).
+    columnNamesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store column names to match (GET).
+    for (cont=0; cont<numColumns;cont++)
+    {
+       columnValues[cont]=NULL;
+       columnNames[cont]=NULL;
+       columnValuesToMatch[cont]=NULL;
+       columnNamesToMatch[cont]=NULL;
+    }
+    cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
+    if(!strcmp(method,"POST")) //Method = POST is ok, process:
+    {
+        //Mandatory values by user:
+        cmeStrConstrAppend(&(columnValues[0]),"%s",urlElements[1]); //We also ignore the argument "orgResourceId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);
+        cmeStrConstrAppend(&(columnNames[0]),"orgResourceId");
+        cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
+        cmeStrConstrAppend(&(columnValues[1]),"%s",urlElements[3]); //We also ignore the argument "storageId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[3]);
+        cmeStrConstrAppend(&(columnNames[1]),"storageId");
+        cmeStrConstrAppend(&(columnNamesToMatch[1]),"storageId");
+        cmeStrConstrAppend(&(columnValues[2]),"%s",urlElements[5]); //We also ignore the argument "type" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnValuesToMatch[2]),"%s",urlElements[5]);
+        cmeStrConstrAppend(&(columnNames[2]),"type");
+        cmeStrConstrAppend(&(columnNamesToMatch[2]),"type");
+        cmeStrConstrAppend(&(columnValues[3]),"%s",urlElements[7]); //We also ignore the argument "documentId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnValuesToMatch[3]),"%s",urlElements[7]);
+        cmeStrConstrAppend(&(columnNames[3]),"documentId");
+        cmeStrConstrAppend(&(columnNamesToMatch[3]),"documentId");
+        //Mandatory, calculated values. For 'file.csv' We will calculate these values in cmeCSVFileToSecureDB(). Therefore they aren't included in the match list:
+        cmeStrConstrAppend(&(columnValues[4]),"");
+        cmeStrConstrAppend(&(columnNames[4]),"columnFile");
+        cmeStrConstrAppend(&(columnValues[5]),"");
+        cmeStrConstrAppend(&(columnNames[5]),"partMAC");
+        cmeStrConstrAppend(&(columnValues[6]),"");
+        cmeStrConstrAppend(&(columnNames[6]),"totalParts");
+        cmeStrConstrAppend(&(columnValues[7]),"");
+        cmeStrConstrAppend(&(columnNames[7]),"partId");
+        cmeStrConstrAppend(&(columnValues[8]),"");
+        cmeStrConstrAppend(&(columnNames[8]),"lastModified");
+        cmeStrConstrAppend(&(columnValues[9]),"");
+        cmeStrConstrAppend(&(columnNames[9]),"columnId");
+
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), POST, column orgResourceId: '%s'.\n",
+                urlElements[1]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), POST, column storageId: '%s'.\n",
+                urlElements[3]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), POST, column type: '%s'.\n",
+                urlElements[5]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), POST, column documentId: '%s'.\n",
+                urlElements[7]);
+#endif
+        numMatchArgs=4;
+        numSaveArgs=10;
+        cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, validPOSTSaveColumns, numValidGETALLMatch,numValidPOSTSave,
+                                          columnValuesToMatch, columnNamesToMatch, columnValues, columnNames, &numMatchArgs, &numSaveArgs,
+                                          &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
+        if ((numMatchArgs>=4)&&(numSaveArgs==12)&&(keyArg)&&(usrArg)&&(orgArg)) //Command POST successful.
+        {
+            //Verify that contentColumn != "id":
+            if (!strcmp(urlElements[9],"id")) //Error, Column id can't be "id"
+            {
+                cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>"
+                                   "contentColumn  '%s' is reserved!"
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",urlElements[9],method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, forbidden request, document column already exists!"
+                        " Method: '%s', URL: '%s'!\n",method,url);
+#endif
+                cmeWebServiceProcessContentColumnResourceFree();
+                *responseCode=403;
+                return(2);
+            }
+            result=cmeDBOpen(dbFilePath,&pDB);
+            if (result) //Server ERROR
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s'!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentColumnResourceFree();
+                *responseCode=500;
+                return(3);
+            }
+            result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                              numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
+                                              &numResultRegisters,orgKey);
+            if (result) //Error
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentClassFree();
+                *responseCode=500;
+                return(4);
+            }
+            if (numResultRegisters<=0) //requested documentID not found -> create new, empty document with 1 column.
+            {
+                //Create new empty table data structure with columns id and requested contentColumn
+                cmeResultMemTableClean();
+                cmeResultMemTable=(char **)malloc(sizeof(char *)*1); //We just need the new column name. No Id column necessary.
+                cmeResultMemTableRows=0;
+                cmeResultMemTableCols=1;
+                cmeResultMemTable[0]=NULL;
+                cmeStrConstrAppend(&(cmeResultMemTable[0]),"%s",urlElements[9]);
+                //Create new secureDB:
+                result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
+                                             attributes,attributesData,2,1,
+                                             resourceInfoText,
+                                             urlElements[5], //document type
+                                             urlElements[7], //documentId
+                                             urlElements[3], //storageId
+                                             storagePath);    //storagePath
+                //End:
+                cmeStrConstrAppend(responseText,"Method '%s', user '%s' created successfully contentColumn resource '%s' and documentId '%s', "
+                                   "within organization '%s', in storage '%s', using tableName: '%s'.<br>",method, userId, urlElements[9],
+                                   urlElements[7],urlElements[1],urlElements[3],tableName);
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), POST successful.\n");
+#endif
+                *responseCode=201;
+                cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
+                cmeWebServiceProcessContentColumnResourceFree();
+                return(0);
+            }
+            else //Document exists -> add new column with empty row values.
+            {
+                //Copy resourceInfo:
+                cmeStrConstrAppend(&resourceInfoText,"%s",resultRegisterCols[numResultRegisterCols+cmeIDDResourcesDBDocuments_resourceInfo]);
+                //Load an unprotected copy in memory of "documentId":
+                result=cmeSecureDBToMemDB (&resultDB,pDB,urlElements[7],orgKey,storagePath);
+                if (result) //Error
+                {
+                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                            " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
+#endif
+                    cmeWebServiceProcessContentClassFree();
+                    *responseCode=500;
+                    return(5);
+                }
+                //Verify that content Column doesn't exist already:
+                cmeResultMemTableClean();
+                result=cmeMemTableWithTableColumnNames(resultDB,"data"); //Get just the column names in the cmeResultMemTable.
+                for (cont=0;cont<cmeResultMemTableCols;cont++)
+                {
+                    if (!strcmp(cmeResultMemTable[cont],urlElements[9]))
+                    {
+                        columnExists=1;
+                    }
+                }
+                if (columnExists) //Error, column exists already
+                {
+                    cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>"
+                                       "contentColumn  '%s' already exists!"
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",urlElements[9],method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+                    fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, forbidden request, document column already exists!"
+                            " Method: '%s', URL: '%s'!\n",method,url);
+#endif
+                    cmeWebServiceProcessContentColumnResourceFree();
+                    *responseCode=403;
+                    return(6);
+                }
+                //Add new column:
+                cmeFree(sqlQuery);
+                cmeResultMemTableClean();
+                cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; ALTER TABLE data ADD COLUMN '%s' TEXT NOT NULL DEFAULT ''; COMMIT;",sanitizedSQLStr); //Note that we pass column single quoted and not double quoted for sanitization to work. SQLITE converts literals to identifiers when needed.
+                result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Add new column.
+                if (result) //Error
+                {
+                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                            " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
+#endif
+                    cmeWebServiceProcessContentClassFree();
+                    *responseCode=500;
+                    return(7);
+                }
+                //Load whole table with new column:
+                cmeResultMemTableClean();
+                result=cmeSQLRows(resultDB,"SELECT * FROM data;",NULL,NULL); //Select all data; no parser script.
+                if (result) //Error
+                {
+                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                            " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
+#endif
+                    cmeWebServiceProcessContentClassFree();
+                    *responseCode=500;
+                    return(8);
+                }
+                if ((cmeResultMemTableCols==0)&&(cmeResultMemTableRows==0))//0 Rows tables return 0 columns in SQLite. To be sure we use an SQLite pragma to retrieve column names only.
+                {
+                    //Call function to get just the column names in the cmeResultMemTable:
+                    result=cmeMemTableWithTableColumnNames(resultDB,"data");
+                }
+                //Create new secureDB (delete old secureDB if it exists):
+                result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
+                                             attributes,attributesData,2,1,
+                                             resourceInfoText,
+                                             urlElements[5], //document type
+                                             urlElements[7], //documentId
+                                             urlElements[3], //storageId
+                                             storagePath);    //storagePath
+                //End:
+                cmeStrConstrAppend(responseText,"Method '%s', user '%s' created successfully contentColumn resource '%s', "
+                                   "within organization '%s', in storage '%s', using tableName: '%s'.<br>",method, userId, urlElements[9],
+                                   urlElements[1], urlElements[3], tableName);
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), POST successful.\n");
+#endif
+                *responseCode=201;
+                cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
+                cmeWebServiceProcessContentColumnResourceFree();
+                return(0);
+            }
+        }
+        else //Error, invalid number of arguments for this command.
+        {
+            cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments."
+                               "</b><br><br>The provided number of arguments is insufficient. "
+                               "METHOD: '%s' URL: '%s'."
+                                "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContentColumnOptions,
+                                cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+            fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, incorrect number of "
+                    " arguments. Method: '%s', URL: '%s'!\n",method,url);
+#endif
+
+            cmeWebServiceProcessContentColumnResourceFree();
+            *responseCode=409;
+            return(9);
+        }
+    }
+    else if(!strcmp(method,"GET")) //Method = GET is ok, process:
+    {
+        //Mandatory values by user:
+        cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We also ignore the argument "orgResourceId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
+        cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[3]);  //We also ignore the argument "storageId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[1]),"storageId");
+        cmeStrConstrAppend(&(columnValuesToMatch[2]),"%s",urlElements[5]);  //We also ignore the argument "type" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[2]),"type");
+        cmeStrConstrAppend(&(columnValuesToMatch[3]),"%s",urlElements[7]);  //We also ignore the argument "documentId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[3]),"documentId");
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), GET, column orgResourceId: '%s'.\n",
+                urlElements[1]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), GET, column storageId: '%s'.\n",
+                urlElements[3]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), GET, column type: '%s'.\n",
+                urlElements[5]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), GET, column documentId: '%s'.\n",
+                urlElements[7]);
+#endif
+        numMatchArgs=4;
+        cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
+                                          columnValuesToMatch, columnNamesToMatch, columnValues, columnNames, &numMatchArgs, &numSaveArgs,
+                                          &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
+        if ((numMatchArgs>=4)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId, userId and >=1 Match)
+        {
+            result=cmeDBOpen(dbFilePath,&pDB);
+            if (result) //Server ERROR
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s'!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentColumnResourceFree();
+                *responseCode=500;
+                return(10);
+            }
+            result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                              numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
+                                              &numResultRegisters,orgKey);
+            if (result) //Error
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentClassFree();
+                *responseCode=500;
+                return(11);
+            }
+            if (numResultRegisters<=0) //requested documentID not found
+            {
+                cmeStrConstrAppend(responseText,"<b>404 ERROR document resource not found.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), "
+                        "no records for documentId '%s' found.\n",urlElements[7]);
+#endif
+                cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                cmeWebServiceProcessContentColumnResourceFree();
+                *responseCode=404;
+                return(0);
+            }
+            else //Document exists -> GET requested column.
+            {
+                //Load an unprotected copy in memory of "documentId":
+                result=cmeSecureDBToMemDB (&resultDB,pDB,urlElements[7],orgKey,storagePath);
+                if (result) //Error
+                {
+                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                            " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
+#endif
+                    cmeWebServiceProcessContentClassFree();
+                    *responseCode=500;
+                    return(12);
+                }
+                //Verify that content Column exists:
+                cmeResultMemTableClean();
+                result=cmeMemTableWithTableColumnNames(resultDB,"data"); //Get just the column names in the cmeResultMemTable.
+                for (cont=0;cont<cmeResultMemTableCols;cont++) //flag and record index of the column to delete.
+                {
+                    if (!strcmp(cmeResultMemTable[cont],urlElements[9]))
+                    {
+                        requestedColNameIDX=cont;
+                        columnExists=1;
+                    }
+                }
+                if (!columnExists) //Error, column does not exist
+                {
+                    cmeStrConstrAppend(responseText,"<b>404 ERROR contentColumn resource not found.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+                    fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), "
+                            "contentColumn '%s' not found.\n",urlElements[9]);
+#endif
+                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                    cmeWebServiceProcessContentColumnResourceFree();
+                    *responseCode=404;
+                    return(0);
+                }
+                //GET column:
+                ///NOTE: The following approach of selecting specific columns does not work. sqlite_column_text() returns incorrect values when columns names have single quotes in them.
+                /**   cmeStrConstrAppend(&sqlQuery,"SELECT "); //Note that SQLITE currently does not support ALTER TABLE DELETE, so we consruct a SELECT statement that omits the requested contentColumn.
+                for (cont=0;cont<cmeResultMemTableCols;cont++)
+                {
+                    if (strcmp(cmeResultMemTable[cont],urlElements[9])) //Add all column names except requested colName to be deleted.
+                    {
+                        if (cont>0)
+                        {
+                            cmeStrConstrAppend(&sqlQuery,",");
+                        }
+                        cmeFree(sanitizedSQLStr);
+                        cmeSanitizeStrForSQL(cmeResultMemTable[cont],&sanitizedSQLStr);
+                        cmeStrConstrAppend(&sqlQuery,"'%s' AS C_%d",sanitizedSQLStr,cont); //Add to select statement.
+                    }
+                }
+                cmeStrConstrAppend(&sqlQuery," FROM data;"); **/
+                cmeFree(sqlQuery);
+                cmeStrConstrAppend(&sqlQuery,"SELECT * FROM data;");
+                cmeResultMemTableClean();
+                result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Add new column.
+                if (result) //Error
+                {
+                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                            " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
+#endif
+                    cmeWebServiceProcessContentClassFree();
+                    *responseCode=500;
+                    return(13);
+                }
+                if ((cmeResultMemTableCols==0)&&(cmeResultMemTableRows==0))//0 Rows tables return 0 columns in SQLite. To be sure we use an SQLite pragma to retrieve column names only.
+                {
+                    //Call function to get just the column names in the cmeResultMemTable:
+                    result=cmeMemTableWithTableColumnNames(resultDB,"data");
+                    //Delete all columns except id & the requested column:
+                    if (requestedColNameIDX!=1) //If requested column is not at idx 1 Free idx 1 and point idx1 to requested column.
+                    {
+                        cmeFree(cmeResultMemTable[1]);
+                        cmeStrConstrAppend(&(cmeResultMemTable[1]),"%s",cmeResultMemTable[requestedColNameIDX]);
+                    }
+                    for(cont=2;cont<cmeResultMemTableCols;cont++) //Free all remaining columns.
+                    {
+                        cmeFree(cmeResultMemTable[cont]);
+                    }
+                    cmeResultMemTableCols=2; //Adjust columns (just id and requested column);
+                    cmeResultMemTable=(char **)realloc(cmeResultMemTable,sizeof(char *)*(cmeResultMemTableCols*(cmeResultMemTableRows+1))); //Crop MemTable.
+                }
+                else //Otherwise, we need to eliminate manually column values in cmeResultMemTable
+                {
+                    if (cmeResultMemTableCols>2) //We process the table only if there are > 2 columns. If there are only to columns we are done!.
+                    {
+                        //GET the requested contentColumn.
+                        //Process first row (column names):
+                        if (requestedColNameIDX!=1) //If requested column is not at idx 1 Free idx 1 and point idx1 to requested column.
+                        {
+                            cmeFree(cmeResultMemTable[1]);
+                            cmeStrConstrAppend(&(cmeResultMemTable[1]),"%s",cmeResultMemTable[requestedColNameIDX]);
+                        }
+                        //Process the rest of the rows:
+                        cont2=2; //Pointer to next dest IDX.
+                        for (cont=1;cont<=cmeResultMemTableRows;cont++) //Process all rows.
+                        {
+                            //Free dest idx; copy row id there:
+                            cmeFree(cmeResultMemTable[cont2]);
+                            cmeStrConstrAppend(&(cmeResultMemTable[cont2]),"%s",cmeResultMemTable[cmeResultMemTableCols*cont]);
+                            cont2++; //Increment dest. pointer.
+                            //Free dest idx; copy requested column there:
+                            cmeFree(cmeResultMemTable[cont2]);
+                            cmeStrConstrAppend(&(cmeResultMemTable[cont2]),"%s",cmeResultMemTable[cmeResultMemTableCols*cont+requestedColNameIDX]);
+                            cont2++; //Increment dest. pointer.
+                        }
+                        //Free all remaining idxs:
+                        for (cont=cont2;cont<cmeResultMemTableCols*(cmeResultMemTableRows+1);cont++)
+                        {
+                            cmeFree(cmeResultMemTable[cont]);
+                        }
+                        cmeResultMemTableCols=2; //Adjust columns (just id and requested column);
+                        cmeResultMemTable=(char **)realloc(cmeResultMemTable,sizeof(char *)*(cmeResultMemTableCols*(cmeResultMemTableRows+1))); //Crop MemTable.
+                    }
+                }
+                //Construct responseText and create response headers according to the user's outputType (optional) request:
+                result=cmeConstructWebServiceTableResponse ((const char **)cmeResultMemTable, cmeResultMemTableCols, cmeResultMemTableRows,
+                                                            argumentElements, url, method, urlElements[7],
+                                                            responseHeaders, responseText, responseCode);
+    #ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), GET successful.\n");
+    #endif
+                *responseCode=200;
+                //We don't need to set response headers in GET; cmeConstructWebServiceTableResponse() did it for us.
+                cmeWebServiceProcessContentColumnResourceFree();
+                return(0);
+            }
+        }
+        else //Error, invalid number of correct arguments for this command.
+        {
+            cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments."
+                               "</b><br><br>The provided number of arguments is insufficient. "
+                               "METHOD: '%s' URL: '%s'."
+                                "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContentColumnOptions,
+                                cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+            fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, incorrect number of"
+                    " arguments. Method: '%s', URL: '%s'!\n",method,url);
+#endif
+            cmeWebServiceProcessContentColumnResourceFree();
+            *responseCode=409;
+            return(14);
+        }
+    }
+    else if(!strcmp(method,"HEAD")) //Method = HEAD is ok, process:
+    {
+        //Mandatory values by user:
+        cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We also ignore the argument "orgResourceId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
+        cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[3]);  //We also ignore the argument "storageId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[1]),"storageId");
+        cmeStrConstrAppend(&(columnValuesToMatch[2]),"%s",urlElements[5]);  //We also ignore the argument "type" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[2]),"type");
+        cmeStrConstrAppend(&(columnValuesToMatch[3]),"%s",urlElements[7]);  //We also ignore the argument "documentId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[3]),"documentId");
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD, column orgResourceId: '%s'.\n",
+                urlElements[1]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD, column storageId: '%s'.\n",
+                urlElements[3]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD, column type: '%s'.\n",
+                urlElements[5]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD, column documentId: '%s'.\n",
+                urlElements[7]);
+#endif
+        numMatchArgs=4;
+        cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL , numValidGETALLMatch, 0,
+                                          columnValuesToMatch, columnNamesToMatch, columnValues, columnNames, &numMatchArgs, &numSaveArgs,
+                                          &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
+        if ((numMatchArgs>=4)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId, userId and >=1 Match)
+        {
+            result=cmeDBOpen(dbFilePath,&pDB);
+            if (result) //Server ERROR
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s'!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentColumnResourceFree();
+                *responseCode=500;
+                return(15);
+            }
+            result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                              numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
+                                              &numResultRegisters,orgKey);
+            if (result) //Error
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentClassFree();
+                *responseCode=500;
+                return(16);
+            }
+            if (numResultRegisters<=0) //requested documentID not found
+            {
+                cmeStrConstrAppend(responseText,"<b>404 ERROR document resource not found.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), "
+                        "no records for documentId '%s' found.\n",urlElements[7]);
+#endif
+                cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                cmeWebServiceProcessContentColumnResourceFree();
+                *responseCode=404;
+                return(0);
+            }
+            //Load an unprotected copy in memory of "documentId":
+            result=cmeSecureDBToMemDB (&resultDB,pDB,urlElements[7],orgKey,storagePath);
+            if (result) //Error
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentClassFree();
+                *responseCode=500;
+                return(17);
+            }
+            cmeResultMemTableClean();
+            cmeStrConstrAppend(&sqlQuery,"SELECT * FROM data;");
+            result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Select the requested row only; no parser script.
+            if (result) //Error
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentClassFree();
+                *responseCode=500;
+                return(18);
+            }
+            //Construct response:
+            if(!cmeResultMemTableRows)//No register was found.
+            {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD successful but row was not found.\n");
+#endif
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                *responseCode=404;
+            }
+            else //Register was found.
+            {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD successful.\n");
+#endif
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",cmeResultMemTableRows);
+                *responseCode=200;
+            }
+            cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+            cmeWebServiceProcessContentColumnResourceFree();
+            return(0);
+        }
+        else //Error, invalid number of correct arguments for this command.
+        {
+            cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments."
+                               "</b><br><br>The provided number of arguments is insufficient. "
+                               "METHOD: '%s' URL: '%s'."
+                                "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContentColumnOptions,
+                                cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+            fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, incorrect number of"
+                    " arguments. Method: '%s', URL: '%s'!\n",method,url);
+#endif
+            cmeWebServiceProcessContentColumnResourceFree();
+            *responseCode=409;
+            return(19);
+        }
+    }
+    else if(!strcmp(method,"DELETE")) //Method = DELETE is ok, process:
+    {
+        //Mandatory values by user:
+        cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We also ignore the argument "orgResourceId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
+        cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[3]);  //We also ignore the argument "storageId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[1]),"storageId");
+        cmeStrConstrAppend(&(columnValuesToMatch[2]),"%s",urlElements[5]);  //We also ignore the argument "type" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[2]),"type");
+        cmeStrConstrAppend(&(columnValuesToMatch[3]),"%s",urlElements[7]);  //We also ignore the argument "documentId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[3]),"documentId");
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE, column orgResourceId: '%s'.\n",
+                urlElements[1]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE, column storageId: '%s'.\n",
+                urlElements[3]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE, column type: '%s'.\n",
+                urlElements[5]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE, column documentId: '%s'.\n",
+                urlElements[7]);
+#endif
+        numMatchArgs=4;
+        cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
+                                          columnValuesToMatch, columnNamesToMatch, columnValues, columnNames, &numMatchArgs, &numSaveArgs,
+                                          &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
+        if ((numMatchArgs>=4)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId userId and >=1 Match)
+        {
+            //Verify that contentColumn != "id":
+            if (!strcmp(urlElements[9],"id")) //Error, Column id can't be "id"
+            {
+                cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>"
+                                   "contentColumn  '%s' is reserved!"
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",urlElements[9],method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, forbidden request, document column already exists!"
+                        " Method: '%s', URL: '%s'!\n",method,url);
+#endif
+                cmeWebServiceProcessContentColumnResourceFree();
+                *responseCode=403;
+                return(20);
+            }
+            result=cmeDBOpen(dbFilePath,&pDB);
+            if (result) //Server ERROR
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s'!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentColumnResourceFree();
+                *responseCode=500;
+                return(21);
+            }
+            result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                              numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
+                                              &numResultRegisters,orgKey);
+            if (result) //Error
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
+#endif
+                cmeWebServiceProcessContentClassFree();
+                *responseCode=500;
+                return(22);
+            }
+            if (numResultRegisters<=0) //requested documentID not found.
+            {
+                cmeStrConstrAppend(responseText,"<b>404 ERROR document resource not found.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), "
+                        "no records for documentId '%s' found.\n",urlElements[7]);
+#endif
+                cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                cmeWebServiceProcessContentColumnResourceFree();
+                *responseCode=404;
+                return(0);
+            }
+            else //Document exists -> delete requested column.
+            {
+                //Copy resourceInfo:
+                cmeStrConstrAppend(&resourceInfoText,"%s",resultRegisterCols[numResultRegisterCols+cmeIDDResourcesDBDocuments_resourceInfo]);
+                //Load an unprotected copy in memory of "documentId":
+                result=cmeSecureDBToMemDB (&resultDB,pDB,urlElements[7],orgKey,storagePath);
+                if (result) //Error
+                {
+                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                            " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
+#endif
+                    cmeWebServiceProcessContentClassFree();
+                    *responseCode=500;
+                    return(23);
+                }
+                //Verify that content Column exists:
+                cmeResultMemTableClean();
+                result=cmeMemTableWithTableColumnNames(resultDB,"data"); //Get just the column names in the cmeResultMemTable.
+                for (cont=0;cont<cmeResultMemTableCols;cont++) //flag and record index of the column to delete.
+                {
+                    if (!strcmp(cmeResultMemTable[cont],urlElements[9]))
+                    {
+                        requestedColNameIDX=cont;
+                        columnExists=1;
+                    }
+                }
+                if (!columnExists) //Error, column does not exist
+                {
+                    cmeStrConstrAppend(responseText,"<b>404 ERROR contentColumn resource not found.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+                    fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), "
+                            "contentColumn '%s' not found.\n",urlElements[9]);
+#endif
+                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                    cmeWebServiceProcessContentColumnResourceFree();
+                    *responseCode=404;
+                    return(0);
+                }
+                //Delete column:
+                ///NOTE: The following approach of selecting specific columns does not work. sqlite_column_text() returns incorrect values when columns names have single quotes in them.
+                /**   cmeStrConstrAppend(&sqlQuery,"SELECT "); //Note that SQLITE currently does not support ALTER TABLE DELETE, so we consruct a SELECT statement that omits the requested contentColumn.
+                for (cont=0;cont<cmeResultMemTableCols;cont++)
+                {
+                    if (strcmp(cmeResultMemTable[cont],urlElements[9])) //Add all column names except requested colName to be deleted.
+                    {
+                        if (cont>0)
+                        {
+                            cmeStrConstrAppend(&sqlQuery,",");
+                        }
+                        cmeFree(sanitizedSQLStr);
+                        cmeSanitizeStrForSQL(cmeResultMemTable[cont],&sanitizedSQLStr);
+                        cmeStrConstrAppend(&sqlQuery,"'%s' AS C_%d",sanitizedSQLStr,cont); //Add to select statement.
+                    }
+                }
+                cmeStrConstrAppend(&sqlQuery," FROM data;"); **/
+                cmeFree(sqlQuery);
+                cmeStrConstrAppend(&sqlQuery,"SELECT * FROM data;");
+                cmeResultMemTableClean();
+                result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Add new column.
+                if (result) //Error
+                {
+                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentColumnOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
+                            " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
+#endif
+                    cmeWebServiceProcessContentClassFree();
+                    *responseCode=500;
+                    return(24);
+                }
+                if ((cmeResultMemTableCols==0)&&(cmeResultMemTableRows==0))//0 Rows tables return 0 columns in SQLite. To be sure we use an SQLite pragma to retrieve column names only.
+                {
+                    //Call function to get just the column names in the cmeResultMemTable:
+                    result=cmeMemTableWithTableColumnNames(resultDB,"data");
+                    if (cmeResultMemTableCols<=2)//Deleting last column? then we must delete the whole document
+                    {
+                        //Delete the whole document:
+                        result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                                             numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
+                                                             &numResultRegisters,orgKey);
+                        if (result) //Error
+                        {
+                            *responseCode=500;
+                            cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                               "Internal server error number '%d'."
+                                               "METHOD: '%s' URL: '%s'."
+                                                "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgDocumentOptions,
+                                                cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), DELETE error!, "
+                                    "cmeDeleteUnporotectDBRegisters error!\n");
+#endif
+                            cmeWebServiceProcessDocumentResourceFree();
+                            return(25);
+                        }
+                        if (numResultRegisters) // Deleted 1 or + register(s)
+                        {
+                            *responseCode=200;
+#ifdef DEBUG
+                            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful.\n");
+#endif
+                            for (cont=1;cont<=numResultRegisters;cont++) //Delete corresponding column files. Skip headers (cont=1).
+                            {
+                                cmeStrConstrAppend(&columnFileFullPath,"%s%s",storagePath,resultRegisterCols[cont*cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_columnFile]);
+                                result=cmeFileOverwriteAndDelete(columnFileFullPath);
+                                if (result) //Error
+                                {
+#ifdef ERROR_LOG
+                                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), cmeFileOverwriteAndDelete() error, "
+                                            "can't remove columnId file: '%s' !\n",columnFileFullPath);
+#endif
+                                }
+                                cmeFree(columnFileFullPath); //Clear for next iteration.
+                            }
+                        }
+                        else // Deleted 0 registers
+                        {
+                            *responseCode=404;
+#ifdef DEBUG
+                            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful, but resource not found.\n");
+#endif
+                        }
+                        cmeStrConstrAppend(responseText,"<p>Deleted documentId '%s'; registers: %d</p><br>",urlElements[7],numResultRegisters);
+                        cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                        cmeWebServiceProcessDocumentResourceFree();
+                        return(0);
+                    }
+                    cmeFree(cmeResultMemTable[requestedColNameIDX]); //Delete column in every row.
+                    for(cont=requestedColNameIDX;cont<cmeResultMemTableCols;cont++)
+                    {
+                        if ((cont+1)<cmeResultMemTableCols) //If not the last element, shif left.
+                        {
+                            cmeResultMemTable[cont]=cmeResultMemTable[cont+1];
+                        }
+                        else
+                        {
+                            cmeResultMemTable[cont]=NULL;
+                        }
+                    }
+                    cmeResultMemTableCols--; //Decrement number of columns to eliminate deleted column.
+                    cmeResultMemTable=(char **)realloc(cmeResultMemTable,sizeof(char *)*(cmeResultMemTableCols*(cmeResultMemTableRows+1))); //Crop MemTable.
+                }
+                else //Otherwise, we need to eliminate manually column values in cmeResultMemTable
+                {
+                    if (cmeResultMemTableCols<=2)//Deleting last column? then we must delete the whole document
+                    {
+                        //Delete the whole document:
+                        result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                                             numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
+                                                             &numResultRegisters,orgKey);
+                        if (result) //Error
+                        {
+                            *responseCode=500;
+                            cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                               "Internal server error number '%d'."
+                                               "METHOD: '%s' URL: '%s'."
+                                                "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgDocumentOptions,
+                                                cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), DELETE error!, "
+                                    "cmeDeleteUnporotectDBRegisters error!\n");
+#endif
+                            cmeWebServiceProcessDocumentResourceFree();
+                            return(26);
+                        }
+                        if (numResultRegisters) // Deleted 1 or + register(s)
+                        {
+                            *responseCode=200;
+#ifdef DEBUG
+                            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful.\n");
+#endif
+                            for (cont=1;cont<=numResultRegisters;cont++) //Delete corresponding column files. Skip headers (cont=1).
+                            {
+                                cmeStrConstrAppend(&columnFileFullPath,"%s%s",storagePath,resultRegisterCols[cont*cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_columnFile]);
+                                result=cmeFileOverwriteAndDelete(columnFileFullPath);
+                                if (result) //Error
+                                {
+#ifdef ERROR_LOG
+                                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), cmeFileOverwriteAndDelete() error, "
+                                            "can't remove columnId file: '%s' !\n",columnFileFullPath);
+#endif
+                                }
+                                cmeFree(columnFileFullPath); //Clear for next iteration.
+                            }
+                        }
+                        else // Deleted 0 registers
+                        {
+                            *responseCode=404;
+#ifdef DEBUG
+                            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful, but resource not found.\n");
+#endif
+                        }
+                        cmeStrConstrAppend(responseText,"<p>Deleted documentId; registers: %d</p><br>",numResultRegisters);
+                        cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                        cmeWebServiceProcessDocumentResourceFree();
+                        return(0);
+                    }
+                    //Delete the requested contentColumn.
+                    for (cont=0;cont<=cmeResultMemTableRows;cont++) //Process all rows.
+                    {
+                        cmeFree(cmeResultMemTable[cont*cmeResultMemTableCols-cont+requestedColNameIDX]); //Delete column in every row.
+                        for(cont2=cont*cmeResultMemTableCols-cont+requestedColNameIDX;
+                            cont2<cmeResultMemTableCols*(cmeResultMemTableRows+1)-cont;cont2++)
+                        {
+                            if ((cont2+1)<cmeResultMemTableCols*(cmeResultMemTableRows+1)-cont) //If not the last element, shif left.
+                            {
+                                cmeResultMemTable[cont2]=cmeResultMemTable[cont2+1];
+                            }
+                            else
+                            {
+                                cmeResultMemTable[cont2]=NULL;
+                            }
+                        }
+                    }
+                    cmeResultMemTableCols--; //Decrement number of columns to eliminate deleted column.
+                    cmeResultMemTable=(char **)realloc(cmeResultMemTable,sizeof(char *)*(cmeResultMemTableCols*(cmeResultMemTableRows+1))); //Crop MemTable.
+                }
+                //Create new secureDB (delete old secureDB if it exists):
+                result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
+                                             attributes,attributesData,2,1,
+                                             resourceInfoText,
+                                             urlElements[5], //document type
+                                             urlElements[7], //documentId
+                                             urlElements[3], //storageId
+                                             storagePath);    //storagePath
+                //End:
+                cmeStrConstrAppend(responseText,"Method '%s', user '%s' deleted successfully contentColumn resource '%s', "
+                                   "within document '%s', in storage '%s', using tableName: '%s'.<br>",method, userId, urlElements[9],
+                                   urlElements[7], urlElements[3], tableName);
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful.\n");
+#endif
+                *responseCode=201;
+                cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
+                cmeWebServiceProcessContentColumnResourceFree();
+                return(0);
+            }
+        }
+        else //Error, invalid number of correct arguments for this command.
+        {
+            cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments."
+                               "</b><br><br>The provided number of arguments is insufficient. "
+                               "METHOD: '%s' URL: '%s'."
+                               "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContentColumnOptions,
+                               cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+            fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, incorrect number of"
+                    " arguments. Method: '%s', URL: '%s'!\n",method,url);
+#endif
+            cmeWebServiceProcessContentColumnResourceFree();
+            *responseCode=409;
+            return(27);
+        }
+    }
+    else if(!strcmp(method,"OPTIONS")) //Method = OPTIONS is ok, process:
+    {
+        //Mandatory values by user:
+        cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We also ignore the argument "orgResourceId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
+        cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[3]);  //We also ignore the argument "storageId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[1]),"storageId");
+        cmeStrConstrAppend(&(columnValuesToMatch[2]),"%s",urlElements[5]);  //We also ignore the argument "type" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[2]),"type");
+        cmeStrConstrAppend(&(columnValuesToMatch[3]),"%s",urlElements[7]);  //We also ignore the argument "documentId" and use the resource defined within the URL!
+        cmeStrConstrAppend(&(columnNamesToMatch[3]),"documentId");
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), OPTIONS, column orgResourceId: '%s'.\n",
+                urlElements[1]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), OPTIONS, column storageId: '%s'.\n",
+                urlElements[3]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), OPTIONS, column type: '%s'.\n",
+                urlElements[5]);
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), OPTIONS, column documentId: '%s'.\n",
+                urlElements[7]);
+#endif
+        numMatchArgs=4;
+        cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
+                                          columnValuesToMatch, columnNamesToMatch, columnValues, columnNames, &numMatchArgs, &numSaveArgs,
+                                          &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
+        if ((numMatchArgs>=4)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId userId and >=2 Match)
+        {
+            cmeStrConstrAppend(responseText,"<b>200 OK - Options for document resources:</b><br>"
+                               "%sLatest IDD version: <code>%s</code>",cmeWSMsgContentColumnOptions,cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+            fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), OPTIONS successful for storage resource."
+                    " Method: '%s', URL: '%s'!\n",method,url);
+#endif
+            cmeWebServiceProcessContentColumnResourceFree();
+            *responseCode=200;
+            return(0);
+        }
+        else //Error, invalid number of correct arguments for this command.
+        {
+            cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments."
+                               "</b><br><br>The provided number of arguments is insufficient. "
+                               "METHOD: '%s' URL: '%s'."
+                               "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContentColumnOptions,
+                               cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+            fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, incorrect number of"
+                    " arguments. Method: '%s', URL: '%s'!\n",method,url);
+#endif
+            cmeWebServiceProcessContentColumnResourceFree();
+            *responseCode=409;
+            return(28);
+        }
+    }
+    else //Error, unsupported method
+    {
+        cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                           "method, is not allowed for this engine resource."
+                           "METHOD: '%s' URL: '%s'."
+                           "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContentColumnOptions,
+                           cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+        fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, method %s is not allowed!\n"
+                " Url: %s!\n",method,url);
+#endif
+        cmeWebServiceProcessContentColumnResourceFree();
+        *responseCode=405;
+        return(29);
     }
 }

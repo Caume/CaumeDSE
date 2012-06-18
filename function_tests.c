@@ -364,9 +364,10 @@ void testDB (PerlInterpreter* myPerl)
                //above is also safe. Otherwise use:
                //"COMMIT;",NULL,NULL,&pErrmsg); //Create a table
 
+    cmeResultMemTableClean();
     cmeSQLRows(DB,"BEGIN TRANSACTION; SELECT * FROM table1 WHERE salario > 10000;"
                " COMMIT;","iterate",myPerl); //Select
-
+    cmeResultMemTableClean();
     cmeDBClose(DB);
 }
 

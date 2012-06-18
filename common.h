@@ -336,6 +336,12 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
                                  "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                  "OptionalParameters...]<br></code><br>" //contentRow resource options.
 
+#define cmeWSMsgContentColumnOptions  "Allowed Methods: <code>GET,POST,DELETE,HEAD,OPTIONS</code><br>" \
+                                      "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/file.csv" \
+                                      "/documents/{document}/content/contentColumns/{contentColumn}" \
+                                      "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                      "OptionalParameters...]<br></code><br>" //contentColumn resource options.
+
 /**
 #define cmeWSMsgServerErrorPage     cmeWSHTMLPageStart "<b>500 ERROR Internal server error.</b><br>" cmeWSHTMLPageEnd
 **/

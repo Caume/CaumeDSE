@@ -129,6 +129,10 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
             cmeFree(colSQLDBfNames); \
             cmeFree(memFilePartsMACs); \
             cmeFree(colSQLDBfSalts); \
+            if (queryResult) \
+            { \
+                cmeMemTableFinal(queryResult); \
+            } \
         } while (0); //Local free() macro.
                      /*NOTE: No need to free each element in resultMemTable, as they are just pointers to elements
                       from memDBResultData and memDBResultMeta.
@@ -396,6 +400,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
 int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char *orgKey, const char *storagePath)
 {
     int cont,result,written,written2,MACLen;
+    int numEntries=0;
     int numRows=0;
     int numCols=0;
     int dbNumCols=0;
@@ -406,8 +411,6 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
     char *protectedValueMAC=NULL;
     char **colSQLDBfNames=NULL;
     char **queryResult=NULL;
-    sqlite3_int64 existRows=0;
-    sqlite3 *existsDB=NULL;
     #define cmeDeleteSecureDBFree() \
         do { \
             cmeFree(colsSQLDBIds); \
@@ -423,12 +426,14 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
                 } \
             } \
             cmeFree(colSQLDBfNames); \
+            if (queryResult) \
+            { \
+                cmeMemTableFinal(queryResult); \
+            } \
         } while (0); //Local free() macro.
 
-    result=cmeSecureDBToMemDB(&existsDB,pResourcesDB,documentId,orgKey,storagePath);
-    existRows=sqlite3_last_insert_rowid(existsDB);
-    cmeDBClose(existsDB);
-    if (existRows>0) //We have the same documentId already in the database...
+    result=cmeExistsDocumentId(pResourcesDB,documentId,orgKey,&numEntries);
+    if (numEntries>0) //We have the same documentId already in the database...
     {
         cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value (bytes).
         MACLen*=2; //Convert byte length to HexStr length.
@@ -499,7 +504,7 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
 #endif
                         cmeStrConstrAppend(&(colSQLDBfNames[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
                     }
-                    colsSQLDBIds[dbNumCols]=atoi(queryResult[cont*numCols]+cmeIDDanydb_id);            //Store register ID; register will be deleted from resourcesDB index.
+                    colsSQLDBIds[dbNumCols]=atoi(queryResult[cont*numCols]+cmeIDDanydb_id);     //Store register ID; register will be deleted from resourcesDB index. Santized with atoi().
                     dbNumCols++;
                 }
                 memset(currentDocumentId,0,written);   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
@@ -547,7 +552,6 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
             }
         }
         //Prepare to free the rest of dynamically allocated resources that are no longer needed.
-        cmeMemTableFinal(queryResult);
         for (cont=0;cont<dbNumCols;cont++)
         {
             memset(colSQLDBfNames[cont],0,written2);    //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
@@ -809,7 +813,7 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
         if ((numMatch==numColumnValues)||(numColumnValues==0)) //We found all matches in a register; process this row.
         {
             (*numResultRegisters)++;
-            cmeStrConstrAppend(&query,"DELETE FROM %s WHERE id=%s;",tableName,regId);
+            cmeStrConstrAppend(&query,"BEGIN TRANSACTION; DELETE FROM \"%s\" WHERE id=%d; COMMIT;",tableName,atoi(regId)); //regId sanitized with atoi().
             result=cmeSQLRows(pDB,(const char *)query,NULL,NULL);
             cmeFree(query);
             if (result) //Error
@@ -819,7 +823,12 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
                         "DELETE, statement: %s\n",query);
 #endif
                 cmeDeleteUnprotectDBRegisterFree();
-                return(2);
+                ///return(2);
+            }
+            *resultRegisterCols=(char **)realloc(*resultRegisterCols,sizeof(char *)*numColumns*((*numResultRegisters)+1));  //Reallocate space for colum names and first row of result values.
+            for (cont3=0;cont3<numColumns;cont3++) //All column values in the new row.
+            {
+                (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont3]=NULL;
             }
         }
     }
@@ -836,15 +845,17 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
     char *protectedValue=NULL;
     char *protectedValueMAC=NULL;
     char *salt=NULL;
+    char *sanitizedStr=NULL;
     #define cmePostProtectDBRegisterFree() \
         do { \
             cmeFree(sqlStatement); \
             cmeFree(protectedValue); \
             cmeFree(protectedValueMAC); \
             cmeFree(salt); \
+            cmeFree(sanitizedStr); \
         } while (0); //Local free() macro.
 
-    cmeStrConstrAppend (&sqlStatement,"BEGIN TRANSACTION; INSERT INTO %s (id,",tableName); //First part. id goes by default.
+    cmeStrConstrAppend (&sqlStatement,"BEGIN TRANSACTION; INSERT INTO \"%s\" (id,",tableName); //First part. id goes by default.
     for (cont=0; cont<numColumnValues; cont++)
     {
         if (!columnNames[cont]) //Error, colName is NULL!
@@ -856,12 +867,14 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
             cmePostProtectDBRegisterFree();
             return(1);
         }
-        if (strcmp(columnNames[cont],"salt")==0) //Salt provided? yes -> use it and append at the end.
+        if (!strcmp(columnNames[cont],"salt")) //Salt provided? yes -> use it and append at the end.
         {
             if (columnValues[cont]) //user provided value; else use NULL
             {
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(columnValues[cont],&sanitizedStr);   //Sanitize parameter salt for use in SQL statement.
                 //TODO (OHR#3#): verify salt requirements. If bad, ERROR!
-                cmeStrConstrAppend(&salt,"%s",columnValues[cont]);
+                cmeStrConstrAppend(&salt,"%s",sanitizedStr);
             }
         }
         else
@@ -917,6 +930,7 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
     int encryptedValueLen=0;
     char *regId=NULL;
     char *query=NULL;
+    char *sanitizedStr=NULL;
     char *protectedValueMAC=NULL;
     char *encryptedValue=NULL;
     char **resultsRegTmp=NULL;
@@ -927,6 +941,7 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
             cmeFree(regId); \
             cmeFree(protectedValueMAC); \
             cmeFree(encryptedValue); \
+            cmeFree(sanitizedStr); \
             if (sqlTable) \
             { \
                 cmeMemTableFinal(sqlTable); \
@@ -1040,12 +1055,14 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
             {
                 (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]=NULL; //cmeStrContrAppend requires this for new strings.
             }
-            cmeStrConstrAppend(&query,"UPDATE %s SET",tableName); //First part.
+            cmeStrConstrAppend(&query,"UPDATE \"%s\" SET",tableName); //First part.
             for (cont2=0;cont2<numColumnValuesUpdate;cont2++)
             {
                 if ((!strcmp(columnNamesUpdate[cont2],"id"))&&(!strcmp(columnNamesUpdate[cont2],"salt"))) // We don't encrypt if 'id' or 'salt'
                 {
-                    cmeStrConstrAppend(&query," %s='%s'",columnNamesUpdate[cont2],columnValuesUpdate[cont2]);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(columnValuesUpdate[cont2],&sanitizedStr);   //Sanitize parameter id or salt for use in SQL statement.
+                    cmeStrConstrAppend(&query," \"%s\"='%s'",columnNamesUpdate[cont2],sanitizedStr);
                     if ((cont2+1)<numColumnValuesUpdate) //Still another value left...
                     {
                         cmeStrConstrAppend(&query,",");
@@ -1058,7 +1075,7 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                                             orgKey,&encryptedValueLen); //Salt and encrypt value.
                     cmeHMACByteString((const unsigned char *)encryptedValue,(unsigned char **)&protectedValueMAC,encryptedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,
                                       &((*resultRegisterCols)[((*numResultRegisters)-1)*numColumns+cmeIDDanydb_salt]),orgKey);
-                    cmeStrConstrAppend(&query," %s='%s%s'",columnNamesUpdate[cont2],protectedValueMAC,encryptedValue);  //Add MAC+Encrypted(salted) column value to query.
+                    cmeStrConstrAppend(&query," \"%s\"='%s%s'",columnNamesUpdate[cont2],protectedValueMAC,encryptedValue);  //Add MAC+Encrypted(salted) column value to query.
                     cmeFree(encryptedValue);
                     cmeFree(protectedValueMAC);
                     if ((cont2+1)<numColumnValuesUpdate) //Still another value left...
@@ -1067,7 +1084,7 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                     }
                 }
             }
-            cmeStrConstrAppend(&query," WHERE id=%s;",regId); //Last part.
+            cmeStrConstrAppend(&query," WHERE id=%d;",atoi(regId)); //Last part. regId sanitized with atoi().
             result=cmeSQLRows(pDB,(const char *)query,NULL,NULL);
             cmeFree(query);
             if (result) //Error
@@ -1230,4 +1247,104 @@ int cmeConstructContentRow (const char **argumentElements, const char **columnNa
     }
     cmeConstructContentRowFree();
     return (0);
+}
+
+int cmeExistsDocumentId (sqlite3 *pResourcesDB,const char *documentId, const char *orgKey,
+                         int *numEntries)
+{   //IDD v.1.0.21
+    int cont,result,written,MACLen;
+    int numRows=0;
+    int numCols=0;
+    int RMTColsBKP=0;
+    int RMTRowsBKP=0;
+    char **queryResult=NULL;
+    char *currentDocumentId=NULL;
+    char *protectedValueMAC=NULL;
+    char **cmeResultMemTableBKP=NULL; //We will hold a copy of cmeResultMemTable (pointer) since we will destroy it with a query. Therefore we don't free it!
+    //MEMORY CLEANUP MACRO for local function.
+    #define cmeExistsDocumentIdFree() \
+        do { \
+            cmeFree(currentDocumentId); \
+            cmeFree(protectedValueMAC); \
+            cmeResultMemTableClean(); \
+            if (queryResult) \
+            { \
+                cmeMemTableFinal(queryResult); \
+            } \
+            if (cmeResultMemTableBKP) \
+            { \
+                cmeResultMemTable=cmeResultMemTableBKP; \
+                cmeResultMemTableCols=RMTColsBKP; \
+                cmeResultMemTableRows=RMTRowsBKP; \
+                cmeResultMemTableBKP=NULL; \
+            } \
+        } while (0); //Local free() macro.
+
+    *numEntries=0; //Set default num entries to 0.
+    if(cmeResultMemTable) //cmeResultMemTable has data; we need to back it up since cmeSQLRows will destroy it.
+    {
+        //Backup cmeResultMemTable:
+        RMTColsBKP=cmeResultMemTableCols;
+        RMTRowsBKP=cmeResultMemTableRows;
+        cmeResultMemTableBKP=cmeResultMemTable;
+        cmeResultMemTable=NULL;
+    }
+    result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols);
+    if(result) // Error
+    {
+        cmeExistsDocumentIdFree(); //CLEANUP.
+        return(1);
+    }
+    //Get MAC length in chars:
+    cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value (bytes).
+    MACLen*=2;                              //Convert byte length to HexStr length.
+    //Parse entries from ResourcesDB:
+    for(cont=1;cont<=numRows;cont++) //First row in a cmeSQLTable contains the names of columns; we skip them.
+    {
+        //Unprotect documentId:
+        cmeFree(protectedValueMAC);
+        cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+                          (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen),
+                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],MACLen)) //MAC is correct; proceed with decryption.
+        {
+            result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+                                             &currentDocumentId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
+                                             orgKey,&written);
+            if (result)  //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeExistsDocumentId(), cmeUnprotectDBSaltedValue() error, cannot "
+                        "decrypt documentId!\n");
+#endif
+                cmeExistsDocumentIdFree(); //CLEANUP.
+                return(2);
+            }
+        }
+        else //MAC is incorrect; skip decryption process.
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Warning: cmeExistsDocumentId(), cmeHMACByteString() cannot "
+                    "verify documentId MAC!\n");
+#endif
+            cmeStrConstrAppend(&currentDocumentId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
+        }
+        //Check if register is part of the requested file. If so continue processing it:
+        if (!strcmp(currentDocumentId,documentId)) //This column is part of the table!
+        {
+            (*numEntries)++;
+        }
+        //TODO (OHR#2#): EVERYWHERE - Research memset() replacement to ensure delete with volatile; assess mlock ().
+        if (currentDocumentId)
+        {
+            memset(currentDocumentId,0,strlen(currentDocumentId));   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
+        }
+        cmeFree(currentDocumentId);
+    }
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Warning: cmeExistsDocumentId(), Finished search for documentId '%s'; "
+            "found %d entries.\n",documentId,*numEntries);
+#endif
+    cmeExistsDocumentIdFree();
+    return(0);
 }

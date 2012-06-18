@@ -67,14 +67,17 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                                 const char **columnValues,const int numColumnValues, const char **columnNamesUpdate,
                                 const char **columnValuesUpdate,const int numColumnValuesUpdate, char ***resultRegisterCols,
                                 int *numResultRegisterCols, int *numResultRegisters, const char *orgKey);
-//Function to process all Match and Save parameters + orgId, userId, orgKey and optional parameter newOrgKey; puts them in corresponding arrays before method execution.
+// Function to process all Match and Save parameters + orgId, userId, orgKey and optional parameter newOrgKey; puts them in corresponding arrays before method execution.
 int cmeProcessURLMatchSaveParameters (const char *urlMethod, const char **argumentElements, const char **validNamesToMatch,
                                       const char **validNamesToSave, const int numValidMatch, const int numValidSaves,
                                       char **columnValuesToMatch, char **columnNamesToMatch, char **columnValuesToSave,
                                       char **columnNamesToSave, int *numMatchArgs, int *numSaveArgs, char **userId, char **orgId,
                                       char **orgKey, char **newOrgKey, int *usrArg, int *orgArg, int *keyArg, int *newKeyArg);
-//Function to construct a contentRow using id=registerId for POST/PUT requests.
+// Function to construct a contentRow using id=registerId for POST/PUT requests.
 int cmeConstructContentRow (const char **argumentElements, const char **columnNames, const int numColumns,
                             const char *registerId, char ***newContentRow);
+// Function to list number of matching entries for a specified documentId in ResourcesDB database (document table).
+int cmeExistsDocumentId (sqlite3 *pResourcesDB,const char *documentId, const char *orgKey,
+                         int *numEntries);
 
 #endif // ENGINE_INTERFACE_H_INCLUDED

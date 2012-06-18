@@ -1,10 +1,27 @@
+2012-06-18 0.90.alpha
+
+	* Implemented resource handling for individual columns in documents
+	of type file.csv, via the contentColumn resource (see README for
+	details).  You can now append new columns or create csv documents
+	with their first column(POST), read individual columns (GET), delete
+	individual columns or the whole document if there are no other
+	columns (DELETE) and confirm that individual columns exist (HEAD).
+
+	* With column and row resources we now provide a basic NoSQL
+	approach to hanling data tables (file.csv documents) easily.
+
+	* Implemented several controls for row and column handling. In
+	particular SQL injection controls.
+
+	* fixes and code clean up
+
 2012-05-22 0.90.alpha
 
 	* Implemented resource handling for individual rows in documents of
 	type file.csv, via the contentRow resource (see README for details). 
 	You can now append new rows (POST), read individual rows (GET),
 	delete individual rows (DELETE), confirm that individual rows exist
-	(HEAD) or update some folumn values of a specific row (PUT).
+	(HEAD) or update some column values of a specific row (PUT).
 
 	* Some fixes and code clean up
 

@@ -325,17 +325,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
                     }
                     if (cmeResultMemTable)//cmeResultMemTable is not empty, free all variables.
                     {
-                        for (cont2=0;cont2<=cmeResultMemTableRows;cont2++) //Process each row. (Note that column names are put in row 0; we need to include this row).
-                        {
-                            for(cont=0;cont<cmeResultMemTableCols;cont++) //Process each column.
-                            {
-                                memset(cmeResultMemTable[cont2*cmeResultMemTableCols+cont],0,strlen(cmeResultMemTable[cont2*cmeResultMemTableCols+cont])); //Wipe sensitive data.
-                                cmeFree(cmeResultMemTable[cont2*cmeResultMemTableCols+cont]);
-                            }
-                        }
-                        cmeFree(cmeResultMemTable);
-                        cmeResultMemTableCols=0;
-                        cmeResultMemTableRows=0;
+                        cmeResultMemTableClean();
                     }
                     //Insert column names into new table:
                     cmeResultMemTableCols=numCols; //Set column names of Tmp MemTable.
@@ -510,15 +500,23 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
     int cont,cont2,cont3,result;
     int rowsBlocks;
     int rowsLastBlock;
-    int exitcode=0;
     int currentRow=1;
     char *sqlInsertQuery=NULL;
     char *sqlCreateCols=NULL;
     char *sqlInsertCols=NULL;
+    char *sanitizedStr=NULL;
     const char *defaultTableName="data";
+    #define cmeMemTableToMemDBFree() \
+        do { \
+            cmeFree(sqlInsertQuery); \
+            cmeFree(sqlInsertCols); \
+            cmeFree(sqlCreateCols); \
+            cmeFree(sanitizedStr); \
+        } while (0); //Local free() macro.
 
     if (!numCols) //If MemTable is empty, we do nothing and exit
     {
+        cmeMemTableToMemDBFree();
         return(0);
     }
     if(!sqlTableName) //if table name is empty; assign a default name
@@ -531,15 +529,17 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
     cmeStrConstrAppend(&sqlInsertCols,"id,"); //First insert the ID autoincrement.
     for (cont=0;cont<numCols;cont++) //Create sqlCreateCols string.
     {
-        cmeStrConstrAppend(&sqlCreateCols,"'%s' TEXT",srcMemTable[cont]);  //first row, contains the column name.
-        cmeStrConstrAppend(&sqlInsertCols,"'%s'",srcMemTable[cont]);
+        cmeFree(sanitizedStr);
+        cmeSanitizeStrForSQL(srcMemTable[cont],&sanitizedStr); //Sanitize parameter for use in SQL statement.
+        cmeStrConstrAppend(&sqlCreateCols,"'%s' TEXT",sanitizedStr);  //first row, contains the column name.
+        cmeStrConstrAppend(&sqlInsertCols,"'%s'",sanitizedStr);
         if ((cont+1) < numCols) //If there is still another element pending, add comma.
         {
            cmeStrConstrAppend(&sqlCreateCols,",");
            cmeStrConstrAppend(&sqlInsertCols,",");
         }
     }
-    cmeStrConstrAppend(&sqlInsertQuery,"BEGIN TRANSACTION; CREATE TABLE %s (%s); COMMIT;",
+    cmeStrConstrAppend(&sqlInsertQuery,"BEGIN TRANSACTION; CREATE TABLE \"%s\" (%s); COMMIT;",
                        sqlTableName,sqlCreateCols); // Create table 'memtable'
     result=cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL);
     if (result) //Check Error Type
@@ -548,61 +548,26 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
             fprintf(stderr,"CaumeDSE Error: cmeMemTableToMemDB(), cmeSQLRows() Error, can't "
                     "create table: %s (%s) !\n",sqlTableName,sqlCreateCols);
 #endif
-            exitcode=1;
+        cmeMemTableToMemDBFree();
+        return(1);
     }
-    if (!exitcode)
+    for (cont=0; cont < rowsBlocks; cont++) //process all blocks of cmeDefaultInsertSqlRows rows.
     {
-        for (cont=0; cont < rowsBlocks; cont++) //process all blocks of cmeDefaultInsertSqlRows rows.
-        {
-            cmeFree(sqlInsertQuery);
-            result=cmeStrConstrAppend(&sqlInsertQuery,"BEGIN TRANSACTION;"); // First part of block
-            for (cont2=0; cont2 < cmeDefaultInsertSqlRows; cont2++) //Process all rows.
-            {
-                result=cmeStrConstrAppend(&sqlInsertQuery," INSERT INTO %s (%s) VALUES (NULL", //Prepare INSERT statement.
-                                          sqlTableName,sqlInsertCols);
-                if (numCols)
-                {
-                    result=cmeStrConstrAppend(&sqlInsertQuery,",");
-                }
-                for (cont3=0; cont3<numCols; cont3++) //Process all fields in row.
-                {
-                    result=cmeStrConstrAppend(&sqlInsertQuery,"'%s'",srcMemTable[(currentRow*numCols)+cont3]);
-                    if((cont3+1)<numCols)
-                    {
-                        result=cmeStrConstrAppend(&sqlInsertQuery,",");
-                    }
-                }
-                currentRow++;
-                result=cmeStrConstrAppend(&sqlInsertQuery,");"); //Finish INSERT statement.
-            }
-            result=cmeStrConstrAppend(&sqlInsertQuery,"COMMIT;"); // Last part of block
-            if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL)) //insert row.
-            {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemTableToMemDB(), cmeSQLRows() Error, can't "
-                        "insert values, sqlquery: %s in table: %s !\n",sqlInsertQuery,sqlTableName);
-#endif
-                exitcode=2;
-                break;
-            }
-        }
-    }
-    if (!exitcode)
-    {
-        //Process last block.
         cmeFree(sqlInsertQuery);
-        result=cmeStrConstrAppend(&sqlInsertQuery,"BEGIN TRANSACTION;"); // First part of block.
-        for (cont2=0; cont2 < rowsLastBlock; cont2++) //process all columns in each row.
+        result=cmeStrConstrAppend(&sqlInsertQuery,"BEGIN TRANSACTION;"); // First part of block
+        for (cont2=0; cont2 < cmeDefaultInsertSqlRows; cont2++) //Process all rows.
         {
-            result=cmeStrConstrAppend(&sqlInsertQuery," INSERT INTO %s (%s) VALUES (NULL", //Prepare INSERT statement.
+            result=cmeStrConstrAppend(&sqlInsertQuery," INSERT INTO \"%s\" (%s) VALUES (NULL", //Prepare INSERT statement.
                                       sqlTableName,sqlInsertCols);
             if (numCols)
             {
                 result=cmeStrConstrAppend(&sqlInsertQuery,",");
             }
-            for (cont3=0; cont3<numCols; cont3++) //Add values
+            for (cont3=0; cont3<numCols; cont3++) //Process all fields in row.
             {
-                result=cmeStrConstrAppend(&sqlInsertQuery,"'%s'",srcMemTable[(currentRow*numCols)+cont3]);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(srcMemTable[(currentRow*numCols)+cont3],&sanitizedStr); //Sanitize parameter for use in SQL statement.
+                result=cmeStrConstrAppend(&sqlInsertQuery,"'%s'",sanitizedStr);
                 if((cont3+1)<numCols)
                 {
                     result=cmeStrConstrAppend(&sqlInsertQuery,",");
@@ -611,20 +576,53 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
             currentRow++;
             result=cmeStrConstrAppend(&sqlInsertQuery,");"); //Finish INSERT statement.
         }
-        result=cmeStrConstrAppend(&sqlInsertQuery,"COMMIT;"); // Last part of block.
+        result=cmeStrConstrAppend(&sqlInsertQuery,"COMMIT;"); // Last part of block
         if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL)) //insert row.
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeMemTableToMemDB(), cmeSQLRows() Error, can't "
                     "insert values, sqlquery: %s in table: %s !\n",sqlInsertQuery,sqlTableName);
 #endif
-            exitcode=3;
+            cmeMemTableToMemDBFree();
+            return(2);
         }
     }
+    //Process last block.
     cmeFree(sqlInsertQuery);
-    cmeFree(sqlInsertCols);
-    cmeFree(sqlCreateCols);
-    return (exitcode);
+    result=cmeStrConstrAppend(&sqlInsertQuery,"BEGIN TRANSACTION;"); // First part of block.
+    for (cont2=0; cont2 < rowsLastBlock; cont2++) //process all columns in each row.
+    {
+        result=cmeStrConstrAppend(&sqlInsertQuery," INSERT INTO \"%s\" (%s) VALUES (NULL", //Prepare INSERT statement.
+                                  sqlTableName,sqlInsertCols);
+        if (numCols)
+        {
+            result=cmeStrConstrAppend(&sqlInsertQuery,",");
+        }
+        for (cont3=0; cont3<numCols; cont3++) //Add values
+        {
+            cmeFree(sanitizedStr);
+            cmeSanitizeStrForSQL(srcMemTable[(currentRow*numCols)+cont3],&sanitizedStr); //Sanitize parameter for use in SQL statement.
+            result=cmeStrConstrAppend(&sqlInsertQuery,"'%s'",sanitizedStr);
+            if((cont3+1)<numCols)
+            {
+                result=cmeStrConstrAppend(&sqlInsertQuery,",");
+            }
+        }
+        currentRow++;
+        result=cmeStrConstrAppend(&sqlInsertQuery,");"); //Finish INSERT statement.
+    }
+    result=cmeStrConstrAppend(&sqlInsertQuery,"COMMIT;"); // Last part of block.
+    if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL)) //insert row.
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMemTableToMemDB(), cmeSQLRows() Error, can't "
+                "insert values, sqlquery: %s in table: %s !\n",sqlInsertQuery,sqlTableName);
+#endif
+        cmeMemTableToMemDBFree();
+        return(3);
+    }
+    cmeMemTableToMemDBFree();
+    return (0);
 }
 
 int cmeMemTableShuffle(char **sqlTable, const int numRows, const int numCols, const int skipHeaderRows,
@@ -636,6 +634,13 @@ int cmeMemTableShuffle(char **sqlTable, const int numRows, const int numCols, co
     unsigned char *prngBuf=NULL;
     unsigned char *prngBufStr=NULL;
     char *valueTmp=NULL;
+    #define cmeMemTableShuffleFree() \
+        do { \
+            cmeFree(prngBuf); \
+            cmeFree(prngBufStr); \
+            valueTmp=NULL; \
+        } while (0); //Local free() macro.
+
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeMemTableShuffle(), preparing to shuffle MemTable with %d rows (not counting header row)"
             " and %d columns; headers to skip: %d; columns to skip: %d.\n",numRows,numCols,skipHeaderRows,
@@ -665,6 +670,7 @@ int cmeMemTableShuffle(char **sqlTable, const int numRows, const int numCols, co
             " and %d columns; headers to skip: %d; columns to skip: %d.\n",numRows,numCols,skipHeaderRows,
             skipIdCols);
 #endif
+    cmeMemTableShuffleFree();
     return (0);
 }
 
@@ -693,30 +699,6 @@ int cmeMemTableOrder(char **sqlTable, const int numRows, const int numCols, cons
                 break;
             }
         }
-
-        ///orderIdx=atoi(sqlTable[(cont*numCols)+orderIdxCol]); //Get order Idx for current register.
-
-        /**
-        //While current reg. is not ordered...
-        while (strcmp(sqlTable[(cont*numCols)+orderIdxCol],sqlTable[(cont*numCols)+cmeIDDanydb_id]))
-        {
-            if ((orderIdx<skipHeaderRows)||(orderIdx>numRows)) //Error, Idx is out of boundaries.
-            {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemTableOrder(), index for row: %d is %d "
-                        "and is out of bounds, in a table with %d rows!",cont,orderIdx,numRows);
-#endif
-                return(1);
-            }
-            for (cont2=(numCols-1);cont2>=skipIdCols;cont2--)
-            {
-                //Swap with
-                valueTmp=sqlTable[(cont*numCols)+cont2];
-                sqlTable[(cont*numCols)+cont2]=sqlTable[(orderIdx*numCols)+cont2];
-                sqlTable[(orderIdx*numCols)+cont2]=valueTmp;
-            }
-            orderIdx=atoi(sqlTable[(cont*numCols)+orderIdxCol]); //Get order Idx for new register.
-        } **/
     }
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeMemTableOrder(), finished ordering MemTable with %d rows"
@@ -747,6 +729,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     char *currentDataId=NULL;
     char *currentDataEncAlg=NULL;
     char *sqlQuery=NULL;
+    char *sanitizedStr=NULL;
     unsigned char *rndBytes=NULL;
     const EVP_CIPHER *cipher=NULL;
     #define cmeMemSecureDBProtectFree() \
@@ -761,6 +744,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
             cmeFree(currentDataId); \
             cmeFree(currentDataEncAlg); \
             cmeFree(sqlQuery); \
+            cmeFree(sanitizedStr); \
             cmeFree(rndBytes); \
             if (memData) \
             { \
@@ -788,7 +772,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeMemTable() Error"
-                "can't execute 'SELECT * FROM meta;'!\n");
+                " can't execute 'SELECT * FROM meta;'!\n");
 #endif
         cmeMemSecureDBProtectFree();
         return(1);
@@ -802,7 +786,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeMemTable() Error"
-                "can't execute 'SELECT * FROM data;'!\n");
+                " can't execute 'SELECT * FROM data;'!\n");
 #endif
         cmeMemSecureDBProtectFree();
         return(2);
@@ -817,16 +801,18 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         cmeGetRndSaltAnySize(&(currentDataSalt[cont-1]),cmeDefaultSecureDBSaltLen);
         //Update Salt info in data table.
         cmeFree(sqlQuery);
-        cmeStrConstrAppend(&currentDataId,"%s",memData[cmeIDDColumnFileDataNumCols*cont+cmeIDDanydb_id]);
+        cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont+cmeIDDanydb_id])); //sanitize currentDataId with atoi()
+        cmeFree(sanitizedStr);
+        cmeSanitizeStrForSQL(currentDataSalt[cont-1],&sanitizedStr); //Sanitize parameter salt for use in SQL statement (salt is included as is).
         cmeStrConstrAppend(&sqlQuery,"BEGIN;"
-                           "UPDATE data SET salt='%s' WHERE id=%s; COMMIT;",currentDataSalt[cont-1],currentDataId);
+                           "UPDATE data SET salt='%s' WHERE id=%s; COMMIT;",sanitizedStr,currentDataId);
         cmeFree(currentDataId);
         result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
         if (result) //Error
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
-                    "can't execute update query: %s !\n",sqlQuery);
+                    " can't execute update query: %s !\n",sqlQuery);
 #endif
             cmeMemSecureDBProtectFree();
             return(3);
@@ -837,7 +823,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
 #endif
         cmeFree(sqlQuery);
     }
-    //Apply each protection mecanism on the whole table
+    //Apply each protection mecanism to the table:
     for (cont=1; cont<=numRowsPMeta; cont++) //Iterate on each protection row in meta.
     {
         cmeGetRndSaltAnySize(&currentMetaSalt,cmeDefaultSecureDBSaltLen);
@@ -850,8 +836,8 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                            cmeIDDColumnFileMetaNumCols+cmeIDDanydb_userId]);                //Get meta.userId
         cmeStrConstrAppend(&currentMetaOrgId,"%s",memProtectMetaData[cont*
                            cmeIDDColumnFileMetaNumCols+cmeIDDanydb_orgId]);                 //Get meta.orgId
-        cmeStrConstrAppend(&currentMetaId,"%s",memProtectMetaData[cont*
-                           cmeIDDColumnFileMetaNumCols+cmeIDDanydb_id]);                    //Get meta.id
+        cmeStrConstrAppend(&currentMetaId,"%d",atoi(memProtectMetaData[cont*
+                           cmeIDDColumnFileMetaNumCols+cmeIDDanydb_id]));                   //Get meta.id; sanitize it with atoi().
         // Check if protection attribute = "name".
         if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
                      cmeIDDColumnFileMeta_attribute_0, sizeof(cmeIDDColumnFileMeta_attribute_0)))
@@ -876,7 +862,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                 if (!result) //OK, supported algorithm
                 {
                     //Encrypt rowOrder and update memSQL table Data:
-                    cmeStrConstrAppend(&currentDataId,"%s",memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]);
+                    cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id])); //Sanitize id with atoi().
                     //Protect 'rowOrder' (data table):
                     result=cmeProtectDBSaltedValue(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_rowOrder], &currentEncB64Data,
                                              currentDataEncAlg, &(currentDataSalt[cont2-1]), orgKey, &written);
@@ -895,24 +881,43 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                             " 'rowOrder'. Result: %s.\n",currentEncB64Data);
 #endif
                     cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE data SET"); //First part of query.
-                    cmeStrConstrAppend(&sqlQuery," userId='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDanydb_userId]);
-                    cmeStrConstrAppend(&sqlQuery,",orgId='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDanydb_orgId]);
-                    cmeStrConstrAppend(&sqlQuery,",salt='%s'",currentDataSalt[cont2-1]); //Include new salts.
-                    cmeStrConstrAppend(&sqlQuery,",value='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDColumnFileData_value]);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_userId],
+                                         &sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery," userId='%s'",sanitizedStr);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_orgId],
+                                         &sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",orgId='%s'",sanitizedStr);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(currentDataSalt[cont2-1],
+                                         &sanitizedStr);   //Sanitize parameter salt for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",salt='%s'",sanitizedStr); //Include new salts.
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                                         &sanitizedStr);   //Sanitize parameter value for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",value='%s'",sanitizedStr);
                     cmeStrConstrAppend(&sqlQuery,",rowOrder='%s'",currentEncB64Data);
-                    cmeStrConstrAppend(&sqlQuery,",MAC='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDColumnFileData_MAC]);
-                    cmeStrConstrAppend(&sqlQuery,",MACProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDColumnFileData_MACProtected]);
-                    cmeStrConstrAppend(&sqlQuery,",sign='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDColumnFileData_sign]);
-                    cmeStrConstrAppend(&sqlQuery,",signProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDColumnFileData_signProtected]);
-                    cmeStrConstrAppend(&sqlQuery,",otphDkey='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                       cmeIDDColumnFileData_otphDKey]);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_MAC],
+                                         &sanitizedStr);   //Sanitize parameter MAC for use in SQL statement.
+                    cmeStrConstrAppend(&sqlQuery,",MAC='%s'",sanitizedStr);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_MACProtected],
+                                         &sanitizedStr);   //Sanitize parameter MACProtected for use in SQL statement
+                    cmeStrConstrAppend(&sqlQuery,",MACProtected='%s'",sanitizedStr);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_sign],
+                                         &sanitizedStr);   //Sanitize parameter sign for use in SQL statement
+                    cmeStrConstrAppend(&sqlQuery,",sign='%s'",sanitizedStr);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_signProtected],
+                                         &sanitizedStr);   //Sanitize parameter signProtected for use in SQL statement
+                    cmeStrConstrAppend(&sqlQuery,",signProtected='%s'",sanitizedStr);
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_otphDKey],
+                                         &sanitizedStr);   //Sanitize parameter otphDkey for use in SQL statement
+                    cmeStrConstrAppend(&sqlQuery,",otphDkey='%s'",sanitizedStr);
                     cmeStrConstrAppend(&sqlQuery," WHERE id=%s; COMMIT;",currentDataId); //Last part of query.
                     result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                     cmeFree(currentEncB64Data);
@@ -920,7 +925,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                     {
 #ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
-                                "can't execute update query: %s !\n",sqlQuery);
+                                " can't execute update query: %s !\n",sqlQuery);
 #endif
                         cmeMemSecureDBProtectFree();
                         return(6);
@@ -957,7 +962,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
             {
                 for(cont2=1;cont2<=numRowsData;cont2++)  //We skip the header row.
                 {
-                    cmeStrConstrAppend(&currentDataId,"%s",memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]);
+                    cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id])); //Sanitize using atoi();
                     //Protect 'value' (data table):
                     result=cmeProtectDBSaltedValue(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value], &currentEncB64Data,
                                              currentDataEncAlg, &(currentDataSalt[cont2-1]), orgKey, &written);
@@ -1047,7 +1052,6 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                 cmeMemSecureDBProtectFree();
                 return(12);
             }
-
         }
         // Check if protection attribute = "sign".
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
@@ -1198,6 +1202,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
     char *currentDataId=NULL;
     char *currentDataSalt=NULL;
     char *currentDataEncAlg=NULL;
+    char *sanitizedStr=NULL;
     char *sqlQuery=NULL;
     const EVP_CIPHER *cipher=NULL;
     //MEMORY CLEANUP MACRO for local function.
@@ -1215,6 +1220,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
             cmeFree(currentDataOrgId); \
             cmeFree(currentDataSalt); \
             cmeFree(currentDataEncAlg); \
+            cmeFree(sanitizedStr); \
             cmeFree(sqlQuery); \
             if (memData) \
             { \
@@ -1233,7 +1239,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
     if (result) //Error
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeMemTable() Error"
+        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeMemTable() Error "
                 "can't execute 'SELECT * FROM meta;'!\n");
 #endif
         cmeMemSecureDBUnprotectFree();
@@ -1247,7 +1253,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
     if (result) //Error
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeMemTable() Error"
+        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeMemTable() Error "
                 "can't execute 'SELECT * FROM data;'!\n");
 #endif
         cmeMemSecureDBUnprotectFree();
@@ -1317,20 +1323,30 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
             return(6);
         }
         cmeFree(currentEncB64Data);
-        cmeStrConstrAppend(&currentMetaId,"%s",memProtectMetaData[cont*            //Get prot. meta.id
-                           cmeIDDColumnFileMetaNumCols+cmeIDDanydb_id]);
+        cmeStrConstrAppend(&currentMetaId,"%d",atoi(memProtectMetaData[cont*            //Get prot. meta.id; sanitize with atoi()
+                           cmeIDDColumnFileMetaNumCols+cmeIDDanydb_id]));
         //First part of query
-        cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE meta SET attribute='%s'",currentMetaAttribute);
-        cmeStrConstrAppend(&sqlQuery,",attributeData='%s'",currentMetaAttributeData);
-        cmeStrConstrAppend(&sqlQuery,",userId='%s'",currentMetaUserId);
-        cmeStrConstrAppend(&sqlQuery,",orgId='%s'",currentMetaOrgId);
-        cmeStrConstrAppend(&sqlQuery,",salt='%s' WHERE id=%s; COMMIT;",currentMetaSalt,currentMetaId);
+        cmeFree(sanitizedStr);
+        cmeSanitizeStrForSQL(currentMetaAttribute,&sanitizedStr); //Sanitize parameter currentMetaAttribute.
+        cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE meta SET attribute='%s'",sanitizedStr);
+        cmeFree(sanitizedStr);
+        cmeSanitizeStrForSQL(currentMetaAttributeData,&sanitizedStr); //Sanitize parameter currentMetaAttributeData.
+        cmeStrConstrAppend(&sqlQuery,",attributeData='%s'",sanitizedStr);
+        cmeFree(sanitizedStr);
+        cmeSanitizeStrForSQL(currentMetaUserId,&sanitizedStr); //Sanitize parameter currentMetaUserId.
+        cmeStrConstrAppend(&sqlQuery,",userId='%s'",sanitizedStr);
+        cmeFree(sanitizedStr);
+        cmeSanitizeStrForSQL(currentMetaOrgId,&sanitizedStr); //Sanitize parameter currentMetaOrgId.
+        cmeStrConstrAppend(&sqlQuery,",orgId='%s'",sanitizedStr);
+        cmeFree(sanitizedStr);
+        cmeSanitizeStrForSQL(currentMetaSalt,&sanitizedStr); //Sanitize parameter currentMetaSalt.
+        cmeStrConstrAppend(&sqlQuery,",salt='%s' WHERE id=%s; COMMIT;",sanitizedStr,currentMetaId);
         result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
         if (result) //Error
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeSQLRows() Error"
-                    "can't execute update query: %s !\n",sqlQuery);
+                    " can't execute update query: %s !\n",sqlQuery);
 #endif
             cmeMemSecureDBUnprotectFree();
             return(7);
@@ -1366,7 +1382,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
             for(cont2=1;cont2<=numRowsData;cont2++) //Updates all shuffled rows (leaves column 'id' untouched); unprotects 'rowOrder'.
             {
                 //Decrypt rowOrder and update memSQL table Data.
-                cmeStrConstrAppend(&currentDataId,"%s",memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]);
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id])); //sanitize with atoi().
                 cmeStrConstrAppend(&currentEncB64Data,"%s",memData[cmeIDDColumnFileDataNumCols*cont2+
                                      cmeIDDColumnFileData_rowOrder]); //Get encrypted B64str.
                 //Unprotect 'rowOrder' (data table).
@@ -1388,7 +1404,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                         "%s, with algorithm: %s.\n",currentData,currentDataEncAlg);
 #endif
                 cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE data SET"); //First part of query.
-                cmeStrConstrAppend(&sqlQuery," rowOrder='%s'",currentData);
+                cmeStrConstrAppend(&sqlQuery," rowOrder='%d'",atoi(currentData)); //Sanitize with atoi()
                 cmeStrConstrAppend(&sqlQuery," WHERE id=%s; COMMIT;",currentDataId); //Last part of query.
                 result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                 cmeFree(currentData);
@@ -1437,29 +1453,49 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
 #endif
             for (cont2=1;cont2<=numRowsData;cont2++) //Save reordered table back to DB.
             {
-                cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE data SET"); //First part of query.
-                cmeStrConstrAppend(&sqlQuery," userId='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDanydb_userId]);
-                cmeStrConstrAppend(&sqlQuery,",orgId='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDanydb_orgId]);
-                cmeStrConstrAppend(&sqlQuery,",salt='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDanydb_salt]);
-                cmeStrConstrAppend(&sqlQuery,",value='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_value]);
-                cmeStrConstrAppend(&sqlQuery,",rowOrder='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_rowOrder]);
-                cmeStrConstrAppend(&sqlQuery,",MAC='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_MAC]);
-                cmeStrConstrAppend(&sqlQuery,",MACProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_MACProtected]);
-                cmeStrConstrAppend(&sqlQuery,",sign='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_sign]);
-                cmeStrConstrAppend(&sqlQuery,",signProtected='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_signProtected]);
-                cmeStrConstrAppend(&sqlQuery,",otphDkey='%s'",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDColumnFileData_otphDKey]);
-                cmeStrConstrAppend(&sqlQuery," WHERE id=%s; COMMIT;",memData[cmeIDDColumnFileDataNumCols*cont2+
-                                   cmeIDDanydb_id]); //Last part of query.
+                cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; UPDATE data SET"); //First part of query.
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_userId],
+                                     &sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery," userId='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_orgId],
+                                     &sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",orgId='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_salt],
+                                     &sanitizedStr);   //Sanitize parameter salt for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",salt='%s'",sanitizedStr); //Include new salts.
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                                     &sanitizedStr);   //Sanitize parameter value for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",value='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_rowOrder],
+                                     &sanitizedStr);   //Sanitize parameter rowOrder for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",rowOrder='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_MAC],
+                                     &sanitizedStr);   //Sanitize parameter MAC for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",MAC='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_MACProtected],
+                                     &sanitizedStr);   //Sanitize parameter MACProtected for use in SQL statement
+                cmeStrConstrAppend(&sqlQuery,",MACProtected='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_sign],
+                                     &sanitizedStr);   //Sanitize parameter sign for use in SQL statement
+                cmeStrConstrAppend(&sqlQuery,",sign='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_signProtected],
+                                     &sanitizedStr);   //Sanitize parameter signProtected for use in SQL statement
+                cmeStrConstrAppend(&sqlQuery,",signProtected='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_otphDKey],
+                                     &sanitizedStr);   //Sanitize parameter otphDkey for use in SQL statement
+                cmeStrConstrAppend(&sqlQuery,",otphDkey='%s'",sanitizedStr);
+                cmeStrConstrAppend(&sqlQuery," WHERE id=%d; COMMIT;",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+
+                               cmeIDDanydb_id])); //Last part of query.
                 result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                 if (result) //Error
                 {
@@ -1515,13 +1551,19 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                     return(15);
                 }
                 cmeFree(currentEncB64Data);
-                cmeStrConstrAppend(&currentDataId,"%s",memData[cont2*            //Get prot. data.id
-                                   cmeIDDColumnFileDataNumCols+cmeIDDanydb_id]);
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cont2*            //Get prot. data.id; sanitize with atoi()
+                                   cmeIDDColumnFileDataNumCols+cmeIDDanydb_id]));
                 //First part of query
                 cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE data SET");
-                cmeStrConstrAppend(&sqlQuery," userId='%s'",currentDataUserId);
-                cmeStrConstrAppend(&sqlQuery,",orgId='%s'",currentDataOrgId);
-                cmeStrConstrAppend(&sqlQuery,",salt='%s' WHERE id=%s; COMMIT;",currentDataSalt,currentDataId);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(currentDataUserId,&sanitizedStr);   //Sanitize parameter currentDataUserId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery," userId='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(currentDataOrgId,&sanitizedStr);   //Sanitize parameter currentDataOrgId for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",orgId='%s'",sanitizedStr);
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(currentDataSalt,&sanitizedStr);   //Sanitize parameter currentDataSalt for use in SQL statement.
+                cmeStrConstrAppend(&sqlQuery,",salt='%s' WHERE id=%s; COMMIT;",sanitizedStr,currentDataId);
                 result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
                 if (result) //Error
                 {
@@ -1564,7 +1606,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
             {
                 for(cont2=1;cont2<=numRowsData;cont2++)  //We skip the header row.
                 {
-                    cmeStrConstrAppend(&currentDataId,"%s",memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]);
+                    cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id])); //Sanitize with atoi().
                     //Protect 'value (data table).
                     cmeStrConstrAppend(&currentEncB64Data,"%s",memData[cmeIDDColumnFileDataNumCols*cont2+
                                        cmeIDDColumnFileData_value]); // Get encrypted, B64 str representation of encr. alg.
@@ -1585,8 +1627,10 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                     fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBUnprotect(), decrypted 'value' in data table: "
                             "%s with algorithm %s.\n",currentData,currentDataEncAlg);
 #endif
+                    cmeFree(sanitizedStr);
+                    cmeSanitizeStrForSQL(currentData,&sanitizedStr); //Sanitize parameter.
                     cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE data SET value='%s' WHERE id=%s; COMMIT;",
-                                       currentData,currentDataId);  //Update query.
+                                       sanitizedStr,currentDataId);  //Update query.
                     memset(currentData,0,strlen(currentData));      // Clear sensitive data
                     cmeFree(currentData);
                     result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
@@ -1838,6 +1882,7 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
     char *currentMetaUserId=NULL;
     char *currentMetaOrgId=NULL;
     char *sqlQuery=NULL;
+    char *sanitizedStr=NULL;
     sqlite3 *tmpPtr=NULL;       //Just a tmp pointer; no need for cmeFree().
     //MEMORY CLEANUP MACRO for local function.
     #define cmeMemSecureDBReintegrateFree() \
@@ -1852,6 +1897,7 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
             cmeFree(currentMetaUserId); \
             cmeFree(currentMetaOrgId); \
             cmeFree(sqlQuery); \
+            cmeFree(sanitizedStr); \
             if (memColumnName) \
             { \
                 for (cont=0;cont<dbNumCols;cont++) \
@@ -1978,18 +2024,48 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                             {
                                 cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION;"
                                                    " INSERT INTO data (id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey)"
-                                                   " VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
-                                                   "COMMIT;",
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_userId],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_orgId],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_salt],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_value],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_rowOrder],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MAC],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_sign],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MACProtected],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_signProtected],
-                                                   memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_otphDKey]);
+                                                   " VALUES (NULL"); //First part of query.
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_userId],
+                                                     &sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_orgId],
+                                                     &sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_salt],
+                                                     &sanitizedStr);   //Sanitize parameter salt for use in SQL statement.
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_value],
+                                                     &sanitizedStr);   //Sanitize parameter value for use in SQL statement.
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_rowOrder],
+                                                     &sanitizedStr);   //Sanitize parameter rowOrder for use in SQL statement.
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MAC],
+                                                     &sanitizedStr);   //Sanitize parameter MAC for use in SQL statement.
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_sign],
+                                                     &sanitizedStr);   //Sanitize parameter sign for use in SQL statement
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MACProtected],
+                                                     &sanitizedStr);   //Sanitize parameter MACProtected for use in SQL statement
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_signProtected],
+                                                     &sanitizedStr);   //Sanitize parameter signProtected for use in SQL statement
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeFree(sanitizedStr);
+                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_otphDKey],
+                                                     &sanitizedStr);   //Sanitize parameter otphDkey for use in SQL statement
+                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
+                                cmeStrConstrAppend(&sqlQuery,"); COMMIT;"); //Last part of query.
                                 if (cmeSQLRows(memSecureDB[cont3],sqlQuery,NULL,NULL)) //insert row.
                                 {
 #ifdef ERROR_LOG
@@ -2037,4 +2113,71 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
     }
     cmeMemSecureDBReintegrateFree();
     return (0);
+}
+
+int cmeMemTableWithTableColumnNames (sqlite3 *db, const char *tableName)
+{
+    int cont,result,numCols;
+    const int columnNameIndex=1;        //Index for column names within internal structure of SQLite's PRAGMA table_info().
+    char *sqlQuery=NULL;
+    char **tmpColumnMemTable=NULL;
+        //MEMORY CLEANUP MACRO for local function.
+    #define cmeMemTableWithTableColumnNamesFree() \
+        do { \
+            cmeFree(sqlQuery); \
+        } while (0); //Local free() macro.
+        //Note: results will be located in cmeResultMemTable by pointing it to tmpColumnMemTable (we don't free tmpColumnMemTable).
+
+    cmeResultMemTableClean();
+    cmeStrConstrAppend(&sqlQuery,"PRAGMA table_info(\"%s\");",tableName);
+    result=cmeSQLRows(db,(const char *) sqlQuery,NULL,NULL); //Select all data; no parser script.
+    numCols=cmeResultMemTableRows;
+    if (numCols)
+    {
+        tmpColumnMemTable=(char **)malloc(sizeof(char *)*numCols); //Reserve memory for column names;
+    }
+    for (cont=0;cont<numCols;cont++)
+    {
+        tmpColumnMemTable[cont]=NULL;
+        cmeStrConstrAppend(&(tmpColumnMemTable[cont]),"%s",cmeResultMemTable[cmeResultMemTableCols*(cont+1)+columnNameIndex]); //We skip headers in resultMemTable
+    }
+    cmeResultMemTableClean();
+    cmeResultMemTable=tmpColumnMemTable;
+    cmeResultMemTableCols=numCols;
+    cmeResultMemTableRows=0;
+    cmeMemTableWithTableColumnNamesFree();
+    return (0);
+}
+
+int cmeSanitizeStrForSQL (const char *sourceString, char **sanitizedString)
+{
+    int cont,cont2;
+    int sourceStringLen=0;
+    int sanitizedStringLen=0;
+
+    if (!sourceString) //Error, source string can't be NULL
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeSanitizeStrForSQL(), Error, source string can't be NULL!\n");
+#endif
+        return(1);
+    }
+    sourceStringLen=strlen(sourceString);
+    sanitizedStringLen=sourceStringLen;
+    *sanitizedString=(char *)malloc(sizeof(char)*(sanitizedStringLen+1)); //Set length of sanitized string = length of source string to start.
+    cont2=0;
+    for (cont=0;cont<sourceStringLen;cont++)
+    {
+        if (sourceString[cont]=='\'') //If we find a single quote character, we double it in the sanitized string.
+        {
+            (*sanitizedString)[cont2]='\'';
+            cont2++;
+            sanitizedStringLen++;
+            *sanitizedString=(char *)realloc(*sanitizedString, sizeof(char)*(sanitizedStringLen+1)); //Add 1 character to the sanitized string.
+        }
+        (*sanitizedString)[cont2]=sourceString[cont];
+        cont2++;
+    }
+    (*sanitizedString)[cont2]='\0'; //Include ending 0 character.
+    return(0);
 }

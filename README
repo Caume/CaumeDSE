@@ -1496,7 +1496,7 @@ content
 			For POST, {contentRow} must be exactly the next
 			available numeric row (it behaves as an append);
 			existing column for which a new value was not
-			specified will recieve a new empty string. 
+			specified will receive a new empty string. 
 
 			For PUT, {contentRow} must be in the range 1 - last
 			row; existing columns for which a new value was not
@@ -1559,6 +1559,75 @@ content
 		REQUEST BODY:
 			<EMPTY>	
 
+{contentColumn}
+	Supported HTTP methods: POST GET HEAD DELETE OPTIONS
+
+	Supported ATTRIBUTE PARAMETERS: 
+		MATCH:
+			_userId _orgId _resourceInfo _columnFile _partHash
+			_totalParts _partId _lastModified _columnId
+		UPDATE:
+			<NONE>
+		UPDATE NOTES:
+			For POST, {contentColumn} can refer to a new column
+			in a non-existent document.  In this case the
+			document will be created along with {contentColumn}
+			as its first column.  
+
+			For DELETE, if {contentColumn} is the only column
+			left in the document, the whole document is deleted.
+		SUPPORTED FILE TYPES:
+			file.csv
+		RESPONSE HEADERS:
+			Engine-results: <number of matching registers>
+		RESPONSE BODY:
+			<Row contents or result of operation>
+
+	Example 1)      Get column Col1 of document document.csv (of type
+			file.csv); get results in csv format.
+		METHOD:
+			GET   
+		URI:
+			https://localhost/organizations/EngineOrg/storage/
+			EngineStorage/documentTypes/file.csv/documents/
+			document.csv/contentColumns/Col1?userId=EngineAdmin
+			&orgId=EngineOrg&orgKey=
+			0CDBB9AF76AF43BDB72E095989E612CC&outputType=csv
+		REQUEST HEADERS:
+			<NONE>
+		REQUEST BODY:
+			<EMPTY>
+
+	Example 2)	Delete column salary of document document.csv (of
+			type file.csv).
+		METHOD:
+			DELETE 
+		URI:
+			https://localhost/organizations/EngineOrg/storage/
+			EngineStorage/documentTypes/file.csv/documents/
+			document.csv/contentColumns/salary?userId=EngineAdmin
+			&orgId=
+			EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+		REQUEST HEADERS:
+			<NONE>
+		REQUEST BODY:
+			<EMPTY>
+
+	Example 3)	Add Column Col1 to non-existing document
+			newdocument.csv (which also creates the document of
+			type file.csv).
+		METHOD:
+			POST 
+		URI:
+			https://localhost/organizations/EngineOrg/storage/
+			EngineStorage/documentTypes/file.csv/documents/
+			newdocument.csv/contentColumns/Col1?userId=EngineAdmin
+			&orgId=
+			EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+		REQUEST HEADERS:
+			<NONE> 
+		REQUEST BODY:
+			<EMPTY>
 
 favicon.ico
 	Supported HTTP methods: GET

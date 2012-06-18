@@ -1,3 +1,68 @@
+2012-06-18 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* common.h (cmeWSMsgContenColumnsOptions) Added contentColumn
+	resource options.
+
+	* webservice_interface.c, webservice_interface.h
+	(cmeWebServiceProcessContentColumnResource): Added web service to
+	process contentColumn resource requests.
+
+	* webservice_interface.c (cmeWebServiceProcessContentClass): Fixed
+	error response when document is not found.  Fixed handling of emty
+	tables (i.e.  those with just column names but no rows).
+
+	* filehandling.c (cmeMemTableToSecureDB): Modified function to
+	handle new tables with just 1 column and 0 rows, so that POST
+	requests of contentColumn when the documentId is new are handled
+	correctly.
+
+	* db.c,db.h (cmeMemTableWithTableColumnNames): Added function to get
+	(in cmeResultMemTable) a string array of column names for table
+	tableName.  This function uses SQLite's PRAGMA table_info().  It is
+	needed for tables with 0 rows since in that case SQLite returns also
+	0 columns.
+
+	* db.c,db.h (cmeSanitizeStrForSQL): Added function to sanitize input
+	that will be used in sql queries directly, to avoid sql injection
+	attacks.  It does this by doubling any single quote found within the
+	input string.
+
+	* db.c,filehandling.c,engine_interface.c (cmeMemSecureDBUnprotect,
+	cmeMemSecureDBProtect, cmeDeleteSecureDB, cmePostProtectDBRegister,
+	cmePutProtectDBRegister, cmeCVSFileToSecureSQL, cmeMemTableToMemDB,
+	cmeMemTableToSecureDB): Modified functions to include sql injection
+	protection using cmeSanitizeStrForSQL, for sql query parameters
+	coming from protected data tables (e.g.  table column names).
+
+	* db.c (cmeMemTableToMemDB, cmeMemTableShuffle): Added standard
+	cleanup macro and adjusted function flow accordingly.
+
+	* db.c (cmeSQLRows): replaced free cmeResultMemTable routine with a
+	call to cmeResultMemTableClean() (which does exactly the same).
+
+	* engine_interface.c (cmeSecureDBToMemDB): Fixed Memory leak
+	(queryResult was not freed after call).
+
+	* engine_interface.c (cmeDeleteUnprotectDBRegister): Fixed memory
+	segfault error and orphan file parts.	
+	
+	* engine_interface.c,engine_interface.h (cmeExistsDocumentId): Added
+	function to identify if a protected document (with corresponding
+	orgKey, orgId) exists in ResourcesDB (table documents) without
+	having to unprotect and load the whole document in memory (with
+	cmeSecureDBToMemDB.  This should improve performance considerably;
+	closed corresponding TODO.
+
+	* engine_interface.c,filehandling.c (cmeDeleteSecureDB,
+	cmeCSVFileToSecureDB, cmeMemTableToSecureDB): Modified functions so
+	that they now use cmeExistsDocumentId instead of cmeSecureDBToMemDB
+	to check if a document exists (much faster).
+
+	* webservice_interface.c (SELECT * FROM data;): eliminated BEGIN
+	TRANSACTION; and COMMIT; from several select statements since they
+	were single statements and therefore it is not necessary to group
+	them.
+
 2012-05-22 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* common.h (cmeMaxRAWDataInPart): Closed pending FIXME,

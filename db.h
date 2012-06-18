@@ -94,5 +94,9 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                                const int dbNumCols, int *dbNumReintegratedCols);
 // Function to wipe and free memory associated with global result database (used by cmeSQLRows, cmeSQLIterate).
 int cmeResultMemTableClean ();
+// Function to get (in cmeResultMemTable) a string array of column names for table tableName.
+int cmeMemTableWithTableColumnNames (sqlite3 *db, const char *tableName);
+// Function to sanitize an input string (doubles single quote characters) to avoid sql injection attacks in sql queries.
+int cmeSanitizeStrForSQL (const char *sourceString, char **sanitizedString);
 
 #endif // DBSQLITE_H_INCLUDED
