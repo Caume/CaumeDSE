@@ -45,9 +45,10 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #include "common.h"
 
 int cmeSetupEngineAdminDBs ()
-{   //IDD ver. 1.0.19 15nov2011
+{   //IDD ver. 1.0.21
     int result;
     int createAdmin=0;
+    int keyLen=0;
     char readChar;
     const char dbFName1 []="ResourcesDB";
     const char dbFName2 []="RolesDB";
@@ -56,6 +57,7 @@ int cmeSetupEngineAdminDBs ()
     char *sqlQuery=NULL;
     char *rndAdminOrgPwd=NULL;
     sqlite3 *currentDB=NULL;
+    const EVP_CIPHER *cipher=NULL; //Note that cipher is a pointer to a constant cipher function in OPENSSL.
     #define cmeSetupEngineAdminDBsFree() \
         do { \
             cmeFree(rndAdminOrgPwd); \
@@ -68,6 +70,15 @@ int cmeSetupEngineAdminDBs ()
             } \
         } while (0); //Local free() macro
 
+    if (cmeGetCipher(&cipher,cmeDefaultEncAlg)) //Verify default cipher algorithm and get cipher object.
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), incorrect default cipher algorithm: %s!\n",cmeDefaultEncAlg);
+#endif
+        cmeSetupEngineAdminDBsFree();
+        return(1);
+    }
+    keyLen=EVP_CIPHER_key_length(cipher);   //Get cipher key length.
     //Prepare: ResourcesDB
     cmeStrConstrAppend(&currentDBName,"%s%s",cmeDefaultFilePath,dbFName1); //Create full path
     result=cmeDBOpen(currentDBName,&currentDB);
@@ -304,9 +315,9 @@ int cmeSetupEngineAdminDBs ()
         }
         cmeSetupEngineAdminDBsFree();
     }
-    if (createAdmin) //ResourcesDB and/or RolesDB did not existe and was(were) created; we need a new default admin's user, roles, organization and storage.
+    if (createAdmin) //ResourcesDB and/or RolesDB did not exist; we need a new default admin's user, roles, organization and storage.
     {
-        cmeGetRndSaltAnySize(&rndAdminOrgPwd,16); //Generate a random key of 16 bytes as HexStr.
+        cmeGetRndSaltAnySize(&rndAdminOrgPwd,keyLen); //Generate a random key of keyLen bytes as HexStr.
         result=cmeWebServiceInitAdminIdSetup(rndAdminOrgPwd); //Create User.
         if (result) //Error.
         {

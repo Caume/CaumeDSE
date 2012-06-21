@@ -318,24 +318,53 @@ int cmeCipherFinal(EVP_CIPHER_CTX **ctx, unsigned char *out, int *outl, const ch
 }
 
 int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
-              const unsigned char *password, int passwordLen,unsigned char *key,unsigned char *iv)
+              const unsigned char *password,int passwordLen,unsigned char *key,unsigned char *iv)
 {
     int result;
     EVP_MD *md=NULL;
-    unsigned char buf[1024];
+    unsigned char *HexStrToByteBuffer=NULL;
+    unsigned char *buf=NULL;        //Max. size of key+IV buffer = 2 * max. length for symmetric key or IV.
     int keyLen=EVP_CIPHER_key_length(cipher);   //Get cipher key length.
     int ivLen=EVP_CIPHER_iv_length(cipher);     //Get cipher iv length.
+    #define cmePBKDFFree() \
+        do  { \
+                if (HexStrToByteBuffer) \
+                { \
+                    memset(HexStrToByteBuffer,0,strlen(passwordLen)/2); \
+                    cmeFree(HexStrToByteBuffer); \
+                } \
+                if (buf) \
+                { \
+                    memset(buf,0,keyLen+ivLen); \
+                    cmeFree(buf); \
+                } \
+            } while (0); //Local free() macro
 
-    if (cmeDefaultPBKDFVersion==1)
+
+    if (cmeDefaultPBKDFVersion==1) //PBKDF1
     {   //Use PBKDF1 with cipher=cmeDefaultEncAlg + MD5 + count=1 (compatible with command line password KDF from OpenSSL):
         md = (EVP_MD *)EVP_get_digestbyname("md5");
         result=EVP_BytesToKey(cipher,md,salt,password,passwordLen,1,key,iv);
     }
-    else
-    {   //Use PBKDF2 with HMAC_SHA1 + count=cmeDefaultPBKDFCount (not compatible with command line password KDF from OpenSSL):
-        result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,cmeDefaultPBKDFCount,keyLen+ivLen,buf);
-        memcpy(key,buf,keyLen);
-        memcpy(iv,buf+keyLen,ivLen);
+    else //PBKDF2
+    {
+        result=cmeHexstrToBytes(&HexStrToByteBuffer,password);
+        if ((result)||(passwordLen/2<keyLen)) //Password is not a HexStr representation of a binary key in cipher's keyspace -> Use PBKDF2 with several iterations for password expansion into full keyspace.
+        {   // (Very slow, but provides a good security level for keys derived from human generated passwords).
+            //Use PBKDF2 with HMAC_SHA1 + count=cmeDefaultPBKDFCount (not compatible with command line password KDF from OpenSSL):
+            buf=(unsigned char*)malloc(sizeof(unsigned char)*(keyLen+ivLen));
+            result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,cmeDefaultPBKDFCount,keyLen+ivLen,buf);
+            memcpy(key,buf,keyLen);
+            memcpy(iv,buf+keyLen,ivLen);
+        }
+        else //Password is a HexStr representation of a binary key in cipher's keyspace -> Use PBKDF2 with 1 iteration as a permutation in keyspace using the provided salt.
+        {   // (Fast; provides equivalent security level as a random key selected from crypto algorithm's full keyspace).
+            //Use PBKDF2 with HMAC_SHA1 + count=cmeDefaultPBKDFCount (not compatible with command line password KDF from OpenSSL):
+            buf=(unsigned char*)malloc(sizeof(unsigned char)*(keyLen+ivLen));
+            result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,1,keyLen+ivLen,buf);
+            memcpy(key,buf,keyLen);
+            memcpy(iv,buf+keyLen,ivLen);
+        }
     }
     if (result==0)  //0= failure, n=size of generated key (success)
     {
@@ -474,10 +503,10 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
         cmeCipherByteStringFree();
         return(1);
     }
-    if ((cmeGetCipher(&cipher,algorithm))) //Verify algorithm and create cipher object.
+    if (cmeGetCipher(&cipher,algorithm)) //Verify algorithm and get cipher object.
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), incorrect cipher algorithm; %s!\n",algorithm);
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), incorrect cipher algorithm: %s!\n",algorithm);
 #endif
         cmeCipherByteStringFree();
         return(2);

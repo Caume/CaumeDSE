@@ -1717,5 +1717,27 @@ and a counter = 1) use the following configure switch.
 
 	--enable-OLDPBKDF1
 
-The default Password Based Key DErivation Function standard is now PBKDF2
+The default Password Based Key Derivation Function standard is now PBKDF2
 (PKCS5v2.0, which uses HMAC-SHA1 + a default counter much greater than 1).
+
+Note that there is now an exception where PBKDF2 runs a using a single
+iteration.  This happens when the key is an hexadecimal representation of a
+binary key that has a length greater or equal than the default cipher key
+length.  We assume that in this case the key was generated with a robust
+PRNG, and since the key length are the same, key expansion is unnecessary
+(actually, we just need one iteration to perform a single permitation within
+the whole keyspace to take into account the provided salt).  Using this kind
+of keys improves performance considerably.
+
+All other keys are assumed to be human generated passwords or passphrases
+which require key expansion with a slow function, in order to limit
+dictionary and brute force attacks.  Therefore, they are processed by the
+PBKDF2 function using the defined number of iterations each time, which
+slows down all the encryption and decryption processes.
+
+The default key generated for EngineAdmin when creating a new database is
+now an hexadecimal representation of a binary key with the same langth as
+the default cipher key (i.e.  cryptographic operations are much faster). 
+However, the example database included has a shorter key for the default
+administrator account EngineAdmin; using the example database with the
+EngineAdmin account is therefore much slower.

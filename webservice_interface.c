@@ -6926,6 +6926,7 @@ int cmeWebServicePOSTIteration (void *coninfo_cls, enum MHD_ValueKind kind, cons
     struct cmeWebServiceConnectionInfoStruct *con_info = coninfo_cls;
     FILE *filePointer=NULL;
     char *tmpFilename=NULL;
+    char tmpBuf[cmeWSPostBufferSize+1]; //Temporary buffer for partial values in non-files
     #define cmeWebServicePOSTIterationFree() \
         do { \
             cmeFree(tmpFilename); \
@@ -6943,13 +6944,37 @@ int cmeWebServicePOSTIteration (void *coninfo_cls, enum MHD_ValueKind kind, cons
     }
     if (0 != strcmp (key, "file"))
     {
-        //Since MHD_set_connection_value() just copies the pointers to strings, we need to ensure that key and data are persistent during POST iterations
-        cmeStrConstrAppend(&(con_info->postArglist[con_info->postArgCont]),"%s",key);
-        cmeStrConstrAppend(&(con_info->postArglist[(con_info->postArgCont)+1]),"%s",data);
-        MHD_set_connection_value(con_info->connection,MHD_GET_ARGUMENT_KIND,
-                                 con_info->postArglist[con_info->postArgCont],
-                                 con_info->postArglist[(con_info->postArgCont)+1]);
-        con_info->postArgCont+=2;
+        //Since MHD_set_connection_value() just copies the pointers to strings, we need to ensure that key and data are persistent during POST iterations.
+        tmpBuf[0]='\0'; //reset string buffer.
+        strncat(tmpBuf,data,size); //copy only size characters from data to tmpBuf and append ending null character.
+        if ((con_info->postArgCont)>0) //Not the first argument.
+        {
+            if (!strcmp(key,con_info->postArglist[(con_info->postArgCont)-2])) //We have a repeated key-> value is incomplete, append next chunk!
+            {
+                if (size>0) //Only add another data chunk to the same key value if data is not empty (i.e. size >0).
+                {
+                    cmeStrConstrAppend(&(con_info->postArglist[(con_info->postArgCont)-1]),"%s",tmpBuf);
+                }
+            }
+            else //New argument -> process as usual
+            {
+                cmeStrConstrAppend(&(con_info->postArglist[con_info->postArgCont]),"%s",key);
+                cmeStrConstrAppend(&(con_info->postArglist[(con_info->postArgCont)+1]),"%s",tmpBuf);
+                MHD_set_connection_value(con_info->connection,MHD_GET_ARGUMENT_KIND,
+                                         con_info->postArglist[con_info->postArgCont],
+                                         con_info->postArglist[(con_info->postArgCont)+1]);
+                con_info->postArgCont+=2;
+            }
+        }
+        else //First argument -> process as usual
+        {
+            cmeStrConstrAppend(&(con_info->postArglist[con_info->postArgCont]),"%s",key);
+            cmeStrConstrAppend(&(con_info->postArglist[(con_info->postArgCont)+1]),"%s",tmpBuf);
+            MHD_set_connection_value(con_info->connection,MHD_GET_ARGUMENT_KIND,
+                                     con_info->postArglist[con_info->postArgCont],
+                                     con_info->postArglist[(con_info->postArgCont)+1]);
+            con_info->postArgCont+=2;
+        }
         cmeWebServicePOSTIterationFree();
         return MHD_YES;
     }

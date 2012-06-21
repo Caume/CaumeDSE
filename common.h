@@ -56,7 +56,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define evpMaxHashStrLen 2*64+1         //Max length for character representation of hex bytestr hash {RECOMMENDED: 2*64+1}. At 2 chars per byte, SHA-512 requires 64 bytes, + 1 ending null char.
 #define evpMaxHashBytesLen 64           //Max length for byte representation of hash {RECOMMENDED: 64}. SHA-512 requires 64 bytes.
 #define evpBufferSize 1024              //Default Cipher buffer size {4096}
-#define evpMaxKeyIvLen 64               //Max size for Key and IV arrays {64 bytes allows keys of up to 512 bits}
+#define evpMaxKeyIvLen 64               //Max size for Key and IV arrays {64 bytes allows symmetric crypto keys of up to 512 bits}
 #define evpSaltBufferSize 16             //EVP_BytesToKey{} uses this many bytes long salts to derive key and iv.
 #define bioReadBufferSize 4096          //Buffer Size for BIO_read {RECOMMENDED: 4096}.
 #ifdef BYPASS_TLS_IN_HTTP
@@ -110,7 +110,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeDefaultThreadWaitSeconds 0                     //Default number of seconds to wait for thread synchronization.
 #define cmeDefaultPerlIterationFunction     "cmePERLProcessRow"               //Name for the perl iteration function to be called when parsing SQL results with PERL
 #define cmeDefaultPerlColNameSetupFunction  "cmePERLProcessColumnNames"       //Name for the perl iteration function to be called when parsing SQL results with PERL
-#define cmeDefaultPBKDFCount 2000           //Default count for the key derivation function, cmePBKDF. {Recommended: 2,000. Note: 10,000 = iOS4; iOS3 uses 2,000, RFC 2898 recommends at least 1,000, but note that high values hava a huge impact on performance since we use a different key (different salt with same organization key) for each element!}.
+#define cmeDefaultPBKDFCount 2000           //Default count for the key derivation function, cmePBKDF. {Recommended: 2,000. Note: 10,000 = iOS4; iOS3 uses 2,000, RFC 2898 recommends at least 1,000, but note that high values hava a huge impact on performance since we use a different key - different salt with same organization key- for each element!}.
 #ifdef PBKDF1_OPENSSL_CLI_COMPATIBILITY
 #define cmeDefaultPBKDFVersion PBKDF1_OPENSSL_CLI_COMPATIBILITY //Enable use of old PBKDF1 that is compatible with Openssl command line password KDF {i.e. PKCS5v1.5: MD5 + count=1}. NOT RECOMMENDED!
 #else

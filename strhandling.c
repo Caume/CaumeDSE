@@ -62,7 +62,7 @@ int cmeHexstrToBytes (unsigned char **bytearray, unsigned const char *hexstr)
     pByt=*bytearray;                 //Note: Caller must free *bytearray after use!
     while (*hexstr != '\0')
     {
-       if ((isalnum((char)(hexstr[0])))&&(isalnum((char)(hexstr[1]))))
+       if ((isxdigit((char)(hexstr[0])))&&(isxdigit((char)(hexstr[1]))))
        {
             pByt[0]  = BASE16_DECODELO(hexstr[0]);
             pByt[0] |= BASE16_DECODEHI(hexstr[1]);

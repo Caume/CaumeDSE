@@ -1,3 +1,21 @@
+2012-06-20 0.90.alpha
+
+	* Implemented Fast PBKDF2 (just 1 iteration with the provided salt)
+	when the key provided is an hexadecimal representation of a binary
+	key with length >= key length of the default cipher algorithm.  We
+	assume the key was generated randomly.  In this case, there is no
+	need for key expansion since we are just doing a permutation within
+	the key space.  Also, EngineAdmin's random key now has a length that
+	is = to the default cipher when created with a new internal
+	database, so that this perfomance improvement can be used.  Note
+	that the included example database maintains a shorter key (128 bits
+	= 16 bytes) while the default algorithm (AES-256-CBC) uses a longer
+	key (256 bits = 32 bytes); Therefore PBKDF2 will run with all the
+	default iterations when EngineAdmin is used with the default
+	database (i.e.  it will still run very slow).
+
+	* fixes and code clean up
+
 2012-06-18 0.90.alpha
 
 	* Implemented resource handling for individual columns in documents

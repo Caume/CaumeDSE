@@ -1,3 +1,23 @@
+2012-06-20 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* strhandling.c (cmeHexstrToBytes): Replaced isalnum() with isxdigit
+	to ensure that only valid hexadecimal string representations are
+	processed.
+
+	* crypto.c (cmePBKDF): Replaced hardcoded buffer length in PBKDF2
+	with dynamic allocation, using the corresponding key length.
+
+	* crypto.c (cmePBKDF): Added fast PBKDF2 routine (one iteration) to
+	be used only if password is an hexadecimal representation of a byte
+	string of length >= cipher's keyspace.
+
+	* engine_admin.c (cmeSetupEngineAdminDBs): Modified function to use
+	the default cipher's key length as the length of the random key for
+	engineAdmin.
+
+	* webservice_interface.c (cmeWebServicePOSTIteration): Fixed
+	argument handling with multipart POST
+
 2012-06-18 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* common.h (cmeWSMsgContenColumnsOptions) Added contentColumn
