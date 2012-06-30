@@ -613,6 +613,8 @@ DATADIR
 BINDIR
 PREFIX
 GENERAL_CFLAGS
+HARDEN_LDFLAGS
+HARDEN_CFLAGS
 LIBOBJS
 EGREP
 GREP
@@ -707,7 +709,8 @@ ac_subst_files=''
 ac_user_opts='
 enable_option_checking
 enable_dependency_tracking
-enable_RELEASE
+enable_HARDENING
+enable_DEBUG
 enable_TESTDATABASE
 enable_BYPASSTLSAUTHINHTTP
 enable_OLDPBKDF1
@@ -1342,10 +1345,11 @@ Optional Features:
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
   --disable-dependency-tracking  speeds up one-time build
   --enable-dependency-tracking   do not reject slow dependency extractors
-  --enable-RELEASE     enable RELEASE mode
-  --enable-TESTDATABASE     copy TEST DATABASE files to Data directory
-  --enable-BYPASSTLSAUTHINHTTP     Accepts sessions in HTTP when TLS authentication is used; USE ONLY FOR TESTING PURPOSES!
-  --enable-OLDPBKDF1     Uses Password Based Key Derivation Function (i.e. PKCS5v1.5, compatible with openssl's command line tool but NOT RECOMMENDED) instead of PBKDF2 (PKCS5v2.0)
+  --disable-HARDENING			disable compiler and linker hardening paramters (for testing; NOT RECOMMENDED!)
+  --enable-DEBUG			enable DEBUG output to console (for testing; NOT RECOMMENDED!)
+  --enable-TESTDATABASE			copy TEST DATABASE files to Data directory
+  --enable-BYPASSTLSAUTHINHTTP		Accepts sessions in HTTP when TLS authentication is used (for testing; NOT RECOMMENDED!)
+  --enable-OLDPBKDF1			Uses PBKDF1 (i.e. PKCS5v1.5, compatible with openssl's command line tool) instead of PBKDF2 (for testing; NOT RECOMMENDED!)
 
 Some influential environment variables:
   CXX         C++ compiler command
@@ -2796,6 +2800,7 @@ am__tar='${AMTAR} chof - "$$tardir"'; am__untar='${AMTAR} xf -'
 
 
 ac_config_headers="$ac_config_headers config.h"
+
 
 
 # Checks for programs.
@@ -5934,6 +5939,495 @@ fi
 done
 
 
+# --- Hardening section, based on http://mainisusuallyafunction.blogspot.mx/2012/05/automatic-binary-hardening-with.html by Keegan McAllister
+#  We use the same hardening flags for C and C++. We must check that each flag
+#  is supported by both compilers.
+
+
+
+# Check whether --enable-HARDENING was given.
+if test "${enable_HARDENING+set}" = set; then :
+  enableval=$enable_HARDENING; HARDEN="no"
+else
+  HARDEN="yes"
+fi
+
+HARDEN_CFLAGS=""
+HARDEN_LDFLAGS=""
+if test $HARDEN == 'yes' ; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}:  ----- Looking for supported hardening parameters -----" >&5
+$as_echo "$as_me:  ----- Looking for supported hardening parameters -----" >&6;}
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fwrapv" >&5
+$as_echo_n "checking whether C compiler accepts -fwrapv... " >&6; }
+if ${ax_cv_check_cflags__Werror__fwrapv__fwrapv+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -fwrapv -fwrapv"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  ax_cv_check_cflags__Werror__fwrapv__fwrapv=yes
+else
+  ax_cv_check_cflags__Werror__fwrapv__fwrapv=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fwrapv__fwrapv" >&5
+$as_echo "$ax_cv_check_cflags__Werror__fwrapv__fwrapv" >&6; }
+if test x"$ax_cv_check_cflags__Werror__fwrapv__fwrapv" = xyes; then :
+  HARDEN_CFLAGS="$HARDEN_CFLAGS -fwrapv"
+else
+  :
+fi
+
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fno-strict-overflow" >&5
+$as_echo_n "checking whether C compiler accepts -fno-strict-overflow... " >&6; }
+if ${ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -fno-strict-overflow -fno-strict-overflow"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow=yes
+else
+  ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow" >&5
+$as_echo "$ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow" >&6; }
+if test x"$ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow" = xyes; then :
+  HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-overflow"
+else
+  :
+fi
+
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fno-strict-aliasing" >&5
+$as_echo_n "checking whether C compiler accepts -fno-strict-aliasing... " >&6; }
+if ${ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -fno-strict-aliasing -fno-strict-aliasing"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing=yes
+else
+  ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing" >&5
+$as_echo "$ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing" >&6; }
+if test x"$ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing" = xyes; then :
+  HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-aliasing"
+else
+  :
+fi
+
+	# This one will likely succeed, even on platforms where it does nothing.
+	as_CACHEVAR=`$as_echo "ax_cv_check_cflags_-Werror -D_FORTIFY_SOURCE=2_-D_FORTIFY_SOURCE=2" | $as_tr_sh`
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -D_FORTIFY_SOURCE=2" >&5
+$as_echo_n "checking whether C compiler accepts -D_FORTIFY_SOURCE=2... " >&6; }
+if eval \${$as_CACHEVAR+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -D_FORTIFY_SOURCE=2 -D_FORTIFY_SOURCE=2"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  eval "$as_CACHEVAR=yes"
+else
+  eval "$as_CACHEVAR=no"
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags
+fi
+eval ac_res=\$$as_CACHEVAR
+	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+$as_echo "$ac_res" >&6; }
+if test x"`eval 'as_val=${'$as_CACHEVAR'};$as_echo "$as_val"'`" = xyes; then :
+  HARDEN_CFLAGS="$HARDEN_CFLAGS -D_FORTIFY_SOURCE=2"
+else
+  :
+fi
+
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fstack-protector-all" >&5
+$as_echo_n "checking whether C compiler accepts -fstack-protector-all... " >&6; }
+if ${ax_cv_check_cflags__Werror___fstack_protector_all+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror  -fstack-protector-all"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  ax_cv_check_cflags__Werror___fstack_protector_all=yes
+else
+  ax_cv_check_cflags__Werror___fstack_protector_all=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror___fstack_protector_all" >&5
+$as_echo "$ax_cv_check_cflags__Werror___fstack_protector_all" >&6; }
+if test x"$ax_cv_check_cflags__Werror___fstack_protector_all" = xyes; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -fstack-protector-all" >&5
+$as_echo_n "checking whether the linker accepts -fstack-protector-all... " >&6; }
+if ${ax_cv_check_ldflags__Werror___fstack_protector_all+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$LDFLAGS
+  LDFLAGS="$LDFLAGS -Werror  -fstack-protector-all"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ax_cv_check_ldflags__Werror___fstack_protector_all=yes
+else
+  ax_cv_check_ldflags__Werror___fstack_protector_all=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+  LDFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___fstack_protector_all" >&5
+$as_echo "$ax_cv_check_ldflags__Werror___fstack_protector_all" >&6; }
+if test x"$ax_cv_check_ldflags__Werror___fstack_protector_all" = xyes; then :
+  HARDEN_CFLAGS="$HARDEN_CFLAGS -fstack-protector-all"
+			{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -Wstack-protector" >&5
+$as_echo_n "checking whether C compiler accepts -Wstack-protector... " >&6; }
+if ${ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -fstack-protector-all -Wstack-protector"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector=yes
+else
+  ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector" >&5
+$as_echo "$ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector" >&6; }
+if test x"$ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector" = xyes; then :
+  HARDEN_CFLAGS="$HARDEN_CFLAGS -Wstack-protector"
+else
+  :
+fi
+
+		as_CACHEVAR=`$as_echo "ax_cv_check_cflags_-Werror -fstack-protector-all_--param ssp-buffer-size=1" | $as_tr_sh`
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts --param ssp-buffer-size=1" >&5
+$as_echo_n "checking whether C compiler accepts --param ssp-buffer-size=1... " >&6; }
+if eval \${$as_CACHEVAR+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -fstack-protector-all --param ssp-buffer-size=1"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  eval "$as_CACHEVAR=yes"
+else
+  eval "$as_CACHEVAR=no"
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags
+fi
+eval ac_res=\$$as_CACHEVAR
+	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+$as_echo "$ac_res" >&6; }
+if test x"`eval 'as_val=${'$as_CACHEVAR'};$as_echo "$as_val"'`" = xyes; then :
+  HARDEN_CFLAGS="$HARDEN_CFLAGS --param ssp-buffer-size=1"
+else
+  :
+fi
+
+else
+  :
+fi
+
+else
+  :
+fi
+
+	# At the link step, we might want -pie (GCC) or -Wl,-pie (Clang on OS X)
+	# The linker checks also compile code, so we need to include -fPIE as well.
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fPIE" >&5
+$as_echo_n "checking whether C compiler accepts -fPIE... " >&6; }
+if ${ax_cv_check_cflags__Werror___fPIE+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror  -fPIE"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  ax_cv_check_cflags__Werror___fPIE=yes
+else
+  ax_cv_check_cflags__Werror___fPIE=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror___fPIE" >&5
+$as_echo "$ax_cv_check_cflags__Werror___fPIE" >&6; }
+if test x"$ax_cv_check_cflags__Werror___fPIE" = xyes; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -fPIE -pie" >&5
+$as_echo_n "checking whether the linker accepts -fPIE -pie... " >&6; }
+if ${ax_cv_check_ldflags__Werror___fPIE__pie+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$LDFLAGS
+  LDFLAGS="$LDFLAGS -Werror  -fPIE -pie"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ax_cv_check_ldflags__Werror___fPIE__pie=yes
+else
+  ax_cv_check_ldflags__Werror___fPIE__pie=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+  LDFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___fPIE__pie" >&5
+$as_echo "$ax_cv_check_ldflags__Werror___fPIE__pie" >&6; }
+if test x"$ax_cv_check_ldflags__Werror___fPIE__pie" = xyes; then :
+  HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
+			HARDEN_LDFLAGS="$HARDEN_LDFLAGS -pie"
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -fPIE -Wl,-pie" >&5
+$as_echo_n "checking whether the linker accepts -fPIE -Wl,-pie... " >&6; }
+if ${ax_cv_check_ldflags__Werror___fPIE__Wl__pie+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$LDFLAGS
+  LDFLAGS="$LDFLAGS -Werror  -fPIE -Wl,-pie"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ax_cv_check_ldflags__Werror___fPIE__Wl__pie=yes
+else
+  ax_cv_check_ldflags__Werror___fPIE__Wl__pie=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+  LDFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___fPIE__Wl__pie" >&5
+$as_echo "$ax_cv_check_ldflags__Werror___fPIE__Wl__pie" >&6; }
+if test x"$ax_cv_check_ldflags__Werror___fPIE__Wl__pie" = xyes; then :
+  HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
+				HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-pie"
+else
+  :
+fi
+
+fi
+
+else
+  :
+fi
+
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -Wl,-z,relro" >&5
+$as_echo_n "checking whether the linker accepts -Wl,-z,relro... " >&6; }
+if ${ax_cv_check_ldflags__Werror___Wl__z_relro+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$LDFLAGS
+  LDFLAGS="$LDFLAGS -Werror  -Wl,-z,relro"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ax_cv_check_ldflags__Werror___Wl__z_relro=yes
+else
+  ax_cv_check_ldflags__Werror___Wl__z_relro=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+  LDFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___Wl__z_relro" >&5
+$as_echo "$ax_cv_check_ldflags__Werror___Wl__z_relro" >&6; }
+if test x"$ax_cv_check_ldflags__Werror___Wl__z_relro" = xyes; then :
+  HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-z,relro"
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -Wl,-z,now" >&5
+$as_echo_n "checking whether the linker accepts -Wl,-z,now... " >&6; }
+if ${ax_cv_check_ldflags__Werror___Wl__z_now+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+  ax_check_save_flags=$LDFLAGS
+  LDFLAGS="$LDFLAGS -Werror  -Wl,-z,now"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ax_cv_check_ldflags__Werror___Wl__z_now=yes
+else
+  ax_cv_check_ldflags__Werror___Wl__z_now=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+  LDFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___Wl__z_now" >&5
+$as_echo "$ax_cv_check_ldflags__Werror___Wl__z_now" >&6; }
+if test x"$ax_cv_check_ldflags__Werror___Wl__z_now" = xyes; then :
+  HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-z,now"
+else
+  :
+fi
+
+else
+  :
+fi
+
+fi
+
+
+# --- End of hardening section
+
 # Set default cflags for Makefile.am
 GENERAL_CFLAGS="-DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall `$PERL -M'ExtUtils::Embed' -e ccopts --`"
 RELEASE_CFLAGS="-s -DRELEASE"
@@ -5954,11 +6448,11 @@ DATADIR="$PREFIX/cdse"
 
 SECUREDIR="$DATADIR/secureTmp"
 
-# Check whether --enable-RELEASE was given.
-if test "${enable_RELEASE+set}" = set; then :
-  enableval=$enable_RELEASE; ADDITIONAL_CFLAGS="$RELEASE_CFLAGS" compile_mode="RELEASE" TESTFILES=''
+# Check whether --enable-DEBUG was given.
+if test "${enable_DEBUG+set}" = set; then :
+  enableval=$enable_DEBUG; ADDITIONAL_CFLAGS="$DEBUG_CFLAGS" compile_mode="DEBUG" TESTFILES="$DATADIR/testfiles"
 else
-  ADDITIONAL_CFLAGS="$DEBUG_CFLAGS" compile_mode="DEBUG" TESTFILES="$DATADIR/testfiles"
+  ADDITIONAL_CFLAGS="$RELEASE_CFLAGS" compile_mode="RELEASE" TESTFILES=''
 fi
 
 
@@ -7474,16 +7968,24 @@ echo \
 "-------------------------------------------------
  ${PACKAGE_NAME} Version ${PACKAGE_VERSION}
  Installation directories:
- Prefix: 	'${PREFIX}'.
- Binaries: 	'${BINDIR}'.
- Data: 		'${DATADIR}'.
- Test files:	'${TESTFILES}'
- Test database: '${TESTDB}'
- Compiler: 	'${CC} ${CPPFLAGS} ${GENERAL_CFLAGS} ${ADDITIONAL_CFLAGS} ${CFLAGS}'
+ 	Prefix: 	'${PREFIX}'.
+	Binaries: 	'${BINDIR}'.
+	Data: 		'${DATADIR}'.
+	Test files:	'${TESTFILES}'
+	Test database: 	'${TESTDB}'
+ Build parameters:
+	Compiler: 	'${CC}'
+	CPPFLAGS:	'${CPPFLAGS}'
+	CFLAGS:		'${CFLAGS}'
+	DEFAULT FLAGS: 	'${GENERAL_CFLAGS}'
+	CUSTOM FLAGS	'${ADDITIONAL_CFLAGS}'
+ Hardening parameters:
+	Compiler:	'${HARDEN_CFLAGS}'
+	Linker:		'${HARDEN_LDFLAGS}'
  Package features:
-   Build mode: ${compile_mode}
- Now type 'make [<target>]'
-   where the optional <target> is:
+	Build mode: 	'${compile_mode}'
+
+ Now type 'make [<target>]' where the optional <target> is:
      all                - build all binaries
      install            - install everything
 --------------------------------------------------"

@@ -1,3 +1,11 @@
+2012-06-30 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+	
+	* configure.ac (HARDEN_CFLAGS,HARDEN_LDFLAGS): added support
+	checking routines for compiler and linker hardening parameters.
+
+	* configure.ac (DEBUG): inverted the default mode to RELEASE, and
+	changed configure parameter to --enable-DEBUG.
+
 2012-06-20 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 
 	* strhandling.c (cmeHexstrToBytes): Replaced isalnum() with isxdigit

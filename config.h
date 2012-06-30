@@ -4,7 +4,7 @@
 /* Enables (1) or disables (0) bypassing TLS authentication when it is
    required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)
    */
-#define BYPASS_TLS_IN_HTTP 1
+#define BYPASS_TLS_IN_HTTP 0
 
 /* Define to 1 if you have the <ctype.h> header file. */
 #define HAVE_CTYPE_H 1

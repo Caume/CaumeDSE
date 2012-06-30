@@ -6,6 +6,7 @@ AC_INIT([CaumeDSE], [0.90.alpha], [omar.herrera@kinakuta.com.mx])
 AM_INIT_AUTOMAKE([dist-bzip2 color-tests readme-alpha 1.5])
 AC_CONFIG_SRCDIR([function_tests.c])
 AC_CONFIG_HEADERS([config.h])
+AC_CONFIG_MACRO_DIR([m4])
 
 # Checks for programs.
 AC_PROG_CXX
@@ -115,6 +116,51 @@ AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 AC_CHECK_FUNCS([memset setlocale strndup])
 
+# --- Hardening section, based on http://mainisusuallyafunction.blogspot.mx/2012/05/automatic-binary-hardening-with.html by Keegan McAllister
+#  We use the same hardening flags for C and C++. We must check that each flag
+#  is supported by both compilers.
+AC_DEFUN([check_cc_flag],
+	[AX_CHECK_COMPILE_FLAG([$1], [$2], [$3], [-Werror $4])])
+AC_DEFUN([check_link_flag],
+	[AX_CHECK_LINK_FLAG([$1], [$2], [$3], [-Werror $4])])
+                    
+AC_ARG_ENABLE([HARDENING],
+	[  --disable-HARDENING			disable compiler and linker hardening paramters (for testing; NOT RECOMMENDED!)],
+	[HARDEN="no"],
+	[HARDEN="yes"])
+HARDEN_CFLAGS=""
+HARDEN_LDFLAGS=""
+if test $HARDEN == 'yes' ; then
+	AC_MSG_NOTICE([ ----- Looking for supported hardening parameters -----])
+	check_cc_flag([-fwrapv], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fwrapv"], [], [-fwrapv])
+	check_cc_flag([-fno-strict-overflow], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-overflow"], [], [-fno-strict-overflow])
+	check_cc_flag([-fno-strict-aliasing], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-aliasing"], [], [-fno-strict-aliasing])
+	# This one will likely succeed, even on platforms where it does nothing.
+	check_cc_flag([-D_FORTIFY_SOURCE=2], [HARDEN_CFLAGS="$HARDEN_CFLAGS -D_FORTIFY_SOURCE=2"], [], [-D_FORTIFY_SOURCE=2])                                    
+	check_cc_flag([-fstack-protector-all],
+		[check_link_flag([-fstack-protector-all], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fstack-protector-all"
+			check_cc_flag([-Wstack-protector], [HARDEN_CFLAGS="$HARDEN_CFLAGS -Wstack-protector"],
+				[], [-fstack-protector-all])
+		check_cc_flag([--param ssp-buffer-size=1], [HARDEN_CFLAGS="$HARDEN_CFLAGS --param ssp-buffer-size=1"],
+		[], [-fstack-protector-all])])])                                                                          
+	# At the link step, we might want -pie (GCC) or -Wl,-pie (Clang on OS X)
+	# The linker checks also compile code, so we need to include -fPIE as well.
+	check_cc_flag([-fPIE],
+		[check_link_flag([-fPIE -pie],
+			[HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
+			HARDEN_LDFLAGS="$HARDEN_LDFLAGS -pie"],
+			[check_link_flag([-fPIE -Wl,-pie],
+				[HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
+				HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-pie"])])])                                                                                               
+	check_link_flag([-Wl,-z,relro],
+		[HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-z,relro"
+	check_link_flag([-Wl,-z,now],
+		[HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-z,now"])])
+fi
+AC_SUBST([HARDEN_CFLAGS])
+AC_SUBST([HARDEN_LDFLAGS])
+# --- End of hardening section
+
 # Set default cflags for Makefile.am
 GENERAL_CFLAGS="-DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall `$PERL -M'ExtUtils::Embed' -e ccopts --`"
 RELEASE_CFLAGS="-s -DRELEASE"
@@ -132,23 +178,23 @@ fi
 AC_SUBST([BINDIR], ["$PREFIX/cdse/bin"])
 AC_SUBST([DATADIR], ["$PREFIX/cdse"])
 AC_SUBST([SECUREDIR], ["$DATADIR/secureTmp"])
-AC_ARG_ENABLE([RELEASE],
-	[  --enable-RELEASE     enable RELEASE mode],
-	[ADDITIONAL_CFLAGS="$RELEASE_CFLAGS" compile_mode="RELEASE" TESTFILES=''],
-	[ADDITIONAL_CFLAGS="$DEBUG_CFLAGS" compile_mode="DEBUG" TESTFILES="$DATADIR/testfiles"])
+AC_ARG_ENABLE([DEBUG],
+	[  --enable-DEBUG			enable DEBUG output to console (for testing; NOT RECOMMENDED!)],
+	[ADDITIONAL_CFLAGS="$DEBUG_CFLAGS" compile_mode="DEBUG" TESTFILES="$DATADIR/testfiles"],
+	[ADDITIONAL_CFLAGS="$RELEASE_CFLAGS" compile_mode="RELEASE" TESTFILES=''])
 AC_SUBST(ADDITIONAL_CFLAGS)
 AC_SUBST(TESTFILES)
 AC_ARG_ENABLE([TESTDATABASE],
-	[  --enable-TESTDATABASE     copy TEST DATABASE files to Data directory],
+	[  --enable-TESTDATABASE			copy TEST DATABASE files to Data directory],
 	[TESTDB="$DATADIR"],
 	[TESTDB=''])
 AC_SUBST(TESTDB)
 AC_ARG_ENABLE([BYPASSTLSAUTHINHTTP],
-	[  --enable-BYPASSTLSAUTHINHTTP     Accepts sessions in HTTP when TLS authentication is used; USE ONLY FOR TESTING PURPOSES!],
+	[  --enable-BYPASSTLSAUTHINHTTP		Accepts sessions in HTTP when TLS authentication is used (for testing; NOT RECOMMENDED!)],
 	[BYTLS=1],
 	[BYTLS=0])
 AC_ARG_ENABLE([OLDPBKDF1],
-	[  --enable-OLDPBKDF1     Uses Password Based Key Derivation Function (i.e. PKCS5v1.5, compatible with openssl's command line tool but NOT RECOMMENDED) instead of PBKDF2 (PKCS5v2.0)],
+	[  --enable-OLDPBKDF1			Uses PBKDF1 (i.e. PKCS5v1.5, compatible with openssl's command line tool) instead of PBKDF2 (for testing; NOT RECOMMENDED!)],
 	[PBKDF=1],
 	[PBKDF=2])
                         
@@ -164,16 +210,24 @@ echo \
 "-------------------------------------------------
  ${PACKAGE_NAME} Version ${PACKAGE_VERSION}
  Installation directories:
- Prefix: 	'${PREFIX}'.
- Binaries: 	'${BINDIR}'.
- Data: 		'${DATADIR}'.
- Test files:	'${TESTFILES}'
- Test database: '${TESTDB}'
- Compiler: 	'${CC} ${CPPFLAGS} ${GENERAL_CFLAGS} ${ADDITIONAL_CFLAGS} ${CFLAGS}'
+ 	Prefix: 	'${PREFIX}'.
+	Binaries: 	'${BINDIR}'.
+	Data: 		'${DATADIR}'.
+	Test files:	'${TESTFILES}'
+	Test database: 	'${TESTDB}'
+ Build parameters:
+	Compiler: 	'${CC}' 
+	CPPFLAGS:	'${CPPFLAGS}'
+	CFLAGS:		'${CFLAGS}'
+	DEFAULT FLAGS: 	'${GENERAL_CFLAGS}' 
+	CUSTOM FLAGS	'${ADDITIONAL_CFLAGS}'
+ Hardening parameters:
+	Compiler:	'${HARDEN_CFLAGS}'
+	Linker:		'${HARDEN_LDFLAGS}'
  Package features:
-   Build mode: ${compile_mode}
- Now type 'make @<:@<target>@:>@'
-   where the optional <target> is:
+	Build mode: 	'${compile_mode}'
+	
+ Now type 'make @<:@<target>@:>@' where the optional <target> is:
      all                - build all binaries
      install            - install everything
 --------------------------------------------------"

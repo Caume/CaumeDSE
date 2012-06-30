@@ -41,7 +41,9 @@ DIST_COMMON = README $(am__configure_deps) $(srcdir)/Makefile.am \
 	compile config.guess config.sub depcomp install-sh ltmain.sh \
 	missing
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/configure.ac
+am__aclocal_m4_deps = $(top_srcdir)/m4/ax_check_compile_flag.m4 \
+	$(top_srcdir)/m4/ax_check_link_flag.m4 \
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
@@ -171,6 +173,8 @@ EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 GENERAL_CFLAGS = @GENERAL_CFLAGS@
 GREP = @GREP@
+HARDEN_CFLAGS = @HARDEN_CFLAGS@
+HARDEN_LDFLAGS = @HARDEN_LDFLAGS@
 INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
@@ -246,8 +250,9 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 SUBDIRS = .
-AM_CFLAGS = @GENERAL_CFLAGS@ @ADDITIONAL_CFLAGS@
-AM_LDFLAGS = `@PERL@ -M'ExtUtils::Embed' -e ldopts --`
+AM_CFLAGS = @GENERAL_CFLAGS@ @ADDITIONAL_CFLAGS@ @HARDEN_CFLAGS@
+AM_LDFLAGS = `@PERL@ -M'ExtUtils::Embed' -e ldopts --` @HARDEN_LDFLAGS@
+ACLOCAL_AMFLAGS = -I m4
 spath = @SECUREDIR@
 tdbpath = @TESTDB@
 tpath = @TESTFILES@

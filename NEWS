@@ -1,3 +1,12 @@
+2012-06-30 0.90.alpha
+	
+	* Implemented hardening parameters by default (with an option to
+	disable them: --disable-HARDENING) in the configure script.
+
+	* Changed the default build mode from debug to release (you now need
+	to require debug output and the test HTTP server explicitly with
+	--enable-DEBUG).
+
 2012-06-20 0.90.alpha
 
 	* Implemented Fast PBKDF2 (just 1 iteration with the provided salt)
