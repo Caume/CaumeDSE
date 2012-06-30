@@ -1692,17 +1692,17 @@ database directories, and listen to incoming HTTPS connections ( and also
 HTTP in DEBUG mode).  Alternatively you may consider running CaumeDSE in a
 chrooted environment.
 
-Note that running in DEBUG mode not only makes use of HTTP (and then
-switches to HTTPS after the first [enter] is pressed) which does not encrypt
-incoming connections, but also dumps to the console sensitive information
-including passwords.  To change to release mode (which also performs
-faster), use the following parameter when running ./configure:
+Note that DEBUG mode makes use of HTTP (and then switches to HTTPS after the
+first [enter] is pressed) which does not encrypt incoming connections. 
+Debug mode also dumps to the console sensitive information including
+passwords.  The default is to compile in release mode.  To change to debug
+mode (which is slower), use the following parameter when running
+./configure:
 
-	--enable-RELEASE
+	--enable-DEBUG
 
-Once the software reaches BETA status it will be released with RELEASE mode
-as default (in release mode the software enters and infinite loop to answer
-connections; right now you need to kill the process to stop it).
+In release mode the software enters and infinite loop to answer connections;
+right now you need to kill the process to stop it).
 
 If you want to bypass TLS authentication for testing purposes in DEBUG mode
 with HTTP (which will obviously fail), you may enable this feature (FOR
@@ -1741,3 +1741,8 @@ the default cipher key (i.e.  cryptographic operations are much faster).
 However, the example database included has a shorter key for the default
 administrator account EngineAdmin; using the example database with the
 EngineAdmin account is therefore much slower.
+
+By default, hardening parameters are included as parto of compiler and
+linker options.  If you need to disable them (e.g.  for testing) use:
+
+	--disable-HARDENING
