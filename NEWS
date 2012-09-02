@@ -1,3 +1,10 @@
+2012-09-02 0.90.alpha
+	* Implemented transaction logs and a webservice to access them. 
+	Transaction records are protected with the organization key if the
+	user is authenticated (otherwise, they are stored in the clear)
+
+	* fixes and code clean up
+
 2012-06-30 0.90.alpha
 	
 	* Implemented hardening parameters by default (with an option to
