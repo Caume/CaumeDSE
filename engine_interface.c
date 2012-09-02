@@ -536,8 +536,8 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
                 cmeDeleteSecureDBFree();
                 return(4);
             }
-            //Delete Column Files.
-            cmeStrConstrAppend(&currentFName,"%s%s",cmeDefaultFilePath,colSQLDBfNames[cont]);
+            //Delete Column Files:
+            cmeStrConstrAppend(&currentFName,"%s%s",cmeDefaultFilePath,colSQLDBfNames[cont]); // NOTE (OHR#2#): Use provided storagePath (or better yet, get it from the document defined storage) instead of using cmeDefaultFilePath
             result=remove(currentFName);
             cmeFree(currentFName);
             if (result)
@@ -1346,5 +1346,157 @@ int cmeExistsDocumentId (sqlite3 *pResourcesDB,const char *documentId, const cha
             "found %d entries.\n",documentId,*numEntries);
 #endif
     cmeExistsDocumentIdFree();
+    return(0);
+}
+
+int cmeGetUnprotectDBTransactions (sqlite3 *pDB, const char *tableName, const char **columnNames,
+                                   const char **columnValues,const int numColumnValues, char ***resultRegisterCols,
+                                   int *numResultRegisterCols, int *numResultRegisters, const char *orgKey)
+{
+    int result,cont,cont2,cont3,MACLen;
+    int valueLen=0;
+    int numMatch=0;
+    int numRows=0;
+    int numColumns=0;
+    int authenticatedIdx=0;     //Will hold the column index for the authenticated flag; this column is never encrypted
+    char *query=NULL;
+    char *protectedValueMAC=NULL;
+    char **resultsRegTmp=NULL;
+    char **sqlTable=NULL;
+    #define cmeGetUnprotectDBTransactionsFree() \
+        do { \
+            cmeFree(query); \
+            cmeFree(protectedValueMAC); \
+            if (sqlTable) \
+            { \
+                cmeMemTableFinal(sqlTable); \
+            } \
+        } while (0); //Local free() macro.
+
+    *numResultRegisters=1; //We will reserve memory for at least one result register.
+    //1st Load all encrypted registers in a memTable.
+    //TODO (OHR#3#): Check alternative for enabling tables with no results to return column names as 1st row;
+    //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
+    cmeStrConstrAppend(&query,"PRAGMA empty_result_callbacks = ON; SELECT * FROM %s;",
+                       tableName);
+    result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
+    if (result) //Error
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeGetUnprotectDBTransactions(), cmeMemTable() Error, can't "
+                "execute query %s in table:%s!\n",query,tableName);
+#endif
+        cmeGetUnprotectDBTransactionsFree();
+        return(1);
+    }
+    *numResultRegisterCols=numColumns;
+    *resultRegisterCols=(char **)malloc(sizeof(char *)*numColumns*2);  //Allocate space for colum names and first row of result values.
+    cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value (bytes).
+    MACLen*=2; //Convert byte length to HexStr length.
+    for (cont=0;cont<numColumns;cont++) //First copy all column names in the first row and set to NULL the second row for result values.
+    {
+        (*resultRegisterCols)[cont]=NULL; //cmeStrContrAppend requires this for new strings.
+        cmeStrConstrAppend(&((*resultRegisterCols)[cont]),"%s",sqlTable[cont]); //Add header names (row 0).
+        (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont]=NULL;
+        if (!strcmp((*resultRegisterCols)[cont],"authenticated")) //This is the authenticated flag column
+        {
+            authenticatedIdx=cont;
+        }
+    }
+    for (cont=1;cont<=numRows;cont++) //Process each row (ignore row 0 with column header names)
+    {
+        numMatch=0;
+        for (cont2=0;cont2<numColumns;cont2++) //Process each column - first search for filter matches.
+        {
+            cmeFree((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]); //Clear memory space before use.
+            if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)&&(strcmp(sqlTable[cont2],"authenticated")!=0)
+                &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id','salt' or 'authenticated'.
+            {
+                if(!strcmp(sqlTable[cont*numColumns+authenticatedIdx],"1")) //Column is encrypted -> unprotect and check
+                {
+                    if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
+                    {
+                        cmeHMACByteString((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
+                                          &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey);
+                        if (!strncmp(protectedValueMAC,sqlTable[cont*numColumns+cont2],MACLen)) //MAC is correct; proceed with decryption.
+                        {
+                            //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
+                            if(!cmeUnprotectDBSaltedValue(sqlTable[cont*numColumns+cont2]+MACLen,&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                                          cmeDefaultEncAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,&valueLen))
+                            {
+                                for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
+                                {
+                                    if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) && //Matches column name.
+                                        (strcmp((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                                    {
+                                        numMatch++;
+                                    }
+                                }
+                            }
+                        }
+                        cmeFree(protectedValueMAC);
+                    }
+                    else //Error: protectedValue length shouldn't be <= MACLen
+                    {
+    #ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeGetUnprotectDBTransactions(), Error, length "
+                                "of protected value (%u) <= length of MAC (%d) for default HMAC alg. %s!\n",
+                                (unsigned int)strlen(sqlTable[cont*numColumns+cont2]),MACLen,cmeDefaultMACAlg);
+    #endif
+                    }
+                }
+                else //Column is not protected -> just compare.
+                {
+                    cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                   "%s",sqlTable[cont*numColumns+cont2]); //Copy column value as is into result register.
+                    for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
+                    {
+                        if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) && //Matches column name.
+                            (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                        {
+                            numMatch++;
+                        }
+                    }
+                }
+            }
+            else  //We just compare ('salt' and 'id' column names).
+            {
+                cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
+                                   "%s",sqlTable[cont*numColumns+cont2]); //Copy column value as is into result register.
+                for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
+                {
+                    if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) && //Matches column name.
+                        (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                    {
+                        numMatch++;
+                    }
+                }
+            }
+        }
+        if ((numMatch==numColumnValues)||(numColumnValues==0)) //We found all matches in a register; add the results to the result array.
+        {
+            (*numResultRegisters)++;
+            resultsRegTmp=(char **)realloc(*resultRegisterCols,sizeof(char *)*numColumns*((*numResultRegisters)+1));  //realocate space to allow one more register
+            if (resultsRegTmp)
+            {
+                *resultRegisterCols=resultsRegTmp;
+            }
+            else // Realloc error!!!
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeGetUnprotectDBTransactions(), realloc() Error, can't "
+                        "allocate new memory block of size: %lu\n",sizeof(char *)*numColumns*((*numResultRegisters)+1));
+#endif
+                cmeGetUnprotectDBTransactionsFree();
+                return(2);
+            }
+            for (cont2=0;cont2<numColumns;cont2++) //Clear new value pointers.
+            {
+                (*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]=NULL; //cmeStrContrAppend requires this for new strings.
+            }
+        }
+    }
+    cmeGetUnprotectDBTransactionsFree();
+    (*numResultRegisters)--; //Adjust number of results by eliminating the last row which is a placeholder for the next "potential" match.
     return(0);
 }

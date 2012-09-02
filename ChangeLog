@@ -1,3 +1,63 @@
+2012-07-21 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+	
+	* engine_admin.c (cmeSetupEngineAdminDBs): Modified LogsDB structure
+	so that we can log useful/available transaction information for each
+	request.
+
+	* engine_admin.c (IDD): checked and updated IDD compatibility
+	versions.
+
+	* engine_admin.c (cmeWebServiceCheckPermissions): Fixed error codes
+	(now returns 403 Forbidden to indicate that user priviledges for the
+	requested action couldn't be confirmed, even if the user was
+	authenticated).
+
+	* common.h (cmeIDDLogsDBTransactions): Added Internal Database
+	Definitions for table transactions in LogsDB database.
+
+	* common.h (cmeWSHTTPMaxResponseHeaders): Added Max. number of
+	response headers to be parsed by cmeWebServiceParseKeys().
+
+	* common.h (cmeWSMsgTransactionClassOptions): Added default options
+	message for transaction Class.
+
+	* webservice_interface.c webservice_interface.h
+	(cmeWebServiceLogRequest): Added function to log connection
+	information to LogsDB
+
+	* webservice_interface.c webservice_interface.h
+	(cmeWebServiceLogConnection): Added wrapper function for
+	cmeWebServiceLogRequest to prepare parameters for transaction
+	logging
+
+	* webservice_interface.c webservice_interface.h
+	(cmeWebServiceProcessTransactionClass): Added web service to process
+	transaction class requests.
+
+	* webservice_interface.c (cmeWebServiceParseKeys): Added routine to
+	process HTTP Response headers.
+
+	* webservice_interface.c (cmeWebServiceProcessRequest): included
+	cmeWebServiceProcessTransactionClass in the web services list.
+
+	* webservice_interface.c (cmeWebServiceProcessRequest): Fixed web
+	service requests processing order, so that powerStatus is checked at
+	the right time.
+
+	* webservice_interface.c (cmeWebServiceConfirmUserId,
+	cmeWebServiceConfirmOrgId): fixed authorization phase, so that the
+	system consistently returns 403 Forbidden error to indicate
+	authorization failure (different from authentication errors, which
+	are notified using 401 Authentication errors).
+
+	* engine_interface.c engine_interface.h
+	(cmeGetUnprotectDBTransactions): Added function to unprotect DB
+	transaction registers (i.e.  Logs)
+
+	* README (resource hierarchy, examples, parameters): Updated information to
+	reflect transaction resource class processing capabilities (ie. 
+	Logs).
+
 2012-06-30 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 	
 	* configure.ac (HARDEN_CFLAGS,HARDEN_LDFLAGS): added support

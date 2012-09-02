@@ -79,5 +79,9 @@ int cmeConstructContentRow (const char **argumentElements, const char **columnNa
 // Function to list number of matching entries for a specified documentId in ResourcesDB database (document table).
 int cmeExistsDocumentId (sqlite3 *pResourcesDB,const char *documentId, const char *orgKey,
                          int *numEntries);
+// Function to get all columns for all registers that match columnValues for each columnNames in a transactions DB (after unprotecting them, if required).
+int cmeGetUnprotectDBTransactions (sqlite3 *pDB, const char *tableName, const char **columnNames,
+                                   const char **columnValues,const int numColumnValues, char ***resultRegisterCols,
+                                   int *numResultRegisterCols, int *numResultRegisters, const char *orgKey);
 
 #endif // ENGINE_INTERFACE_H_INCLUDED

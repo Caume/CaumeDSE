@@ -292,12 +292,13 @@ int cmeSetupEngineAdminDBs ()
         result=cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; "
                             "CREATE TABLE transactions (id INTEGER PRIMARY KEY,"
                             " userId TEXT, orgId TEXT, salt TEXT,"
-                            " timestamp TEXT, uri TEXT, headers	TEXT, startTimestamp TEXT, stopTimestamp TEXT,"
-                            " dataMBIn TEXT, dataMBOut TEXT, orgResourceId TEXT);"
+                            " requestMethod	TEXT, requestUrl TEXT, requestHeaders TEXT, startTimestamp TEXT,"
+                            " endTimestamp TEXT, requestDataSize TEXT, responseDataSize TEXT, orgResourceId TEXT,"
+                            " requestIPAddress TEXT, responseCode TEXT, responseHeaders TEXT, authenticated TEXT);"
                             "CREATE TABLE meta (id INTEGER PRIMARY KEY,"
                             " userId TEXT, orgId TEXT, salt TEXT,"
-                            " initTimestamp TEXT, memoryMB TEXT, operatingSystem TEXT, localStorageMB TEXT,"
-                            " cloudStorageMB TEXT, bandwidthMbIn TEXT, bandwidthMbOut TEXT, ipAddress TEXT);"
+                            " initTimestamp TEXT, memorySizeBytes TEXT, operatingSystem TEXT, serverIpAddress TEXT,"
+                            " serverNetworkInfo TEXT, serverCPUInfo TEXT);"
                             "COMMIT;");
         if (result) //If error then exit.
         {
@@ -781,7 +782,7 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
 }
 
 int cmeWebServiceInitAdminSetup (const char *orgKey)
-{   //IDD version 1.0.20
+{   //IDD version 1.0.21
     int cont,result;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
@@ -904,7 +905,7 @@ int cmeWebServiceInitAdminSetup (const char *orgKey)
 
 int cmeWebServiceCheckPermissions (const char *method, const char *url, const char **urlElements, const int numUrlElements,
                                    char **responseText, int *responseCode, const char *userId, const char *orgId, const char *orgKey)
-{// IDD ver. 1.0.20
+{// IDD ver. 1.0.21
     int result,cont,cont2;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
@@ -971,7 +972,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
             }
             if (result) //Error; tableName not found.
             {
-                cmeStrConstrAppend(responseText,"<b>404 ERROR Resource class %s not found!</b><br>"
+                cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN roleTableName %s not found!</b><br>"
                                    "METHOD: '%s' URL: '%s'."
                                    " Latest IDD version: <code>%s</code>",currentTableName,method,url,
                                    cmeInternalDBDefinitionsVersion);
@@ -980,7 +981,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                         "not found!. Method: '%s', URL: '%s'!\n",currentTableName,method,url);
 #endif
                 cmeWebServiceCheckPermissionsFree();
-                *responseCode=404;
+                *responseCode=403;
                 return(1);
             }
         }
@@ -1037,7 +1038,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
             }
             else //Found 0
             {
-                cmeStrConstrAppend(responseText,"<b>401 UNAUTHORIZED user doesn't have permission to perform request!</b><br>"
+                cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN user doesn't have permission to perform request!</b><br>"
                                    "METHOD: '%s' URL: '%s'."
                                    " Latest IDD version: <code>%s</code>",method,url,
                                    cmeInternalDBDefinitionsVersion);
@@ -1045,7 +1046,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                 fprintf(stdout,"CaumeDSE Debug: cmeWebServiceCheckPermissions(), Unauthorized; no roles records"
                     "found in roleTable: '%s' , Method: '%s', URL: '%s'!\n",currentTableName,method,url);
 #endif
-                *responseCode=401;
+                *responseCode=403;
                 cmeWebServiceCheckPermissionsFree();
                 return(2);
             }
@@ -1085,7 +1086,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
 }
 
 int cmeWebServiceInitOrgSetup (const char *orgKey)
-{   //IDD version 1.0.20
+{   //IDD version 1.0.21
     int cont,result;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
@@ -1175,7 +1176,7 @@ int cmeWebServiceInitOrgSetup (const char *orgKey)
 }
 
 int cmeWebServiceInitStorageSetup (const char *orgKey)
-{   //IDD version 1.0.19 25Nov2011
+{   //IDD version 1.0.21
     int cont,result;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
@@ -1269,9 +1270,8 @@ int cmeWebServiceInitStorageSetup (const char *orgKey)
     return(0);
 }
 
-
 int cmeWebServiceInitAdminIdSetup (const char *orgKey)
-{   //IDD version 1.0.19 25Nov2011
+{   //IDD version 1.0.21
     int cont,result;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
@@ -1310,10 +1310,10 @@ int cmeWebServiceInitAdminIdSetup (const char *orgKey)
             } \
         } while (0); //Local free() macro.
 
-    cmeStrConstrAppend(&(columnValues[0]),"Default DSE storage");
+    cmeStrConstrAppend(&(columnValues[0]),"Default DSE administrator");
     cmeStrConstrAppend(&(columnValues[1]),"TBD");
     cmeStrConstrAppend(&(columnValues[2]),"TBD");
-    cmeStrConstrAppend(&(columnValues[3]),"%s",cmeAdminDefaultUserId);          //storageId
+    cmeStrConstrAppend(&(columnValues[3]),"%s",cmeAdminDefaultUserId);          //userResourceId
     cmeStrConstrAppend(&(columnValues[4]),"TBD");
     cmeStrConstrAppend(&(columnValues[5]),"TBD");
     cmeStrConstrAppend(&(columnValues[6]),"TBD");
@@ -1333,7 +1333,7 @@ int cmeWebServiceInitAdminIdSetup (const char *orgKey)
                 return(1);
     }
     result=cmeGetUnprotectDBRegisters(pDB,tableName,columnNamesToMatch,(const char **)columnValuesToMatch,2,
-                                      &resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if storage doesn't exist.
+                                      &resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if user doesn't exist.
     if(numResultRegisters>0) //organization (with same orgKey) is already in DB -> Error
     {
 #ifdef DEBUG

@@ -122,7 +122,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeAdminDefaultOrgId "EngineOrg"               //Default orgId for first administrator account.
                                                        //Note that there is NO default orgKey for EngineOrg... it will be generated randomly the first time the engine is run and won't be stored in clear {so take note!}.
 
-#define cmeInternalDBDefinitionsVersion "1.0.21 May 2012" //Version of internal DB definitions for engine
+#define cmeInternalDBDefinitionsVersion "1.0.21_1 Jul 2012" //Version of internal DB definitions for engine
 // TODO (OHR#4#): Standardize the use of IDD in the project (i.e. avoid direct use of numbers and col. names).
 #define cmeIDDanydb_id 0                        //Column index {0 based} for WSID column for most internal sqlite register id
 #define cmeIDDanydb_id_name "id"                //Column name for WSID column for most internal sqlite register id
@@ -242,6 +242,31 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeIDDRolesDBAnyTable_userResourceId_name "userResourceId"  //Column name for WSID column user resource id for which permissions apply
 #define cmeIDDRolesDBAnyTable_orgResourceId 11                      //Column index {0 based} for WSID column organization resource id of user for which permissions apply
 #define cmeIDDRolesDBAnyTable_orgResourceId_name "orgResourceId"    //Column name for WSID column organization resource id of user for which permissions apply
+#define cmeIDDLogsDBTransactionsNumCols 16                          //# of columns for table transactions in LogsDB database
+#define cmeIDDLogsDBTransactions_requestMethod 4                            //Column index {0 based} for WSID column request method
+#define cmeIDDLogsDBTransactions_requestMethod_name "requestMethod"         //Column name for WSID column request method
+#define cmeIDDLogsDBTransactions_requestUrl	5                               //Column index {0 based} for WSID column request URL
+#define cmeIDDLogsDBTransactions_requestUrl_name "requestUrl"               //Column name for WSID column request URL
+#define cmeIDDLogsDBTransactions_requestHeaders 6                           //Column index {0 based} for WSID column request headers (separated with \n)
+#define cmeIDDLogsDBTransactions_requestHeaders_name "requestHeaders"       //Column name for WSID column request headers
+#define cmeIDDLogsDBTransactions_startTimestamp 7                           //Column index {0 based} for WSID column start timestamp
+#define cmeIDDLogsDBTransactions_startTimestamp_name "startTimestamp"       //Column name for WSID column start timestamp
+#define cmeIDDLogsDBTransactions_endTimestamp 8                             //Column index {0 based} for WSID column end timestamp
+#define cmeIDDLogsDBTransactions_endTimestamp_name "endTimestamp"           //Column name for WSID column end timestamp
+#define cmeIDDLogsDBTransactions_requestDataSize 9                          //Column index {0 based} for WSID column request data size (in bytes)
+#define cmeIDDLogsDBTransactions_requestDataSize_name "requestDataSize"     //Column name for WSID column request data size
+#define cmeIDDLogsDBTransactions_responseDataSize 10                        //Column index {0 based} for WSID column response data size (in bytes)
+#define cmeIDDLogsDBTransactions_responseDataSize_name "responseDataSize"   //Column name for WSID column response data size
+#define cmeIDDLogsDBTransactions_orgResourceId 11                           //Column index {0 based} for WSID column organization resource id
+#define cmeIDDLogsDBTransactions_orgResourceId_name "orgResourceId"         //Column name for WSID column organization resource id
+#define cmeIDDLogsDBTransactions_requestIPAddress 12                        //Column index {0 based} for WSID column request IP address
+#define cmeIDDLogsDBTransactions_requestIPAddress_name "requestIPAddress"   //Column name for WSID column request IP address
+#define cmeIDDLogsDBTransactions_responseCode 13                            //Column index {0 based} for WSID column response code
+#define cmeIDDLogsDBTransactions_responseCode_name "responseCode"           //Column name for WSID column response code
+#define cmeIDDLogsDBTransactions_responseHeaders 14                         //Column index {0 based} for WSID column response headers
+#define cmeIDDLogsDBTransactions_responseHeaders_name "responseHeaders"     //Column name for WSID column response headers
+#define cmeIDDLogsDBTransactions_authenticated 15                           //Column index {0 based} for WSID column authentication flag ('1'=authenticated -> fields are encrypted with orgKey, '0'=not authenticated -> fields are NOT encrypted)
+#define cmeIDDLogsDBTransactions_authenticated_name "authenticated"         //Column name for WSID column authentication flag
 #define cmeIDDURIMaxDepth 12                                        //Max. # of elements in an URI {excluding parameters}.
 
 #define cmeCopyright "Copyright 2010-2012 by Omar Alejandro Herrera Reyna."   //Copyright string.
@@ -328,7 +353,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/{documentType}" \
                                     "/documents/{document}/content" \
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
-                                    "OptionalParameters...]<br></code><br>" //Parser Script resource options.
+                                    "OptionalParameters...]<br></code><br>" //Parser Script Class options.
 
 #define cmeWSMsgContenRowOptions  "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                                  "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/file.csv" \
@@ -342,12 +367,18 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
                                       "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                       "OptionalParameters...]<br></code><br>" //contentColumn resource options.
 
+#define cmeWSMsgTransactionClassOptions  "Allowed Methods: <code>GET,HEAD,OPTIONS</code><br>" \
+                                          "Syntax: <code> HTTPS:&#47;&#47;{engine}/transactions" \
+                                          "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                          "OptionalParameters...]<br></code><br>" //tansaction Class options.
+
 /**
 #define cmeWSMsgServerErrorPage     cmeWSHTMLPageStart "<b>500 ERROR Internal server error.</b><br>" cmeWSHTMLPageEnd
 **/
 
 
 #define cmeWSHTTPMaxHeaders 32                      //Max. # of HTTP headers elements {pairs} to process.
+#define cmeWSHTTPMaxResponseHeaders 32               //Max. # of HTTP response headers {pairs} to process.
 #define cmeWSURIMaxArguments 512                    //Max. # of URI arguments {pairs} to process.
 #define cmeWSURIMaxMatchSaveArguments 15            //Max. # of arguments available in tables {depends on IDD version!}
 #define cmeWSEncoding_CSV 1                         //CSV+plaintext encoding for WS response.

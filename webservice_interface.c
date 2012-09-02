@@ -55,6 +55,9 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     int exitcode=1;
     int numUrlElements=0;
     int responseCode=0;
+    static time_t connectionStartTime=0;
+    static long int requestDataSize=0;
+    long int responseDataSize=0;
     char *page=NULL;
     const char *pOutputType=NULL;                         //Ptr to constant str. for output type. No need to free.
     char **urlElements=NULL;
@@ -62,9 +65,9 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     struct MHD_Response *responseFile=NULL;
     char **headerElements=NULL;
     char **argumentElements=NULL;
+    char **responseHeaders=NULL;
     char *responseText=NULL;
     char *responseFilePath=NULL;
-    char **responseHeaders=NULL;
     struct cmeWebServiceConnectionInfoStruct *con_info=NULL;    //We will free this struct in cmeWebServiceRequestCompleted().
     struct cmeWebServiceContentReaderStruct *cr_info=NULL;      //We will free this struct in cmeContentReaderFreeCallback();
     struct stat statResponseFile;
@@ -138,6 +141,8 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
 #endif
             return MHD_NO;
         }
+        connectionStartTime=time(NULL);
+        requestDataSize=(long int)*upload_data_size;
         con_info->threadStatus=0;
         con_info->answerString=NULL;
         con_info->answerCode=0;
@@ -193,6 +198,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     else
     {
         con_info=*con_cls;
+        requestDataSize+=(long int)*upload_data_size;
     }
     if ((con_info->connectionType)==POST) //Iterate POST request.
     {
@@ -218,7 +224,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     } while (con_info->threadStatus==0);
     //Allocate space for headers and response headers:
     headerElements=(char **)malloc((sizeof (char *))*cmeWSHTTPMaxHeaders*2); //*2 since headers consist of headerElements PAIRS.
-    responseHeaders=(char **)malloc((sizeof (char *))*cmeWSHTTPMaxHeaders*2); //*2 since headers consist of headerElements PAIRS.
+    responseHeaders=(char **)malloc((sizeof (char *))*cmeWSHTTPMaxResponseHeaders*2); //*2 since headers consist of headerElements PAIRS.
     for (cont=0;cont<(cmeWSHTTPMaxHeaders*2);cont++) //Clear pointers.
     {
         headerElements[cont]=NULL;
@@ -239,6 +245,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     result=cmeWebServiceProcessRequest (&responseText,&responseFilePath,&responseHeaders,&responseCode,
                                         url,(const char **)urlElements,numUrlElements,
                                         (const char **)headerElements,(const char **)argumentElements,method,connection);
+    con_info->answerCode=responseCode;
     if (responseFilePath) //We have a response File.
     {
         cr_info=(struct cmeWebServiceContentReaderStruct *) malloc (sizeof (struct cmeWebServiceContentReaderStruct)); //Create structure to pass among ContentReader iterations.
@@ -256,6 +263,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
                         "Method: '%s'. Url: '%s'. responseFilePath: '%s'.\n",method,url,responseFilePath);
     #endif
                 //Create response from file:
+                responseDataSize=(long int)statResponseFile.st_size;
                 responseFile=MHD_create_response_from_callback(statResponseFile.st_size,                //Size of file to read.
                                                                cmeDefaultContentReaderCallbackPageSize, //Page size for reading content.
                                                                &cmeContentReaderCallback,               //MHD_ContentReaderCallback function.
@@ -294,15 +302,17 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
             {
                 cmeStrConstrAppend(&page,"%s%s%s",cmeWSHTMLPageStart,responseText,
                                    cmeWSHTMLPageEnd); //Add page opening/closing tags and (c) to response page.
+                responseDataSize=(long int)strlen(page);
                 //Create response body:
-                response=MHD_create_response_from_data (strlen(page),(void*) page, MHD_NO, MHD_YES); //We have to create response body before adding headers.
+                response=MHD_create_response_from_data ((size_t)responseDataSize,(void*) page, MHD_NO, MHD_YES); //We have to create response body before adding headers.
                 result=MHD_add_response_header(response,"Content-Type","text/html; charset=utf-8");
             }
             else
             {
                 cmeStrConstrAppend(&page,"%s",responseText); //Add plain response to response page.
+                responseDataSize=(long int)strlen(page);
                 //Create response body:
-                response=MHD_create_response_from_data (strlen(page),(void*) page, MHD_NO, MHD_YES);
+                response=MHD_create_response_from_data ((size_t)responseDataSize,(void*) page, MHD_NO, MHD_YES);
             }
 #ifdef DEBUG
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceAnswerConnection(), user request successful "
@@ -313,6 +323,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         else
         {
             //Create empty response body (e.g. for HEAD method):
+            responseDataSize=0;
             response=MHD_create_response_from_data (0,NULL, MHD_NO, MHD_YES);
             //Add default Headers:
             result=MHD_add_response_header(response,"Server","CaumeDSE " cmeEngineVersion);
@@ -329,6 +340,9 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         exitcode=MHD_queue_response (connection, responseCode, response);
     }
     con_info->threadStatus=2; //Now the POST handling routing thread can free memory and finish.
+    result=cmeWebServiceLogConnection (connection,con_info,connectionStartTime,method,url,requestDataSize,responseDataSize,
+                                       (const char **)headerElements,(const char **)responseHeaders,(const char **)argumentElements,
+                                       (const char **)urlElements,numUrlElements);
     cmeWebServiceAnswerConnectionFree();  //Free stuff
     return (exitcode);
 }
@@ -378,6 +392,23 @@ int cmeWebServiceParseKeys(void *cls, enum MHD_ValueKind kind, const char *key, 
         }
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceParseKeys(), ARGUMENT:, key:%s, value:%s\n", key, value);
+#endif
+    }
+    else if (kind==MHD_RESPONSE_HEADER_KIND)
+    {
+        //Jump to last free responseElements space
+        while ((((char **)cls)[cont])&&(cont<cmeWSHTTPMaxResponseHeaders)) //We iterate each time for thread safety. No static vars. then.
+        {
+            cont+=2;
+        }
+        if (cont<cmeWSHTTPMaxResponseHeaders)
+        {
+            cmeStrConstrAppend(&(((char **)cls)[cont]),"%s",key);
+            cmeStrConstrAppend(&(((char **)cls)[cont+1]),"%s",value);
+            //Note that caller must free each cls[cont]!
+        }
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceParseKeys(), RESPONSE HEADER:, key:%s, value:%s\n", key, value);
 #endif
     }
     else if (kind==MHD_HEADER_KIND)
@@ -565,7 +596,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         }
         else if (result==2) //Error, invalid userId.
         {
-            cmeStrConstrAppend(responseText,"<b>404 ERROR The userResourceId corresponding to the userId specified in the URL was not found. Check parameters.</b><br>"
+            cmeStrConstrAppend(responseText,"<b>403 ERROR request forbidden for the specified userResourceId</b><br>"
                                "Internal server error number '%d'."
                                "METHOD: '%s' URL: '%s'."
                                 "Latest IDD version: <code>%s</code>",result,method,url,
@@ -575,7 +606,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                     " Method: '%s', URL: '%s', can't find userResourceId for userId %s!\n",result,method,url,userId);
 #endif
             cmeWebServiceProcessRequestFree();
-            *responseCode=404;
+            *responseCode=403;
             return(5);
         }
         result=cmeWebServiceConfirmOrgId(orgId,orgKey);
@@ -596,7 +627,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         }
         else if (result==2) //Error, invalid orgId.
         {
-            cmeStrConstrAppend(responseText,"<b>404 ERROR The orgResourceId corresponding to the orgId specified in the URL was not found. Check parameters.</b><br>"
+            cmeStrConstrAppend(responseText,"<b>403 ERROR request forbidden for the specified orgResourceId.</b><br>"
                                "Internal server error number '%d'."
                                "METHOD: '%s' URL: '%s'."
                                 "Latest IDD version: <code>%s</code>",result,method,url,
@@ -606,7 +637,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                     " Method: '%s', URL: '%s', can't find userResourceId for orgId %s!\n",result,method,url,orgId);
 #endif
             cmeWebServiceProcessRequestFree();
-            *responseCode=404;
+            *responseCode=403;
             return(7);
         }
         result=cmeWebServiceCheckPermissions (method, url, urlElements, numUrlElements,
@@ -621,6 +652,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             return(8);
         }
     }
+    //Check URL resource parameters:
     if ((numUrlElements>2)&&(strcmp(urlElements[0],"organizations")==0)) //We have an organization resource in the URL. Check that it is valid.
     {
         if (newOrgKey) //check using newOrgKey
@@ -704,7 +736,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             return(12);
         }
     }
-    if ((numUrlElements>4)&&(strcmp(urlElements[2],"users")==0))// We have a storage resource in the URL. Check it is valid and get the corresponding storage path.
+    if ((numUrlElements>4)&&(strcmp(urlElements[2],"users")==0))// We have a users resource in the URL. Check it is valid.
     {
         if (newOrgKey) //check using newOrgKey
         {
@@ -745,6 +777,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             return(14);
         }
     }
+    //Process web service requests:
     if ((numUrlElements==1)&&(strcmp(urlElements[0],"engineCommands")==0)) // engine command resource (ignore powerStatus)
     {
 #ifdef DEBUG
@@ -761,8 +794,41 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             return(0);
         }
     }
+    //Check engine power status:
+    else if (!powerStatus)  //powerStatus is off
+    {
+        cmeStrConstrAppend(responseText,"<b>503 ERROR Engine is off.</b><br><br>Turn engine on "
+                           "using administrator credentials with PUT request: <code>https://{engine}"
+                           "?userId=&lt;admin_userid&gt;&amp;orgId=&lt;admin_orgid&gt;&amp;"
+                           "orgKey=&lt;admin_orgpwd&gt;&amp;setEnginePower=on </code>");
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(), Error, Web Services are off; "
+                "no access to admin. databases for method: %s, url: %s!\n",method,url);
+#endif
+        cmeWebServiceProcessRequestFree();
+        *responseCode=503; //Response: Error 503 service unavailable.
+        return(15);
+    }
+    //Process trasactions (logs) requests:
+    else if ((numUrlElements==1)&&(strcmp(urlElements[0],"transactions")==0)) //transaction class resource.
+    {
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
+                    "engine command resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+#endif
+        result=cmeWebServiceProcessTransactionClass(responseText,responseHeaders,responseCode,
+                                                    url,argumentElements,method);
+        if (result) //Error, return error code + 100.
+        {
+            return(result+100);
+        }
+        else
+        {
+            return(0);
+        }
+    }
     //Good so far, now process the URL according to the resource depth level:
-    if ((numUrlElements>=1)&&(numUrlElements<=cmeIDDURIMaxDepth)&&(powerStatus)) //organization resource tree.
+    else if ((numUrlElements>=1)&&(numUrlElements<=cmeIDDURIMaxDepth)&&(powerStatus)) //organization resource tree.
     {   //Check URL depth level an process response accordingly (CME Web Services Definition)
         if ((numUrlElements==1)&&(strcmp(urlElements[0],"organizations")==0)) // organization class resource
         {
@@ -1095,21 +1161,6 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             *responseCode=404; //Response: Error 404 (resource not found).
             return (22);
         }
-    }
-    //Check engine power status.
-    else if (!powerStatus)  //powerStatus is off
-    {
-        cmeStrConstrAppend(responseText,"<b>503 ERROR Engine is off.</b><br><br>Turn engine on "
-                           "using administrator credentials with PUT request: <code>https://{engine}"
-                           "?userId=&lt;admin_userid&gt;&amp;orgId=&lt;admin_orgid&gt;&amp;"
-                           "orgKey=&lt;admin_orgpwd&gt;&amp;setEnginePower=on </code>");
-#ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(), Error, Web Services are off; "
-                "no access to admin. databases for method: %s, url: %s!\n",method,url);
-#endif
-        cmeWebServiceProcessRequestFree();
-        *responseCode=503; //Response: Error 503 service unavailable.
-        return(23);
     }
     else //Error; depth does not match a valid value
     {
@@ -11663,5 +11714,585 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
         cmeWebServiceProcessContentColumnResourceFree();
         *responseCode=405;
         return(29);
+    }
+}
+
+int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *requestMethod, const char *requestUrl, const char *requestHeaders,
+                             const char *startTimestamp, const char *endTimestamp, const char *requestDataSize, const char *responseDataSize,
+                             const char *orgResourceId, const char *requestIPAddress, const char *responseCode, const char *responseHeaders,
+                             const char *authenticated, const char *orgKey)
+{   //IDD version 1.0.21
+    int cont,result,protectedValueLen,protectedValueMACLen;
+    int authenticationFlag=0;
+    char *sqlStatement=NULL;
+    char *protectedValue=NULL;
+    char *protectedValueMAC=NULL;
+    char *salt=NULL;
+    char *sanitizedStr=NULL;
+    const int numColumns=cmeIDDLogsDBTransactionsNumCols-2;       //Constant: number of columns in table, ignoring id & salt
+    const char *tableName="transactions";
+    const char *columnNames[14]={"userId","orgId","requestMethod","requestUrl","requestHeaders","startTimestamp","endTimestamp","requestDataSize",
+                                 "responseDataSize","orgResourceId","requestIPAddress","responseCode","responseHeaders","authenticated"};
+    char *columnValues[14]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
+    sqlite3 *pDB=NULL;
+    char *dbFilePath=NULL;
+    #define cmeWebServiceLogRequestFree() \
+        do { \
+            cmeFree(sqlStatement); \
+            cmeFree(protectedValue); \
+            cmeFree(protectedValueMAC); \
+            cmeFree(salt); \
+            cmeFree(sanitizedStr); \
+            cmeFree(dbFilePath); \
+            if (pDB) \
+            { \
+                cmeDBClose(pDB); \
+                pDB=NULL; \
+            } \
+            for (cont=0;cont<numColumns;cont++) \
+            { \
+                columnValues[cont]=NULL; \
+            } \
+        } while (0); //Local free() macro.
+
+    cmeStrConstrAppend(&(columnValues[0]),"%s",userId);
+    cmeStrConstrAppend(&(columnValues[1]),"%s",orgId);
+    cmeStrConstrAppend(&(columnValues[2]),"%s",requestMethod);
+    cmeStrConstrAppend(&(columnValues[3]),"%s",requestUrl);
+    cmeStrConstrAppend(&(columnValues[4]),"%s",requestHeaders);
+    cmeStrConstrAppend(&(columnValues[5]),"%s",startTimestamp);
+    cmeStrConstrAppend(&(columnValues[6]),"%s",endTimestamp);
+    cmeStrConstrAppend(&(columnValues[7]),"%s",requestDataSize);
+    cmeStrConstrAppend(&(columnValues[8]),"%s",responseDataSize);
+    cmeStrConstrAppend(&(columnValues[9]),"%s",orgResourceId);
+    cmeStrConstrAppend(&(columnValues[10]),"%s",requestIPAddress);
+    cmeStrConstrAppend(&(columnValues[11]),"%s",responseCode);
+    cmeStrConstrAppend(&(columnValues[12]),"%s",responseHeaders);
+    cmeStrConstrAppend(&(columnValues[13]),"%s",authenticated);
+    cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultLogsDBName);
+    result=cmeDBOpen(dbFilePath,&pDB);
+    if (result) //Error
+    {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), can't open LogsDB!"
+                    " File: '%s'!\n",dbFilePath);
+#endif
+                return(1);
+    }
+    if (!strcmp(authenticated,"1")) //Connection was authenticated -> set flag to encrypt normally (otherwise store information unencrypted)
+    {
+        authenticationFlag=1;
+    }
+    else //Not authenticated -> clear salt field (otherwise the first call to cmeProtectDBSaltedValue will generate a random salt).
+    {
+        cmeStrConstrAppend(&salt,"");
+    }
+    //Add connection log to LogsDB:
+    cmeStrConstrAppend (&sqlStatement,"BEGIN TRANSACTION; INSERT INTO \"%s\" (id,",tableName); //First part. id goes by default.
+    for (cont=0; cont<numColumns; cont++)
+    {
+        if (!columnNames[cont]) //Error, colName is NULL!
+        {
+ #ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), Error,"
+                    "NULL pointer at columnNames[%d]\n",cont);
+#endif
+            cmeWebServiceLogRequestFree();
+            return(1);
+        }
+        cmeStrConstrAppend(&sqlStatement,"%s",columnNames[cont]); //add column.
+        if ((cont+1)<numColumns)  //Still one left...
+        {
+            cmeStrConstrAppend(&sqlStatement,","); //add comma.
+        }
+    }
+    cmeStrConstrAppend (&sqlStatement,",salt) VALUES (NULL,"); //Second part. id=NULL goes by default.
+    for (cont=0; cont<numColumns; cont++)
+    {
+        if ((strcmp(columnNames[cont],"salt")!=0)&&(columnValues[cont]!=NULL)) //Skip salt, we will add it at the end.
+        {
+            if((!strcmp(columnNames[cont],"authenticated"))||(authenticationFlag==0)) //We don't encrypt the authentication flag, or any field if the authentication flag is 0.
+            {
+                cmeFree(sanitizedStr);
+                cmeSanitizeStrForSQL(columnValues[cont],&sanitizedStr);     //Sanitize parameter for use in SQL statement.
+                cmeStrConstrAppend(&sqlStatement,"'%s'",sanitizedStr);      //Add unprotected column value (sanitized) to query.
+            }
+            else
+            {
+                cmeProtectDBSaltedValue(columnValues[cont],&protectedValue,cmeDefaultEncAlg,&salt,orgKey,&protectedValueLen);
+                cmeHMACByteString((const unsigned char *)protectedValue,(unsigned char **)&protectedValueMAC,protectedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,&salt,orgKey);
+                cmeStrConstrAppend(&sqlStatement,"'%s%s'",protectedValueMAC,protectedValue); //add MAC+Encrypted(salted) column value to query.
+                cmeFree(protectedValue);
+                cmeFree(protectedValueMAC);
+            }
+            if ((cont+1)<numColumns)  //Still one left...
+            {
+                cmeStrConstrAppend(&sqlStatement,","); //add comma.
+            }
+        }
+    }
+    cmeStrConstrAppend (&sqlStatement,",'%s'); COMMIT;",salt); //Last part.
+    result=cmeSQLRows(pDB,sqlStatement,NULL,NULL);
+    if (result) //Error.
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), cmeSQLRows() Error, can't "
+                "create register in table: %s with sql statement %s!\n",tableName,sqlStatement);
+#endif
+        cmeWebServiceLogRequestFree();
+        return(2);
+    }
+    cmeWebServiceLogRequestFree();
+    return(0);
+}
+
+int cmeWebServiceLogConnection (struct MHD_Connection *connection, void *con_cls, const time_t startTime,
+                                const char *method, const char *url, const long int requestDSize, const long int responseDSize,
+                                const char **requestHeadersList, const char **responseHeadersList, const char **requestArgumentsList,
+                                const char **urlElements, const int numUrlElements)
+{   //IDD version 1.0.21
+    int cont,result;
+    const char *userId=NULL;
+    const char *orgId=NULL;
+    const char *requestMethod=NULL;
+    const char *orgKey=NULL;
+    const char *strEmpty="";
+    const char *strOne="1";
+    const char *strZero="0";
+    const char *authenticated=NULL;
+    struct cmeWebServiceConnectionInfoStruct *con_info=NULL;
+    union MHD_ConnectionInfo *mhdConInfo=NULL;
+    char *requestIPAddress=NULL;
+    char *responseCode=NULL;
+    char *requestDataSize=NULL;
+    char *responseDataSize=NULL;
+    char *startTimestamp=NULL;
+    char *endTimestamp=NULL;
+    char *responseHeaders=NULL;
+    char *requestHeaders=NULL;
+    char *requestUrl=NULL;
+    char *orgResourceId=NULL;
+    #define cmeWebServiceLogConnectionFree() \
+        do { \
+            cmeFree(responseHeaders); \
+            cmeFree(requestHeaders); \
+            cmeFree(startTimestamp); \
+            cmeFree(endTimestamp); \
+            cmeFree(requestDataSize); \
+            cmeFree(responseDataSize); \
+            cmeFree(requestIPAddress); \
+            cmeFree(responseCode); \
+            cmeFree(requestUrl); \
+            cmeFree(orgResourceId); \
+        } while (0); //Local free() macro.
+
+    //Set con_info pointer
+    con_info=con_cls;
+    //Set userId:
+    userId=MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"userId");
+    if (!userId) //If undefined, set to empty.
+    {
+        userId=strEmpty;
+    }
+    //Set orgId:
+    orgId=MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"orgId");
+    if (!orgId) //If undefined, set to empty.
+    {
+        orgId=strEmpty;
+    }
+    //Set requestMethod:
+    requestMethod=method;
+    if (!requestMethod) //If undefined, set to empty.
+    {
+        requestMethod=strEmpty;
+    }
+    //Set requestUrl:
+    if (url)
+    {
+        cmeStrConstrAppend(&requestUrl,"%s",url);
+        cont=0;
+        if (requestArgumentsList[cont]) // We have at least one argument -> append to url
+        {
+            cmeStrConstrAppend(&requestUrl,"?");
+            while ((requestArgumentsList[cont])&&(cont<cmeWSURIMaxArguments))
+            {
+                cmeStrConstrAppend(&requestUrl,"%s=%s",requestArgumentsList[cont],requestArgumentsList[cont+1]);
+                cont+=2;
+                if (cont<cmeWSURIMaxArguments)
+                {
+                    if (requestArgumentsList[cont]) //Still arguments -> add separator
+                    {
+                        cmeStrConstrAppend(&requestUrl,",");
+                    }
+                }
+            }
+        }
+    }
+    else //If undefined, set to empty.
+    {
+        cmeStrConstrAppend(&requestUrl,"");
+    }
+    //Set orgResourceId:
+    cmeStrConstrAppend(&orgResourceId,"");
+    if ((numUrlElements>2)&&(strcmp(urlElements[0],"organizations")==0)) //We have an organization in the URL
+    {
+        cmeStrConstrAppend(&orgResourceId,"%s",urlElements[1]);
+    }
+    //Set orgKey:
+    orgKey=MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"orgKey");
+    if (!orgKey) //If undefined, set to empty.
+    {
+        orgKey=strEmpty;
+    }
+    //Set requestIPAddress:
+    mhdConInfo=(union MHD_ConnectionInfo *) MHD_get_connection_info(connection,MHD_CONNECTION_INFO_CLIENT_ADDRESS);
+    if(mhdConInfo->client_addr->sa_family==AF_INET) //IPv4
+    {
+        requestIPAddress=(char *)malloc(INET_ADDRSTRLEN);
+        inet_ntop(AF_INET,mhdConInfo->client_addr->sa_data+2,requestIPAddress,INET_ADDRSTRLEN);
+    }
+    else if (mhdConInfo->client_addr->sa_family==AF_INET6) //IPv6)
+    {
+        requestIPAddress=(char *)malloc(INET6_ADDRSTRLEN);
+        inet_ntop(AF_INET6,mhdConInfo->client_addr->sa_data+2,requestIPAddress,INET6_ADDRSTRLEN);
+    }
+    else
+    {
+        cmeStrConstrAppend(&requestIPAddress,"unknownType");
+    }
+    //Set responseCode:
+    cmeStrConstrAppend(&responseCode,"%d",con_info->answerCode);
+    //Set authentication flag:
+    if ((con_info->answerCode==401)||(!strcmp(orgKey,strEmpty))) //Not authenticated.
+    {
+        authenticated=(char *)strZero;
+    }
+    else
+    {
+        authenticated=(char *)strOne;
+    }
+    //Set requestDataSize:
+    cmeStrConstrAppend(&requestDataSize,"%ld",requestDSize);
+    //Set responseDataSize:
+    cmeStrConstrAppend(&responseDataSize,"%ld",responseDSize);
+    //Set startTimestamp:
+    cmeStrConstrAppend(&startTimestamp,"%lld",(long long int)startTime);
+    //Set endTimestamp:
+    cmeStrConstrAppend(&endTimestamp,"%lld",(long long int)time(NULL));
+    //Set responseHeaders:
+    cmeStrConstrAppend(&responseHeaders,""); //Start with an empty string.
+    cont=0;
+    while ((responseHeadersList[cont])&&(cont<cmeWSHTTPMaxResponseHeaders))
+    {
+        cmeStrConstrAppend(&responseHeaders,"%s=%s\n",responseHeadersList[cont],responseHeadersList[cont+1]);
+        cont+=2;
+    }
+    //Set requestHeaders:
+    cmeStrConstrAppend(&requestHeaders,""); //Start with an empty string.
+    cont=0;
+    while ((requestHeadersList[cont])&&(cont<cmeWSHTTPMaxHeaders))
+    {
+        cmeStrConstrAppend(&requestHeaders,"%s=%s\n",requestHeadersList[cont],requestHeadersList[cont+1]);
+        cont+=2;
+    }
+    //Log transaction:
+    result= cmeWebServiceLogRequest (userId, orgId, requestMethod, requestUrl, requestHeaders,
+                                     startTimestamp, endTimestamp, requestDataSize, responseDataSize,
+                                     orgResourceId, requestIPAddress, responseCode, responseHeaders,
+                                     authenticated, orgKey);
+    if (result) //Error
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogConnection(), cmeWebServiceLogRequest() Error, can't "
+                "create register in table: transactions within LogsDB database!\n");
+#endif
+        cmeWebServiceLogConnectionFree();
+        return(1);
+    }
+    cmeWebServiceLogConnectionFree();
+    return(0);
+}
+
+int cmeWebServiceProcessTransactionClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **argumentElements, const char *method)
+{   //IDD ver. 1.0.21  definitions.
+    int cont,result;
+    int keyArg=0;
+    int orgArg=0;
+    int usrArg=0;
+    int newKeyArg=0;
+    int numSaveArgs=0;
+    int numMatchArgs=0;
+    int numResultRegisterCols=0;
+    int numResultRegisters=0;
+    sqlite3 *pDB=NULL;
+    char *orgKey=NULL;                  //requester orgKey.
+    char *userId=NULL;                  //requester userId.
+    char *orgId=NULL;                   //requester orgId.
+    char *newOrgKey=NULL;               //requester newOrgKey (optional).
+    char *salt=NULL;
+    char **columnValuesToMatch=NULL;    //Values to match a register to operate upon (GET/PUT)
+    char **columnNamesToMatch=NULL;     //Names of columns for values to match a register (GET/PUT)
+    char *dbFilePath=NULL;
+    char **resultRegisterCols=NULL;
+    const char *tableName="transactions";
+    const int numColumns=cmeIDDLogsDBTransactionsNumCols;
+    const int numValidGETALLMatch=14;    //8 parameters + NONE from URL
+    const char *validGETALLMatchColumns[14]={"_userId","_orgId","_requestMethod","_requestUrl","_requestHeaders",
+                                            "_startTimestamp","_endTimestamp","_requestDataSize","_responseDataSize",
+                                            "_orgResourceId","_requestIPAddress","_responseCode","_responseHeaders",
+                                            "_authenticated"};
+    #define cmeWebServiceProcessTransactionClassFree() \
+        do { \
+            cmeFree(orgKey); \
+            cmeFree(userId); \
+            cmeFree(orgId); \
+            cmeFree(newOrgKey) \
+            cmeFree(dbFilePath); \
+            cmeFree(salt); \
+            if (resultRegisterCols) \
+            { \
+               for (cont=0;cont<numResultRegisterCols*(numResultRegisters+1);cont++) \
+               { \
+                   cmeFree(resultRegisterCols[cont]); \
+               } \
+               cmeFree(resultRegisterCols); \
+            } \
+            if (columnValuesToMatch) \
+            { \
+               for (cont=0; cont<numColumns;cont++) \
+               { \
+                   cmeFree(columnValuesToMatch[cont]); \
+               } \
+               cmeFree(columnValuesToMatch); \
+            } \
+            if (columnNamesToMatch) \
+            { \
+               for (cont=0; cont<numColumns;cont++) \
+               { \
+                   cmeFree(columnNamesToMatch[cont]); \
+               } \
+               cmeFree(columnNamesToMatch); \
+            } \
+            if (pDB) \
+            { \
+                cmeDBClose(pDB); \
+                pDB=NULL; \
+            } \
+        } while (0); //Local free() macro.
+
+    columnValuesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store role resource information, column values to match (GET/PUT).
+    columnNamesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store column names to match (GET).
+    for (cont=0; cont<numColumns;cont++)
+    {
+       columnValuesToMatch[cont]=NULL;
+       columnNamesToMatch[cont]=NULL;
+    }
+    cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultLogsDBName);
+
+    if(!strcmp(method,"GET")) //Method = GET is ok, process:
+    {
+        numMatchArgs=0;
+        cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
+                                          columnValuesToMatch, columnNamesToMatch, NULL, NULL, &numMatchArgs, &numSaveArgs,
+                                          &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
+        if ((numMatchArgs>=0)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId, userId and >=0 Match)
+        {
+            result=cmeDBOpen(dbFilePath,&pDB);
+            if (!result) //if OK
+            {
+                result=cmeGetUnprotectDBTransactions(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                                     numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
+                                                     &numResultRegisters,orgKey);
+                if (!result) //OK
+                {
+                    //Construct responseText and create response headers according to the user's outputType (optional) request:
+                    result=cmeConstructWebServiceTableResponse ((const char **)resultRegisterCols,numResultRegisterCols,numResultRegisters,
+                                                                argumentElements, url, method, tableName,
+                                                                responseHeaders, responseText, responseCode);
+                    cmeWebServiceProcessTransactionClassFree();
+                    return(0);
+                }
+                else //Error
+                {
+                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                       "Internal server error number '%d'."
+                                       "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgTransactionClassOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessTransactionClass(), Error, internal server error '%d'."
+                            " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters error!\n",result,method,url);
+#endif
+                    cmeWebServiceProcessTransactionClassFree();
+                    *responseCode=500;
+                    return(24);
+                }
+            }
+            else //Server ERROR
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgTransactionClassOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessTransactionClass(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s', can't open dbfile: %s !\n",result,method,url,dbFilePath);
+#endif
+                cmeWebServiceProcessTransactionClassFree();
+                *responseCode=500;
+                return(25);
+            }
+        }
+        else //Error, invalid number of correct arguments for this command.
+        {
+            cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments."
+                               "</b><br><br>The provided number of arguments is insufficient. "
+                               "METHOD: '%s' URL: '%s'."
+                                "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgTransactionClassOptions,
+                                cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessTransactionClass(), Error, incorrect number of"
+                    " arguments. Method: '%s', URL: '%s'!\n",method,url);
+#endif
+            cmeWebServiceProcessTransactionClassFree();
+            *responseCode=409;
+            return(26);
+        }
+    }
+    else if(!strcmp(method,"HEAD")) //Method = HEAD is ok, process:
+    {
+        numMatchArgs=0;
+        cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
+                                          columnValuesToMatch, columnNamesToMatch, NULL, NULL, &numMatchArgs, &numSaveArgs,
+                                          &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
+        if ((numMatchArgs>=0)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId, userId and >=2 Match)
+        {
+            result=cmeDBOpen(dbFilePath,&pDB);
+            if (!result) //if OK
+            {
+                result=cmeGetUnprotectDBTransactions(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                                     numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
+                                                     &numResultRegisters,orgKey);
+                if (!result) //OK
+                {
+                    if (numResultRegisters) //Found >0 results
+                    {
+                        *responseCode=200;
+#ifdef DEBUG
+                        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessTransactionClass(), HEAD successful.\n");
+#endif
+                    }
+                    else //Found 0 results
+                    {
+                        *responseCode=404;
+#ifdef DEBUG
+                        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessTransactionClass(), HEAD, successful but"
+                                "no record found.\n");
+#endif
+                    }
+                    //cmeStrConstrAppend(responseText,"<p>Matched results: %d</p><br>",numResultRegisters);  //HEAD doesn't return a body.
+                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeWebServiceProcessTransactionClassFree();
+                    return(0);
+                }
+                else //Error
+                {
+                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                       "Internal server error number '%d'."
+                                        "METHOD: '%s' URL: '%s'."
+                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgTransactionClassOptions,
+                                        cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessTransactionClass(), Error, internal server error '%d'."
+                            " Method: '%s', URL: '%s'; cmeGetUnprotectDBRegisters error!\n",result,method,url);
+#endif
+                    cmeWebServiceProcessTransactionClassFree();
+                    *responseCode=500;
+                    return(28);
+                }
+            }
+            else //Server ERROR
+            {
+                cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                   "Internal server error number '%d'."
+                                   "METHOD: '%s' URL: '%s'."
+                                    "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgTransactionClassOptions,
+                                    cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessTransactionClass(), Error, internal server error '%d'."
+                        " Method: '%s', URL: '%s'; can't open DBFile: %s!\n",result,method,url,dbFilePath);
+#endif
+                cmeWebServiceProcessTransactionClassFree();
+                *responseCode=500;
+                return(29);
+            }
+        }
+        else //Error, invalid number of correct arguments for this command.
+        {
+            cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments."
+                               "</b><br><br>The provided number of arguments is insufficient. "
+                               "METHOD: '%s' URL: '%s'."
+                                "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgTransactionClassOptions,
+                                cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessTransactionClass(), Error, incorrect number of"
+                    " arguments. Method: '%s', URL: '%s'!\n",method,url);
+#endif
+            cmeWebServiceProcessTransactionClassFree();
+            *responseCode=409;
+            return(30);
+        }
+    }
+    else if(!strcmp(method,"OPTIONS")) //Method = OPTIONS is ok, process:
+    {
+        numMatchArgs=0;
+        cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
+                                          columnValuesToMatch, columnNamesToMatch, NULL, NULL, &numMatchArgs, &numSaveArgs,
+                                          &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
+        if ((numMatchArgs>=0)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId, userId and >=2 Match)
+        {
+            cmeStrConstrAppend(responseText,"<b>200 OK - Options for role table resources:</b><br>"
+                               "%sLatest IDD version: <code>%s</code>",cmeWSMsgTransactionClassOptions,cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+            fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessTransactionClass(), OPTIONS successful for user resource."
+                    " Method: '%s', URL: '%s'!\n",method,url);
+#endif
+            cmeWebServiceProcessTransactionClassFree();
+            *responseCode=200;
+            return(0);
+        }
+        else //Error, invalid number of correct arguments for this command.
+        {
+            cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments."
+                               "</b><br><br>The provided number of arguments is insufficient. "
+                               "METHOD: '%s' URL: '%s'."
+                               "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgTransactionClassOptions,
+                               cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessTransactionClass(), Error, incorrect number of"
+                    " arguments. Method: '%s', URL: '%s'!\n",method,url);
+#endif
+            cmeWebServiceProcessTransactionClassFree();
+            *responseCode=409;
+            return(36);
+        }
+    }
+    else //Error, unsupported method
+    {
+        cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                           "method, is not allowed for this engine resource."
+                           "METHOD: '%s' URL: '%s'."
+                           "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgTransactionClassOptions,
+                           cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessTransactionClass(), Error, method %s is not allowed!\n"
+                " Url: %s!\n",method,url);
+#endif
+        cmeWebServiceProcessTransactionClassFree();
+        *responseCode=405;
+        return(37);
     }
 }

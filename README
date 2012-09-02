@@ -270,7 +270,7 @@ The resource hierarchy is listed below:
 ~|  |  |  |  |  |  |  |  |  /contentRows
  |  |  |  |  |  |  |  |  |  |  /{contentRow}
 ~|  |  |  |  |  |  |  |  |  /contentColumns
-~|  |  |  |  |  |  |  |  |  |  /{contentColumn}
+ |  |  |  |  |  |  |  |  |  |  /{contentColumn}
  |  /favicon.ico|  |  |  |  |  |  |
 ~|  /dbNames |  |  |  |  |  |  |  |
 ~|  |  /{dbName}|  |  |  |  |  |  |
@@ -281,7 +281,7 @@ The resource hierarchy is listed below:
 ~|  |  |  |  |  /tableColumns  |  |
 ~|  |  |  |  |  |  /{tableColumn} |
  |  /engineCommands|  |  |  |  |  |
-~|  /transactions  |  |  |  |  |  |
+ |  /transactions  |  |  |  |  |  |
  |  |  |  |  |  |  |  |  |  |  |  |
     0  1  2  3  4  5  6  7  8  9  10 (resource/resourceType level)
 
@@ -435,12 +435,15 @@ userResourceId
 	Stores the identifier of a {user} resource.
 
 orgResourceId
-	Resources/ResourceTypes: organizations
+	Resources/ResourceTypes: organizations, transactions
 
 	Prefixes: match (_) only. For POST ({organization}) this attribute
-	is taken from the URI.
+	is taken from the URI. 
 
-	Stores the identifier of an {organization} resource.
+	Stores the identifier of an {organization} resource. For
+	transactions, if the user was correctly authenticated, then this
+	value will be protected (indicated by the 'authenticated'
+	parameter).
 
 basicAuthPwdHash
 	Resources/ResourceTypes: users, {user}
@@ -678,75 +681,126 @@ _options
 
 	String "1" is for allow. string "0" is for deny.
 
-timestamp
+requestMethod
 	Resources/ResourceTypes: transactions
 
-	Prefixes: match (_) only. For POST this attribute will be calculated
+	Prefixes: match (_) only. For POST this attribute will be defined
 	automatically by CaumeDSE
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	timestamp at the point where CaumeDSE receives the not yet
-	authenticated or authorized request.  Part of the transaction log.
-	
-uri	
+	This attribute specifies the HTTP method used by the user request.
+	If the user was correctly authenticated, then this value will be
+	protected (indicated by the 'authenticated' parameter).
+
+requestUrl
 	Resources/ResourceTypes: transactions
 
-	Prefixes: match (_) only. For POST this attribute will be calculated
+	Prefixes: match (_) only. For POST this attribute will be defined
 	automatically by CaumeDSE
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	URI of a received request.  Part of the transaction log.
+        This attribute specifies the URL used as part of the user request.
+	If the user was correctly authenticated, then this value will be
+	protected (indicated by the 'authenticated' parameter).
 
-headers
+requestHeaders
 	Resources/ResourceTypes: transactions
 
-	Prefixes: match (_) only. For POST this attribute will be calculated
+	Prefixes: match (_) only. For POST this attribute will be defined
 	automatically by CaumeDSE
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	HTTP header of a received request.  Part of the transaction log.
+	This attribute specifies the HTTP Headers used as part of the user
+	request.  If the user was correctly authenticated, then this value
+	will be protected (indicated by the 'authenticated' parameter).
 
 startTimestamp
 	Resources/ResourceTypes: transactions
 
-	Prefixes: match (_) only. For POST this attribute will be calculated
+	Prefixes: match (_) only. For POST this attribute will be defined
 	automatically by CaumeDSE
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	timestamp at the point where CaumeDSE starts processing a request,
-	after a successful authentication and authorization.  Part of the
-	transaction log.
+	This attribute specifies the timestamp of the moment at which the
+	user request was received.  If the user was correctly authenticated,
+	then this value will be protected (indicated by the 'authenticated'
+	parameter).
 
-stopTimestamp
+endTimestamp
 	Resources/ResourceTypes: transactions
 
-	Prefixes: match (_) only. For POST this attribute will be calculated
+	Prefixes: match (_) only. For POST this attribute will be defined
 	automatically by CaumeDSE
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
-	timestamp at the point where CaumeDSE stops processing a request,
-	after a successful authentication and authorization.  Part of the
-	transaction log.
+	This attribute specifies the timestamp of the moment at which the
+	user request was answered.  If the user was correctly authenticated,
+	then this value will be protected (indicated by the 'authenticated'
+	parameter).
 
-dataMBIn
+requestDataSize
 	Resources/ResourceTypes: transactions
 
-	Prefixes: match (_) only. For POST this attribute will be calculated
+ 	Prefixes: match (_) only. For POST this attribute will be defined
 	automatically by CaumeDSE
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
-	volume of data received as part of the request, in MB.  Part of the
-	transaction log.
+	This attribute specifies the size of the body of the HTTP user's
+	request.  If the user was correctly authenticated, then this value
+	will be protected (indicated by the 'authenticated' parameter).
 
-dataMBOut
+responseDataSize
 	Resources/ResourceTypes: transactions
 
-	Prefixes: match (_) only. For POST this attribute will be calculated
+	Prefixes: match (_) only. For POST this attribute will be defined
 	automatically by CaumeDSE
 
-	*FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
-	volume of data sent as part of the answer to a request, in MB.  Part
-	of the transaction log.
+	This attribute specifies the size of the body of the HTTP engine's
+	answer.  If the user was correctly authenticated, then this value
+	will be protected (indicated by the 'authenticated' parameter).
+
+requestIPAddress
+	Resources/ResourceTypes: transactions
+
+ 	Prefixes: match (_) only. For POST this attribute will be defined  
+	automatically by CaumeDSE
+
+	This attribute specifies the IP address (v4 or v6) of the user
+	sending the request.  If the user was correctly authenticated, then
+	this value will be protected (indicated by the 'authenticated'
+	parameter).
+
+responseCode
+	Resources/ResourceTypes: transactions
+
+	Prefixes: match (_) only. For POST this attribute will be defined  
+	automatically by CaumeDSE
+
+	This attribute specifies the response code of the HTTP engine's
+	answer.  If the user was correctly authenticated, then this value
+	will be protected (indicated by the 'authenticated' parameter).
+
+responseHeaders
+	Resources/ResourceTypes: transactions
+
+	Prefixes: match (_) only. For POST this attribute will be defined
+	automatically by CaumeDSE
+
+	This attribute specifies the response headers of the HTTP engine's
+	answer.  If the user was correctly authenticated, then this value
+	will be protected (indicated by the 'authenticated' parameter).
+
+authenticated
+	Resources/ResourceTypes: transactions
+
+	Prefixes: match (_) only. For POST this attribute will be defined
+	automatically by CaumeDSE
+
+	This attribute specifies whether the user was authenticated ('1') or
+	not ('0').  If the user was correctly authenticated, then values
+	depending on the authenticated attribute will be encrypted;
+	otherwise they will be copied in cleartext.  This attribute is never
+	encrypted.
+
+	Note that there is a situation when an authenticated user uses an
+	incorrect orgKey.  In this case, transaction logs won't be readable
+	since they will be protected using the erroneous key.  Transactions
+	will be protected as whenever the user is authenticated, even if
+	he/she does not have the right priviledges to execute the request.
 
 setEnginePower
 	Resources/ResourceTypes: engineCommands
@@ -1628,6 +1682,47 @@ content
 			<NONE> 
 		REQUEST BODY:
 			<EMPTY>
+
+transactions
+	Supported HTTP methods: GET HEAD OPTIONS
+
+	Supported ATTRIBUTE PARAMETERS:
+		MATCH:
+                        _userId _orgId _requestMethod _requestUrl
+			_requestHeaders _startTimestamp _endTimestamp
+			_requestDataSize _responseDataSize _orgResourceId
+			_requestIPAddress _responseCode _responseHeaders
+			_authenticated
+		UPDATE:
+			<NONE>
+		RESPONSE HEADERS:
+			Engine-results: <number of matching registers>
+		RESPONSE BODY: 
+			<Attribute table for matching transactions>
+
+	Example 1)	List all transactions                      
+		METHOD:
+			GET
+		URI:
+			https://localhost/transactions?userId=
+			EngineAdmin&orgId=EngineOrg&orgKey=
+			0CDBB9AF76AF43BDB72E095989E612CC
+		REQUEST HEADERS:
+			<NONE>
+		REQUEST BODY:
+			<EMPTY>
+
+	Example 1)	List all transactions for non authenticated users
+		METHOD:
+			GET
+		URI:
+			https://localhost/transactions?userId=
+			EngineAdmin&orgId=EngineOrg&orgKey=   
+			0CDBB9AF76AF43BDB72E095989E612CC&_authenticated=0
+		REQUEST HEADERS:
+			<NONE>  
+		REQUEST BODY:   
+			<EMPTY> 
 
 favicon.ico
 	Supported HTTP methods: GET

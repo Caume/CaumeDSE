@@ -147,5 +147,17 @@ int cmeWebServiceConfirmOrgId (const char *orgResourceId, const char *orgKey);
 int cmeWebServiceConfirmUserId (const char *userResourceId, const char *orgKey);
 //Function to verify client certificate chain in a TLS session.
 int cmeWebServiceClientCertAuth (const char *userId, const char *orgId, struct MHD_Connection *connection);
-
+//Function to log connection information to LogsDB.
+int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *requestMethod, const char *requestUrl, const char *requestHeaders,
+                             const char *startTimestamp, const char *endTimestamp, const char *requestDataSize, const char *responseDataSize,
+                             const char *orgResourceId, const char *requestIPAddress, const char *responseCode, const char *responseHeaders,
+                             const char *authenticated, const char *orgKey);
+//Wrapper function for cmeWebServiceLogRequest().
+int cmeWebServiceLogConnection (struct MHD_Connection *connection, void *con_cls, const time_t startTime,
+                                const char *method, const char *url, const long int requestDSize, const long int responseDSize,
+                                const char **requestHeadersList, const char **responseHeadersList, const char **requestArgumentsList,
+                                const char **urlElements, const int numUrlElements);
+// Function to process transaction class requests.
+int cmeWebServiceProcessTransactionClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **argumentElements, const char *method);
 #endif // WEBSERVICE_INTERFACE_H_INCLUDED
