@@ -1,7 +1,8 @@
 SUBDIRS = .
 AM_CFLAGS = @GENERAL_CFLAGS@ @ADDITIONAL_CFLAGS@ @HARDEN_CFLAGS@
-AM_LDFLAGS = `@PERL@ -M'ExtUtils::Embed' -e ldopts --` @HARDEN_LDFLAGS@
+AM_LDFLAGS = `@PERL@ -MExtUtils::Embed -e ldopts --` @HARDEN_LDFLAGS@
 ACLOCAL_AMFLAGS = -I m4
+AUTOMAKE_OPTIONS = subdir-objects
 
 spath = @SECUREDIR@
 tdbpath = @TESTDB@
@@ -16,7 +17,7 @@ ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.p
 EXTRA_DIST = TEST README-alpha
 
 xs_init.c:
-	`@PERL@ -M'ExtUtils::Embed' -e xsinit -- -o - >xs_init.c`
+	`@PERL@ -MExtUtils::Embed -e xsinit -- -o xs_init.c`
 
 clean-local:
 	rm -rf xs_init.c

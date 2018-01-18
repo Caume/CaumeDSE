@@ -585,6 +585,21 @@
 
 	* RELEASED first version 0.88.alpha
 
-Copyright 2010 - 2012 Omar Alejandro Herrera Reyna
+2012-09-02  Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* RELEASED version 0.9.0 alpha
+
+2018-01-18  Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
+
+	* RELEASED first stable version 1.0.1
+
+	* configure.ac, makefile.am: added gnutls library check and fixed 
+	several compilation issues (embedded perl, automake options) 
+
+	* README, *.c, *.h: updated version in comments
+
+	* sqlite/*: updated SQLite version
+
+Copyright 2010 - 2018 Omar Alejandro Herrera Reyna
 Copying and distribution of this file, with or without modification, are
 permitted provided the copyright notice and this notice are preserved.

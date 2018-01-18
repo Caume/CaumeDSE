@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2012 by Omar Alejandro Herrera Reyna
+Copyright 2010-2018 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -269,7 +269,7 @@ Copyright 2010-2012 by Omar Alejandro Herrera Reyna
 #define cmeIDDLogsDBTransactions_authenticated_name "authenticated"         //Column name for WSID column authentication flag
 #define cmeIDDURIMaxDepth 12                                        //Max. # of elements in an URI {excluding parameters}.
 
-#define cmeCopyright "Copyright 2010-2012 by Omar Alejandro Herrera Reyna."   //Copyright string.
+#define cmeCopyright "Copyright 2010-2018 by Omar Alejandro Herrera Reyna."   //Copyright string.
 #ifdef PACKAGE_VERSION
 #define cmeEngineVersion PACKAGE_VERSION
 #else

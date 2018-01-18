@@ -4,7 +4,7 @@
 /* Enables (1) or disables (0) bypassing TLS authentication when it is
    required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)
    */
-#define BYPASS_TLS_IN_HTTP 1
+#define BYPASS_TLS_IN_HTTP 0
 
 /* Define to 1 if you have the <ctype.h> header file. */
 #define HAVE_CTYPE_H 1
@@ -35,6 +35,9 @@
 
 /* Define to 1 if you have the `dl' library (-ldl). */
 #define HAVE_LIBDL 1
+
+/* Define to 1 if you have the `gnutls' library (-lgnutls). */
+#define HAVE_LIBGNUTLS 1
 
 /* Define to 1 if you have the `m' library (-lm). */
 #define HAVE_LIBM 1
@@ -143,20 +146,17 @@
 /* Define to 1 if you have the <XSUB.h> header file. */
 #define HAVE_XSUB_H 1
 
-/* Define to 1 if your C compiler doesn't accept -c and -o together. */
-/* #undef NO_MINUS_C_MINUS_O */
-
 /* Name of package */
 #define PACKAGE "caumedse"
 
 /* Define to the address where bug reports for this package should be sent. */
-#define PACKAGE_BUGREPORT "omar.herrera@kinakuta.com.mx"
+#define PACKAGE_BUGREPORT "0h3rr3r4@gmail.com"
 
 /* Define to the full name of this package. */
 #define PACKAGE_NAME "CaumeDSE"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "CaumeDSE 0.90.alpha"
+#define PACKAGE_STRING "CaumeDSE 1.0.1"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "caumedse"
@@ -165,7 +165,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "0.90.alpha"
+#define PACKAGE_VERSION "1.0.1"
 
 /* Path for default data and system databases. */
 #define PATH_DATADIR "/opt/cdse"
@@ -178,7 +178,7 @@
 #define STDC_HEADERS 1
 
 /* Version number of package */
-#define VERSION "0.90.alpha"
+#define VERSION "1.0.1"
 
 /* Define for Solaris 2.5.1 so the uint64_t typedef from <sys/synch.h>,
    <pthread.h>, or <semaphore.h> is not used. If the typedef were allowed, the

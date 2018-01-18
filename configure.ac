@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.68])
-AC_INIT([CaumeDSE], [0.90.alpha], [omar.herrera@kinakuta.com.mx])
+AC_INIT([CaumeDSE], [1.0.1], [0h3rr3r4@gmail.com])
 AM_INIT_AUTOMAKE([dist-bzip2 color-tests readme-alpha 1.5])
 AC_CONFIG_SRCDIR([function_tests.c])
 AC_CONFIG_HEADERS([config.h])
@@ -56,6 +56,8 @@ AC_CHECK_LIB([perl], [main], [], AC_MSG_ERROR([Library libperl not found!]))
 AC_CHECK_LIB([pthread], [main], [], AC_MSG_ERROR([Library libpthread not found!]))
 # FIXME: Replace `main' with a function in `-lutil':
 AC_CHECK_LIB([util], [main], [], AC_MSG_ERROR([Library libutil not found!]))
+# FIXME: Replace `main' with a function in `-lgnutls':
+AC_CHECK_LIB([gnutls], [main], [], AC_MSG_ERROR([Library gnutls not found!]))
 
 # Checks for header files.
 AC_MSG_NOTICE([ ----- Looking for required C include files -----])
@@ -123,7 +125,6 @@ AC_DEFUN([check_cc_flag],
 	[AX_CHECK_COMPILE_FLAG([$1], [$2], [$3], [-Werror $4])])
 AC_DEFUN([check_link_flag],
 	[AX_CHECK_LINK_FLAG([$1], [$2], [$3], [-Werror $4])])
-                    
 AC_ARG_ENABLE([HARDENING],
 	[  --disable-HARDENING			disable compiler and linker hardening paramters (for testing; NOT RECOMMENDED!)],
 	[HARDEN="no"],
@@ -142,7 +143,7 @@ if test $HARDEN == 'yes' ; then
 			check_cc_flag([-Wstack-protector], [HARDEN_CFLAGS="$HARDEN_CFLAGS -Wstack-protector"],
 				[], [-fstack-protector-all])
 		check_cc_flag([--param ssp-buffer-size=1], [HARDEN_CFLAGS="$HARDEN_CFLAGS --param ssp-buffer-size=1"],
-		[], [-fstack-protector-all])])])                                                                          
+		[], [-fstack-protector-all])])])
 	# At the link step, we might want -pie (GCC) or -Wl,-pie (Clang on OS X)
 	# The linker checks also compile code, so we need to include -fPIE as well.
 	check_cc_flag([-fPIE],
@@ -151,7 +152,7 @@ if test $HARDEN == 'yes' ; then
 			HARDEN_LDFLAGS="$HARDEN_LDFLAGS -pie"],
 			[check_link_flag([-fPIE -Wl,-pie],
 				[HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
-				HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-pie"])])])                                                                                               
+				HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-pie"])])])
 	check_link_flag([-Wl,-z,relro],
 		[HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-z,relro"
 	check_link_flag([-Wl,-z,now],
@@ -162,7 +163,7 @@ AC_SUBST([HARDEN_LDFLAGS])
 # --- End of hardening section
 
 # Set default cflags for Makefile.am
-GENERAL_CFLAGS="-DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall `$PERL -M'ExtUtils::Embed' -e ccopts --`"
+GENERAL_CFLAGS="-DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall `$PERL -MExtUtils::Embed -e ccopts --`"
 RELEASE_CFLAGS="-s -DRELEASE"
 DEBUG_CFLAGS="-g -DDEBUG"
 AC_SUBST(GENERAL_CFLAGS)
@@ -197,7 +198,7 @@ AC_ARG_ENABLE([OLDPBKDF1],
 	[  --enable-OLDPBKDF1			Uses PBKDF1 (i.e. PKCS5v1.5, compatible with openssl's command line tool) instead of PBKDF2 (for testing; NOT RECOMMENDED!)],
 	[PBKDF=1],
 	[PBKDF=2])
-                        
+
 # Set required configuration defines y config.h
 AC_DEFINE_UNQUOTED([PATH_DATADIR], ["$DATADIR"], [Path for default data and system databases.])
 AC_DEFINE_UNQUOTED([BYPASS_TLS_IN_HTTP], [$BYTLS], [Enables (1) or disables (0) bypassing TLS authentication when it is required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)])
@@ -216,17 +217,17 @@ echo \
 	Test files:	'${TESTFILES}'
 	Test database: 	'${TESTDB}'
  Build parameters:
-	Compiler: 	'${CC}' 
+	Compiler: 	'${CC}'
 	CPPFLAGS:	'${CPPFLAGS}'
 	CFLAGS:		'${CFLAGS}'
-	DEFAULT FLAGS: 	'${GENERAL_CFLAGS}' 
+	DEFAULT FLAGS: 	'${GENERAL_CFLAGS}'
 	CUSTOM FLAGS	'${ADDITIONAL_CFLAGS}'
  Hardening parameters:
 	Compiler:	'${HARDEN_CFLAGS}'
 	Linker:		'${HARDEN_LDFLAGS}'
  Package features:
 	Build mode: 	'${compile_mode}'
-	
+
  Now type 'make @<:@<target>@:>@' where the optional <target> is:
      all                - build all binaries
      install            - install everything

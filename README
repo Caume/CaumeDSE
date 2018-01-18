@@ -1,4 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 0.90.alpha
+Caume Data Security Engine (CaumeDSE) version 1.0.1
 
 NOTE: Please read section II, in regard to the APLHA status
 of this software and its implications!
@@ -127,26 +127,22 @@ II. Status
 ----------
 
 
-The current version of the software is 0.88 ALPHA
+The current version of the software is 1.0.1
 
-Right now, the software is in alpha status, which means:
+Right now, the software is in a stable but initial release, which means:
 
 	* Planned functionality is still incomplete and some features could
 	  be added, changed or removed before settling on a feature set for
 	  first release.
 
-	* Testing (performance, stability and security) has not been
-	  extensive.
+	* Testing (performance, stability and security) has not been tested
+	  moderately.
 
-	* Documentation is still limited.
+	* Basic documentation is available.
 
-	* Portability and compilation aids (e.g. autoconf scripts) are still
-	  missing.
-	
-At this stage you may try the concepts and some functionality of the
-software.  It is a good opportunity to send your comments and suggestions
-for us to consider into the first release.  Please take a look at section VI
-(Collaborating).
+At this stage you may try the software for small projects and prototypes.  
+
+Please take a look at section VI (Collaborating).
 
 
 III. License
@@ -157,7 +153,7 @@ General Public License version 3 by the Copyright holder, with the
 additional exemption that compiling, linking, and/or using OpenSSL is
 allowed.
 
-The software is Copyright 2010-2012 by Omar Alejandro Herrera Reyna.
+The software is Copyright 2010-2017 by Omar Alejandro Herrera Reyna.
 
 Check licensing and copyright details for CaumeDSE and other included
 software in the file called COPYING and in the headers of the source code
@@ -371,7 +367,7 @@ resource and each of its attributes)
 To check which attribute parameters are supported by each resource and
 resource type refer to section V (REST (Resource) API reference).
 
-userId 	
+userId
 	Resources/ResourceTypes: ANY
 
 	Prefixes: match (_) only.For POST/PUT updates the value is always
