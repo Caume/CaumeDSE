@@ -1,3 +1,8 @@
+2018-01-19 1.0.1
+
+	* Released version 1.0.1
+	* fixes several compilation issues
+
 2012-09-02 0.90.alpha
 	* Implemented transaction logs and a webservice to access them. 
 	Transaction records are protected with the organization key if the
