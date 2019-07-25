@@ -655,7 +655,6 @@ am__nodep
 AMDEPBACKSLASH
 AMDEP_FALSE
 AMDEP_TRUE
-am__quote
 am__include
 DEPDIR
 OBJEXT
@@ -730,7 +729,8 @@ PACKAGE_VERSION
 PACKAGE_TARNAME
 PACKAGE_NAME
 PATH_SEPARATOR
-SHELL'
+SHELL
+am__quote'
 ac_subst_files=''
 ac_user_opts='
 enable_option_checking
@@ -2332,7 +2332,7 @@ ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
-am__api_version='1.15'
+am__api_version='1.16'
 
 ac_aux_dir=
 for ac_dir in "$srcdir" "$srcdir/.." "$srcdir/../.."; do
@@ -2877,8 +2877,8 @@ MAKEINFO=${MAKEINFO-"${am_missing_run}makeinfo"}
 
 # For better backward compatibility.  To be removed once Automake 1.9.x
 # dies out for good.  For more background, see:
-# <http://lists.gnu.org/archive/html/automake/2012-07/msg00001.html>
-# <http://lists.gnu.org/archive/html/automake/2012-07/msg00014.html>
+# <https://lists.gnu.org/archive/html/automake/2012-07/msg00001.html>
+# <https://lists.gnu.org/archive/html/automake/2012-07/msg00014.html>
 mkdir_p='$(MKDIR_P)'
 
 # We need awk for the "check" target (and possibly the TAP driver).  The
@@ -2929,7 +2929,7 @@ END
 Aborting the configuration process, to ensure you take notice of the issue.
 
 You can download and install GNU coreutils to get an 'rm' implementation
-that behaves properly: <http://www.gnu.org/software/coreutils/>.
+that behaves properly: <https://www.gnu.org/software/coreutils/>.
 
 If you want to complete the configuration process using your problematic
 'rm' anyway, export the environment variable ACCEPT_INFERIOR_RM_PROGRAM
@@ -3456,45 +3456,45 @@ DEPDIR="${am__leading_dot}deps"
 
 ac_config_commands="$ac_config_commands depfiles"
 
-
-am_make=${MAKE-make}
-cat > confinc << 'END'
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether ${MAKE-make} supports the include directive" >&5
+$as_echo_n "checking whether ${MAKE-make} supports the include directive... " >&6; }
+cat > confinc.mk << 'END'
 am__doit:
-	@echo this is the am__doit target
+	@echo this is the am__doit target >confinc.out
 .PHONY: am__doit
 END
-# If we don't find an include directive, just comment out the code.
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for style of include used by $am_make" >&5
-$as_echo_n "checking for style of include used by $am_make... " >&6; }
 am__include="#"
 am__quote=
-_am_result=none
-# First try GNU make style include.
-echo "include confinc" > confmf
-# Ignore all kinds of additional output from 'make'.
-case `$am_make -s -f confmf 2> /dev/null` in #(
-*the\ am__doit\ target*)
-  am__include=include
-  am__quote=
-  _am_result=GNU
-  ;;
-esac
-# Now try BSD make style include.
-if test "$am__include" = "#"; then
-   echo '.include "confinc"' > confmf
-   case `$am_make -s -f confmf 2> /dev/null` in #(
-   *the\ am__doit\ target*)
-     am__include=.include
-     am__quote="\""
-     _am_result=BSD
+# BSD make does it like this.
+echo '.include "confinc.mk" # ignored' > confmf.BSD
+# Other make implementations (GNU, Solaris 10, AIX) do it like this.
+echo 'include confinc.mk # ignored' > confmf.GNU
+_am_result=no
+for s in GNU BSD; do
+  { echo "$as_me:$LINENO: ${MAKE-make} -f confmf.$s && cat confinc.out" >&5
+   (${MAKE-make} -f confmf.$s && cat confinc.out) >&5 2>&5
+   ac_status=$?
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); }
+  case $?:`cat confinc.out 2>/dev/null` in @%:@(
+  '0:this is the am__doit target') :
+    case $s in @%:@(
+  BSD) :
+    am__include='.include' am__quote='"' ;; @%:@(
+  *) :
+    am__include='include' am__quote='' ;;
+esac ;; @%:@(
+  *) :
      ;;
-   esac
-fi
-
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $_am_result" >&5
-$as_echo "$_am_result" >&6; }
-rm -f confinc confmf
+esac
+  if test "$am__include" != "#"; then
+    _am_result="yes ($s style)"
+    break
+  fi
+done
+rm -f confinc.* confmf.*
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: ${_am_result}" >&5
+$as_echo "${_am_result}" >&6; }
 
 @%:@ Check whether --enable-dependency-tracking was given.
 if test "${enable_dependency_tracking+set}" = set; then :
@@ -6076,468 +6076,27 @@ HARDEN_LDFLAGS=""
 if test $HARDEN == 'yes' ; then
 	{ $as_echo "$as_me:${as_lineno-$LINENO}:  ----- Looking for supported hardening parameters -----" >&5
 $as_echo "$as_me:  ----- Looking for supported hardening parameters -----" >&6;}
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fwrapv" >&5
-$as_echo_n "checking whether C compiler accepts -fwrapv... " >&6; }
-if ${ax_cv_check_cflags__Werror__fwrapv__fwrapv+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$CFLAGS
-  CFLAGS="$CFLAGS -Werror -fwrapv -fwrapv"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ax_cv_check_cflags__Werror__fwrapv__fwrapv=yes
-else
-  ax_cv_check_cflags__Werror__fwrapv__fwrapv=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-  CFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fwrapv__fwrapv" >&5
-$as_echo "$ax_cv_check_cflags__Werror__fwrapv__fwrapv" >&6; }
-if test x"$ax_cv_check_cflags__Werror__fwrapv__fwrapv" = xyes; then :
-  HARDEN_CFLAGS="$HARDEN_CFLAGS -fwrapv"
-else
-  :
-fi
-
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fno-strict-overflow" >&5
-$as_echo_n "checking whether C compiler accepts -fno-strict-overflow... " >&6; }
-if ${ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$CFLAGS
-  CFLAGS="$CFLAGS -Werror -fno-strict-overflow -fno-strict-overflow"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow=yes
-else
-  ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-  CFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow" >&5
-$as_echo "$ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow" >&6; }
-if test x"$ax_cv_check_cflags__Werror__fno_strict_overflow__fno_strict_overflow" = xyes; then :
-  HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-overflow"
-else
-  :
-fi
-
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fno-strict-aliasing" >&5
-$as_echo_n "checking whether C compiler accepts -fno-strict-aliasing... " >&6; }
-if ${ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$CFLAGS
-  CFLAGS="$CFLAGS -Werror -fno-strict-aliasing -fno-strict-aliasing"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing=yes
-else
-  ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-  CFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing" >&5
-$as_echo "$ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing" >&6; }
-if test x"$ax_cv_check_cflags__Werror__fno_strict_aliasing__fno_strict_aliasing" = xyes; then :
-  HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-aliasing"
-else
-  :
-fi
-
+	AX_CHECK_COMPILE_FLAG(-fwrapv, HARDEN_CFLAGS="$HARDEN_CFLAGS -fwrapv", , -Werror -fwrapv)
+	AX_CHECK_COMPILE_FLAG(-fno-strict-overflow, HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-overflow", , -Werror -fno-strict-overflow)
+	AX_CHECK_COMPILE_FLAG(-fno-strict-aliasing, HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-aliasing", , -Werror -fno-strict-aliasing)
 	# This one will likely succeed, even on platforms where it does nothing.
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -D_FORTIFY_SOURCE=2" >&5
-$as_echo_n "checking whether C compiler accepts -D_FORTIFY_SOURCE=2... " >&6; }
-if ${ax_cv_check_cflags__Werror__D_FORTIFY_SOURCE_2__D_FORTIFY_SOURCE_2+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$CFLAGS
-  CFLAGS="$CFLAGS -Werror -D_FORTIFY_SOURCE=2 -D_FORTIFY_SOURCE=2"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ax_cv_check_cflags__Werror__D_FORTIFY_SOURCE_2__D_FORTIFY_SOURCE_2=yes
-else
-  ax_cv_check_cflags__Werror__D_FORTIFY_SOURCE_2__D_FORTIFY_SOURCE_2=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-  CFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__D_FORTIFY_SOURCE_2__D_FORTIFY_SOURCE_2" >&5
-$as_echo "$ax_cv_check_cflags__Werror__D_FORTIFY_SOURCE_2__D_FORTIFY_SOURCE_2" >&6; }
-if test x"$ax_cv_check_cflags__Werror__D_FORTIFY_SOURCE_2__D_FORTIFY_SOURCE_2" = xyes; then :
-  HARDEN_CFLAGS="$HARDEN_CFLAGS -D_FORTIFY_SOURCE=2"
-else
-  :
-fi
-                                    
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fstack-protector-all" >&5
-$as_echo_n "checking whether C compiler accepts -fstack-protector-all... " >&6; }
-if ${ax_cv_check_cflags__Werror___fstack_protector_all+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$CFLAGS
-  CFLAGS="$CFLAGS -Werror  -fstack-protector-all"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ax_cv_check_cflags__Werror___fstack_protector_all=yes
-else
-  ax_cv_check_cflags__Werror___fstack_protector_all=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-  CFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror___fstack_protector_all" >&5
-$as_echo "$ax_cv_check_cflags__Werror___fstack_protector_all" >&6; }
-if test x"$ax_cv_check_cflags__Werror___fstack_protector_all" = xyes; then :
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -fstack-protector-all" >&5
-$as_echo_n "checking whether the linker accepts -fstack-protector-all... " >&6; }
-if ${ax_cv_check_ldflags__Werror___fstack_protector_all+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$LDFLAGS
-  LDFLAGS="$LDFLAGS -Werror  -fstack-protector-all"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ax_cv_check_ldflags__Werror___fstack_protector_all=yes
-else
-  ax_cv_check_ldflags__Werror___fstack_protector_all=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-  LDFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___fstack_protector_all" >&5
-$as_echo "$ax_cv_check_ldflags__Werror___fstack_protector_all" >&6; }
-if test x"$ax_cv_check_ldflags__Werror___fstack_protector_all" = xyes; then :
-  HARDEN_CFLAGS="$HARDEN_CFLAGS -fstack-protector-all"
-			{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -Wstack-protector" >&5
-$as_echo_n "checking whether C compiler accepts -Wstack-protector... " >&6; }
-if ${ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$CFLAGS
-  CFLAGS="$CFLAGS -Werror -fstack-protector-all -Wstack-protector"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector=yes
-else
-  ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-  CFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector" >&5
-$as_echo "$ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector" >&6; }
-if test x"$ax_cv_check_cflags__Werror__fstack_protector_all__Wstack_protector" = xyes; then :
-  HARDEN_CFLAGS="$HARDEN_CFLAGS -Wstack-protector"
-else
-  :
-fi
-
-		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts --param ssp-buffer-size=1" >&5
-$as_echo_n "checking whether C compiler accepts --param ssp-buffer-size=1... " >&6; }
-if ${ax_cv_check_cflags__Werror__fstack_protector_all___param_ssp_buffer_size_1+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$CFLAGS
-  CFLAGS="$CFLAGS -Werror -fstack-protector-all --param ssp-buffer-size=1"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ax_cv_check_cflags__Werror__fstack_protector_all___param_ssp_buffer_size_1=yes
-else
-  ax_cv_check_cflags__Werror__fstack_protector_all___param_ssp_buffer_size_1=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-  CFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fstack_protector_all___param_ssp_buffer_size_1" >&5
-$as_echo "$ax_cv_check_cflags__Werror__fstack_protector_all___param_ssp_buffer_size_1" >&6; }
-if test x"$ax_cv_check_cflags__Werror__fstack_protector_all___param_ssp_buffer_size_1" = xyes; then :
-  HARDEN_CFLAGS="$HARDEN_CFLAGS --param ssp-buffer-size=1"
-else
-  :
-fi
-
-else
-  :
-fi
-
-else
-  :
-fi
-
+	AX_CHECK_COMPILE_FLAG(-D_FORTIFY_SOURCE=2, HARDEN_CFLAGS="$HARDEN_CFLAGS -D_FORTIFY_SOURCE=2", , -Werror -D_FORTIFY_SOURCE=2)                                    
+	AX_CHECK_COMPILE_FLAG(-fstack-protector-all, check_link_flag([-fstack-protector-all], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fstack-protector-all"
+			check_cc_flag([-Wstack-protector], [HARDEN_CFLAGS="$HARDEN_CFLAGS -Wstack-protector"],
+				[], [-fstack-protector-all])
+		check_cc_flag([--param ssp-buffer-size=1], [HARDEN_CFLAGS="$HARDEN_CFLAGS --param ssp-buffer-size=1"],
+		[], [-fstack-protector-all])]), , -Werror )
 	# At the link step, we might want -pie (GCC) or -Wl,-pie (Clang on OS X)
 	# The linker checks also compile code, so we need to include -fPIE as well.
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fPIE" >&5
-$as_echo_n "checking whether C compiler accepts -fPIE... " >&6; }
-if ${ax_cv_check_cflags__Werror___fPIE+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$CFLAGS
-  CFLAGS="$CFLAGS -Werror  -fPIE"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ax_cv_check_cflags__Werror___fPIE=yes
-else
-  ax_cv_check_cflags__Werror___fPIE=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-  CFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror___fPIE" >&5
-$as_echo "$ax_cv_check_cflags__Werror___fPIE" >&6; }
-if test x"$ax_cv_check_cflags__Werror___fPIE" = xyes; then :
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -fPIE -pie" >&5
-$as_echo_n "checking whether the linker accepts -fPIE -pie... " >&6; }
-if ${ax_cv_check_ldflags__Werror___fPIE__pie+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$LDFLAGS
-  LDFLAGS="$LDFLAGS -Werror  -fPIE -pie"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ax_cv_check_ldflags__Werror___fPIE__pie=yes
-else
-  ax_cv_check_ldflags__Werror___fPIE__pie=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-  LDFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___fPIE__pie" >&5
-$as_echo "$ax_cv_check_ldflags__Werror___fPIE__pie" >&6; }
-if test x"$ax_cv_check_ldflags__Werror___fPIE__pie" = xyes; then :
-  HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
-			HARDEN_LDFLAGS="$HARDEN_LDFLAGS -pie"
-else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -fPIE -Wl,-pie" >&5
-$as_echo_n "checking whether the linker accepts -fPIE -Wl,-pie... " >&6; }
-if ${ax_cv_check_ldflags__Werror___fPIE__Wl__pie+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$LDFLAGS
-  LDFLAGS="$LDFLAGS -Werror  -fPIE -Wl,-pie"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ax_cv_check_ldflags__Werror___fPIE__Wl__pie=yes
-else
-  ax_cv_check_ldflags__Werror___fPIE__Wl__pie=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-  LDFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___fPIE__Wl__pie" >&5
-$as_echo "$ax_cv_check_ldflags__Werror___fPIE__Wl__pie" >&6; }
-if test x"$ax_cv_check_ldflags__Werror___fPIE__Wl__pie" = xyes; then :
-  HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
-				HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-pie"
-else
-  :
-fi
-
-fi
-
-else
-  :
-fi
-
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -Wl,-z,relro" >&5
-$as_echo_n "checking whether the linker accepts -Wl,-z,relro... " >&6; }
-if ${ax_cv_check_ldflags__Werror___Wl__z_relro+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$LDFLAGS
-  LDFLAGS="$LDFLAGS -Werror  -Wl,-z,relro"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ax_cv_check_ldflags__Werror___Wl__z_relro=yes
-else
-  ax_cv_check_ldflags__Werror___Wl__z_relro=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-  LDFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___Wl__z_relro" >&5
-$as_echo "$ax_cv_check_ldflags__Werror___Wl__z_relro" >&6; }
-if test x"$ax_cv_check_ldflags__Werror___Wl__z_relro" = xyes; then :
-  HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-z,relro"
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -Wl,-z,now" >&5
-$as_echo_n "checking whether the linker accepts -Wl,-z,now... " >&6; }
-if ${ax_cv_check_ldflags__Werror___Wl__z_now+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  
-  ax_check_save_flags=$LDFLAGS
-  LDFLAGS="$LDFLAGS -Werror  -Wl,-z,now"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-int
-main ()
-{
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ax_cv_check_ldflags__Werror___Wl__z_now=yes
-else
-  ax_cv_check_ldflags__Werror___Wl__z_now=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-  LDFLAGS=$ax_check_save_flags
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_ldflags__Werror___Wl__z_now" >&5
-$as_echo "$ax_cv_check_ldflags__Werror___Wl__z_now" >&6; }
-if test x"$ax_cv_check_ldflags__Werror___Wl__z_now" = xyes; then :
-  HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-z,now"
-else
-  :
-fi
-
-else
-  :
-fi
-
+	AX_CHECK_COMPILE_FLAG(-fPIE, check_link_flag([-fPIE -pie],
+			[HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
+			HARDEN_LDFLAGS="$HARDEN_LDFLAGS -pie"],
+			[check_link_flag([-fPIE -Wl,-pie],
+				[HARDEN_CFLAGS="$HARDEN_CFLAGS -fPIE"
+				HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-pie"])]), , -Werror )
+	AX_CHECK_LINK_FLAG(-Wl,-z,relro, HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-z,relro"
+	check_link_flag([-Wl,-z,now],
+		[HARDEN_LDFLAGS="$HARDEN_LDFLAGS -Wl,-z,now"]), , -Werror )
 fi
 
 
@@ -7333,7 +6892,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
-AMDEP_TRUE="$AMDEP_TRUE" ac_aux_dir="$ac_aux_dir"
+AMDEP_TRUE="$AMDEP_TRUE" MAKE="${MAKE-make}"
 
 _ACEOF
 
@@ -7945,29 +7504,35 @@ $as_echo "$as_me: executing $ac_file commands" >&6;}
   # Older Autoconf quotes --file arguments for eval, but not when files
   # are listed without --file.  Let's play safe and only enable the eval
   # if we detect the quoting.
-  case $CONFIG_FILES in
-  *\'*) eval set x "$CONFIG_FILES" ;;
-  *)   set x $CONFIG_FILES ;;
-  esac
+  # TODO: see whether this extra hack can be removed once we start
+  # requiring Autoconf 2.70 or later.
+  case $CONFIG_FILES in @%:@(
+  *\'*) :
+    eval set x "$CONFIG_FILES" ;; @%:@(
+  *) :
+    set x $CONFIG_FILES ;; @%:@(
+  *) :
+     ;;
+esac
   shift
-  for mf
+  # Used to flag and report bootstrapping failures.
+  am_rc=0
+  for am_mf
   do
     # Strip MF so we end up with the name of the file.
-    mf=`echo "$mf" | sed -e 's/:.*$//'`
-    # Check whether this is an Automake generated Makefile or not.
-    # We used to match only the files named 'Makefile.in', but
-    # some people rename them; so instead we look at the file content.
-    # Grep'ing the first line is not enough: some people post-process
-    # each Makefile.in and add a new line on top of each file to say so.
-    # Grep'ing the whole file is not good either: AIX grep has a line
+    am_mf=`$as_echo "$am_mf" | sed -e 's/:.*$//'`
+    # Check whether this is an Automake generated Makefile which includes
+    # dependency-tracking related rules and includes.
+    # Grep'ing the whole file directly is not great: AIX grep has a line
     # limit of 2048, but all sed's we know have understand at least 4000.
-    if sed -n 's,^#.*generated by automake.*,X,p' "$mf" | grep X >/dev/null 2>&1; then
-      dirpart=`$as_dirname -- "$mf" ||
-$as_expr X"$mf" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
-	 X"$mf" : 'X\(//\)[^/]' \| \
-	 X"$mf" : 'X\(//\)$' \| \
-	 X"$mf" : 'X\(/\)' \| . 2>/dev/null ||
-$as_echo X"$mf" |
+    sed -n 's,^am--depfiles:.*,X,p' "$am_mf" | grep X >/dev/null 2>&1 \
+      || continue
+    am_dirpart=`$as_dirname -- "$am_mf" ||
+$as_expr X"$am_mf" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
+	 X"$am_mf" : 'X\(//\)[^/]' \| \
+	 X"$am_mf" : 'X\(//\)$' \| \
+	 X"$am_mf" : 'X\(/\)' \| . 2>/dev/null ||
+$as_echo X"$am_mf" |
     sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{
 	    s//\1/
 	    q
@@ -7985,53 +7550,48 @@ $as_echo X"$mf" |
 	    q
 	  }
 	  s/.*/./; q'`
-    else
-      continue
-    fi
-    # Extract the definition of DEPDIR, am__include, and am__quote
-    # from the Makefile without running 'make'.
-    DEPDIR=`sed -n 's/^DEPDIR = //p' < "$mf"`
-    test -z "$DEPDIR" && continue
-    am__include=`sed -n 's/^am__include = //p' < "$mf"`
-    test -z "$am__include" && continue
-    am__quote=`sed -n 's/^am__quote = //p' < "$mf"`
-    # Find all dependency output files, they are included files with
-    # $(DEPDIR) in their names.  We invoke sed twice because it is the
-    # simplest approach to changing $(DEPDIR) to its actual value in the
-    # expansion.
-    for file in `sed -n "
-      s/^$am__include $am__quote\(.*(DEPDIR).*\)$am__quote"'$/\1/p' <"$mf" | \
-	 sed -e 's/\$(DEPDIR)/'"$DEPDIR"'/g'`; do
-      # Make sure the directory exists.
-      test -f "$dirpart/$file" && continue
-      fdir=`$as_dirname -- "$file" ||
-$as_expr X"$file" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
-	 X"$file" : 'X\(//\)[^/]' \| \
-	 X"$file" : 'X\(//\)$' \| \
-	 X"$file" : 'X\(/\)' \| . 2>/dev/null ||
-$as_echo X"$file" |
-    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{
+    am_filepart=`$as_basename -- "$am_mf" ||
+$as_expr X/"$am_mf" : '.*/\([^/][^/]*\)/*$' \| \
+	 X"$am_mf" : 'X\(//\)$' \| \
+	 X"$am_mf" : 'X\(/\)' \| . 2>/dev/null ||
+$as_echo X/"$am_mf" |
+    sed '/^.*\/\([^/][^/]*\)\/*$/{
 	    s//\1/
 	    q
 	  }
-	  /^X\(\/\/\)[^/].*/{
+	  /^X\/\(\/\/\)$/{
 	    s//\1/
 	    q
 	  }
-	  /^X\(\/\/\)$/{
-	    s//\1/
-	    q
-	  }
-	  /^X\(\/\).*/{
+	  /^X\/\(\/\).*/{
 	    s//\1/
 	    q
 	  }
 	  s/.*/./; q'`
-      as_dir=$dirpart/$fdir; as_fn_mkdir_p
-      # echo "creating $dirpart/$file"
-      echo '# dummy' > "$dirpart/$file"
-    done
+    { echo "$as_me:$LINENO: cd "$am_dirpart" \
+      && sed -e '/# am--include-marker/d' "$am_filepart" \
+        | $MAKE -f - am--depfiles" >&5
+   (cd "$am_dirpart" \
+      && sed -e '/# am--include-marker/d' "$am_filepart" \
+        | $MAKE -f - am--depfiles) >&5 2>&5
+   ac_status=$?
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } || am_rc=$?
   done
+  if test $am_rc -ne 0; then
+    { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error $? "Something went wrong bootstrapping makefile fragments
+    for automatic dependency tracking.  Try re-running configure with the
+    '--disable-dependency-tracking' option to at least be able to build
+    the package (albeit without support for automatic dependency tracking).
+See \`config.log' for more details" "$LINENO" 5; }
+  fi
+  { am_dirpart=; unset am_dirpart;}
+  { am_filepart=; unset am_filepart;}
+  { am_mf=; unset am_mf;}
+  { am_rc=; unset am_rc;}
+  rm -f conftest-deps.mk
 }
  ;;
 

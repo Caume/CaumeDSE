@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2018 by Omar Alejandro Herrera Reyna
+Copyright 2010-2019 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -81,7 +81,7 @@ int cmeDBOpen (const char *filename, sqlite3 **ppDB)
         fprintf(stderr,"CaumeDSE Error: cmeDBOpen(), sqlite_open_v2() error: %s\n",
                 sqlite3_errmsg(*ppDB));
 #endif
-        sqlite3_close(*ppDB);
+        //sqlite3_close(*ppDB);
         return(1);
     }
     else

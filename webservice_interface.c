@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2018 by Omar Alejandro Herrera Reyna
+Copyright 2010-2019 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -304,7 +304,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
                                    cmeWSHTMLPageEnd); //Add page opening/closing tags and (c) to response page.
                 responseDataSize=(long int)strlen(page);
                 //Create response body:
-                response=MHD_create_response_from_data ((size_t)responseDataSize,(void*) page, MHD_NO, MHD_YES); //We have to create response body before adding headers.
+                response=MHD_create_response_from_buffer((size_t)responseDataSize,(void*) page, MHD_RESPMEM_MUST_COPY); //We have to create response body before adding headers.
                 result=MHD_add_response_header(response,"Content-Type","text/html; charset=utf-8");
             }
             else
@@ -312,7 +312,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
                 cmeStrConstrAppend(&page,"%s",responseText); //Add plain response to response page.
                 responseDataSize=(long int)strlen(page);
                 //Create response body:
-                response=MHD_create_response_from_data ((size_t)responseDataSize,(void*) page, MHD_NO, MHD_YES);
+                response=MHD_create_response_from_buffer((size_t)responseDataSize,(void*) page, MHD_RESPMEM_MUST_COPY);
             }
 #ifdef DEBUG
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceAnswerConnection(), user request successful "
@@ -324,7 +324,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         {
             //Create empty response body (e.g. for HEAD method):
             responseDataSize=0;
-            response=MHD_create_response_from_data (0,NULL, MHD_NO, MHD_YES);
+            response=MHD_create_response_from_buffer(0,NULL, MHD_RESPMEM_MUST_COPY);
             //Add default Headers:
             result=MHD_add_response_header(response,"Server","CaumeDSE " cmeEngineVersion);
         }

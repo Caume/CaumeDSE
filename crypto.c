@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2018 by Omar Alejandro Herrera Reyna
+Copyright 2010-2019 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -68,8 +68,8 @@ int cmeDigestInit (EVP_MD_CTX **ctx, ENGINE *engine, EVP_MD *digest)
 {
     int result;
 
-    *ctx=(EVP_MD_CTX *)malloc(sizeof(EVP_MD_CTX));
-    EVP_MD_CTX_init(*ctx);   //Initialize Digest context
+    *ctx=EVP_MD_CTX_new();
+    EVP_MD_CTX_reset(*ctx);   //Initialize Digest context
     result= EVP_DigestInit_ex(*ctx,digest,engine);
     if (result==0)  //1= success, 0=failure
     {
@@ -113,7 +113,7 @@ int cmeDigestFinal(EVP_MD_CTX **ctx, unsigned char *out, unsigned int *outl)
     int result;
 
     result=EVP_DigestFinal_ex(*ctx,out,outl);
-    cmeFree(*ctx);
+    EVP_MD_CTX_free(*ctx); // override generic free: cmeFree(*ctx);
     if (result==0)  //1= success, 0=failure
     {
 #ifdef ERROR_LOG
@@ -157,7 +157,7 @@ int cmeCipherInit (EVP_CIPHER_CTX **ctx, ENGINE *engine, const EVP_CIPHER *ciphe
 {
     int result;
 
-    *ctx=(EVP_CIPHER_CTX *)malloc(sizeof(EVP_CIPHER_CTX));
+    *ctx = EVP_CIPHER_CTX_new();
     if ((mode!='d')&&(mode!='e'))
     {
 #ifdef ERROR_LOG
@@ -171,7 +171,7 @@ int cmeCipherInit (EVP_CIPHER_CTX **ctx, ENGINE *engine, const EVP_CIPHER *ciphe
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: evpCipherInit(), cipher mode '%c' selected.\n",mode);
 #endif
-        EVP_CIPHER_CTX_init(*ctx);   //Initialize Cipher context
+        EVP_CIPHER_CTX_reset(*ctx);   //Initialize Cipher context
         if (mode=='e')  //Encrypt
         {
             result= EVP_EncryptInit_ex(*ctx,cipher,engine,key,iv);
@@ -271,8 +271,7 @@ int cmeCipherFinal(EVP_CIPHER_CTX **ctx, unsigned char *out, int *outl, const ch
     int result=0;
     #define cmeCipherFinalFree() \
         do { \
-            EVP_CIPHER_CTX_cleanup(*ctx); \
-            *ctx=NULL; \
+            EVP_CIPHER_CTX_free(*ctx); \
         } while (0); //Local free() macro. Call to EVP_CIPHER_CTX_cleanup() to securely dispose of context memory!
 
     if ((mode!='d')&&(mode!='e'))
@@ -748,8 +747,8 @@ int cmeHMACInit (HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key
 {
     int result;
 
-    *ctx=(HMAC_CTX *)malloc(sizeof(HMAC_CTX));
-    HMAC_CTX_init(*ctx);   //Initialize HMAC context.
+    *ctx=HMAC_CTX_new();
+    HMAC_CTX_reset(*ctx);   //Initialize HMAC context.
     result= HMAC_Init_ex(*ctx,key,keyLen,digest,engine);
     if (result==0)  //1= success, 0=failure
     {
@@ -793,7 +792,7 @@ int cmeHMACFinal(HMAC_CTX **ctx, unsigned char *out, unsigned int *outl)
     int result;
 
     result=HMAC_Final(*ctx,out,outl);
-    cmeFree(*ctx);
+    HMAC_CTX_free(*ctx); //override generic free: cmeFree(*ctx);
     if (result==0)  //1= success, 0=failure
     {
 #ifdef ERROR_LOG

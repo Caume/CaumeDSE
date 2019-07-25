@@ -1,3 +1,14 @@
+2019-07-25 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+	* crypto.c (...Init, ...Final):  Fixed compatibility problems with
+	OpenSSL 1.1.x by using recommended functions (...CTX_new(), ... CTX_free()).
+
+	* db.c (cmeDBOpen): fixed closing non-existent database  when run the 
+	first time without test files.
+
+	* web_interface.c: Replaced obsolete functions in libmicrohttpd calls.
+
+	* ./sqlite/*: Updated SQLITE3 to latest version.
+
 2012-07-21 Omar A. Herrera Reyna <omar.herrera@kinakuta.com.mx>
 	
 	* engine_admin.c (cmeSetupEngineAdminDBs): Modified LogsDB structure
