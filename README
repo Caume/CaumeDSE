@@ -1,4 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 1.0.1
+Caume Data Security Engine (CaumeDSE) version 1.0.2
 
 NOTE: Please read section II, in regard to the APLHA status
 of this software and its implications!
@@ -125,9 +125,6 @@ will remain on your side.
 
 II. Status
 ----------
-
-
-The current version of the software is 1.0.1
 
 Right now, the software is in a stable but initial release, which means:
 
