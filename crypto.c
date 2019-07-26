@@ -35,7 +35,7 @@ Copyright 2010-2019 by Omar Alejandro Herrera Reyna
     the public domain (http://www.sqlite.org/copyright.html).
 
     This product includes software from the GNU Libmicrohttpd project, Copyright
-    © 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
+    Â© 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
     2008, 2009, 2010 , 2011, 2012 Free Software Foundation, Inc.
 
     This product includes software from Perl5, which is Copyright (C) 1993-2005,
@@ -69,7 +69,6 @@ int cmeDigestInit (EVP_MD_CTX **ctx, ENGINE *engine, EVP_MD *digest)
     int result;
 
     *ctx=EVP_MD_CTX_new();
-    EVP_MD_CTX_reset(*ctx);   //Initialize Digest context
     result= EVP_DigestInit_ex(*ctx,digest,engine);
     if (result==0)  //1= success, 0=failure
     {
@@ -114,6 +113,7 @@ int cmeDigestFinal(EVP_MD_CTX **ctx, unsigned char *out, unsigned int *outl)
 
     result=EVP_DigestFinal_ex(*ctx,out,outl);
     EVP_MD_CTX_free(*ctx); // override generic free: cmeFree(*ctx);
+    *ctx=NULL;
     if (result==0)  //1= success, 0=failure
     {
 #ifdef ERROR_LOG
@@ -151,7 +151,6 @@ int cmeGetCipher (const EVP_CIPHER** cipher, const char *algorithm)
     }
 }
 
-//TODO (ANY#8#): Simplify Encryption functions by using EVP_CipherInit_ex instead of Decrypt and Encrypt variants.
 int cmeCipherInit (EVP_CIPHER_CTX **ctx, ENGINE *engine, const EVP_CIPHER *cipher, unsigned char *key,
                    unsigned char* iv, char mode)
 {
@@ -171,7 +170,6 @@ int cmeCipherInit (EVP_CIPHER_CTX **ctx, ENGINE *engine, const EVP_CIPHER *ciphe
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: evpCipherInit(), cipher mode '%c' selected.\n",mode);
 #endif
-        EVP_CIPHER_CTX_reset(*ctx);   //Initialize Cipher context
         if (mode=='e')  //Encrypt
         {
             result= EVP_EncryptInit_ex(*ctx,cipher,engine,key,iv);
@@ -270,9 +268,13 @@ int cmeCipherFinal(EVP_CIPHER_CTX **ctx, unsigned char *out, int *outl, const ch
 {
     int result=0;
     #define cmeCipherFinalFree() \
-        do { \
-            EVP_CIPHER_CTX_free(*ctx); \
-        } while (0); //Local free() macro. Call to EVP_CIPHER_CTX_cleanup() to securely dispose of context memory!
+        { \
+            if(*ctx)\
+            {\
+                EVP_CIPHER_CTX_free(*ctx); \
+                *ctx=NULL; \
+            }\
+        } //Local free() macro. Call to EVP_CIPHER_CTX_free() to securely dispose of context memory!
 
     if ((mode!='d')&&(mode!='e'))
     {
@@ -326,10 +328,10 @@ int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
     int keyLen=EVP_CIPHER_key_length(cipher);   //Get cipher key length.
     int ivLen=EVP_CIPHER_iv_length(cipher);     //Get cipher iv length.
     #define cmePBKDFFree() \
-        do  { \
+        { \
                 if (HexStrToByteBuffer) \
                 { \
-                    memset(HexStrToByteBuffer,0,strlen(passwordLen)/2); \
+                    memset(HexStrToByteBuffer,0,strlen(password)/2); \
                     cmeFree(HexStrToByteBuffer); \
                 } \
                 if (buf) \
@@ -337,7 +339,7 @@ int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
                     memset(buf,0,keyLen+ivLen); \
                     cmeFree(buf); \
                 } \
-            } while (0); //Local free() macro
+        } //Local free() macro
 
 
     if (cmeDefaultPBKDFVersion==1) //PBKDF1
@@ -370,6 +372,7 @@ int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmePBKDF(), PBKDF ver. %d -> 0 length key!\n",cmeDefaultPBKDFVersion);
 #endif
+        cmePBKDFFree();
         return (1);
     }
     else
@@ -377,6 +380,7 @@ int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmePBKDF(), PBKDF ver. %d -> %d bytes key, %d bytes iv.\n",cmeDefaultPBKDFVersion,keyLen,ivLen);
 #endif
+        cmePBKDFFree();
         return(0);
     }
 }
@@ -475,7 +479,7 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
     EVP_CIPHER_CTX *ctx=NULL;
     const EVP_CIPHER *cipher=NULL; //Note that cipher is a pointer to a constant cipher function in OPENSSL.
     #define cmeCipherByteStringFree() \
-        do  { \
+        { \
                 if (key) \
                 { \
                     memset(key,0,keyLen); \
@@ -491,15 +495,17 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
                     memset(byteSalt,0,evpSaltBufferSize); \
                     cmeFree(byteSalt); \
                 } \
-                cmeFree(ctx); \
-            } while (0); //Local free() macro
+                if (ctx) \
+                { \
+                    EVP_CIPHER_CTX_free(ctx); \
+                } \
+        }//Local free() macro
 
     if (srcBuf==NULL) //Error, source buffer can't be null!
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), srcBuf is NULL!\n");
 #endif
-        cmeCipherByteStringFree();
         return(1);
     }
     if (cmeGetCipher(&cipher,algorithm)) //Verify algorithm and get cipher object.
@@ -507,7 +513,6 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), incorrect cipher algorithm: %s!\n",algorithm);
 #endif
-        cmeCipherByteStringFree();
         return(2);
     }
     cipherBlockLen=EVP_CIPHER_block_size(cipher); //Get cipher block length.
@@ -556,6 +561,7 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), Unknown cipher mode %c !\n",mode);
 #endif
+            cmeCipherByteStringFree();
             return(5);
     }
     if(!(*dstBuf=(unsigned char *)malloc(srcLen+cipherBlockLen+1))) //Error allocating memory!
@@ -596,9 +602,12 @@ int cmeProtectByteString (const char *value, char **protectedValue, const char *
     int result,written;
     char *currentEncData=NULL;
     #define cmeProtectByteStringFree() \
-        do { \
-            cmeFree(currentEncData); \
-        } while (0); //Local free() macro
+        { \
+            if (currentEncData) \
+                { \
+                    cmeFree(currentEncData); \
+                } \
+        }//Local free() macro
 
     if (value==NULL) //Error: no value to encrypt
     {
@@ -606,7 +615,6 @@ int cmeProtectByteString (const char *value, char **protectedValue, const char *
         fprintf(stderr,"CaumeDSE Error: cmeProtectByteString(), cmeCipherByteString() Error, can't "
                 "encrypt NULL byte string with algorithm %s!\n",encAlg);
 #endif
-        cmeProtectByteStringFree();
         return(1);
     }
     result=cmeCipherByteString((unsigned char *)value,(unsigned char **)&currentEncData,(unsigned char **)salt,
@@ -636,9 +644,12 @@ int cmeUnprotectByteString (const char *protectedValue, char **value, const char
     int result,written;
     char *currentEncData=NULL;
     #define cmeUnProtectByteStringFree() \
-        do { \
-            cmeFree(currentEncData); \
-        } while (0); //Local free() macro
+        { \
+            if (currentEncData) \
+                { \
+                    cmeFree(currentEncData); \
+                } \
+        }//Local free() macro
 
     *value=NULL;
     if (!protectedValue) //WARNING: null input!
@@ -649,14 +660,13 @@ int cmeUnprotectByteString (const char *protectedValue, char **value, const char
         fprintf(stderr,"CaumeDSE Debug: cmeUnprotectByteString(), cmeCipherByteString() Warning, can't "
                 "decrypt 'byte string' = NULL, with algorithm %s and key %s!\n",encAlg,orgKey);
 #endif
-        cmeUnProtectByteStringFree();
         return(0); //Not an error, just a warning!
     }
     result=cmeB64ToStr((unsigned char *)protectedValue,(unsigned char **)&currentEncData,
                        protectedValueLen,&written);
     result=cmeCipherByteString((unsigned char *)currentEncData,(unsigned char **)value,(unsigned char **)salt,
                                written,valueLen,encAlg,orgKey,'d');   //Decrypt Value.
-    cmeFree(currentEncData);
+    cmeUnProtectByteStringFree();
     if (result) //Decryption failed. Return empty string.
     {
         cmeFree(*value); //Clean value; we will return an empty string.
@@ -691,17 +701,22 @@ int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, co
     EVP_MD_CTX *ctx=NULL;     //Note that ctx will be freed normally by cmeDigestFinal(), but we need to free it if we exit before cmeDigestFinal() is called.
     EVP_MD *digest=NULL;      //Note that digest is a pointer to a constant digest function in OPENSSL.
     #define cmeDigestByteStringFree() \
-        do  { \
-                cmeFree(ctx); \
-                cmeFree(digestBytes); \
-            } while (0); //Local free() macro
+        { \
+                if(ctx)\
+                {\
+                    EVP_MD_CTX_free(ctx); \
+                }\
+                if(digestBytes)\
+                {\
+                    cmeFree(digestBytes); \
+                }\
+        } //Local free() macro
 
     if (srcBuf==NULL) //Error, source buffer can't be null!
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeDigestByteString(), srcBuf is NULL!\n");
 #endif
-        cmeDigestByteStringFree();
         return(1);
     }
     if ((cmeGetDigest(&digest,algorithm))) //Verify algorithm and create digest object.
@@ -748,7 +763,6 @@ int cmeHMACInit (HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key
     int result;
 
     *ctx=HMAC_CTX_new();
-    HMAC_CTX_reset(*ctx);   //Initialize HMAC context.
     result= HMAC_Init_ex(*ctx,key,keyLen,digest,engine);
     if (result==0)  //1= success, 0=failure
     {
@@ -793,6 +807,7 @@ int cmeHMACFinal(HMAC_CTX **ctx, unsigned char *out, unsigned int *outl)
 
     result=HMAC_Final(*ctx,out,outl);
     HMAC_CTX_free(*ctx); //override generic free: cmeFree(*ctx);
+    *ctx=NULL;
     if (result==0)  //1= success, 0=failure
     {
 #ifdef ERROR_LOG
@@ -828,9 +843,15 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
     EVP_MD *digest=NULL;          //Note that digest is a pointer to a constant digest function in OPENSSL.
     const EVP_CIPHER *cipher=NULL;      //Note that cipher is a pointer to a constant cipher function in OPENSSL.
     #define cmeHMACByteStringFree() \
-        do  { \
-                cmeFree(ctx); \
-                cmeFree(digestBytes); \
+        { \
+                if (ctx) \
+                { \
+                    HMAC_CTX_free(ctx); \
+                }\
+                if (digestBytes) \
+                { \
+                    cmeFree(digestBytes); \
+                }\
                 if (key) \
                 { \
                     memset(key,0,keyLen); \
@@ -846,14 +867,13 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
                     memset(byteSalt,0,evpSaltBufferSize); \
                     cmeFree(byteSalt); \
                 } \
-            } while (0); //Local free() macro
+        } //Local free() macro
 
     if (srcBuf==NULL) //Error, source buffer can't be null!
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), srcBuf is NULL!\n");
 #endif
-        cmeDigestByteStringFree();
         return(1);
     }
     if ((cmeGetCipher(&cipher,cmeDefaultEncAlg))) //Use default encryption algorithm's key length for PBKDF.
@@ -861,7 +881,7 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), incorrect digest algorithm; %s!\n",algorithm);
 #endif
-        cmeDigestByteStringFree();
+        cmeHMACByteStringFree();
         return(2);
     }
     if ((cmeGetDigest(&digest,algorithm))) //Verify algorithm and create digest object.
@@ -869,7 +889,7 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), incorrect digest algorithm; %s!\n",algorithm);
 #endif
-        cmeDigestByteStringFree();
+        cmeHMACByteStringFree();
         return(3);
     }
     digestBytes=(unsigned char *)malloc(EVP_MAX_MD_SIZE);
@@ -878,7 +898,7 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), Error in memory allocation!\n");
 #endif
-        cmeDigestByteStringFree();
+        cmeHMACByteStringFree();
         return(4);
     }
     memset(*dstBuf,0,evpMaxHashStrLen);
@@ -904,7 +924,7 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
             fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), salt is not a "
                     "hexStr representation; string: %s !\n",hexStrbyteSalt);
 #endif
-            cmeDigestByteStringFree();
+            cmeHMACByteStringFree();
             return(3);
         }
     }
@@ -914,7 +934,7 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
     iv=(unsigned char *)malloc(ivLen);
     if ((cmePBKDF(cipher,byteSalt,evpSaltBufferSize,(unsigned char *)userKey,strlen(userKey),key,iv))) //Error setting key & IV.
     {
-        cmeDigestByteStringFree();
+        cmeHMACByteStringFree();
         return(7);
     }
 
@@ -936,7 +956,7 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
     cmeBytesToHexstr(digestBytes,dstBuf,written); //Convert byte array to Byte HexStr.
     *dstWritten=strlen((const char *)*dstBuf);
     memset(digestBytes,0,EVP_MAX_MD_SIZE); //Clear memory of resulting MAC bytes.
-    cmeDigestByteStringFree();
+    cmeHMACByteStringFree();
     return (exitcode);
 }
 

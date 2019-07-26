@@ -59,7 +59,7 @@ int cmeSetupEngineAdminDBs ()
     sqlite3 *currentDB=NULL;
     const EVP_CIPHER *cipher=NULL; //Note that cipher is a pointer to a constant cipher function in OPENSSL.
     #define cmeSetupEngineAdminDBsFree() \
-        do { \
+        { \
             cmeFree(rndAdminOrgPwd); \
             cmeFree(currentDBName); \
             cmeFree(sqlQuery); \
@@ -68,7 +68,7 @@ int cmeSetupEngineAdminDBs ()
                 cmeDBClose(currentDB); \
                 currentDB=NULL; \
             } \
-        } while (0); //Local free() macro
+        } //Local free() macro
 
     if (cmeGetCipher(&cipher,cmeDefaultEncAlg)) //Verify default cipher algorithm and get cipher object.
     {
@@ -412,7 +412,7 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     unsigned char **currentMACProtectedSaltedData=NULL;
     unsigned char *hexStrSalt=NULL;
     #define cmeRegisterSecureDBFree() \
-        do { \
+        { \
             cmeFree(currentDBName); \
             cmeFree(sqlQuery); \
             cmeFree(partId); \
@@ -444,7 +444,7 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
                 cmeDBClose(saveDB); \
                 saveDB=NULL; \
             } \
-        } while (0); //Local free() macro
+        } //Local free() macro
 
     currentMACProtectedSaltedData=(unsigned char **)malloc((sizeof(unsigned char *))*numDocumentDBCols);
     for (cont=0;cont<numDocumentDBCols;cont++) //Initialize pointers.
@@ -714,7 +714,7 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
     char *cert_pem=NULL;
     char *ca_pem=NULL;
     #define cmeWebServiceSetupFree() \
-        do { \
+        { \
             cmeFree(key_pem); \
             cmeFree(cert_pem); \
             cmeFree(ca_pem); \
@@ -722,7 +722,7 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
             { \
                 MHD_stop_daemon (webServiceDaemon); \
             } \
-        } while (0); //Local free() macro.
+        } //Local free() macro.
 
     if (useSSL) //HTTPS
     {
@@ -802,7 +802,7 @@ int cmeWebServiceInitAdminSetup (const char *orgKey)
     char *dbFilePath=NULL;
     char **resultRegisterCols=NULL;
     #define cmeWebServiceInitAdminSetupFree() \
-        do { \
+        { \
             cmeFree(dbFilePath); \
             if (pDB) \
             { \
@@ -827,7 +827,7 @@ int cmeWebServiceInitAdminSetup (const char *orgKey)
             { \
                 cmeFree(columnValuesToMatch[cont]); \
             } \
-        } while (0); //Local free() macro.
+        } //Local free() macro.
 
     cmeStrConstrAppend(&(columnValues[6]),"%s",cmeAdminDefaultUserId);
     cmeStrConstrAppend(&(columnValues[7]),"%s",cmeAdminDefaultOrgId);
@@ -924,7 +924,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                                          "organizations","storage","documentTypes","engineCommands","transactions","meta",
                                          "filterWhitelist","filterBlacklist"};
     #define cmeWebServiceCheckPermissionsFree() \
-        do { \
+        { \
             cmeFree(dbFilePath); \
             cmeFree(currentTableName); \
             cmeFree(lcaseMethod); \
@@ -951,7 +951,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                 } \
                 cmeFree(resultRegisterCols); \
             } \
-        } while (0); //Local free() macro.
+        } //Local free() macro.
 
     *responseCode=0;
     //Check that all resource classes listed in the URL are valid:
@@ -1100,7 +1100,7 @@ int cmeWebServiceInitOrgSetup (const char *orgKey)
     char *dbFilePath=NULL;
     char **resultRegisterCols=NULL;
     #define cmeWebServiceInitOrgSetupFree() \
-        do { \
+        { \
             cmeFree(dbFilePath); \
             if (pDB) \
             { \
@@ -1123,7 +1123,7 @@ int cmeWebServiceInitOrgSetup (const char *orgKey)
             { \
                 cmeFree(columnValuesToMatch[cont]); \
             } \
-        } while (0); //Local free() macro.
+        } //Local free() macro.
 
     cmeStrConstrAppend(&(columnValues[0]),"Default DSE organization");
     cmeStrConstrAppend(&(columnValues[1]),"TBD");
@@ -1190,7 +1190,7 @@ int cmeWebServiceInitStorageSetup (const char *orgKey)
     char *dbFilePath=NULL;
     char **resultRegisterCols=NULL;
     #define cmeWebServiceInitStorageSetupFree() \
-        do { \
+        { \
             cmeFree(dbFilePath); \
             if (pDB) \
             { \
@@ -1213,7 +1213,7 @@ int cmeWebServiceInitStorageSetup (const char *orgKey)
             { \
                 cmeFree(columnValuesToMatch[cont]); \
             } \
-        } while (0); //Local free() macro.
+        } //Local free() macro.
 
     cmeStrConstrAppend(&(columnValues[0]),"Default DSE storage");
     cmeStrConstrAppend(&(columnValues[1]),"localhost");

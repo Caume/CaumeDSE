@@ -1,3 +1,7 @@
+2019-07-26 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+        * crypto.c, engine_admin.c:  Fixed several issues with compatibility adjustments
+        for OpenSSL 1.1.x (...CTX_new(), ... CTX_free()).
+
 2019-07-25 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 	* crypto.c (...Init, ...Final):  Fixed compatibility problems with
 	OpenSSL 1.1.x by using recommended functions (...CTX_new(), ... CTX_free()).
