@@ -1,7 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 1.0.2
-
-NOTE: Please read section II, in regard to the APLHA status
-of this software and its implications!
+Caume Data Security Engine (CaumeDSE) version 1.0.3
 
 CONTENTS
 ========
@@ -126,20 +123,15 @@ will remain on your side.
 II. Status
 ----------
 
-Right now, the software is in a stable but initial release, which means:
+Right now, the software is in a stable release:
 
-	* Planned functionality is still incomplete and some features could
-	  be added, changed or removed before settling on a feature set for
-	  first release.
-
-	* Testing (performance, stability and security) has not been tested
-	  moderately.
+	* Basic functionality is complete and tested but some features are
+	  still pending.
 
 	* Basic documentation is available.
 
-At this stage you may try the software for small projects and prototypes.  
-
-Please take a look at section VI (Collaborating).
+If you would like to collaborate Please take a look at section VI 
+(Collaborating).
 
 
 III. License
@@ -150,7 +142,7 @@ General Public License version 3 by the Copyright holder, with the
 additional exemption that compiling, linking, and/or using OpenSSL is
 allowed.
 
-The software is Copyright 2010-2017 by Omar Alejandro Herrera Reyna.
+The software is Copyright 2010-2021 by Omar Alejandro Herrera Reyna.
 
 Check licensing and copyright details for CaumeDSE and other included
 software in the file called COPYING and in the headers of the source code

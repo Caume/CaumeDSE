@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2019 by Omar Alejandro Herrera Reyna
+Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -463,7 +463,7 @@ int cmeResultMemTableClean ()
 int cmeMemTable (sqlite3 *db, const char *sqlQuery,char ***pQueryResult,
                  int *numRows, int *numColumns)
 {
-    int result;    char *pzErrmsg=NULL; // TODO (OHR#2#): Delete pErrmsg from parameters; passing back errors from sqlite3 is complicated since associated memory needs to be freed with sqlite3_free. We will deal with those errors only within functions that call sqlite functions directly!
+    int result __attribute__((unused));    char *pzErrmsg=NULL; // TODO (OHR#2#): Delete pErrmsg from parameters; passing back errors from sqlite3 is complicated since associated memory needs to be freed with sqlite3_free. We will deal with those errors only within functions that call sqlite functions directly!
     //TODO (ANY#8#): replace call to sqlite3_get_table() with calls to sqlite3_exec() and use PRAGMA table_info
     // This is because sqlite3_get_table is apparently obsolete (??) and should be avoided, according to docs.
     result=sqlite3_get_table(db, sqlQuery, pQueryResult, numRows, numColumns,
@@ -2117,7 +2117,7 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
 
 int cmeMemTableWithTableColumnNames (sqlite3 *db, const char *tableName)
 {
-    int cont,result,numCols;
+    int cont,result __attribute__((unused)),numCols;
     const int columnNameIndex=1;        //Index for column names within internal structure of SQLite's PRAGMA table_info().
     char *sqlQuery=NULL;
     char **tmpColumnMemTable=NULL;

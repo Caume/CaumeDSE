@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2018 by Omar Alejandro Herrera Reyna
+Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -116,7 +116,7 @@ int cmePerlParserInstruction (char *perlInstruction, PerlInterpreter *myPerl)
 
 int cmePerlParserRun (PerlInterpreter *myPerl)
 {
-    int result=0;
+    int result __attribute__((unused))=0;
     result=perl_run(myPerl);
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmePerlParserRun(), perl_run() executed"

@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2018 by Omar Alejandro Herrera Reyna
+Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -741,7 +741,7 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
         }
         webServiceDaemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY | MHD_USE_SSL,
                                             port,NULL,NULL,
-                                            &cmeWebServiceAnswerConnection,NULL,
+                                            (MHD_AccessHandlerCallback)&cmeWebServiceAnswerConnection,NULL,
                                             MHD_OPTION_NOTIFY_COMPLETED,&cmeWebServiceRequestCompleted,NULL,
                                             MHD_OPTION_HTTPS_MEM_KEY,key_pem,
                                             MHD_OPTION_HTTPS_MEM_CERT,cert_pem,
@@ -763,7 +763,7 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
         // We would use webServiceDaemon = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,  for multiple threads. But right now we use a single thread-
         webServiceDaemon = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY,
                                             port, NULL, NULL,
-                                            &cmeWebServiceAnswerConnection,NULL,
+                                            (MHD_AccessHandlerCallback)&cmeWebServiceAnswerConnection,NULL,
                                             MHD_OPTION_NOTIFY_COMPLETED,&cmeWebServiceRequestCompleted,NULL,
                                             MHD_OPTION_END);
         if (NULL == webServiceDaemon)

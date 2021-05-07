@@ -1,3 +1,9 @@
+2021-05-07 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+	* *.c: Fixed unused-but-set variable warnings; fixed libmicrohttpd conversion 
+	warnings.
+	* db.c, db.h, configure.ac: Deleted local sqlite source code copy and made 
+	changes to look for and include sqlite3 header files and libraries
+
 2019-07-26 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
         * crypto.c, engine_admin.c:  Fixed several issues with compatibility adjustments
         for OpenSSL 1.1.x (...CTX_new(), ... CTX_free()).

@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2018 by Omar Alejandro Herrera Reyna
+Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -46,7 +46,7 @@ Copyright 2010-2018 by Omar Alejandro Herrera Reyna
 
 void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
 {
-    int cont,cont2,written,ctSize,result;
+    int cont,cont2,written,ctSize,result __attribute__((unused));
     unsigned char password[10]= "Password";
     unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
     char algorithm[] = cmeDefaultEncAlg;
@@ -282,7 +282,7 @@ void testCryptoHMAC ()
 
 void testPerl (PerlInterpreter *myPerl)
 {
-    int result=0;
+    int result __attribute__((unused))=0;
     int cont=0;
     char *ilist[2];
     char *rlist[2];
@@ -319,7 +319,7 @@ void testPerl (PerlInterpreter *myPerl)
 
 void testDB (PerlInterpreter* myPerl)
 {
-    int cont,cont2,result;
+    int cont,cont2,result __attribute__((unused));
     char *ilist[2];
     int numRows=0;
     int numColumns=0;
@@ -373,7 +373,7 @@ void testDB (PerlInterpreter* myPerl)
 
 void testCSV ()
 {
-    int cont, cont2, result;
+    int cont, cont2, result __attribute__((unused));
     int numCols=0;
     int numRows=0;
     int processedRows=0;
@@ -464,7 +464,7 @@ void testCSV ()
 
 void testEngMgmnt ()
 {
-    int result;
+    int result __attribute__((unused));
     result=cmeSetupEngineAdminDBs();
 }
 

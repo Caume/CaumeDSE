@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2019 by Omar Alejandro Herrera Reyna
+Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -30,9 +30,6 @@ Copyright 2010-2019 by Omar Alejandro Herrera Reyna
     Eric Young (eay@cryptsoft.com).
     This product includes software written by
     Tim Hudson (tjh@cryptsoft.com).
-
-    This product includes software from the SQLite library that is in
-    the public domain (http://www.sqlite.org/copyright.html).
 
     This product includes software from the GNU Libmicrohttpd project, Copyright
     © 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
@@ -269,7 +266,7 @@ Copyright 2010-2019 by Omar Alejandro Herrera Reyna
 #define cmeIDDLogsDBTransactions_authenticated_name "authenticated"         //Column name for WSID column authentication flag
 #define cmeIDDURIMaxDepth 12                                        //Max. # of elements in an URI {excluding parameters}.
 
-#define cmeCopyright "Copyright 2010-2019 by Omar Alejandro Herrera Reyna."   //Copyright string.
+#define cmeCopyright "Copyright 2010-2021 by Omar Alejandro Herrera Reyna."   //Copyright string.
 #ifdef PACKAGE_VERSION
 #define cmeEngineVersion PACKAGE_VERSION
 #else
@@ -483,7 +480,7 @@ EXTERN_C void xs_init (pTHX); //for embedded perl interpreter (using dynamically
 
 // --- CaumeDSE includes
 #include "crypto.h"
-#include "sqlite/sqlite3.h"
+#include "sqlite3.h"
 #include "db.h"
 #include "perl_interpreter.h"
 #include "function_tests.h"

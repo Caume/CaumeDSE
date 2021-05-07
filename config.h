@@ -54,6 +54,9 @@
 /* Define to 1 if you have the `pthread' library (-lpthread). */
 #define HAVE_LIBPTHREAD 1
 
+/* Define to 1 if you have the `sqlite3' library (-lsqlite3). */
+#define HAVE_LIBSQLITE3 1
+
 /* Define to 1 if you have the `util' library (-lutil). */
 #define HAVE_LIBUTIL 1
 
@@ -103,6 +106,12 @@
 
 /* Define to 1 if you have the `setlocale' function. */
 #define HAVE_SETLOCALE 1
+
+/* Define to 1 if you have the <sqlite3ext.h> header file. */
+#define HAVE_SQLITE3EXT_H 1
+
+/* Define to 1 if you have the <sqlite3.h> header file. */
+#define HAVE_SQLITE3_H 1
 
 /* Define to 1 if you have the <stdarg.h> header file. */
 #define HAVE_STDARG_H 1
@@ -156,7 +165,7 @@
 #define PACKAGE_NAME "CaumeDSE"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "CaumeDSE 1.0.2"
+#define PACKAGE_STRING "CaumeDSE 1.0.3"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "caumedse"
@@ -165,7 +174,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.0.2"
+#define PACKAGE_VERSION "1.0.3"
 
 /* Path for default data and system databases. */
 #define PATH_DATADIR "/opt/cdse"
@@ -178,7 +187,7 @@
 #define STDC_HEADERS 1
 
 /* Version number of package */
-#define VERSION "1.0.2"
+#define VERSION "1.0.3"
 
 /* Define for Solaris 2.5.1 so the uint64_t typedef from <sys/synch.h>,
    <pthread.h>, or <semaphore.h> is not used. If the typedef were allowed, the

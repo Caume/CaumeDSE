@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2019 by Omar Alejandro Herrera Reyna
+Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -331,7 +331,7 @@ int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
         { \
                 if (HexStrToByteBuffer) \
                 { \
-                    memset(HexStrToByteBuffer,0,strlen(password)/2); \
+                    memset(HexStrToByteBuffer,0,strlen((const char *)password)/2); \
                     cmeFree(HexStrToByteBuffer); \
                 } \
                 if (buf) \

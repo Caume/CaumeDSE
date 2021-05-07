@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.68])
-AC_INIT([CaumeDSE], [1.0.2], [0h3rr3r4@gmail.com])
+AC_INIT([CaumeDSE], [1.0.3], [0h3rr3r4@gmail.com])
 AM_INIT_AUTOMAKE([dist-bzip2 color-tests readme-alpha])
 AC_CONFIG_SRCDIR([function_tests.c])
 AC_CONFIG_HEADERS([config.h])
@@ -58,6 +58,9 @@ AC_CHECK_LIB([pthread], [main], [], AC_MSG_ERROR([Library libpthread not found!]
 AC_CHECK_LIB([util], [main], [], AC_MSG_ERROR([Library libutil not found!]))
 # FIXME: Replace `main' with a function in `-lgnutls':
 AC_CHECK_LIB([gnutls], [main], [], AC_MSG_ERROR([Library gnutls not found!]))
+# FIXME: Replace `main' with a function in `-lsqlite3':
+AC_CHECK_LIB([sqlite3], [main], [], AC_MSG_ERROR([Library sqlite3 not found!]))
+
 
 # Checks for header files.
 AC_MSG_NOTICE([ ----- Looking for required C include files -----])
@@ -75,6 +78,11 @@ AC_CHECK_HEADERS([stdio.h], [], AC_MSG_ERROR([Include file <stdio.h> not found!]
 AC_CHECK_HEADERS([sys/types.h], [], AC_MSG_ERROR([Include file <sys/types.h> not found!]))
 AC_CHECK_HEADERS([sys/stat.h], [], AC_MSG_ERROR([Include file <sys/stat.h> not found!]))
 AC_CHECK_HEADERS([sys/select.h], [], AC_MSG_ERROR([Include file <sys/select.h> not found!]))
+
+# Check for sqlite3 required headers
+AC_MSG_NOTICE([ ----- Looking for required sqlite3 include files -----])
+AC_CHECK_HEADERS([sqlite3.h], [], AC_MSG_ERROR([Include file <sqlite3.h> not found!]))
+AC_CHECK_HEADERS([sqlite3ext.h], [], AC_MSG_ERROR([Include file <sqlite3ext.h> not found!]))
 
 # Check for libmicrohttpd required headers
 AC_MSG_NOTICE([ ----- Looking for required Libmicrohttpd include files -----])
@@ -137,7 +145,7 @@ if test $HARDEN == 'yes' ; then
 	check_cc_flag([-fno-strict-overflow], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-overflow"], [], [-fno-strict-overflow])
 	check_cc_flag([-fno-strict-aliasing], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fno-strict-aliasing"], [], [-fno-strict-aliasing])
 	# This one will likely succeed, even on platforms where it does nothing.
-	check_cc_flag([-D_FORTIFY_SOURCE=2], [HARDEN_CFLAGS="$HARDEN_CFLAGS -D_FORTIFY_SOURCE=2"], [], [-D_FORTIFY_SOURCE=2])                                    
+	check_cc_flag([-D_FORTIFY_SOURCE=2], [HARDEN_CFLAGS="$HARDEN_CFLAGS -D_FORTIFY_SOURCE=2"], [], [-D_FORTIFY_SOURCE=2])
 	check_cc_flag([-fstack-protector-all],
 		[check_link_flag([-fstack-protector-all], [HARDEN_CFLAGS="$HARDEN_CFLAGS -fstack-protector-all"
 			check_cc_flag([-Wstack-protector], [HARDEN_CFLAGS="$HARDEN_CFLAGS -Wstack-protector"],

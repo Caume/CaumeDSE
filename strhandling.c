@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2018 by Omar Alejandro Herrera Reyna
+Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -103,8 +103,8 @@ int cmeBytesToHexstr (unsigned const char *bytearray, unsigned char **hexstr, in
 
 int cmeStrToB64(unsigned char *bufIn, unsigned char **bufOut, int biLen, int *written)
 {
-    int result;
-    int inlen=0;
+    int result __attribute__((unused));
+    int inlen __attribute__((unused)) =0;
     BIO *bio=NULL;
     BIO *b64=NULL;
     BUF_MEM *bptr;
@@ -352,7 +352,7 @@ int cmeConstructWebServiceTableResponse (const char **resultTable, const int tab
                                          const char **argumentElements, const char *method, const char *url, const char *documentId,
                                          char ***responseHeaders, char **resultTableStr, int *responseCode)
 {
-    int result;
+    int result __attribute__((unused));
     const char *pOutputType=NULL;       //Ptr to outputType parameter withi argumentElements. No need to free.
 
     if (tableCols) // If column names, print them.

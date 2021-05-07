@@ -1,5 +1,5 @@
 /***
-Copyright 2010-2019 by Omar Alejandro Herrera Reyna
+Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 
     Caume Data Security Engine, also known as CaumeDSE is released under the
     GNU General Public License by the Copyright holder, with the additional
@@ -51,7 +51,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
 {
     #define GET             0
     #define POST            1
-    int cont,responseEncoding,result;
+    int cont,responseEncoding __attribute__((unused)),result;
     int exitcode=1;
     int numUrlElements=0;
     int responseCode=0;
@@ -160,7 +160,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         if (0 == strcmp (method, "POST"))
         {   // NOTE (OHR#9#): For MHD_create_post_processor to work properly, encoding (form "enctype" / header "Content-Type") must be defined;
             //                otherwise NULL will be returned. It should be either "application/x-www-form-urlencoded", "text/plain" or "multipart/form-data".
-            con_info->postProcessor=MHD_create_post_processor(connection,cmeWSPostBufferSize,&cmeWebServicePOSTIteration,(void *) con_info);
+            con_info->postProcessor=MHD_create_post_processor(connection,cmeWSPostBufferSize,(MHD_PostDataIterator)&cmeWebServicePOSTIteration,(void *) con_info);
             if (!con_info->postProcessor) //Warning, can't create post processor; we probably need an emulated POST with a GET style method (i.e. URL parameters).
             {
 #ifdef DEBUG
@@ -240,8 +240,8 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     fprintf(stdout,"CaumeDSE Debug: cmeWebServiceAnswerConnection(), new %s request for %s using version %s\n", method, url, version);
 #endif
     cmeWebServiceParseURL(url, &urlElements, &numUrlElements);  //Parse URL.
-    MHD_get_connection_values (connection, MHD_GET_ARGUMENT_KIND, &cmeWebServiceParseKeys, argumentElements);   //Parse Headers.
-    MHD_get_connection_values (connection, MHD_HEADER_KIND, &cmeWebServiceParseKeys, headerElements);   //Parse Arguments.
+    MHD_get_connection_values (connection, MHD_GET_ARGUMENT_KIND, (MHD_KeyValueIterator)&cmeWebServiceParseKeys, argumentElements);   //Parse Headers.
+    MHD_get_connection_values (connection, MHD_HEADER_KIND, (MHD_KeyValueIterator)&cmeWebServiceParseKeys, headerElements);   //Parse Arguments.
     result=cmeWebServiceProcessRequest (&responseText,&responseFilePath,&responseHeaders,&responseCode,
                                         url,(const char **)urlElements,numUrlElements,
                                         (const char **)headerElements,(const char **)argumentElements,method,connection);
@@ -394,7 +394,8 @@ int cmeWebServiceParseKeys(void *cls, enum MHD_ValueKind kind, const char *key, 
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceParseKeys(), ARGUMENT:, key:%s, value:%s\n", key, value);
 #endif
     }
-    else if (kind==MHD_RESPONSE_HEADER_KIND)
+//MHD_RESPONSE_HEADER_KIND DEPRECATED in recent versions of libmicrohttpd:
+/*    else if (kind==MHD_RESPONSE_HEADER_KIND)
     {
         //Jump to last free responseElements space
         while ((((char **)cls)[cont])&&(cont<cmeWSHTTPMaxResponseHeaders)) //We iterate each time for thread safety. No static vars. then.
@@ -411,6 +412,7 @@ int cmeWebServiceParseKeys(void *cls, enum MHD_ValueKind kind, const char *key, 
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceParseKeys(), RESPONSE HEADER:, key:%s, value:%s\n", key, value);
 #endif
     }
+*/
     else if (kind==MHD_HEADER_KIND)
     {
         //Jump to last free headerElements space
@@ -7105,7 +7107,7 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
                                     void **coninfo_cls, enum MHD_RequestTerminationCode toe)
 {
     #define POST            1
-    int cont,result;
+    int cont,result __attribute__((unused));
     long fileSize,lcont;
     FILE *fp=NULL;
     struct cmeWebServiceConnectionInfoStruct *con_info = *coninfo_cls;
