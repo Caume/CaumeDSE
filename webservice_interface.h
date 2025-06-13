@@ -93,6 +93,8 @@ int cmeWebServiceProcessEngineResource (char **responseText, int *responseCode, 
 int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
                                            const char *url, const char **urlElements, const char **argumentElements, const char *method);
 //Function to process organization resource requests
+int cmeWebServiceProcessRoleTableClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                  const char *url, const char **urlElements, const char **argumentElements, const char *method);
 int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeaders, int *responseCode,
                                      const char *url, const char **urlElements, const char **argumentElements, const char *method);
 //Function to process organization class resource requests

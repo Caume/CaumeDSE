@@ -32,7 +32,7 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
     Tim Hudson (tjh@cryptsoft.com).
 
     This product includes software from the GNU Libmicrohttpd project, Copyright
-    © 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
+    Â© 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
     2008, 2009, 2010 , 2011, 2012 Free Software Foundation, Inc.
 
     This product includes software from Perl5, which is Copyright (C) 1993-2005,
@@ -296,6 +296,10 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
                                  "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/roleTable/{roleTable}" \
                                  "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                  "OptionalParameters...]<br></code><br>" //RoleTable resource options.
+#define cmeWSMsgRoleTableClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
+                                    "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/roleTables" \
+                                    "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                    "OptionalParameters...]<br></code><br>" //RoleTable class resource options.
 
 #define cmeWSMsgOrgOptions  "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                             "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}" \
