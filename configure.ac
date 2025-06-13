@@ -6,7 +6,7 @@ AC_INIT([CaumeDSE], [1.0.3], [0h3rr3r4@gmail.com])
 AM_INIT_AUTOMAKE([dist-bzip2 color-tests readme-alpha])
 AC_CONFIG_SRCDIR([function_tests.c])
 AC_CONFIG_HEADERS([config.h])
-AC_CONFIG_MACRO_DIR([m4])
+AC_CONFIG_MACRO_DIRS([m4 m4.local])
 
 # Checks for programs.
 AC_PROG_CXX
@@ -19,20 +19,21 @@ AC_PROG_MAKE_SET
 AC_PROG_RANLIB
 AM_PROG_CC_C_O
 
-PERL=''
-AC_CHECK_PROG(PERL,perl,perl,[])
+AC_PATH_PROGS([PERL], [perl5 perl])
 perl_version="5.10.0"
-if test "x$PERL" != "x"; then
-	AC_MSG_CHECKING(for perl version >= $perl_version)
-	$PERL -e "use $perl_version;" > /dev/null 2>&1
-	if test $? -ne 0; then
-    		AC_MSG_RESULT(no);
-  	else
-    		AC_MSG_RESULT(ok);
-  	fi
-else
-  	AC_MSG_WARN(could not find perl!)
-fi
+AS_IF([test -n "$PERL"], [
+        AC_MSG_CHECKING([for perl version >= $perl_version])
+        $PERL -e "use $perl_version;" > /dev/null 2>&1
+        AS_IF([test $? -ne 0],
+                [AC_MSG_ERROR([perl version $perl_version or newer is required])],
+                [AC_MSG_RESULT([yes])])
+        PERL_CCOPTS=`$PERL -MExtUtils::Embed -e ccopts --`
+        PERL_LDOPTS=`$PERL -MExtUtils::Embed -e ldopts --`
+        PERL_INCLUDES=`$PERL -MExtUtils::Embed -e perl_inc`
+    ],
+    [AC_MSG_ERROR([could not find a suitable perl interpreter])])
+AC_SUBST([PERL_CCOPTS])
+AC_SUBST([PERL_LDOPTS])
 
 # Checks for libraries.
 AC_MSG_NOTICE([ ----- Looking for required libraries -----])
@@ -105,7 +106,6 @@ AC_CHECK_HEADERS([gnutls/x509.h], [], AC_MSG_ERROR([Include file <gnutls/x509.h>
 
 # Check for Perl embedded interpreter required headers
 AC_MSG_NOTICE([ ----- Looking for required PERL interpreter include files -----])
-PERL_INCLUDES=`$PERL -MExtUtils::Embed -e perl_inc`
 oldCPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$CPPFLAGS $PERL_INCLUDES"
 AC_CHECK_HEADERS([EXTERN.h], [], AC_MSG_ERROR([Include file <EXTERN.h> not found!]))
@@ -171,7 +171,7 @@ AC_SUBST([HARDEN_LDFLAGS])
 # --- End of hardening section
 
 # Set default cflags for Makefile.am
-GENERAL_CFLAGS="-DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall `$PERL -MExtUtils::Embed -e ccopts --`"
+GENERAL_CFLAGS="-DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall $PERL_CCOPTS"
 RELEASE_CFLAGS="-s -DRELEASE"
 DEBUG_CFLAGS="-g -DDEBUG"
 AC_SUBST(GENERAL_CFLAGS)
