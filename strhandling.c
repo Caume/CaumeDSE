@@ -54,7 +54,7 @@ int cmeHexstrToBytes (unsigned char **bytearray, unsigned const char *hexstr)
     {
 #ifdef ERROR_LOG
            fprintf(stderr,"CaumeDSE Error: cmeHexstrToBytes(), HexStr (%s) size (%d)"
-                   "must be odd!\n",hexstr,(int)strlen((char *)hexstr));
+                    "must be even!\n",hexstr,(int)strlen((char *)hexstr));
 #endif
         return(1);
     }
@@ -420,7 +420,7 @@ int cmex509GetElementFromDN (const char* DN, const char *elementId, char **eleme
     if (!DN) //Error, x509 certificate DN can't be null!
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmex509GetCNFromDN(), Error: NULL DN!\n");
+        fprintf(stderr,"CaumeDSE Error: cmex509GetElementFromDN(), Error: NULL DN!\n");
 #endif
         *element=NULL;
         *elementLen=0;
@@ -429,7 +429,7 @@ int cmex509GetElementFromDN (const char* DN, const char *elementId, char **eleme
     if (!elementId) //Error, x509 certificate elementId can't be null!
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmex509GetCNFromDN(), Error: NULL elementId!\n");
+        fprintf(stderr,"CaumeDSE Error: cmex509GetElementFromDN(), Error: NULL elementId!\n");
 #endif
         *element=NULL;
         *elementLen=0;
@@ -438,7 +438,7 @@ int cmex509GetElementFromDN (const char* DN, const char *elementId, char **eleme
     if ((strlen(elementId)>2)||(strlen(elementId)<1)) //Error, x509 certificate elementId can't >2 or <1!
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmex509GetCNFromDN(), Error: elementId has wrong length!\n");
+        fprintf(stderr,"CaumeDSE Error: cmex509GetElementFromDN(), Error: elementId has wrong length!\n");
 #endif
         *element=NULL;
         *elementLen=0;
@@ -472,7 +472,7 @@ int cmex509GetElementFromDN (const char* DN, const char *elementId, char **eleme
     if (!(elementLen)) // element nos found (elementLen==0)
     {
 #ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: cmex509GetCNFromDN(), Warning: element not found.\n");
+        fprintf(stdout,"CaumeDSE Debug: cmex509GetElementFromDN(), Warning: element not found.\n");
 #endif
         *element=NULL;
         *elementLen=0;
@@ -484,7 +484,7 @@ int cmex509GetElementFromDN (const char* DN, const char *elementId, char **eleme
         strncpy(*element,&(DN[cont]),*elementLen);      //Copy element to destination char *.
         (*element)[*elementLen]='\0';                   //Add end of string char.
 #ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: cmex509GetCNFromDN(), %s element: %s , length: %d.\n",elementId,*element,*elementLen);
+        fprintf(stdout,"CaumeDSE Debug: cmex509GetElementFromDN(), %s element: %s , length: %d.\n",elementId,*element,*elementLen);
 #endif
         return(0);
     }
