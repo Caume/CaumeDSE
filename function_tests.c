@@ -92,6 +92,10 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     if (fp)
     {
         result=fwrite(ciphertext,cont2,1,fp);
+        if (result != 1)
+        {
+            printf("---error writing file '/opt/cdse/testfiles/enciphered.bin'\n");
+        }
         fflush(fp);
         fclose(fp);
     }
