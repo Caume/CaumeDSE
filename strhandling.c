@@ -198,14 +198,17 @@ int cmeStrConstrAppend (char **resultStr, const char *addString, ...)
             {
                 sqlBufLen*=2; //Double buffer and try again (e.g. glibc 2.0.6 an previous).
             }
-            if(!(tmpAddString=(char *)realloc(tmpAddString,sqlBufLen)))
             {
+                char *tmpPtr = (char *)realloc(tmpAddString, sqlBufLen);
+                if(!tmpPtr)
+                {
 #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeStrConstrAppend(), Error in malloc(), "
-                        "out of memory?\n");
+                    fprintf(stderr,"CaumeDSE Error: cmeStrConstrAppend(), Error in malloc(), out of memory?\n");
 #endif
-                cmeStrConstrAppendFree();
-                return(2);  //if error, exit.
+                    cmeStrConstrAppendFree();
+                    return(2);  //if error, exit.
+                }
+                tmpAddString = tmpPtr;
             }
             flag=1;
         }

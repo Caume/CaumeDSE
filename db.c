@@ -2147,7 +2147,17 @@ int cmeMemTableWithTableColumnNames (sqlite3 *db, const char *tableName)
     cmeResultMemTableRows=0;
     cmeMemTableWithTableColumnNamesFree();
     return (0);
-}
+            char *tmpPtr = (char *)realloc(*sanitizedString, sizeof(char)*(sanitizedStringLen+1));
+            if(!tmpPtr)
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSanitizeStrForSQL(), realloc() out of memory!\n");
+#endif
+                cmeFree(*sanitizedString);
+                *sanitizedString=NULL;
+                return(2);
+            }
+            *sanitizedString = tmpPtr; //Add 1 character to the sanitized string.
 
 int cmeSanitizeStrForSQL (const char *sourceString, char **sanitizedString)
 {
