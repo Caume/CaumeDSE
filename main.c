@@ -102,7 +102,6 @@ int main(int argc, char *argv[], char *env[])
     #define mainFree() \
         do { \
             cmeFree(title); \
-            cmeFree(title); \
             end(&bufIn,&bufOut,&cdsePerl); \
             PERL_SYS_TERM(); \
         } while (0); //Local free() macro
