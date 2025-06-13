@@ -106,6 +106,10 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
 //Function to process storage class resource requests
 int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeaders, int *responseCode,
                                       const char *url, const char **urlElements, const char **argumentElements, const char *method);
+//Function to process documentType class resource requests
+int cmeWebServiceProcessDocumentTypeClass (char **responseText, int *responseCode,
+                                           const char *url, const char **urlElements,
+                                           const char **argumentElements, const char *method);
 //Function to process documentType resource requests
 int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **responseFilePath, int *responseCode,
                                               const char *url, const char **urlElements, const char **argumentElements, const char *method);
