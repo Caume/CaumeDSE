@@ -42,6 +42,7 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
     by Larry Wall and others.
 
 ***/
+#define _GNU_SOURCE
 #include "common.h"
 
 int cmeDirectoryExists (const char *dirPath)
@@ -73,11 +74,13 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
     int flag=0;
     int fpEOF=0;
     FILE *fp=NULL;
+    ssize_t lineLen=0;
     char **colNames=NULL;
     char *resStr=NULL;
     char defaultColName []="Column_";
     char curElement[cmeMaxCSVElemSize];
-    char curRow[cmeMaxCSVRowSize];      // TODO (OHR#2#): Change to a dynamic memory method to be more efficient and avoid overflows with big tables
+    char *curRow=NULL;                   // Buffer for current row, allocated dynamically
+    size_t curRowSize=0;                 // Current size of curRow buffer
 
     if(rowEnd<rowStart) //Error, incorrect start/end row; Rows are inclusive, starting from row 0
                         //i.e., if rowEnd==rowStart, then that row (one only) is read.
@@ -88,7 +91,6 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
 #endif
         return(1);
     }
-    memset(curRow,0,cmeMaxCSVRowSize);
     fp=fopen(fName,"r");
     if(!fp)
     {
@@ -102,7 +104,8 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
     fprintf(stdout,"CaumeDSE Debug: cmeCSVFileRowsToMem(), fopen(), CSV file "
             "%s opened for reading.\n",fName);
 #endif
-    resStr=fgets(curRow,cmeMaxCSVRowSize,fp);
+    lineLen = getline(&curRow,&curRowSize,fp);
+    resStr=(lineLen==-1)?NULL:curRow;
     cont=0;
     cont2=1;
     do          //Get # of columns
@@ -238,7 +241,8 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
     }
     for (rowCont=1;rowCont<rowStart;rowCont++) //Skip to starting row.
     {
-        resStr=fgets(curRow,cmeMaxCSVRowSize,fp);
+        lineLen = getline(&curRow,&curRowSize,fp);
+        resStr=(lineLen==-1)?NULL:curRow;
         if (feof(fp)) //End of File
         {
 #ifdef ERROR_LOG
@@ -268,7 +272,8 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
     {
         cont=0;
         cont2=0;
-        resStr=fgets(curRow,cmeMaxCSVRowSize,fp);  //Read one row.
+        lineLen = getline(&curRow,&curRowSize,fp);  //Read one row.
+        resStr=(lineLen==-1)?NULL:curRow;
         rowCont++;
         if (resStr==NULL)  //Error or EOF
         {
@@ -361,6 +366,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                 "(not counting header row, if required), from CSV file: %s!\n",*processedRows,fName);
 #endif
     fclose(fp);
+    cmeFree(curRow);
     return (0);
 }
 
