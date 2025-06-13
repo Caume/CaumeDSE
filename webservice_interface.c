@@ -975,15 +975,16 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
                         "documentType class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-            cmeStrConstrAppend(responseText,"<b>403 ERROR No methods are currently available for this resource type.</b><br><br>"
-               "Resource: '%s'. method: '%s', url: '%s'",urlElements[numUrlElements-1],method,url);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, no methods are currently available for this resource type."
-                    "Unknown resource: '%s'. Method: '%s', url: '%s'\n",urlElements[numUrlElements-1],method,url);
-#endif
-            cmeWebServiceProcessRequestFree();
-            *responseCode=403; //Response: Error 404 (resource not found).
-            return (16);
+            result=cmeWebServiceProcessDocumentTypeClass(responseText, responseCode,
+                                                         url, urlElements, argumentElements, method);
+            if (result)
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
         }
         else if ((numUrlElements==6)&&(strcmp(urlElements[4],"documentTypes")==0)) //documentType resource
         {
@@ -5924,6 +5925,43 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
         cmeWebServiceProcessStorageClassFree();
         *responseCode=405;
         return(22);
+    }
+}
+
+int cmeWebServiceProcessDocumentTypeClass (char **responseText, int *responseCode,
+                                           const char *url, const char **urlElements,
+                                           const char **argumentElements, const char *method)
+{
+    int cont;
+    const char *docTypes[3]={"file.csv","file.raw","script.perl"};
+
+    if(!strcmp(method,"GET"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Available document types:</b><br>");
+        for (cont=0; cont<3; cont++)
+        {
+            cmeStrConstrAppend(responseText,"%s<br>",docTypes[cont]);
+        }
+        *responseCode=200;
+        return(0);
+    }
+    else if(!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for document type class resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",cmeWSMsgDocumentTypeClassOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=200;
+        return(0);
+    }
+    else
+    {
+        cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                           "method is not allowed for this documentType class resource."
+                           "METHOD: '%s' URL: '%s'."
+                           "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgDocumentTypeClassOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=405;
+        return(2);
     }
 }
 
