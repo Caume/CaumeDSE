@@ -446,7 +446,17 @@ int cmex509GetElementFromDN (const char* DN, const char *elementId, char **eleme
     }
     DNLen=strlen(DN);
     cont=0;
-    // TODO (ANY#4#): Verify that elementId is one of the following valid x509 DN elements: C, ST, L, O, OU or CN
+    // Verify that elementId is a supported DN element
+    if (strcmp(elementId,"C") && strcmp(elementId,"ST") && strcmp(elementId,"L") &&
+        strcmp(elementId,"O") && strcmp(elementId,"OU") && strcmp(elementId,"CN"))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmex509GetElementFromDN(), invalid elementId: %s\n", elementId);
+#endif
+        *element=NULL;
+        *elementLen=0;
+        return (5);
+    }
     if (strlen(elementId)==1)
     {
         while (((DN[cont]!=elementId[0])||(DN[cont+1]!='='))&&(cont<(DNLen-2))) //Find start of element.
