@@ -906,15 +906,16 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
                         "roleTable class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-            cmeStrConstrAppend(responseText,"<b>403 ERROR No methods are currently available for this resource type.</b><br><br>"
-               "Resource: '%s'. method: '%s', url: '%s'",urlElements[numUrlElements-1],method,url);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, no methods are currently available for this resource type."
-                    "Unknown resource: '%s'. Method: '%s', url: '%s'\n",urlElements[numUrlElements-1],method,url);
-#endif
-            cmeWebServiceProcessRequestFree();
-            *responseCode=403; //Response: Error 404 (resource not found).
-            return (15);
+            result=cmeWebServiceProcessRoleTableClass(responseText, responseHeaders, responseCode,
+                                                     url, urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
         }
         else if ((numUrlElements==6)&&(strcmp(urlElements[4],"roleTables")==0))// roleTable resource
         {
@@ -2543,6 +2544,44 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
         cmeWebServiceProcessUserClassFree();
         *responseCode=405;
         return(22);
+    }
+}
+
+int cmeWebServiceProcessRoleTableClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements, const char *method)
+{
+    int cont;
+    const char *tableNames[20]={"documents","users","roleTables","parserScripts","outputDocuments","content",
+                                "contentRows","contentColumns","dbNames","dbTables","tableRows","tableColumns",
+                                "organizations","storage","documentTypes","engineCommands","transactions","meta",
+                                "filterWhitelist","filterBlacklist"};
+    if(!strcmp(method,"GET"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Available role tables:</b><br>");
+        for(cont=0;cont<20;cont++)
+        {
+            cmeStrConstrAppend(responseText,"%s<br>",tableNames[cont]);
+        }
+        *responseCode=200;
+        return(0);
+    }
+    else if(!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for role table class resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",cmeWSMsgRoleTableClassOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=200;
+        return(0);
+    }
+    else
+    {
+        cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                           "method is not allowed for this roleTable class resource."
+                           "METHOD: '%s' URL: '%s'."
+                           "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgRoleTableClassOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=405;
+        return(2);
     }
 }
 
