@@ -2121,18 +2121,7 @@ int cmeMemTableWithTableColumnNames (sqlite3 *db, const char *tableName)
     const int columnNameIndex=1;        //Index for column names within internal structure of SQLite's PRAGMA table_info().
     char *sqlQuery=NULL;
     char **tmpColumnMemTable=NULL;
-        //MEMORY CLEANUP MACRO for local function.
-    #define cmeMemTableWithTableColumnNamesFree() \
-        do { \
-            cmeFree(sqlQuery); \
-        } while (0); //Local free() macro.
-        //Note: results will be located in cmeResultMemTable by pointing it to tmpColumnMemTable (we don't free tmpColumnMemTable).
-
-    cmeResultMemTableClean();
-    cmeStrConstrAppend(&sqlQuery,"PRAGMA table_info(\"%s\");",tableName);
-    result=cmeSQLRows(db,(const char *) sqlQuery,NULL,NULL); //Select all data; no parser script.
-    numCols=cmeResultMemTableRows;
-    if (numCols)
+}
     {
         tmpColumnMemTable=(char **)malloc(sizeof(char *)*numCols); //Reserve memory for column names;
     }

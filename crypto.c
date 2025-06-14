@@ -417,31 +417,19 @@ int cmePrngGetBytes (unsigned char **buffer, int num)
     *buffer=(unsigned char *)malloc(sizeof(unsigned char)*num);    //Note: caller must free memory after use !!
     if (*buffer)
     {
-        result=RAND_bytes(*buffer,num);
-        if(!result) //Error
-        {
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmePrngGetBytes(), Error geting random bytes with"
-                " RAND_bytes()!\n");
-#endif
-            return(1);
-        }
-#ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: cmePrngGetBytes(), obtained %d bytes from PRNG.\n",num);
-#endif
-        return(0);
-    }
-    else
+    char *rndBytes = NULL;
+    /* Obtain random bytes and return them as an hexadecimal string */
+    if (cmePrngGetBytes((unsigned char **)&rndBytes, cmeDefaultIDBytesLen) != 0)
     {
-#ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmePrngGetBytes(), malloc() error allocating buffer for"
-                " %d pseudo random bytes!\n", num);
-#endif
-        return(255);
+        return 1;
     }
-}
 
-int cmeGetRndSalt (char **rndHexSalt)
+    cmeBytesToHexstr((const unsigned char *)rndBytes,
+                     (unsigned char **)rndHexSalt,
+                     cmeDefaultIDBytesLen); /* Caller must free rndHexSalt */
+
+    cmeFree(rndBytes);
+    return 0;
 {
     char *rndBytes=NULL;
 
