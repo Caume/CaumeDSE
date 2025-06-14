@@ -446,9 +446,29 @@ int cmeGetRndSalt (char **rndHexSalt)
     char *rndBytes=NULL;
 
     cmePrngGetBytes((unsigned char **)&rndBytes,cmeDefaultIDBytesLen);  //Get random bytes for salt
-    cmeBytesToHexstr((const unsigned char *)rndBytes,(unsigned char **)rndHexSalt,cmeDefaultIDBytesLen); //Note that caller must free rndHexSalt!
-    cmeFree(rndBytes);
-    return (0);
+    int isGCM=0;
+    unsigned char tag[16];
+    if (strstr(algorithm, "gcm"))
+        isGCM=1;
+    int allocExtra = (isGCM && mode=='e') ? 16 : 0;
+    int inputLen = srcLen;
+    if(isGCM && mode=='d')
+        inputLen = srcLen - 16;
+    if(!(*dstBuf=(unsigned char *)malloc(inputLen+cipherBlockLen+allocExtra+1))) //Error allocating memory!
+    memset(*dstBuf,0,inputLen+cipherBlockLen+allocExtra+1); //clear destination buffer
+        if(isGCM && mode=='d')
+            memcpy(tag, srcBuf+inputLen, 16);
+        cmeCipherUpdate(ctx,(*dstBuf),&written,(unsigned char *)srcBuf,inputLen,mode);
+        if(isGCM && mode=='d')
+            EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag);
+        if(isGCM && mode=='e' && result==0){
+            if(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag)){
+                memcpy((*dstBuf)+cont, tag, 16);
+                cont += 16;
+            } else {
+                exitcode=8;
+            }
+        }
 }
 
 int cmeGetRndSaltAnySize (char **rndHexSalt, int size)
