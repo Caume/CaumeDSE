@@ -732,32 +732,60 @@ int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, co
     {                                                             //Note that Caller must free *dstBuf!
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeDigestByteString(), Error in memory allocation!\n");
+int cmeHMACInit (CME_HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key, int keyLen)
+#if OPENSSL_VERSION_MAJOR >= 3
+    EVP_MAC *mac = EVP_MAC_fetch(NULL, "HMAC", NULL);
+    if (!mac)
+        return 1;
+    *ctx = EVP_MAC_CTX_new(mac);
+    EVP_MAC_free(mac);
+    if (*ctx == NULL)
+        return 1;
+    const char *mdname = EVP_MD_get0_name(digest);
+    OSSL_PARAM params[] = {
+        OSSL_PARAM_utf8_string(OSSL_MAC_PARAM_DIGEST, (char *)mdname, 0),
+        OSSL_PARAM_END
+    };
+    result = EVP_MAC_init(*ctx, (const unsigned char *)key, keyLen, params);
+#else
 #endif
-        cmeDigestByteStringFree();
-        return(3);
-    }
-    memset(*dstBuf,0,evpMaxHashStrLen);
-    cmeDigestInit(&ctx,NULL,digest);
-    cont2=0;
-    for (cont=0; cont<(srcLen/evpBufferSize); cont++) //Process all blocks of size evpBufferSize.
-    {
-        cmeDigestUpdate(ctx,srcBuf+cont2,evpBufferSize);
-        cont2 += evpBufferSize;
-    }
-    if (srcLen%evpBufferSize) //Process last chunk with size < evpBufferSize.
-    {
-        cmeDigestUpdate(ctx,srcBuf+cont2,(srcLen%evpBufferSize));
-        cont2 += (srcLen%evpBufferSize);
-    }
-    result=cmeDigestFinal(&ctx,digestBytes,(unsigned int *)&written);
-    exitcode+=result;
-    cmeBytesToHexstr(digestBytes,dstBuf,written); //convert byte array to Byte HexStr.
-    *dstWritten=strlen((const char *)*dstBuf);
-    memset(digestBytes,0,EVP_MAX_MD_SIZE); //Clear memory of resulting digest bytes.
-    cmeDigestByteStringFree();
-    return (exitcode);
-}
-
+int cmeHMACUpdate (CME_HMAC_CTX *ctx, const void *in, size_t inl)
+#if OPENSSL_VERSION_MAJOR >= 3
+    result=EVP_MAC_update(ctx,in,inl);
+#else
+#endif
+int cmeHMACFinal(CME_HMAC_CTX **ctx, unsigned char *out, unsigned int *outl)
+#if OPENSSL_VERSION_MAJOR >= 3
+    size_t outlen=0;
+    result=EVP_MAC_final(*ctx,out,&outlen,EVP_MAC_CTX_get_mac_size(*ctx));
+    if(outl) *outl=(unsigned int)outlen;
+    CME_HMAC_CTX_free(*ctx); //override generic free: cmeFree(*ctx);
+#else
+    CME_HMAC_CTX_free(*ctx); //override generic free: cmeFree(*ctx);
+#endif
+    CME_HMAC_CTX *ctx=NULL;                 //Note that ctx will be freed normally by cmeHMACFinal(), but we need to free it if we exit before cmeHMACFinal() is called.
+#if OPENSSL_VERSION_MAJOR >= 3
+                    CME_HMAC_CTX_free(ctx); \
+                    { memset(key,0,keyLen); cmeFree(key); } \
+                    { memset(iv,0,ivLen); cmeFree(iv); } \
+                    { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
+        }
+#else
+    #define cmeHMACByteStringFree() \
+        { \
+                if (ctx) \
+                    CME_HMAC_CTX_free(ctx); \
+                if (digestBytes) \
+                    cmeFree(digestBytes); \
+                if (key) \
+                    { memset(key,0,keyLen); cmeFree(key); } \
+                if (iv) \
+                    { memset(iv,0,ivLen); cmeFree(iv); } \
+                if (byteSalt) \
+                    { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
+        }
+#endif
+        //Local free() macro
 int cmeHMACInit (HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key, int keyLen)
 {
     int result;

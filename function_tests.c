@@ -238,7 +238,7 @@ void testCryptoHMAC ()
     unsigned char localBuffer[10];
     unsigned char *HMACBytes=NULL;
     unsigned char *HMACStr=NULL;
-    HMAC_CTX *ctx=NULL;
+    CME_HMAC_CTX *ctx=NULL;
     EVP_MD *digest=NULL;
     const unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
     const char dgstAlg[] = cmeDefaultMACAlg;
