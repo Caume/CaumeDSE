@@ -32,7 +32,7 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
     Tim Hudson (tjh@cryptsoft.com).
 
     This product includes software from the GNU Libmicrohttpd project, Copyright
-    © 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
+    Â© 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
     2008, 2009, 2010 , 2011, 2012 Free Software Foundation, Inc.
 
     This product includes software from Perl5, which is Copyright (C) 1993-2005,
@@ -435,6 +435,7 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 #include <microhttpd.h>     //for microhttpd
 #endif
 
+#define OPENSSL_SUPPRESS_DEPRECATED
 // --- OpenSSL includes
 #if HAVE_OPENSSL_BIO_H
 #include <openssl/bio.h>      //I/O piped memory and filter functions in OpenSSL
