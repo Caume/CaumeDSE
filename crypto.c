@@ -349,23 +349,18 @@ int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
     }
     else //PBKDF2
     {
-        result=cmeHexstrToBytes(&HexStrToByteBuffer,password);
-        if ((result)||(passwordLen/2<keyLen)) //Password is not a HexStr representation of a binary key in cipher's keyspace -> Use PBKDF2 with several iterations for password expansion into full keyspace.
-        {   // (Very slow, but provides a good security level for keys derived from human generated passwords).
-            //Use PBKDF2 with HMAC_SHA1 + count=cmeDefaultPBKDFCount (not compatible with command line password KDF from OpenSSL):
-            buf=(unsigned char*)malloc(sizeof(unsigned char)*(keyLen+ivLen));
-            result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,cmeDefaultPBKDFCount,keyLen+ivLen,buf);
-            memcpy(key,buf,keyLen);
-            memcpy(iv,buf+keyLen,ivLen);
-        }
-        else //Password is a HexStr representation of a binary key in cipher's keyspace -> Use PBKDF2 with 1 iteration as a permutation in keyspace using the provided salt.
-        {   // (Fast; provides equivalent security level as a random key selected from crypto algorithm's full keyspace).
-            //Use PBKDF2 with HMAC_SHA1 + count=cmeDefaultPBKDFCount (not compatible with command line password KDF from OpenSSL):
+        if (cmeIsHexString((const char *)password) && passwordLen/2 >= keyLen)
+        {
             buf=(unsigned char*)malloc(sizeof(unsigned char)*(keyLen+ivLen));
             result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,1,keyLen+ivLen,buf);
-            memcpy(key,buf,keyLen);
-            memcpy(iv,buf+keyLen,ivLen);
         }
+        else
+        {
+            buf=(unsigned char*)malloc(sizeof(unsigned char)*(keyLen+ivLen));
+            result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,cmeDefaultPBKDFCount,keyLen+ivLen,buf);
+        }
+        memcpy(key,buf,keyLen);
+        memcpy(iv,buf+keyLen,ivLen);
     }
     if (result==0)  //0= failure, n=size of generated key (success)
     {
