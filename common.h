@@ -439,6 +439,7 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 #include <microhttpd.h>     //for microhttpd
 #endif
 
+#define OPENSSL_SUPPRESS_DEPRECATED
 // --- OpenSSL includes
 #if HAVE_OPENSSL_BIO_H
 #include <openssl/bio.h>      //I/O piped memory and filter functions in OpenSSL
