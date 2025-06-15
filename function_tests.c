@@ -437,13 +437,21 @@ void testCSV ()
     cmeSecureDBToMemDB (&resultDB, pResourcesDB,"AcmeIncPayroll.csv","password1",cmeDefaultFilePath);
     printf("--- Retrieved data from secure table (CSV file to secure DB):\n");
     result=cmeMemTable(resultDB,"SELECT * FROM data;",&pQueryResult,&numRows,&numCols);
-    for (cont=0;cont<=numRows;cont++)
+    if (result==0 && pQueryResult)
     {
-        for (cont2=0;cont2<numCols;cont2++)
+        for (cont=0;cont<=numRows;cont++)
         {
-            printf("[%s]",pQueryResult[(cont*numCols)+cont2]);
+            for (cont2=0;cont2<numCols;cont2++)
+            {
+                printf("[%s]",pQueryResult[(cont*numCols)+cont2]);
+            }
+            printf("\n");
         }
-        printf("\n");
+    }
+    else
+    {
+        fprintf(stderr,"CaumeDSE Error: testCSV(), cmeMemTable() failed. Skipping table to secure DB conversion.\n");
+        return;
     }
     result=cmeMemTableToSecureDB((const char **)pQueryResult,numCols,numRows,"User123","CaumeDSE",
                                  "password2",attributes, attributesData,2,1,"Payroll Database 2; Tests.",
@@ -451,13 +459,24 @@ void testCSV ()
     cmeSecureDBToMemDB (&resultDB, pResourcesDB,"AcmeIncPayroll Tests.csv","password2",cmeDefaultFilePath);
     printf("--- Retrieved data from secure table (Memory Table to secure DB):\n");
     result=cmeMemTable(resultDB,"SELECT * FROM data;",&pQueryResult2,&numRows,&numCols);
-    for (cont=0;cont<=numRows;cont++)
+    if (result==0 && pQueryResult2)
     {
-        for (cont2=0;cont2<numCols;cont2++)
+        for (cont=0;cont<=numRows;cont++)
         {
-            printf("[%s]",pQueryResult2[(cont*numCols)+cont2]);
+            for (cont2=0;cont2<numCols;cont2++)
+            {
+                printf("[%s]",pQueryResult2[(cont*numCols)+cont2]);
+            }
+            printf("\n");
         }
-        printf("\n");
+    }
+    else
+    {
+        fprintf(stderr,"CaumeDSE Error: testCSV(), cmeMemTable() failed when reading secure DB.\n");
+        cmeMemTableFinal(pQueryResult);
+        cmeDBClose(resultDB);
+        cmeDBClose(pResourcesDB);
+        return;
     }
     cmeMemTableFinal(pQueryResult);
     cmeMemTableFinal(pQueryResult2);
