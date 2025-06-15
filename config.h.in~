@@ -66,6 +66,9 @@
    to 0 otherwise. */
 #undef HAVE_MALLOC
 
+/* Define to 1 if you have the <memory.h> header file. */
+#undef HAVE_MEMORY_H
+
 /* Define to 1 if you have the `memset' function. */
 #undef HAVE_MEMSET
 
@@ -179,9 +182,7 @@
    Function (PKCS5v1.5) */
 #undef PBKDF1_OPENSSL_CLI_COMPATIBILITY
 
-/* Define to 1 if all of the C90 standard headers exist (not just the ones
-   required in a freestanding environment). This macro is provided for
-   backward compatibility; new code need not use it. */
+/* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
 
 /* Version number of package */
