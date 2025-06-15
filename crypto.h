@@ -44,6 +44,11 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 ***/
 #ifndef CRYPTO_H_INCLUDED
 #define CRYPTO_H_INCLUDED
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+typedef EVP_MAC_CTX CME_HMAC_CTX;
+#else
+typedef HMAC_CTX CME_HMAC_CTX;
+#endif
 
 // --- OpenSSL Wrappers and CaumeDSE Crypto functions prototypes
 // Wrapper Function to get a digest function pointer by name
@@ -91,11 +96,11 @@ int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, co
 // Function to return the size (in bytes) of digest for the specified hash algorithm.
 int cmeDigestLen (const char *algorithm, int *digestLen);
 // Wrapper Function for OpenSSL's HMAC_Init_ex().
-int cmeHMACInit (HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key, int keyLen);
+int cmeHMACInit (CME_HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key, int keyLen);
 // Wrapper Function for OpenSSL's HMAC_Update().
-int cmeHMACUpdate (HMAC_CTX *ctx, const void *in, size_t inl);
+int cmeHMACUpdate (CME_HMAC_CTX *ctx, const void *in, size_t inl);
 // Wrapper Function for OpenSSl's HMAC_Final().
-int cmeHMACFinal(HMAC_CTX **ctx, unsigned char *out, unsigned int *outl);
+int cmeHMACFinal(CME_HMAC_CTX **ctx, unsigned char *out, unsigned int *outl);
 // Function to create an HMAC MAC of byte string, in blocks of evpBufferSize.
 int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, const int srcLen,
                        int *dstWritten, const char *algorithm, char **salt, const char *userKey);
