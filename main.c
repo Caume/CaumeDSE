@@ -73,15 +73,24 @@ int setup(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl)
     *myPerl = perl_alloc();     //Prepare Perl interpreter.
     perl_construct(*myPerl);
     cmeSeedPrng();
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
     OpenSSL_add_all_algorithms();                   //Get all available ciphers and digests.
+#else
+    OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG | OPENSSL_INIT_ADD_ALL_CIPHERS |
+                        OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
+#endif
     return(0);
 }
 
 int end(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl)
 {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
     ERR_free_strings(); //OPENSSL Release all strings.
     EVP_cleanup(); //OPENSSL Release all available ciphers.
     CRYPTO_cleanup_all_ex_data(); //OPENSSL Release all crypto data.
+#else
+    OPENSSL_cleanup();
+#endif
 
     /// PL_perl_destruct_level = 0;
     perl_destruct(*myPerl);
