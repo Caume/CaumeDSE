@@ -57,6 +57,8 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 // --- Function prototypes
 // Convert Hexadecimal strings to Byte array (chars).
 int cmeHexstrToBytes (unsigned char **bytearray, unsigned const char *hexstr);
+// Check if a string is a valid hex representation (even length and all hex digits).
+int cmeIsHexString(const char *hexstr);
 // Convert Byte array to hexadecimal, uppercase string.
 int cmeBytesToHexstr (unsigned const char *bytearray, unsigned char **hexstr, int len);
 // Encode string Base 64
