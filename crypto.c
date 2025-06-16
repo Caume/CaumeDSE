@@ -756,12 +756,27 @@ int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, co
     return (exitcode);
 }
 
-int cmeHMACInit (HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key, int keyLen)
+int cmeHMACInit (CME_HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key, int keyLen)
 {
     int result;
-
+#if OPENSSL_VERSION_MAJOR >= 3
+    EVP_MAC *mac = EVP_MAC_fetch(NULL, "HMAC", NULL);
+    if (!mac)
+        return 1;
+    *ctx = EVP_MAC_CTX_new(mac);
+    EVP_MAC_free(mac);
+    if (*ctx == NULL)
+        return 1;
+    const char *mdname = EVP_MD_get0_name(digest);
+    OSSL_PARAM params[] = {
+        OSSL_PARAM_utf8_string(OSSL_MAC_PARAM_DIGEST, (char *)mdname, 0),
+        OSSL_PARAM_END
+    };
+    result = EVP_MAC_init(*ctx, (const unsigned char *)key, keyLen, params);
+#else
     *ctx=HMAC_CTX_new();
     result= HMAC_Init_ex(*ctx,key,keyLen,digest,engine);
+#endif
     if (result==0)  //1= success, 0=failure
     {
 #ifdef ERROR_LOG
@@ -778,11 +793,14 @@ int cmeHMACInit (HMAC_CTX **ctx, ENGINE *engine, EVP_MD *digest, const char *key
     }
 }
 
-int cmeHMACUpdate (HMAC_CTX *ctx, const void *in, size_t inl)
+int cmeHMACUpdate (CME_HMAC_CTX *ctx, const void *in, size_t inl)
 {
     int result;
-
+#if OPENSSL_VERSION_MAJOR >= 3
+    result=EVP_MAC_update(ctx,in,inl);
+#else
     result=HMAC_Update(ctx,in,inl);
+#endif
     if (result==0)  //1= success, 0=failure
     {
 #ifdef ERROR_LOG
@@ -799,12 +817,18 @@ int cmeHMACUpdate (HMAC_CTX *ctx, const void *in, size_t inl)
     }
 }
 
-int cmeHMACFinal(HMAC_CTX **ctx, unsigned char *out, unsigned int *outl)
+int cmeHMACFinal(CME_HMAC_CTX **ctx, unsigned char *out, unsigned int *outl)
 {
     int result;
-
+#if OPENSSL_VERSION_MAJOR >= 3
+    size_t outlen=0;
+    result=EVP_MAC_final(*ctx,out,&outlen,EVP_MAC_CTX_get_mac_size(*ctx));
+    if(outl) *outl=(unsigned int)outlen;
+    CME_HMAC_CTX_free(*ctx); //override generic free: cmeFree(*ctx);
+#else
     result=HMAC_Final(*ctx,out,outl);
-    HMAC_CTX_free(*ctx); //override generic free: cmeFree(*ctx);
+    CME_HMAC_CTX_free(*ctx); //override generic free: cmeFree(*ctx);
+#endif
     *ctx=NULL;
     if (result==0)  //1= success, 0=failure
     {
@@ -837,35 +861,39 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
     unsigned char *digestBytes=NULL;
     unsigned char *byteSalt=NULL;
     unsigned char hexStrbyteSalt[evpSaltBufferSize*2+1];     //Space for an hex str representation of an evpSaltBufferSize long, byte salt
-    HMAC_CTX *ctx=NULL;                 //Note that ctx will be freed normally by cmeHMACFinal(), but we need to free it if we exit before cmeHMACFinal() is called.
+    CME_HMAC_CTX *ctx=NULL;                 //Note that ctx will be freed normally by cmeHMACFinal(), but we need to free it if we exit before cmeHMACFinal() is called.
     EVP_MD *digest=NULL;          //Note that digest is a pointer to a constant digest function in OPENSSL.
     const EVP_CIPHER *cipher=NULL;      //Note that cipher is a pointer to a constant cipher function in OPENSSL.
+#if OPENSSL_VERSION_MAJOR >= 3
     #define cmeHMACByteStringFree() \
         { \
                 if (ctx) \
-                { \
-                    HMAC_CTX_free(ctx); \
-                }\
+                    CME_HMAC_CTX_free(ctx); \
                 if (digestBytes) \
-                { \
                     cmeFree(digestBytes); \
-                }\
                 if (key) \
-                { \
-                    memset(key,0,keyLen); \
-                    cmeFree(key); \
-                } \
+                    { memset(key,0,keyLen); cmeFree(key); } \
                 if (iv) \
-                { \
-                    memset(iv,0,ivLen); \
-                    cmeFree(iv); \
-                } \
+                    { memset(iv,0,ivLen); cmeFree(iv); } \
                 if (byteSalt) \
-                { \
-                    memset(byteSalt,0,evpSaltBufferSize); \
-                    cmeFree(byteSalt); \
-                } \
-        } //Local free() macro
+                    { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
+        }
+#else
+    #define cmeHMACByteStringFree() \
+        { \
+                if (ctx) \
+                    CME_HMAC_CTX_free(ctx); \
+                if (digestBytes) \
+                    cmeFree(digestBytes); \
+                if (key) \
+                    { memset(key,0,keyLen); cmeFree(key); } \
+                if (iv) \
+                    { memset(iv,0,ivLen); cmeFree(iv); } \
+                if (byteSalt) \
+                    { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
+        }
+#endif
+        //Local free() macro
 
     if (srcBuf==NULL) //Error, source buffer can't be null!
     {

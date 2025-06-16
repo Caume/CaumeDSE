@@ -462,6 +462,10 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 #if HAVE_OPENSSL_BUFFER_H
 #include <openssl/buffer.h>
 #endif
+#if OPENSSL_VERSION_MAJOR >= 3
+#include <openssl/core_names.h>
+#include <openssl/params.h>
+#endif
 
 // --- GnuTLS includes
 #if HAVE_GNUTLS_GNUTLS_H
