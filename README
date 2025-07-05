@@ -1780,6 +1780,7 @@ mode (which is slower), use the following parameter when running
 ./configure:
 
 	--enable-DEBUG
+Before running CaumeDSE in DEBUG mode, copy the contents of TEST/testfiles to /opt/cdse/testfiles and TEST/testDB_opt_cdse to /opt/cdse (or the directory specified by PATH_DATADIR) to provide data for the internal tests.
 
 In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).
