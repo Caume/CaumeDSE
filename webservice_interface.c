@@ -11789,7 +11789,44 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
 #ifdef DEBUG
         fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, method %s is not allowed!\n"
                 " Url: %s!\n",method,url);
+    char *sqlCreate=NULL;
+            cmeFree(sqlCreate); \
 #endif
+    // Verify that the transactions table has the expected columns
+    result=cmeMemTableWithTableColumnNames(pDB,tableName);
+    if (!result)
+    {
+        int found=0;
+        for (cont=0; cont<cmeResultMemTableCols; cont++)
+        {
+            if (!strcmp(cmeResultMemTable[cont],"requestMethod"))
+            {
+                found=1;
+                break;
+            }
+        }
+        cmeResultMemTableClean();
+        if (!found)
+        {
+            cmeStrConstrAppend(&sqlCreate,
+                                "BEGIN TRANSACTION; DROP TABLE IF EXISTS \"%s\"; ",
+                                tableName);
+            cmeStrConstrAppend(&sqlCreate,
+                                "CREATE TABLE \"%s\" (id INTEGER PRIMARY KEY, "
+                                "userId TEXT, orgId TEXT, salt TEXT, requestMethod TEXT, requestUrl TEXT, "
+                                "requestHeaders TEXT, startTimestamp TEXT, endTimestamp TEXT, requestDataSize TEXT, "
+                                "responseDataSize TEXT, orgResourceId TEXT, requestIPAddress TEXT, responseCode TEXT, "
+                                "responseHeaders TEXT, authenticated TEXT); COMMIT;",
+                                tableName);
+            cmeSQLRows(pDB,sqlCreate,NULL,NULL);
+            cmeFree(sqlCreate);
+            sqlCreate=NULL;
+        }
+    }
+    else
+    {
+        cmeResultMemTableClean();
+    }
         cmeWebServiceProcessContentColumnResourceFree();
         *responseCode=405;
         return(29);
