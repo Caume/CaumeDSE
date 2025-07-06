@@ -106,6 +106,9 @@ int cmeHMACFinal(CME_HMAC_CTX **ctx, unsigned char *out, unsigned int *outl);
 // Function to create an HMAC MAC of byte string, in blocks of evpBufferSize.
 int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, const int srcLen,
                        int *dstWritten, const char *algorithm, char **salt, const char *userKey);
+int cmeIsGCMAlg(const char *algorithm);
+int cmeHMACByteStringIfNeeded (const unsigned char *srcBuf, unsigned char **dstBuf, const int srcLen,
+                       int *dstWritten, const char *algorithm, char **salt, const char *userKey, const char *encAlg);
 
 
 #endif // CRYPTO_H_INCLUDED

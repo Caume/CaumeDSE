@@ -455,7 +455,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             if(orgKey) \
             { \
                 memset(orgKey,0,strlen(orgKey)); \
-                cmeFree(orgKey); \
+                cmeFree(orgKey,cmeDefaultEncAlg); \
             } \
             if(newOrgKey) \
             { \
@@ -580,7 +580,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             return(3);
         }
         //AUTHORIZATION PHASE:
-        result=cmeWebServiceConfirmUserId(userId,orgKey);
+        result=cmeWebServiceConfirmUserId(userId,orgKey,cmeDefaultEncAlg);
         if (result==1) //System Error, can't open ResourceDB to check userId.
         {
             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -611,7 +611,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             *responseCode=403;
             return(5);
         }
-        result=cmeWebServiceConfirmOrgId(orgId,orgKey);
+        result=cmeWebServiceConfirmOrgId(orgId,orgKey,cmeDefaultEncAlg);
         if (result==1) //System Error, can't open ResourceDB to check orgId.
         {
             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -643,7 +643,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             return(7);
         }
         result=cmeWebServiceCheckPermissions (method, url, urlElements, numUrlElements,
-                                              responseText, responseCode, userId, orgId, orgKey);
+                                              responseText, responseCode, userId, orgId, orgKey,cmeDefaultEncAlg);
         if (result) //System Error or authorization error. cmeWebServiceCheckPermissions() already filled in the response text and code.
         {
 #ifdef DEBUG
@@ -663,7 +663,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         }
         else //check using orgKey
         {
-            result=cmeWebServiceConfirmOrgId(urlElements[1],orgKey);
+            result=cmeWebServiceConfirmOrgId(urlElements[1],orgKey,cmeDefaultEncAlg);
         }
         if (result==1) //System Error, can't open ResourceDB to check orgId.
         {
@@ -705,7 +705,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         }
         else //check using orgKey
         {
-            result=cmeWebServiceGetStoragePath(&storagePath,urlElements[3],urlElements[1],orgKey);
+            result=cmeWebServiceGetStoragePath(&storagePath,urlElements[3],urlElements[1],orgKey,cmeDefaultEncAlg);
         }
         if (result==1) //System Error, can't open ResourceDB to check storageId and storagePath.
         {
@@ -746,7 +746,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         }
         else //check using orgKey
         {
-            result=cmeWebServiceConfirmUserId(urlElements[3],orgKey);
+            result=cmeWebServiceConfirmUserId(urlElements[3],orgKey,cmeDefaultEncAlg);
         }
         if (result==1) //System Error, can't open ResourceDB to check userId.
         {
@@ -1345,7 +1345,7 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
     const char *validPUTSaveColumns[8]={"userId","orgId","*resourceInfo","*certificate","*publicKey","*basicAuthPwdHash","*oauthConsumerKey","*oauthConsumerSecret"};
     #define cmeWebServiceProcessUserResourceFree() \
         do { \
-            cmeFree(orgKey); \
+            cmeFree(orgKey,cmeDefaultEncAlg); \
             cmeFree(userId); \
             cmeFree(orgId); \
             cmeFree(newOrgKey); \
@@ -1444,7 +1444,7 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
                 else //Check resource using orgKey
                 {
                     result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if user doesn't exist.
+                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg); //Check if user doesn't exist.
                 }
                 if(numResultRegisters>0) //User is already in DB -> Error
                 {
@@ -1469,7 +1469,7 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
                 else //Create resource using orgKey
                 {
                     result=cmePostProtectDBRegister(pDB,tableName,(const char **)columnNames,(const char **)columnValues,
-                                                    numSaveArgs,orgKey);
+                                                    numSaveArgs,orgKey,cmeDefaultEncAlg);
                 }
                 if (result) //Error
                 {
@@ -1560,7 +1560,7 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (result) //Error, internal server error
                 {
                     cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -1592,7 +1592,7 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
                         numResultRegisters=0;
                         result=cmePutProtectDBRegisters (pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,numMatchArgs,
                                                          (const char **)columnNames,(const char **)columnValues,numSaveArgs,&resultRegisterCols,
-                                                         &numResultRegisterCols,&numResultRegisters,orgKey);
+                                                         &numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                         if (result) //Error updating - 500
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -1699,7 +1699,7 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -1784,7 +1784,7 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     if (numResultRegisters) //Found >0 results
@@ -1883,7 +1883,7 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
             {
                 result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                      numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                     &numResultRegisters,orgKey);
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //Delete OK
                 {
                     if (numResultRegisters) // Deleted 1 register
@@ -2050,7 +2050,7 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
     const char *validPUTSaveColumns[8]={"userId","orgId","*resourceInfo","*certificate","*publicKey","*basicAuthPwdHash","*oauthConsumerKey","*oauthConsumerSecret"};
     #define cmeWebServiceProcessUserClassFree() \
         do { \
-            cmeFree(orgKey); \
+            cmeFree(orgKey,cmeDefaultEncAlg); \
             cmeFree(newOrgKey); \
             cmeFree(orgId); \
             cmeFree(userId); \
@@ -2135,7 +2135,7 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
             if (!result) //if OK
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                 //Construct responseText and create response headers according to the user's outputType (optional) request:
                 result=cmeConstructWebServiceTableResponse ((const char **)resultRegisterCols,numResultRegisterCols,numResultRegisters,
                                                             argumentElements, url, method, urlElements[1],
@@ -2236,7 +2236,7 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     if (numResultRegisters) //Found >0 results
@@ -2328,7 +2328,7 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
             {
                 result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                      numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                     &numResultRegisters,orgKey);
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //Delete OK
                 {
                     if (numResultRegisters) // Deleted >=1 registers
@@ -2419,7 +2419,7 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (result) //Error, internal server error
                 {
                     cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -2451,7 +2451,7 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
                         numResultRegisters=0;
                         result=cmePutProtectDBRegisters (pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,numMatchArgs,
                                                          (const char **)columnNames,(const char **)columnValues,numSaveArgs,&resultRegisterCols,
-                                                         &numResultRegisterCols,&numResultRegisters,orgKey);
+                                                         &numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                         if (result) //Error updating - 500
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -2626,7 +2626,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
                                 "filterWhitelist","filterBlacklist"}; //Note: also    const char *tableNames[]=...
     #define cmeWebServiceProcessRoleTableResourceFree() \
         do { \
-            cmeFree(orgKey); \
+            cmeFree(orgKey,cmeDefaultEncAlg); \
             cmeFree(userId); \
             cmeFree(orgId); \
             cmeFree(newOrgKey) \
@@ -2757,7 +2757,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
                 else //Check resource using orgKey
                 {
                     result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if resource doesn't exist.
+                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg); //Check if resource doesn't exist.
                 }
                 if(numResultRegisters>0) //Role is already in DB -> Error
                 {
@@ -2782,7 +2782,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
                 else //Create resource using orgKey
                 {
                     result=cmePostProtectDBRegister(pDB,tableName,(const char **)columnNames,(const char **)columnValues,
-                                                    numSaveArgs,orgKey);
+                                                    numSaveArgs,orgKey,cmeDefaultEncAlg);
                 }
                 if (result) //Error
                 {
@@ -2902,7 +2902,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (result) //Error, internal server error
                 {
                     cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -2934,7 +2934,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
                         numResultRegisters=0;
                         result=cmePutProtectDBRegisters (pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,numMatchArgs,
                                                          (const char **)columnNames,(const char **)columnValues,numSaveArgs,&resultRegisterCols,
-                                                         &numResultRegisterCols,&numResultRegisters,orgKey);
+                                                         &numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                         if (result) //Error updating - 500
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -3068,7 +3068,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -3182,7 +3182,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     if (numResultRegisters) //Found >0 results
@@ -3310,7 +3310,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
             {
                 result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                      numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                     &numResultRegisters,orgKey);
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //Delete OK
                 {
                     if (numResultRegisters) // Deleted 1 register
@@ -3510,7 +3510,7 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
     const char *validPUTSaveColumns[5]={"userId","orgId","*resourceInfo","*certificate","*publicKey"};
     #define cmeWebServiceProcessOrgResourceFree() \
         do { \
-            cmeFree(orgKey); \
+            cmeFree(orgKey,cmeDefaultEncAlg); \
             cmeFree(userId); \
             cmeFree(orgId); \
             cmeFree(newOrgKey); \
@@ -3606,7 +3606,7 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
                 else //Check resource using orgKey
                 {
                     result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if resource doesn't exist.
+                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg); //Check if resource doesn't exist.
                 }
                 if(numResultRegisters>0) //Organization is already in DB -> Error
                 {
@@ -3631,7 +3631,7 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
                 else //Create resource using orgKey
                 {
                     result=cmePostProtectDBRegister(pDB,tableName,(const char **)columnNames,(const char **)columnValues,
-                                                    numSaveArgs,orgKey);
+                                                    numSaveArgs,orgKey,cmeDefaultEncAlg);
                 }
                 if (result) //Error
                 {
@@ -3713,7 +3713,7 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
             if (!result) //if OK
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (result) //Error, internal server error
                 {
                     cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -3745,7 +3745,7 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
                         numResultRegisters=0;
                         result=cmePutProtectDBRegisters (pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,numMatchArgs,
                                                          (const char **)columnNames,(const char **)columnValues,numSaveArgs,&resultRegisterCols,
-                                                         &numResultRegisterCols,&numResultRegisters,orgKey);
+                                                         &numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                         if (result) //Error updating - 500
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -3844,7 +3844,7 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -3922,7 +3922,7 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     if (numResultRegisters) //Found >0 results
@@ -4014,7 +4014,7 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
             {
                 result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                      numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                     &numResultRegisters,orgKey);
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //Delete OK
                 {
                     if (numResultRegisters) // Deleted 1 register
@@ -4175,7 +4175,7 @@ int cmeWebServiceProcessOrgClass (char **responseText, char **responseFilePath, 
     const char *validPUTSaveColumns[5]={"userId","orgId","*resourceInfo","*certificate","*publicKey"};
     #define cmeWebServiceProcessOrgClassFree() \
         do { \
-            cmeFree(orgKey); \
+            cmeFree(orgKey,cmeDefaultEncAlg); \
             cmeFree(orgId); \
             cmeFree(userId); \
             cmeFree(newOrgKey); \
@@ -4253,7 +4253,7 @@ int cmeWebServiceProcessOrgClass (char **responseText, char **responseFilePath, 
             if (!result) //if OK
             {   //Note that if numMatchArgs==0 (i.e. columnNamesToMatch and columnValuesToMatch are NULL) then all results are returned.
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
 
                 //Construct responseText and create response headers according to the user's outputType (optional) request:
                 result=cmeConstructWebServiceTableResponse ((const char **)resultRegisterCols,numResultRegisterCols,numResultRegisters,
@@ -4369,7 +4369,7 @@ int cmeWebServiceProcessOrgClass (char **responseText, char **responseFilePath, 
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     if (numResultRegisters) //Found >0 results
@@ -4453,7 +4453,7 @@ int cmeWebServiceProcessOrgClass (char **responseText, char **responseFilePath, 
             {
                 result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                      numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                     &numResultRegisters,orgKey);
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //Delete OK
                 {
                     if (numResultRegisters) // Deleted >=1 registers
@@ -4536,7 +4536,7 @@ int cmeWebServiceProcessOrgClass (char **responseText, char **responseFilePath, 
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (result) //Error, internal server error
                 {
                     cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -4568,7 +4568,7 @@ int cmeWebServiceProcessOrgClass (char **responseText, char **responseFilePath, 
                         numResultRegisters=0;
                         result=cmePutProtectDBRegisters (pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,numMatchArgs,
                                                          (const char **)columnNames,(const char **)columnValues,numSaveArgs,&resultRegisterCols,
-                                                         &numResultRegisterCols,&numResultRegisters,orgKey);
+                                                         &numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                         if (result) //Error updating - 500
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -4704,7 +4704,7 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
                                          "*accessPath","*accessUser","*accessPassword"};
     #define cmeWebServiceProcessStorageResourceFree() \
         do { \
-            cmeFree(orgKey); \
+            cmeFree(orgKey,cmeDefaultEncAlg); \
             cmeFree(userId); \
             cmeFree(orgId); \
             cmeFree(newOrgKey); \
@@ -4808,7 +4808,7 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
                 else //Check resource using orgKey
                 {
                     result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if resource doesn't exist.
+                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg); //Check if resource doesn't exist.
                 }
                 if (result) //Error
                 {
@@ -4848,7 +4848,7 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
                 else //Create resource using orgKey
                 {
                     result=cmePostProtectDBRegister(pDB,tableName,(const char **)columnNames,(const char **)columnValues,
-                                                    numSaveArgs,orgKey);
+                                                    numSaveArgs,orgKey,cmeDefaultEncAlg);
                 }
                 if (result) //Error
                 {
@@ -4933,7 +4933,7 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
             if (!result) //if OK
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (result) //Error, internal server error
                 {
                     cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -4965,7 +4965,7 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
                         numResultRegisters=0;
                         result=cmePutProtectDBRegisters (pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,numMatchArgs,
                                                          (const char **)columnNames,(const char **)columnValues,numSaveArgs,&resultRegisterCols,
-                                                         &numResultRegisterCols,&numResultRegisters,orgKey);
+                                                         &numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                         if (result) //Error updating - 500
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -5068,7 +5068,7 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -5149,7 +5149,7 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     if (numResultRegisters) //Found >0 results
@@ -5244,7 +5244,7 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
             {
                 result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                      numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                     &numResultRegisters,orgKey);
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //Delete OK
                 {
                     if (numResultRegisters) // Deleted 1 register
@@ -5410,7 +5410,7 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
                                          "*accessPath","*accessUser","*accessPassword"};
     #define cmeWebServiceProcessStorageClassFree() \
         do { \
-            cmeFree(orgKey); \
+            cmeFree(orgKey,cmeDefaultEncAlg); \
             cmeFree(orgId); \
             cmeFree(userId); \
             cmeFree(newOrgKey); \
@@ -5493,7 +5493,7 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
             if (!result) //if OK
             {   //Note that if numMatchArgs==0 (i.e. columnNamesToMatch and columnValuesToMatch are NULL) then all results are returned.
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                 //Construct responseText and create response headers according to the user's outputType (optional) request:
                 result=cmeConstructWebServiceTableResponse ((const char **)resultRegisterCols,numResultRegisterCols,numResultRegisters,
                                                             argumentElements, url, method, "storage",
@@ -5616,7 +5616,7 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     if (numResultRegisters) //Found >0 results
@@ -5708,7 +5708,7 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
             {
                 result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                      numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                     &numResultRegisters,orgKey);
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //Delete OK
                 {
                     if (numResultRegisters) // Deleted >=1 registers
@@ -5799,7 +5799,7 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (result) //Error, internal server error
                 {
                     cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -5831,7 +5831,7 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
                         numResultRegisters=0;
                         result=cmePutProtectDBRegisters (pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,numMatchArgs,
                                                          (const char **)columnNames,(const char **)columnValues,numSaveArgs,&resultRegisterCols,
-                                                         &numResultRegisterCols,&numResultRegisters,orgKey);
+                                                         &numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                         if (result) //Error updating - 500
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -5992,7 +5992,7 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
 
     #define cmeWebServiceProcessDocumentTypeResourceFree() \
         do { \
-            cmeFree(orgKey); \
+            cmeFree(orgKey,cmeDefaultEncAlg); \
             cmeFree(userId); \
             cmeFree(orgId); \
             cmeFree(newOrgKey); \
@@ -6179,7 +6179,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
     const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
     #define cmeWebServiceProcessDocumentResourceFree() \
         do { \
-            cmeFree(orgKey); \
+            cmeFree(orgKey,cmeDefaultEncAlg); \
             cmeFree(userId); \
             cmeFree(orgId); \
             cmeFree(newOrgKey); \
@@ -6306,7 +6306,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                 else //Check resource using orgKey
                 {
                     result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if resource doesn't exist.
+                                                      numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg); //Check if resource doesn't exist.
                 }
                 if (result) //Error
                 {
@@ -6558,7 +6558,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
             if (!result) //if OK
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (result) //Error, internal server error
                 {
                     cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -6590,7 +6590,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         numResultRegisters=0;
                         result=cmePutProtectDBRegisters (pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,numMatchArgs,
                                                          (const char **)columnNames,(const char **)columnValues,numSaveArgs,&resultRegisterCols,
-                                                         &numResultRegisterCols,&numResultRegisters,orgKey);
+                                                         &numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
                         if (result) //Error updating - 500
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -6701,7 +6701,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -6791,7 +6791,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
             {
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                   numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                  &numResultRegisters,orgKey);
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //OK
                 {
                     if (numResultRegisters) //Found >0 results
@@ -6894,7 +6894,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
             {
                 result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
                                                      numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                     &numResultRegisters,orgKey);
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 if (!result) //Delete OK
                 {
                     if (numResultRegisters) // Deleted 1 or + register(s)
@@ -7256,7 +7256,7 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
     int usrArg=0;
     int newKeyArg=0;
     int numSaveArgs=0;
-    int numMatchArgs=0;
+            cmeFree(orgKey,cmeDefaultEncAlg); \
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     sqlite3 *pDB=NULL;
@@ -7349,8 +7349,8 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
     }
     cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
     if(!strcmp(method,"PUT")) //Method = PUT is ok, process:
-    {
-        //Mandatory values by user:
+                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
+                                                         &numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
         cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We also ignore the argument "orgResourceId" and use the resource defined within the URL!
         cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
         cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[3]);  //We also ignore the argument "storageId" and use the resource defined within the URL!
@@ -7497,7 +7497,7 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
     }
     else if(!strcmp(method,"GET")) //Method = GET is ok, process:
     {
-        //Mandatory values by user:
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
         cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We also ignore the argument "orgResourceId" and use the resource defined within the URL!
         cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
         cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[3]);  //We also ignore the argument "storageId" and use the resource defined within the URL!
@@ -7587,7 +7587,7 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
     }
     else if(!strcmp(method,"HEAD")) //Method = HEAD is ok, process:
     {
-        //Mandatory values by user:
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
         cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We also ignore the argument "orgResourceId" and use the resource defined within the URL!
         cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
         cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[3]);  //We also ignore the argument "storageId" and use the resource defined within the URL!
@@ -7693,7 +7693,7 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
     }
     else if(!strcmp(method,"DELETE")) //Method = DELETE is ok, process:
     {
-        //Mandatory values by user:
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
         cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We also ignore the argument "orgResourceId" and use the resource defined within the URL!
         cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
         cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[3]);  //We also ignore the argument "storageId" and use the resource defined within the URL!
@@ -7885,7 +7885,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     int usrArg=0;
     int newKeyArg=0;
     int numSaveArgs=0;
-    int numMatchArgs=0;
+            cmeFree(orgKey,cmeDefaultEncAlg); \
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     sqlite3 *pDB=NULL;
@@ -7997,8 +7997,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
         cmeStrConstrAppend(&(columnNamesToMatch[2]),"type");
         cmeStrConstrAppend(&(columnValuesToMatch[3]),"%s",urlElements[7]);  //We also ignore the argument "documentId" and use the resource defined within the URL!
         cmeStrConstrAppend(&(columnNamesToMatch[3]),"documentId");
-#ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessParserScriptResource(), GET, column orgResourceId: '%s'.\n",
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
+                                                          storagePath,urlElements[1],urlElements[3],orgKey,cmeDefaultEncAlg);
                 urlElements[1]);
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessParserScriptResource(), GET, column storageId: '%s'.\n",
                 urlElements[3]);
@@ -8224,8 +8224,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
         cmeStrConstrAppend(&(columnNamesToMatch[2]),"type");
         cmeStrConstrAppend(&(columnValuesToMatch[3]),"%s",urlElements[7]);  //We also ignore the argument "documentId" and use the resource defined within the URL!
         cmeStrConstrAppend(&(columnNamesToMatch[3]),"documentId");
-#ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessParserScriptResource(), HEAD, column orgResourceId: '%s'.\n",
+                                                  &numResultRegisters,orgKey,cmeDefaultEncAlg);
+                                                          storagePath,urlElements[1],urlElements[3],orgKey,cmeDefaultEncAlg);
                 urlElements[1]);
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessParserScriptResource(), HEAD, column storageId: '%s'.\n",
                 urlElements[3]);
@@ -8515,7 +8515,7 @@ int cmeWebServiceGetStoragePath (char **storagePath, const char *storageId, cons
                 pDB=NULL; \
             } \
         } while (0); //Local free() macro.
-
+                                      2,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
     columnValuesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store resource information.
     columnNamesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store column names to match (GET).
     for (cont=0; cont<numColumns;cont++)
@@ -8603,7 +8603,7 @@ int cmeWebServiceConfirmOrgId (const char *orgResourceId, const char *orgKey)
             { \
                 cmeDBClose(pDB); \
                 pDB=NULL; \
-            } \
+                                      1,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
         } while (0); //Local free() macro.
 
     columnValuesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store resource information.
@@ -8686,8 +8686,8 @@ int cmeWebServiceConfirmUserId (const char *userResourceId, const char *orgKey)
             { \
                 cmeDBClose(pDB); \
                 pDB=NULL; \
-            } \
-        } while (0); //Local free() macro.
+                                      1,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
+            cmeFree(orgKey,cmeDefaultEncAlg); \
 
     columnValuesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store resource information.
     columnNamesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store column names to match (GET).
@@ -8909,8 +8909,8 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                                             "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgContentClassOptions,
                                             cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentClass(), Error, internal server error '%d'."
-                                " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters error!\n",result,method,url);
+                                                      &numResultRegisters,orgKey,cmeDefaultEncAlg);
+                                                              urlElements[1],urlElements[3],orgKey,cmeDefaultEncAlg);
 #endif
                         cmeWebServiceProcessContentClassFree();
                         *responseCode=500;
@@ -9128,8 +9128,8 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     //OK:
                     if (cmeResultMemTableRows) // Found >0 rows.
                     {
-                        //In HEAD method we just get counters.
-                        *responseCode=200;
+                                                      &numResultRegisters,orgKey,cmeDefaultEncAlg);
+                                                              urlElements[1],urlElements[3],orgKey,cmeDefaultEncAlg); //We don't need this for HEAD, but strictly speaking, we need to test that the "content" is there, even if we are not returning any file.
 #ifdef DEBUG
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentClass(), HEAD successful.\n");
 #endif
@@ -9502,7 +9502,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
     char *userId=NULL;                  //requester userId.
-    char *orgId=NULL;                   //requester orgId.
+            cmeFree(orgKey,cmeDefaultEncAlg); \
     char *newOrgKey=NULL;               //requester newOrgKey (optional).
     char *salt=NULL;
     char **columnValues=NULL;           //Values to be created/updated (POST/PUT)
@@ -9670,7 +9670,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), POST, column documentId: '%s'.\n",
                 urlElements[7]);
 #endif
-        numMatchArgs=4;
+                                              &numResultRegisters,orgKey,cmeDefaultEncAlg);
         numSaveArgs=10;
         cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, validPOSTSaveColumns, numValidGETALLMatch,numValidPOSTSave,
                                           columnValuesToMatch, columnNamesToMatch, columnValues, columnNames, &numMatchArgs, &numSaveArgs,
@@ -9853,7 +9853,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), PUT, column type: '%s'.\n",
                 urlElements[5]);
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), PUT, column documentId: '%s'.\n",
-                urlElements[7]);
+                                              &numResultRegisters,orgKey,cmeDefaultEncAlg);
 #endif
         numMatchArgs=4;
         cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, validPUTSaveColumns, numValidGETALLMatch, numValidPUTSave,
@@ -10032,7 +10032,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), GET, column type: '%s'.\n",
                 urlElements[5]);
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), GET, column documentId: '%s'.\n",
-                urlElements[7]);
+                                              &numResultRegisters,orgKey,cmeDefaultEncAlg);
 #endif
         numMatchArgs=4;
         cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
@@ -10190,7 +10190,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), HEAD, column type: '%s'.\n",
                 urlElements[5]);
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), HEAD, column documentId: '%s'.\n",
-                urlElements[7]);
+                                              &numResultRegisters,orgKey,cmeDefaultEncAlg);
 #endif
         numMatchArgs=4;
         cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL , numValidGETALLMatch, 0,
@@ -10341,7 +10341,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), DELETE, column type: '%s'.\n",
                 urlElements[5]);
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), DELETE, column documentId: '%s'.\n",
-                urlElements[7]);
+                                              &numResultRegisters,orgKey,cmeDefaultEncAlg);
 #endif
         numMatchArgs=4;
         cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
@@ -10583,7 +10583,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
-    char *userId=NULL;                  //requester userId.
+            cmeFree(orgKey,cmeDefaultEncAlg); \
     char *orgId=NULL;                   //requester orgId.
     char *newOrgKey=NULL;               //requester newOrgKey (optional).
     char *salt=NULL;
@@ -10770,7 +10770,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                                    "METHOD: '%s' URL: '%s'."
                                     "%sLatest IDD version: <code>%s</code>",urlElements[9],method,url,cmeWSMsgContentColumnOptions,
                                     cmeInternalDBDefinitionsVersion);
-#ifdef DEBUG
+                                              &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, forbidden request, document column already exists!"
                         " Method: '%s', URL: '%s'!\n",method,url);
 #endif
@@ -10989,7 +10989,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), GET, column type: '%s'.\n",
                 urlElements[5]);
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), GET, column documentId: '%s'.\n",
-                urlElements[7]);
+                                              &numResultRegisters,orgKey,cmeDefaultEncAlg);
 #endif
         numMatchArgs=4;
         cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL, numValidGETALLMatch, 0,
@@ -11229,7 +11229,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD, column type: '%s'.\n",
                 urlElements[5]);
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD, column documentId: '%s'.\n",
-                urlElements[7]);
+                                              &numResultRegisters,orgKey,cmeDefaultEncAlg);
 #endif
         numMatchArgs=4;
         cmeProcessURLMatchSaveParameters (method, argumentElements, validGETALLMatchColumns, NULL , numValidGETALLMatch, 0,
@@ -11395,7 +11395,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                                    "METHOD: '%s' URL: '%s'."
                                     "%sLatest IDD version: <code>%s</code>",urlElements[9],method,url,cmeWSMsgContentColumnOptions,
                                     cmeInternalDBDefinitionsVersion);
-#ifdef DEBUG
+                                              &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Warning, forbidden request, document column already exists!"
                         " Method: '%s', URL: '%s'!\n",method,url);
 #endif
@@ -11522,7 +11522,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 cmeStrConstrAppend(&sqlQuery," FROM data;"); **/
                 cmeFree(sqlQuery);
                 cmeStrConstrAppend(&sqlQuery,"SELECT * FROM data;");
-                cmeResultMemTableClean();
+                                                             &numResultRegisters,orgKey,cmeDefaultEncAlg);
                 result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Add new column.
                 if (result) //Error
                 {
@@ -11593,7 +11593,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                         }
                         cmeStrConstrAppend(responseText,"<p>Deleted documentId '%s'; registers: %d</p><br>",urlElements[7],numResultRegisters);
                         cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                                                             &numResultRegisters,orgKey,cmeDefaultEncAlg);
                         cmeWebServiceProcessDocumentResourceFree();
                         return(0);
                     }
@@ -11910,7 +11910,7 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
         if (!columnNames[cont]) //Error, colName is NULL!
         {
  #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), Error,"
+                cmeHMACByteStringIfNeeded((const unsigned char *)protectedValue,(unsigned char **)&protectedValueMAC,protectedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,&salt,orgKey),cmeDefaultEncAlg;
                     "NULL pointer at columnNames[%d]\n",cont);
 #endif
             cmeWebServiceLogRequestFree();
@@ -12089,8 +12089,8 @@ int cmeWebServiceLogConnection (struct MHD_Connection *connection, void *con_cls
     }
     //Set requestDataSize:
     cmeStrConstrAppend(&requestDataSize,"%ld",requestDSize);
-    //Set responseDataSize:
-    cmeStrConstrAppend(&responseDataSize,"%ld",responseDSize);
+                                     authenticated, orgKey,cmeDefaultEncAlg);
+            cmeFree(orgKey,cmeDefaultEncAlg); \
     //Set startTimestamp:
     cmeStrConstrAppend(&startTimestamp,"%lld",(long long int)startTime);
     //Set endTimestamp:
@@ -12193,7 +12193,7 @@ int cmeWebServiceProcessTransactionClass (char **responseText, char ***responseH
             if (pDB) \
             { \
                 cmeDBClose(pDB); \
-                pDB=NULL; \
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
             } \
         } while (0); //Local free() macro.
 
@@ -12264,7 +12264,7 @@ int cmeWebServiceProcessTransactionClass (char **responseText, char ***responseH
         else //Error, invalid number of correct arguments for this command.
         {
             cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments."
-                               "</b><br><br>The provided number of arguments is insufficient. "
+                                                     &numResultRegisters,orgKey,cmeDefaultEncAlg);
                                "METHOD: '%s' URL: '%s'."
                                 "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgTransactionClassOptions,
                                 cmeInternalDBDefinitionsVersion);

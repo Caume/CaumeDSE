@@ -122,6 +122,13 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     cmeFree (salt);
     cmeFree (ciphertext);
     cmeFree (deciphertext);
+    strcpy(algorithm, "aes-256-gcm");
+    cmeCipherByteString(cleartext,&ciphertext,&salt,strlen((char *)cleartext),&written,algorithm, "Password", 'e');
+    cmeCipherByteString(ciphertext,&deciphertext,&salt,written,&written,algorithm, "Password", 'd');
+    printf("Decrypted GCM text: %s  \n",deciphertext);
+    cmeFree (salt);
+    cmeFree (ciphertext);
+    cmeFree (deciphertext);
     cmeProtectByteString((const char*)cleartext,(char **)&ciphertext,cmeDefaultEncAlg,(char **)&salt,"Password",&written,strlen((char *)cleartext));
     cmeUnprotectByteString((const char *)ciphertext,(char **)&deciphertext,cmeDefaultEncAlg,(char **)&salt,"Password",&written,written);
     printf("Unprotected text: %s  \n",deciphertext);
@@ -276,7 +283,7 @@ void testCryptoHMAC ()
 
     printf ("--- HMAC parameters - algorithm: %s, password (PBKDF): %s, salt (PBKDF): %s\n",cmeDefaultMACAlg,key,salt);
     cmeFree(HMACStr); //Now we repeat the process with the integrated function in 1 step
-    cmeHMACByteString(cleartext,&HMACStr,strlen((const char *)cleartext),&written,dgstAlg,(char **)&salt,key);
+    cmeHMACByteStringIfNeeded(cleartext,&HMACStr,strlen((const char *)cleartext),&written,dgstAlg,(char **)&salt,key);
     printf ("--- HMAC MAC Size (chars) with integrated function: %d\n",written);
     printf ("HMAC MAC with integrated function (derives key from PBKDF): %s\n",HMACStr);
 

@@ -442,9 +442,33 @@ int cmeGetRndSalt (char **rndHexSalt)
 
     /* Obtain random bytes for the salt and return them as a hex string. */
     cmePrngGetBytes((unsigned char **)&rndBytes, cmeDefaultIDBytesLen);
-    cmeBytesToHexstr((const unsigned char *)rndBytes,
-                     (unsigned char **)rndHexSalt,
-                     cmeDefaultIDBytesLen); /* caller must free rndHexSalt */
+    int gcmTagLen=0;
+    unsigned char gcmTag[16];
+    int is_gcm=0;
+    if (strstr(algorithm, "gcm")) { is_gcm=1; gcmTagLen=16; }
+    if(!(*dstBuf=(unsigned char *)malloc(srcLen+cipherBlockLen+gcmTagLen+1))) //Error allocating memory!
+        if(mode=='d' && is_gcm)
+        {
+            if(srcLen<gcmTagLen)
+            {
+                cmeCipherByteStringFree();
+                return(8);
+            }
+            cmeCipherUpdate(ctx,(*dstBuf),&written,(unsigned char *)srcBuf,srcLen-gcmTagLen,mode);
+            cont+=written;
+            EVP_CIPHER_CTX_ctrl(ctx,EVP_CTRL_GCM_SET_TAG,gcmTagLen,(void *)(srcBuf+srcLen-gcmTagLen));
+        }
+        else
+        {
+            cmeCipherUpdate(ctx,(*dstBuf),&written,(unsigned char *)srcBuf,srcLen,mode);
+            cont+=written;
+        }
+        if(mode=='e' && is_gcm)
+        {
+            EVP_CIPHER_CTX_ctrl(ctx,EVP_CTRL_GCM_GET_TAG,gcmTagLen,gcmTag);
+            memcpy((*dstBuf)+cont,gcmTag,gcmTagLen);
+            cont+=gcmTagLen;
+        }
     cmeFree(rndBytes);
     return (0);
 }
@@ -975,6 +999,27 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
     if (srcLen%evpBufferSize) //Process last chunk with size < evpBufferSize.
     {
         cmeHMACUpdate(ctx,srcBuf+cont2,(srcLen%evpBufferSize));
+
+int cmeIsGCMAlg(const char *algorithm)
+{
+    if(!algorithm) return 0;
+    return strstr(algorithm, "gcm") != NULL;
+}
+
+int cmeHMACByteStringIfNeeded(const unsigned char *srcBuf, unsigned char **dstBuf, const int srcLen,
+                              int *dstWritten, const char *algorithm, char **salt,
+                              const char *userKey, const char *encAlg)
+{
+    if(cmeIsGCMAlg(encAlg))
+    {
+        *dstBuf = (unsigned char *)malloc(1);
+        if(!*dstBuf) return 1;
+        (*dstBuf)[0]='\0';
+        if(dstWritten) *dstWritten=0;
+        return 0;
+    }
+    return cmeHMACByteString(srcBuf,dstBuf,srcLen,dstWritten,algorithm,salt,userKey);
+}
         cont2 += (srcLen%evpBufferSize);
     }
     result=cmeHMACFinal(&ctx,digestBytes,(unsigned int *)&written);

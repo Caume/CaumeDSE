@@ -35,7 +35,7 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
     the public domain (http://www.sqlite.org/copyright.html).
 
     This product includes software from the GNU Libmicrohttpd project, Copyright
-    © 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
+    Â© 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
     2008, 2009, 2010 , 2011, 2012 Free Software Foundation, Inc.
 
     This product includes software from Perl5, which is Copyright (C) 1993-2005,
@@ -167,15 +167,16 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
     memFilePartsMACs[0]=NULL;
     //Get MAC length in chars:
     cmeDigestLen(cmeDefaultMACAlg,&MACLen); //Get length of the MAC value (bytes).
-    MACLen*=2;                              //Convert byte length to HexStr length.
+    MACLen*=2;
+    if(cmeIsGCMAlg(cmeDefaultEncAlg)) MACLen=0;                              //Convert byte length to HexStr length.
     //Get list of column files from ResourcesDB:
     for(cont=1;cont<=numRows;cont++) //First row in a cmeSQLTable contains the names of columns; we skip them.
     {
         //Unprotect documentId:
         cmeFree(protectedValueMAC);
-        cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+        cmeHMACByteStringIfNeeded((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
                           (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen),
-                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
         if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],MACLen)) //MAC is correct; proceed with decryption.
         {
             result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
@@ -194,7 +195,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
         else //MAC is incorrect; skip decryption process.
         {
 #ifdef DEBUG
-            fprintf(stdout,"CaumeDSE Warning: cmeSecureSQLToMemDB(), cmeHMACByteString() cannot "
+            fprintf(stdout,"CaumeDSE Warning: cmeSecureSQLToMemDB(), cmeHMACByteStringIfNeeded() cannot "
                     "verify documentId MAC!\n");
 #endif
             cmeStrConstrAppend(&currentDocumentId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
@@ -204,9 +205,9 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
         {
             //Unprotect columnFile:
             cmeFree(protectedValueMAC);
-            cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
+            cmeHMACByteStringIfNeeded((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
                               (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen),
-                              &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+                              &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
             if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],MACLen)) //MAC is correct; proceed with decryption.
             {
                 result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
@@ -225,16 +226,16 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
             else //MAC is incorrect; skip decryption process.
             {
 #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeHMACByteString() error, cannot "
+                fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeHMACByteStringIfNeeded() error, cannot "
                         "verify columnFile MAC!\n");
 #endif
                 cmeStrConstrAppend(&(colSQLDBfNames[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
             }
             //Unprotect partMAC:
             cmeFree(protectedValueMAC);
-            cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen,
+            cmeHMACByteStringIfNeeded((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen,
                               (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen),
-                              &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+                              &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
             if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC],MACLen)) //MAC is correct; proceed with decryption.
             {
                 result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_partMAC]+MACLen,
@@ -253,7 +254,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
             else //MAC is incorrect; skip decryption process.
             {
 #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeHMACByteString() error, cannot "
+                fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeHMACByteStringIfNeeded() error, cannot "
                         "verify partMAC MAC!\n");
 #endif
                 cmeStrConstrAppend(&(memFilePartsMACs[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
@@ -296,7 +297,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
             cmeSecureDBToMemDBFree();
             return(6);
         }
-        result=cmeHMACByteString((const unsigned char *)currentRawFileContent,(unsigned char **)&protectedValueMAC,readBytes,&written,cmeDefaultMACAlg,&(colSQLDBfSalts[cont]),orgKey);
+        result=cmeHMACByteStringIfNeeded((const unsigned char *)currentRawFileContent,(unsigned char **)&protectedValueMAC,readBytes,&written,cmeDefaultMACAlg,&(colSQLDBfSalts[cont]),orgKey,cmeDefaultEncAlg);
         if (strcmp(protectedValueMAC,memFilePartsMACs[cont])) //Error!, MAC mismatch
         {
             partMACmismatch++; //Flag MAC mismatch for file part.
@@ -335,7 +336,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
     {
         memDBResultMeta[cont]=NULL;
         memDBResultData[cont]=NULL;
-        result=cmeMemSecureDBUnprotect(memDBcol[cont],orgKey); //Unprotect secure column DB.
+        result=cmeMemSecureDBUnprotect(memDBcol[cont],orgKey,cmeDefaultEncAlg); //Unprotect secure column DB.
         if (result) //Error
         {
             cmeSecureDBToMemDBFree(); //CLEANUP.
@@ -457,9 +458,9 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
         {
             //Unprotect documentId:
             cmeFree(protectedValueMAC);
-            cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+            cmeHMACByteStringIfNeeded((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
                               (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen),
-                              &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+                              &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
             if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],MACLen)) //MAC is correct; proceed with decryption.
             {
                 result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
@@ -478,9 +479,9 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
                 {
                     //Unprotect columnFile:
                     cmeFree(protectedValueMAC);
-                    cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
+                    cmeHMACByteStringIfNeeded((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
                                       (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen),
-                                      &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+                                      &written2,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
                     if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],MACLen)) //MAC is correct; proceed with decryption.
                     {
                         result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
@@ -499,7 +500,7 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
                     else //MAC is incorrect; skip decryption process.
                     {
 #ifdef DEBUG
-                        fprintf(stdout,"CaumeDSE Warning: cmeDeleteSecureDB(), cmeHMACByteString() cannot "
+                        fprintf(stdout,"CaumeDSE Warning: cmeDeleteSecureDB(), cmeHMACByteStringIfNeeded() cannot "
                                 "verify columnFile MAC!\n");
 #endif
                         cmeStrConstrAppend(&(colSQLDBfNames[dbNumCols]),""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
@@ -513,7 +514,7 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
             else //MAC is incorrect; skip decryption process.
             {
     #ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Warning: cmeDeleteSecureDB(), cmeHMACByteString() cannot "
+                fprintf(stdout,"CaumeDSE Warning: cmeDeleteSecureDB(), cmeHMACByteStringIfNeeded() cannot "
                         "verify documentId MAC!\n");
     #endif
                 cmeStrConstrAppend(&currentDocumentId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
@@ -629,8 +630,8 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
             {
                 if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
                 {
-                    cmeHMACByteString((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
-                                      &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey);
+                    cmeHMACByteStringIfNeeded((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
+                                      &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
                     if (!strncmp(protectedValueMAC,sqlTable[cont*numColumns+cont2],MACLen)) //MAC is correct; proceed with decryption.
                     {
                         //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
@@ -763,8 +764,8 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
             {
                 if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
                 {
-                    cmeHMACByteString((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
-                                      &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey);
+                    cmeHMACByteStringIfNeeded((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
+                                      &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
                     if (!strncmp(protectedValueMAC,sqlTable[cont*numColumns+cont2],MACLen)) //MAC is correct; proceed with decryption.
                     {
                         //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
@@ -892,7 +893,7 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
         if ((strcmp(columnNames[cont],"salt")!=0)&&(columnValues[cont]!=NULL)) //Skip salt, we will add it at the end.
         {
             cmeProtectDBSaltedValue(columnValues[cont],&protectedValue,cmeDefaultEncAlg,&salt,orgKey,&protectedValueLen);
-            cmeHMACByteString((const unsigned char *)protectedValue,(unsigned char **)&protectedValueMAC,protectedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,&salt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)protectedValue,(unsigned char **)&protectedValueMAC,protectedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,&salt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend(&sqlStatement,"'%s%s'",protectedValueMAC,protectedValue); //add MAC+Encrypted(salted) column value to query.
             cmeFree(protectedValue);
             cmeFree(protectedValueMAC);
@@ -987,8 +988,8 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
             {
                 if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
                 {
-                    cmeHMACByteString((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
-                                      &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey);
+                    cmeHMACByteStringIfNeeded((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
+                                      &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
                     if (!strncmp(protectedValueMAC,sqlTable[cont*numColumns+cont2],MACLen)) //MAC is correct; proceed with decryption.
                     {
                         //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!
@@ -1073,8 +1074,8 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
                     cmeProtectDBSaltedValue(columnValuesUpdate[cont2],&encryptedValue,cmeDefaultEncAlg,
                                             &((*resultRegisterCols)[((*numResultRegisters)-1)*numColumns+cmeIDDanydb_salt]),
                                             orgKey,&encryptedValueLen); //Salt and encrypt value.
-                    cmeHMACByteString((const unsigned char *)encryptedValue,(unsigned char **)&protectedValueMAC,encryptedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,
-                                      &((*resultRegisterCols)[((*numResultRegisters)-1)*numColumns+cmeIDDanydb_salt]),orgKey);
+                    cmeHMACByteStringIfNeeded((const unsigned char *)encryptedValue,(unsigned char **)&protectedValueMAC,encryptedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,
+                                      &((*resultRegisterCols)[((*numResultRegisters)-1)*numColumns+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
                     cmeStrConstrAppend(&query," \"%s\"='%s%s'",columnNamesUpdate[cont2],protectedValueMAC,encryptedValue);  //Add MAC+Encrypted(salted) column value to query.
                     cmeFree(encryptedValue);
                     cmeFree(protectedValueMAC);
@@ -1303,9 +1304,9 @@ int cmeExistsDocumentId (sqlite3 *pResourcesDB,const char *documentId, const cha
     {
         //Unprotect documentId:
         cmeFree(protectedValueMAC);
-        cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
+        cmeHMACByteStringIfNeeded((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
                           (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen),
-                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
+                          &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
         if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],MACLen)) //MAC is correct; proceed with decryption.
         {
             result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
@@ -1324,7 +1325,7 @@ int cmeExistsDocumentId (sqlite3 *pResourcesDB,const char *documentId, const cha
         else //MAC is incorrect; skip decryption process.
         {
 #ifdef DEBUG
-            fprintf(stdout,"CaumeDSE Warning: cmeExistsDocumentId(), cmeHMACByteString() cannot "
+            fprintf(stdout,"CaumeDSE Warning: cmeExistsDocumentId(), cmeHMACByteStringIfNeeded() cannot "
                     "verify documentId MAC!\n");
 #endif
             cmeStrConstrAppend(&currentDocumentId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
@@ -1416,8 +1417,8 @@ int cmeGetUnprotectDBTransactions (sqlite3 *pDB, const char *tableName, const ch
                 {
                     if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
                     {
-                        cmeHMACByteString((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
-                                          &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey);
+                        cmeHMACByteStringIfNeeded((const unsigned char *)sqlTable[cont*numColumns+cont2]+MACLen,(unsigned char **)&protectedValueMAC,strlen(sqlTable[cont*numColumns+cont2]+MACLen),
+                                          &valueLen,cmeDefaultMACAlg,&(sqlTable[cont*numColumns+cmeIDDanydb_salt]),orgKey,cmeDefaultEncAlg);
                         if (!strncmp(protectedValueMAC,sqlTable[cont*numColumns+cont2],MACLen)) //MAC is correct; proceed with decryption.
                         {
                             //If cmeUnprotectDBSaltedValue() !=0, value can't be decrypted with the key provided (2) or is NULL (1)! No need to compare incorrectly decrypted values!

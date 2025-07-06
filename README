@@ -1796,6 +1796,10 @@ Function PBKDF1 (i.e.  PKCS5v1.5, which is compatible with openssl's command
 line tool but is NOT RECOMMENDED; it uses MD5+the default cipher algorithm
 and a counter = 1) use the following configure switch.
 
+AES-GCM encryption algorithms are now supported. When an algorithm name
+ends with "-gcm" authenticated encryption is used and no extra HMAC is
+generated on encrypted values.
+
 	--enable-OLDPBKDF1
 
 The default Password Based Key Derivation Function standard is now PBKDF2

@@ -484,80 +484,80 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
             cmeStrConstrAppend(&partId,"%d",(cont/(numSQLDBfNames/numSQLDBparts))+1);
             //Encrypt with salt each column; then generate its MAC and finally concatenate MAC+EncryptedSaltedValue in currentMACProtectedSaltedData[]:
             cmeProtectDBSaltedValue(userId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);            //userId.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[0],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(orgId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);             //orgId.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[1],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(resourceInfo,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);      //resourceInfo.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[2],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(type,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);              //type.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[3],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(documentId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);        //documentId.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[4],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(storageId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);         //storageId.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[5],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(orgResourceId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);     //orgResourceId.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[6],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(lastModified,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);      //lastModified.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[7],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(columnId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);          //columnId.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[8],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(totalParts,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);        //totalParts.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[9],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(SQLDBfNames[cont],&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);     //columnFile.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[10],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(SQLDBpartMAC[cont],&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);    //partMAC.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[11],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
             cmeProtectDBSaltedValue(partId,&currentProtectedData,cmeDefaultEncAlg,(char **)&hexStrSalt,orgKey,&written);            //partId.
-            cmeHMACByteString((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
-                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey);
+            cmeHMACByteStringIfNeeded((const unsigned char *)currentProtectedData,(unsigned char **)&currentDataMAC,written,
+                              &written2,cmeDefaultMACAlg,(char **)&hexStrSalt,orgKey,cmeDefaultEncAlg);
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[12],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
@@ -781,7 +781,7 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
     return(0);
 }
 
-int cmeWebServiceInitAdminSetup (const char *orgKey)
+int cmeWebServiceInitAdminSetup (const char *orgKey,cmeDefaultEncAlg)
 {   //IDD version 1.0.21
     int cont,result;
     int numResultRegisterCols=0;
@@ -856,7 +856,7 @@ int cmeWebServiceInitAdminSetup (const char *orgKey)
     for (cont=0;cont<numTables;cont++) //No error -> process all tableNames in RolesDB
     {
         result=cmeGetUnprotectDBRegisters(pDB,tableNames[cont],columnNamesToMatch,(const char **)columnValuesToMatch,
-                                          2,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if role doesn't exist.
+                                          2,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg); //Check if role doesn't exist.
         if(numResultRegisters>0) //Role is already in DB -> Warning
         {
 #ifdef DEBUG
@@ -869,17 +869,17 @@ int cmeWebServiceInitAdminSetup (const char *orgKey)
             if (strcmp(tableNames[cont],"filterWhitelist")==0) //Process filterWhitelist
             {
                 result=cmePostProtectDBRegister(pDB,tableNames[cont],columnNames,(const char **)columnValuesFWL,
-                                                numColumns,orgKey);
+                                                numColumns,orgKey,cmeDefaultEncAlg);
             }
             else if (strcmp(tableNames[cont],"filterBlacklist")==0) //Process filterWhitelist
             {
                 result=cmePostProtectDBRegister(pDB,tableNames[cont],columnNames,(const char **)columnValuesFBL,
-                                                numColumns,orgKey);
+                                                numColumns,orgKey,cmeDefaultEncAlg);
             }
             else //Process all other tables
             {
                 result=cmePostProtectDBRegister(pDB,tableNames[cont],columnNames,(const char **)columnValues,
-                                                numColumns,orgKey);
+                                                numColumns,orgKey,cmeDefaultEncAlg);
             }
             if (result) //Error
             {
@@ -904,7 +904,7 @@ int cmeWebServiceInitAdminSetup (const char *orgKey)
 }
 
 int cmeWebServiceCheckPermissions (const char *method, const char *url, const char **urlElements, const int numUrlElements,
-                                   char **responseText, int *responseCode, const char *userId, const char *orgId, const char *orgKey)
+                                   char **responseText, int *responseCode, const char *userId, const char *orgId, const char *orgKey,cmeDefaultEncAlg)
 {// IDD ver. 1.0.21
     int result,cont,cont2;
     int numResultRegisterCols=0;
@@ -1023,7 +1023,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
     if (!result) //if OK
     {   //Verify that the user (userId+orgId) has permissions for the requested action (roleTable + method) with the current orgKey:
         result=cmeGetUnprotectDBRegisters(pDB,currentTableName,(const char **)columnNames,(const char **)columnValues,
-                                          numColumnValues,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+                                          numColumnValues,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg);
         if (!result) //OK
         {
             if (numResultRegisters) // Found >0
@@ -1085,7 +1085,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
     }
 }
 
-int cmeWebServiceInitOrgSetup (const char *orgKey)
+int cmeWebServiceInitOrgSetup (const char *orgKey,cmeDefaultEncAlg)
 {   //IDD version 1.0.21
     int cont,result;
     int numResultRegisterCols=0;
@@ -1143,8 +1143,8 @@ int cmeWebServiceInitOrgSetup (const char *orgKey)
                 return(1);
     }
     result=cmeGetUnprotectDBRegisters(pDB,tableName,columnNamesToMatch,(const char **)columnValuesToMatch,1,
-                                      &resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if organization doesn't exist.
-    if(numResultRegisters>0) //organization (with same orgKey) is already in DB -> Error
+                                      &resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg); //Check if organization doesn't exist.
+    if(numResultRegisters>0) //organization (with same orgKey,cmeDefaultEncAlg) is already in DB -> Error
     {
 #ifdef DEBUG
         fprintf(stderr,"CaumeDSE Debug: cmeWebServiceInitOrgSetup(), Error, organization already exists!"
@@ -1153,7 +1153,7 @@ int cmeWebServiceInitOrgSetup (const char *orgKey)
     }
     else
     { //Add organization to DB
-        result=cmePostProtectDBRegister(pDB,tableName,columnNames,(const char **)columnValues,numColumns,orgKey);
+        result=cmePostProtectDBRegister(pDB,tableName,columnNames,(const char **)columnValues,numColumns,orgKey,cmeDefaultEncAlg);
         if (result) //Error
         {
 #ifdef ERROR_LOG
@@ -1175,7 +1175,7 @@ int cmeWebServiceInitOrgSetup (const char *orgKey)
     return(0);
 }
 
-int cmeWebServiceInitStorageSetup (const char *orgKey)
+int cmeWebServiceInitStorageSetup (const char *orgKey,cmeDefaultEncAlg)
 {   //IDD version 1.0.21
     int cont,result;
     int numResultRegisterCols=0;
@@ -1238,8 +1238,8 @@ int cmeWebServiceInitStorageSetup (const char *orgKey)
                 return(1);
     }
     result=cmeGetUnprotectDBRegisters(pDB,tableName,columnNamesToMatch,(const char **)columnValuesToMatch,2,
-                                      &resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if storage doesn't exist.
-    if(numResultRegisters>0) //organization (with same orgKey) is already in DB -> Error
+                                      &resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg); //Check if storage doesn't exist.
+    if(numResultRegisters>0) //organization (with same orgKey,cmeDefaultEncAlg) is already in DB -> Error
     {
 #ifdef DEBUG
         fprintf(stderr,"CaumeDSE Debug: cmeWebServiceInitStorageSetup(), Error, storage already exists!"
@@ -1248,7 +1248,7 @@ int cmeWebServiceInitStorageSetup (const char *orgKey)
     }
     else
     { //Add organization to DB
-        result=cmePostProtectDBRegister(pDB,tableName,columnNames,(const char **)columnValues,numColumns,orgKey);
+        result=cmePostProtectDBRegister(pDB,tableName,columnNames,(const char **)columnValues,numColumns,orgKey,cmeDefaultEncAlg);
         if (result) //Error
         {
 #ifdef ERROR_LOG
@@ -1270,7 +1270,7 @@ int cmeWebServiceInitStorageSetup (const char *orgKey)
     return(0);
 }
 
-int cmeWebServiceInitAdminIdSetup (const char *orgKey)
+int cmeWebServiceInitAdminIdSetup (const char *orgKey,cmeDefaultEncAlg)
 {   //IDD version 1.0.21
     int cont,result;
     int numResultRegisterCols=0;
@@ -1333,8 +1333,8 @@ int cmeWebServiceInitAdminIdSetup (const char *orgKey)
                 return(1);
     }
     result=cmeGetUnprotectDBRegisters(pDB,tableName,columnNamesToMatch,(const char **)columnValuesToMatch,2,
-                                      &resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if user doesn't exist.
-    if(numResultRegisters>0) //organization (with same orgKey) is already in DB -> Error
+                                      &resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey,cmeDefaultEncAlg); //Check if user doesn't exist.
+    if(numResultRegisters>0) //organization (with same orgKey,cmeDefaultEncAlg) is already in DB -> Error
     {
 #ifdef DEBUG
         fprintf(stderr,"CaumeDSE Debug: cmeWebServiceInitAdminIdSetup(), Error, user already exists!"
@@ -1343,7 +1343,7 @@ int cmeWebServiceInitAdminIdSetup (const char *orgKey)
     }
     else
     { //Add organization to DB
-        result=cmePostProtectDBRegister(pDB,tableName,columnNames,(const char **)columnValues,numColumns,orgKey);
+        result=cmePostProtectDBRegister(pDB,tableName,columnNames,(const char **)columnValues,numColumns,orgKey,cmeDefaultEncAlg);
         if (result) //Error
         {
 #ifdef ERROR_LOG
