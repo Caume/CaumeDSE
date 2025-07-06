@@ -11815,6 +11815,7 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
     char *columnValues[14]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
     sqlite3 *pDB=NULL;
     char *dbFilePath=NULL;
+    char *sqlCreate=NULL;
     #define cmeWebServiceLogRequestFree() \
         do { \
             cmeFree(sqlStatement); \
@@ -11823,6 +11824,7 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
             cmeFree(salt); \
             cmeFree(sanitizedStr); \
             cmeFree(dbFilePath); \
+            cmeFree(sqlCreate); \
             if (pDB) \
             { \
                 cmeDBClose(pDB); \
@@ -11857,6 +11859,41 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
                     " File: '%s'!\n",dbFilePath);
 #endif
                 return(1);
+    }
+    // Verify that the transactions table has the expected columns
+    result=cmeMemTableWithTableColumnNames(pDB,tableName);
+    if (!result)
+    {
+        int found=0;
+        for (cont=0; cont<cmeResultMemTableCols; cont++)
+        {
+            if (!strcmp(cmeResultMemTable[cont],"requestMethod"))
+            {
+                found=1;
+                break;
+            }
+        }
+        cmeResultMemTableClean();
+        if (!found)
+        {
+            cmeStrConstrAppend(&sqlCreate,
+                                "BEGIN TRANSACTION; DROP TABLE IF EXISTS \"%s\"; ",
+                                tableName);
+            cmeStrConstrAppend(&sqlCreate,
+                                "CREATE TABLE \"%s\" (id INTEGER PRIMARY KEY, "
+                                "userId TEXT, orgId TEXT, salt TEXT, requestMethod TEXT, requestUrl TEXT, "
+                                "requestHeaders TEXT, startTimestamp TEXT, endTimestamp TEXT, requestDataSize TEXT, "
+                                "responseDataSize TEXT, orgResourceId TEXT, requestIPAddress TEXT, responseCode TEXT, "
+                                "responseHeaders TEXT, authenticated TEXT); COMMIT;",
+                                tableName);
+            cmeSQLRows(pDB,sqlCreate,NULL,NULL);
+            cmeFree(sqlCreate);
+            sqlCreate=NULL;
+        }
+    }
+    else
+    {
+        cmeResultMemTableClean();
     }
     if (!strcmp(authenticated,"1")) //Connection was authenticated -> set flag to encrypt normally (otherwise store information unencrypted)
     {
