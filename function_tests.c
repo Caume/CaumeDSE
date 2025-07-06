@@ -209,7 +209,10 @@ void testCryptoSymmetricGCM()
     unsigned char tag[16];
     unsigned char key[32];
     unsigned char iv[12];
-    int enc_len, dec_len;
+    unsigned char combo[144];
+    unsigned char *b64=NULL;
+    unsigned char *decoded=NULL;
+    int enc_len, dec_len, written, combo_len;
 
     RAND_bytes(key, sizeof(key));
     RAND_bytes(iv, sizeof(iv));
@@ -218,6 +221,20 @@ void testCryptoSymmetricGCM()
                               NULL, 0, key, iv, sizeof(iv),
                               ciphertext, tag);
     printf("GCM ciphertext size: %d\n", enc_len);
+
+    memcpy(combo, ciphertext, enc_len);
+    memcpy(combo + enc_len, tag, sizeof(tag));
+    combo_len = enc_len + sizeof(tag);
+    cmeStrToB64(combo, &b64, combo_len, &written);
+    printf("GCM B64: %s\n", b64);
+
+    cmeB64ToStr(b64, &decoded, written, &written);
+    combo_len = written;
+    memcpy(ciphertext, decoded, combo_len - sizeof(tag));
+    memcpy(tag, decoded + combo_len - sizeof(tag), sizeof(tag));
+    enc_len = combo_len - sizeof(tag);
+    cmeFree(b64);
+    cmeFree(decoded);
 
     dec_len = aes_gcm_decrypt(ciphertext, enc_len, NULL, 0, tag,
                               key, iv, sizeof(iv), decrypted);
