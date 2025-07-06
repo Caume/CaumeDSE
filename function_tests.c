@@ -44,6 +44,77 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
+static int aes_gcm_encrypt(const unsigned char *plaintext, int plaintext_len,
+                           const unsigned char *aad, int aad_len,
+                           const unsigned char *key, const unsigned char *iv,
+                           int iv_len, unsigned char *ciphertext,
+                           unsigned char *tag)
+{
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    int len = 0, ciphertext_len = 0;
+    if (!ctx)
+        return -1;
+    if (!EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL))
+        goto err;
+    if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, iv_len, NULL))
+        goto err;
+    if (!EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv))
+        goto err;
+    if (aad && aad_len)
+        if (!EVP_EncryptUpdate(ctx, NULL, &len, aad, aad_len))
+            goto err;
+    if (!EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len))
+        goto err;
+    ciphertext_len = len;
+    if (!EVP_EncryptFinal_ex(ctx, ciphertext + len, &len))
+        goto err;
+    ciphertext_len += len;
+    if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag))
+        goto err;
+    EVP_CIPHER_CTX_free(ctx);
+    return ciphertext_len;
+err:
+    EVP_CIPHER_CTX_free(ctx);
+    return -1;
+}
+
+static int aes_gcm_decrypt(const unsigned char *ciphertext, int ciphertext_len,
+                           const unsigned char *aad, int aad_len,
+                           const unsigned char *tag,
+                           const unsigned char *key, const unsigned char *iv,
+                           int iv_len, unsigned char *plaintext)
+{
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    int len = 0, plaintext_len = 0, ret = -1;
+    if (!ctx)
+        return -1;
+    if (!EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL))
+        goto err;
+    if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, iv_len, NULL))
+        goto err;
+    if (!EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv))
+        goto err;
+    if (aad && aad_len)
+        if (!EVP_DecryptUpdate(ctx, NULL, &len, aad, aad_len))
+            goto err;
+    if (!EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len))
+        goto err;
+    plaintext_len = len;
+    if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (void *)tag))
+        goto err;
+    ret = EVP_DecryptFinal_ex(ctx, plaintext + len, &len);
+    if (ret > 0)
+    {
+        plaintext_len += len;
+        ret = plaintext_len;
+    }
+    else
+        ret = -1;
+err:
+    EVP_CIPHER_CTX_free(ctx);
+    return ret;
+}
+
 void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
 {
     int cont,cont2,written,ctSize,result __attribute__((unused));
@@ -128,6 +199,30 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     cmeFree (salt);
     cmeFree (ciphertext);
     cmeFree (deciphertext);
+}
+
+void testCryptoSymmetricGCM()
+{
+    const unsigned char cleartext[] = "This is cleartext for GCM.";
+    unsigned char ciphertext[128];
+    unsigned char decrypted[128];
+    unsigned char tag[16];
+    unsigned char key[32];
+    unsigned char iv[12];
+    int enc_len, dec_len;
+
+    RAND_bytes(key, sizeof(key));
+    RAND_bytes(iv, sizeof(iv));
+
+    enc_len = aes_gcm_encrypt(cleartext, strlen((const char *)cleartext),
+                              NULL, 0, key, iv, sizeof(iv),
+                              ciphertext, tag);
+    printf("GCM ciphertext size: %d\n", enc_len);
+
+    dec_len = aes_gcm_decrypt(ciphertext, enc_len, NULL, 0, tag,
+                              key, iv, sizeof(iv), decrypted);
+    decrypted[dec_len] = '\0';
+    printf("GCM decrypted text: %s\n", decrypted);
 }
 
 void testCryptoDigest_Str(unsigned char *bufIn)
