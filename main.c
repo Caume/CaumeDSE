@@ -128,6 +128,7 @@ int main(int argc, char *argv[], char *env[])
         mainFree();
         return(1);
     }
+    testCryptoSymmetricGCM();
     testEngMgmnt();#ifdef DEBUG    // TODO (OHR#2#): Move tests to their own executable and add test checking to the configure script.
     testCryptoSymmetric(bufIn,bufOut);
     testCryptoDigest_Str(bufIn);

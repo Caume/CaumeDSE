@@ -47,6 +47,7 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 
 //Test functions for the rest of the engine functions
 void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut);
+void testCryptoSymmetricGCM();
 void testCryptoDigest_Str(unsigned char *bufIn);
 void testCryptoHMAC ();
 void testPerl (PerlInterpreter *myPerl);
