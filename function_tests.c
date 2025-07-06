@@ -49,7 +49,8 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     int cont,cont2,written,ctSize,result __attribute__((unused));
     unsigned char password[10]= "Password";
     unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
-    char algorithm[] = cmeDefaultEncAlg;
+    /* Use AES-GCM in tests to verify functionality beyond the default CBC */
+    char algorithm[] = "aes-256-gcm";
     unsigned char *key=NULL;
     unsigned char *iv=NULL;
     unsigned char *ciphertext=NULL;
