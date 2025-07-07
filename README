@@ -1810,6 +1810,11 @@ PRNG, and since the key length are the same, key expansion is unnecessary
 the whole keyspace to take into account the provided salt).  Using this kind
 of keys improves performance considerably.
 
+The default symmetric encryption algorithm used by CaumeDSE is AES-256-CBC.
+You may change this at runtime by setting the environment variable
+`CDSE_DEFAULT_ENC_ALG` to any cipher name recognized by OpenSSL, such as
+`aes-256-gcm` for AES in GCM mode.
+
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit
 dictionary and brute force attacks.  Therefore, they are processed by the
