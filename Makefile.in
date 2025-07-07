@@ -108,7 +108,7 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(ipathbindir)" \
 	"$(DESTDIR)$(ipathdatadir)"
 PROGRAMS = $(ipathbin_PROGRAMS)
-am_CaumeDSE_OBJECTS = main.$(OBJEXT) crypto.$(OBJEXT) db.$(OBJEXT) \
+am_CaumeDSE_OBJECTS = main.$(OBJEXT) config.$(OBJEXT) crypto.$(OBJEXT) db.$(OBJEXT) \
 	engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
 	filehandling.$(OBJEXT) function_tests.$(OBJEXT) \
 	perl_interpreter.$(OBJEXT) strhandling.$(OBJEXT) \
