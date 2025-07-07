@@ -1,5 +1,6 @@
 #include "common.h"
 #include <string.h>
+#include <stdlib.h>
 
 char cmeDefaultEncAlg[64] = "aes-256-cbc";
 
