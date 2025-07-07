@@ -42,7 +42,9 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
     by Larry Wall and others.
 
 ***/
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include "common.h"
 
 int cmeDirectoryExists (const char *dirPath)
@@ -235,8 +237,13 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
         for (cont3=0;cont3<*numCols;cont3++) //Fill in generic names.
         {
             colNames[cont3]=(char *)malloc(sizeof(char) * cmeMaxCSVDefaultColNameSize);  //reserve memory for column name
-            strcpy(colNames[cont3],defaultColName);
-            sprintf((colNames[cont3])+7,"%d",cont3);
+            /* Use snprintf to avoid potential buffer overflows when generating
+             * generic column names.  The buffer has space for up to
+             * cmeMaxCSVDefaultColNameSize bytes including the terminating null
+             * byte.
+             */
+            snprintf(colNames[cont3], cmeMaxCSVDefaultColNameSize,
+                     "%s%d", defaultColName, cont3);
         }
     }
     for (rowCont=1;rowCont<rowStart;rowCont++) //Skip to starting row.
