@@ -536,17 +536,55 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
             {
 
 #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), salt is not a "
-                        "hexStr representation; string: %s !\n",hexStrbyteSalt);
-#endif
-                cmeCipherByteStringFree();
-                return(3);
+    int gcm = strstr(algorithm, "gcm") != NULL;
+    int extra = gcm ? 16 : 0;
+    if(!(*dstBuf=(unsigned char *)malloc(srcLen+cipherBlockLen+extra+1))) //Error allocating memory!
+    memset(*dstBuf,0,srcLen+cipherBlockLen+extra+1); //Add space for padding and tag if required
+        if (gcm)
+        {
+            ctx = EVP_CIPHER_CTX_new();
+            if (mode == 'e')
+            {
+                EVP_EncryptInit_ex(ctx, cipher, NULL, NULL, NULL);
+                EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, ivLen, NULL);
+                EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv);
+                EVP_EncryptUpdate(ctx, *dstBuf, &written, srcBuf, srcLen);
+                cont = written;
+                EVP_EncryptFinal_ex(ctx, *dstBuf+cont, &written);
+                cont += written;
+                EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, *dstBuf+cont);
+                cont += 16;
             }
+            else
+            {
+                int ctLen = srcLen - 16;
+                ctx = EVP_CIPHER_CTX_new();
+                EVP_DecryptInit_ex(ctx, cipher, NULL, NULL, NULL);
+                EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, ivLen, NULL);
+                EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv);
+                EVP_DecryptUpdate(ctx, *dstBuf, &written, srcBuf, ctLen);
+                cont = written;
+                EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (void *)(srcBuf + ctLen));
+                result = EVP_DecryptFinal_ex(ctx, *dstBuf+cont, &written);
+                if (result<=0)
+                    exitcode = 3;
+                cont += written;
+            }
+            *dstWritten = cont;
+            (*dstBuf)[cont]='\0';
         }
-    }
-    else if (mode=='d') //Decryption mode
-    {
-        strncpy((char *)hexStrbyteSalt,(char *)*salt,evpSaltBufferSize*2);
+        else
+        {
+            cmeCipherInit(&ctx,NULL,cipher,key,iv,mode);
+            cont=0;
+            cmeCipherUpdate(ctx,(*dstBuf),&written,(unsigned char *)srcBuf,srcLen,mode);
+            cont+=written;
+            result=cmeCipherFinal(&ctx,((*dstBuf)+cont),&written,mode);
+            exitcode+=result;
+            cont += written;
+            *dstWritten=cont;
+            (*dstBuf)[cont]='\0'; //Decryption does not guarantee that an unencrypted string will be null terminated.
+        }
         hexStrbyteSalt[evpSaltBufferSize*2]='\0';
         if ((cmeHexstrToBytes(&byteSalt,hexStrbyteSalt))) // Error, salt is not a hexStr representation!
         {
