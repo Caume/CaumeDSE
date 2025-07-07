@@ -98,7 +98,8 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 #define cmeDefaultValueSaltLen 16        //Default size for prep-ended bytes for internal databases' encrypted values.
 #define cmeDefaultValueSaltCharLen 2*cmeDefaultValueSaltLen             //Default size for CaumeDSE ByteHexStr value salts used in protected DBs.
 #define cmeDefaultSqlBufferLen 8192         //Default size of Buffer for SQL queries. {8192}
-#define cmeDefaultEncAlg "aes-256-cbc"      //Default algorithm for symmetric encryption in engine admin. databases.
+extern char cmeDefaultEncAlg[];             //Default algorithm for symmetric encryption in engine admin. databases.
+void cmeInitDefaultEncAlg();                //Initialize default algorithm from environment
 #define cmeDefaultHshAlg "sha256"           //Default algorithm for bytestring hashing {digest}.
 #define cmeDefaultMACAlg "sha256"             //Default algorithm for bytestring HMAC MACs .
 #define cmeDefaultInsertSqlRows 512         //Default # of rows to be inserted into a sqlite3 db at a time {within a Begin - Commit block}.

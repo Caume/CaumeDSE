@@ -79,6 +79,7 @@ int setup(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl)
     OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG | OPENSSL_INIT_ADD_ALL_CIPHERS |
                         OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
 #endif
+    cmeInitDefaultEncAlg();
     return(0);
 }
 
@@ -106,7 +107,7 @@ int main(int argc, char *argv[], char *env[])
     unsigned char *bufIn=NULL;
     unsigned char *bufOut=NULL;
     char *title=NULL;
-    const char algorithm[]=cmeDefaultEncAlg;
+    const char *algorithm=cmeDefaultEncAlg;
     const EVP_CIPHER *cipher=NULL;
     #define mainFree() \
         do { \
