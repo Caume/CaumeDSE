@@ -55,7 +55,6 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 #define evpBufferSize 1024              //Default Cipher buffer size {4096}
 #define evpMaxKeyIvLen 64               //Max size for Key and IV arrays {64 bytes allows symmetric crypto keys of up to 512 bits}
 #define evpSaltBufferSize 16             //EVP_BytesToKey{} uses this many bytes long salts to derive key and iv.
-#define cmeGCMTagLen 16                 //Default tag length (bytes) to use for AES-GCM authenticated data.
 #define bioReadBufferSize 4096          //Buffer Size for BIO_read {RECOMMENDED: 4096}.
 #ifdef BYPASS_TLS_IN_HTTP
 #define cmeBypassTLSAuthenticationInHTTP BYPASS_TLS_IN_HTTP //Enable/disable bypassing TLS authentication with non TLS sessions {i.e. HTTP} with config. script {1=ON, 0=OFF}.
