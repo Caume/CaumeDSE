@@ -536,17 +536,202 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
             {
 
 #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), salt is not a "
-                        "hexStr representation; string: %s !\n",hexStrbyteSalt);
+    int gcm = strstr(algorithm, "gcm") != NULL;
+    const int tagLen = 16;
+    int extra = (gcm && mode == 'e') ? tagLen : 0;
+    if (gcm && mode == 'd' && srcLen < tagLen)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), GCM ciphertext too short!\n");
+#endif
+        cmeCipherByteStringFree();
+        return(8);
+    }
+    if(!(*dstBuf=(unsigned char *)malloc(srcLen+cipherBlockLen+extra+1))) //Error allocating memory!
+    memset(*dstBuf,0,srcLen+cipherBlockLen+extra+1); //Add space for padding and tag if required
+        if (gcm)
+        {
+            ctx = EVP_CIPHER_CTX_new();
+            if (!ctx)
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_CIPHER_CTX_new() failure!\n");
 #endif
                 cmeCipherByteStringFree();
-                return(3);
+                return(9);
+            }
+            if (mode == 'e')
+            {
+                int success = 1;
+                cont = 0;
+                if (EVP_EncryptInit_ex(ctx, cipher, NULL, NULL, NULL) != 1)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_EncryptInit_ex() failure!\n");
+#endif
+                    exitcode = 10;
+                    success = 0;
+                }
+                else if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, ivLen, NULL) != 1)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_CTRL_GCM_SET_IVLEN failure!\n");
+#endif
+                    exitcode = 11;
+                    success = 0;
+                }
+                else if (EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv) != 1)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_EncryptInit_ex() key/iv failure!\n");
+#endif
+                    exitcode = 12;
+                    success = 0;
+                }
+                else if (EVP_EncryptUpdate(ctx, *dstBuf, &written, srcBuf, srcLen) != 1)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_EncryptUpdate() failure!\n");
+#endif
+                    exitcode = 13;
+                    success = 0;
+                }
+                else
+                {
+                    cont = written;
+                    if (EVP_EncryptFinal_ex(ctx, *dstBuf+cont, &written) != 1)
+                    {
+#ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_EncryptFinal_ex() failure!\n");
+#endif
+                        exitcode = 14;
+                        success = 0;
+                    }
+                    else
+                    {
+                        cont += written;
+                        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, tagLen, *dstBuf+cont) != 1)
+                        {
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_CTRL_GCM_GET_TAG failure!\n");
+#endif
+                            exitcode = 15;
+                            success = 0;
+                        }
+                        else
+                        {
+                            cont += tagLen;
+                        }
+                    }
+                }
+                if (!success)
+                {
+                    memset(*dstBuf,0,srcLen+cipherBlockLen+extra+1);
+                    cont = 0;
+                    *dstWritten = 0;
+                    (*dstBuf)[0] = '\0';
+                }
+                else
+                {
+                    *dstWritten = cont;
+                    (*dstBuf)[cont]='\0';
+#ifdef DEBUG
+                    fprintf(stdout,"CaumeDSE Debug: cmeCipherByteString(), GCM encryption success.\n");
+#endif
+                }
+            }
+            else
+            {
+                int ctLen = srcLen - tagLen;
+                int success = 1;
+                cont = 0;
+                if (EVP_DecryptInit_ex(ctx, cipher, NULL, NULL, NULL) != 1)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_DecryptInit_ex() failure!\n");
+#endif
+                    exitcode = 16;
+                    success = 0;
+                }
+                else if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, ivLen, NULL) != 1)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_CTRL_GCM_SET_IVLEN failure!\n");
+#endif
+                    exitcode = 17;
+                    success = 0;
+                }
+                else if (EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv) != 1)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_DecryptInit_ex() key/iv failure!\n");
+#endif
+                    exitcode = 18;
+                    success = 0;
+                }
+                else if (EVP_DecryptUpdate(ctx, *dstBuf, &written, srcBuf, ctLen) != 1)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_DecryptUpdate() failure!\n");
+#endif
+                    exitcode = 19;
+                    success = 0;
+                }
+                else if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, tagLen, (void *)(srcBuf + ctLen)) != 1)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_CTRL_GCM_SET_TAG failure!\n");
+#endif
+                    exitcode = 20;
+                    success = 0;
+                }
+                else
+                {
+                    cont = written;
+                    result = EVP_DecryptFinal_ex(ctx, *dstBuf+cont, &written);
+                    if (result<=0)
+                    {
+#ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), EVP_DecryptFinal_ex() authentication failure!\n");
+#endif
+                        memset(*dstBuf,0,srcLen+cipherBlockLen+extra+1);
+                        cont = 0;
+                        exitcode = 21;
+                        success = 0;
+                    }
+                    else
+                    {
+                        cont += written;
+#ifdef DEBUG
+                        fprintf(stdout,"CaumeDSE Debug: cmeCipherByteString(), GCM decryption success.\n");
+#endif
+                    }
+                }
+                if (!success)
+                {
+                    memset(*dstBuf,0,srcLen+cipherBlockLen+extra+1);
+                    *dstWritten = 0;
+                    (*dstBuf)[0] = '\0';
+                }
+                else
+                {
+                    *dstWritten = cont;
+                    (*dstBuf)[cont]='\0';
+                }
             }
         }
-    }
-    else if (mode=='d') //Decryption mode
-    {
-        strncpy((char *)hexStrbyteSalt,(char *)*salt,evpSaltBufferSize*2);
+        else
+        {
+            cmeCipherInit(&ctx,NULL,cipher,key,iv,mode);
+            cont=0;
+            cmeCipherUpdate(ctx,(*dstBuf),&written,(unsigned char *)srcBuf,srcLen,mode);
+            cont+=written;
+            result=cmeCipherFinal(&ctx,((*dstBuf)+cont),&written,mode);
+            exitcode+=result;
+            cont += written;
+            *dstWritten=cont;
+            (*dstBuf)[cont]='\0'; //Decryption does not guarantee that an unencrypted string will be null terminated.
+        }
         hexStrbyteSalt[evpSaltBufferSize*2]='\0';
         if ((cmeHexstrToBytes(&byteSalt,hexStrbyteSalt))) // Error, salt is not a hexStr representation!
         {
