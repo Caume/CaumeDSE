@@ -155,6 +155,8 @@ int cmeCipherInit (EVP_CIPHER_CTX **ctx, ENGINE *engine, const EVP_CIPHER *ciphe
                    unsigned char* iv, char mode)
 {
     int result;
+    int ivLen = 0;
+    int isGCM = 0;
 
     *ctx = EVP_CIPHER_CTX_new();
     if ((mode!='d')&&(mode!='e'))
@@ -165,49 +167,100 @@ int cmeCipherInit (EVP_CIPHER_CTX **ctx, ENGINE *engine, const EVP_CIPHER *ciphe
         return (1);
     }
 
-    else
+    ivLen = EVP_CIPHER_iv_length(cipher);
+#ifdef EVP_CIPH_GCM_MODE
+    if (cipher && (EVP_CIPHER_mode(cipher) == EVP_CIPH_GCM_MODE))
     {
-#ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: evpCipherInit(), cipher mode '%c' selected.\n",mode);
+        isGCM = 1;
+    }
 #endif
-        if (mode=='e')  //Encrypt
-        {
-            result= EVP_EncryptInit_ex(*ctx,cipher,engine,key,iv);
 
-            if (result==0)  //1= success, 0=failure
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: evpCipherInit(), cipher mode '%c' selected.%s\n",mode,
+            isGCM ? " (GCM)" : "");
+#endif
+
+    if (mode=='e')  //Encrypt
+    {
+        if (isGCM)
+        {
+            result = EVP_EncryptInit_ex(*ctx,cipher,engine,NULL,NULL);
+            if (result==0)
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: evpCipherInit(), EVP_EncryptInit_ex() failure!\n");
 #endif
                 return (2);
             }
-            else
+            if (ivLen > 0)
             {
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: evpCipherInit(), EVP_EncryptInit_ex() success.\n");
+                if (!EVP_CIPHER_CTX_ctrl(*ctx, EVP_CTRL_GCM_SET_IVLEN, ivLen, NULL))
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: evpCipherInit(), EVP_CTRL_GCM_SET_IVLEN failure!\n");
 #endif
+                    return (3);
+                }
             }
-
+            result = EVP_EncryptInit_ex(*ctx,NULL,engine,key,iv);
         }
-        else            //Decrypt
+        else
         {
-            result= EVP_DecryptInit_ex(*ctx,cipher,engine,key,iv);
+            result= EVP_EncryptInit_ex(*ctx,cipher,engine,key,iv);
+        }
 
-            if (result==0)  //1= success, 0=failure
+        if (result==0)  //1= success, 0=failure
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: evpCipherInit(), EVP_EncryptInit_ex() failure!\n");
+#endif
+            return (2);
+        }
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: evpCipherInit(), EVP_EncryptInit_ex() success.\n");
+#endif
+
+    }
+    else            //Decrypt
+    {
+        if (isGCM)
+        {
+            result = EVP_DecryptInit_ex(*ctx,cipher,engine,NULL,NULL);
+            if (result==0)
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: evpCipherInit(), EVP_DecryptInit_ex() failure!\n");
 #endif
                 return (2);
             }
-            else
+            if (ivLen > 0)
             {
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: evpCipherInit(), EVP_DecryptInit_ex() success.\n");
+                if (!EVP_CIPHER_CTX_ctrl(*ctx, EVP_CTRL_GCM_SET_IVLEN, ivLen, NULL))
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: evpCipherInit(), EVP_CTRL_GCM_SET_IVLEN failure!\n");
 #endif
+                    return (3);
+                }
             }
-
+            result = EVP_DecryptInit_ex(*ctx,NULL,engine,key,iv);
         }
+        else
+        {
+            result= EVP_DecryptInit_ex(*ctx,cipher,engine,key,iv);
+        }
+
+        if (result==0)  //1= success, 0=failure
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: evpCipherInit(), EVP_DecryptInit_ex() failure!\n");
+#endif
+            return (2);
+        }
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: evpCipherInit(), EVP_DecryptInit_ex() success.\n");
+#endif
+
     }
     return (0);
 }
@@ -444,17 +497,106 @@ int cmeGetRndSalt (char **rndHexSalt)
     cmePrngGetBytes((unsigned char **)&rndBytes, cmeDefaultIDBytesLen);
     cmeBytesToHexstr((const unsigned char *)rndBytes,
                      (unsigned char **)rndHexSalt,
-                     cmeDefaultIDBytesLen); /* caller must free rndHexSalt */
-    cmeFree(rndBytes);
-    return (0);
-}
-
-int cmeGetRndSaltAnySize (char **rndHexSalt, int size)
-{
-    char *rndBytes=NULL;
-
-    cmePrngGetBytes((unsigned char **)&rndBytes,size);  //Get random bytes for salt
-    cmeBytesToHexstr((const unsigned char *)rndBytes,(unsigned char **)rndHexSalt,size); //Note that caller must free rndHexSalt!
+    int isGCM=0;
+    int gcmTagLen=cmeGCMTagLen;
+    int processedSrcLen=srcLen;
+    unsigned char gcmTag[cmeGCMTagLen];
+    memset(gcmTag,0,sizeof(gcmTag));
+#ifdef EVP_CIPH_GCM_MODE
+    if (EVP_CIPHER_mode(cipher)==EVP_CIPH_GCM_MODE)
+    {
+        isGCM=1;
+    }
+#endif
+    if ((mode=='d') && isGCM)
+    {
+        if (srcLen<gcmTagLen)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), ciphertext too short for GCM tag!\n");
+#endif
+            cmeCipherByteStringFree();
+            return(8);
+        }
+        processedSrcLen=srcLen-gcmTagLen;
+        memcpy(gcmTag,srcBuf+processedSrcLen,gcmTagLen);
+    }
+    int allocLen=processedSrcLen+cipherBlockLen+1;
+    if (isGCM && (mode=='e'))
+    {
+        allocLen+=gcmTagLen;
+    }
+    if(!(*dstBuf=(unsigned char *)malloc(allocLen))) //Error allocating memory!
+    memset(*dstBuf,0,allocLen);     // we add 1 block more (for encryption padding). + 1 for null ending for unencrypted strings
+        result=cmeCipherInit(&ctx,NULL,cipher,key,iv,mode);
+        if (result)
+        {
+            exitcode+=result;
+            *dstWritten=0;
+        }
+        else
+        {
+            cont=0;
+            {
+                int updateLen=(mode=='d' && isGCM)?processedSrcLen:srcLen;
+                cmeCipherUpdate(ctx,(*dstBuf),&written,(unsigned char *)srcBuf,updateLen,mode);
+            }
+            cont+=written;
+        if (isGCM)
+        {
+            if (mode=='e')
+            {
+                if (!EVP_EncryptFinal_ex(ctx,((*dstBuf)+cont),&written))
+                {
+                    exitcode+=2;
+                }
+                else
+                {
+                    cont+=written;
+                    if (!EVP_CIPHER_CTX_ctrl(ctx,EVP_CTRL_GCM_GET_TAG,gcmTagLen,gcmTag))
+                    {
+                        exitcode+=4;
+                    }
+                    else
+                    {
+                        memcpy((*dstBuf)+cont,gcmTag,gcmTagLen);
+                        cont+=gcmTagLen;
+                    }
+                }
+            }
+            else
+            {
+                if (!EVP_CIPHER_CTX_ctrl(ctx,EVP_CTRL_GCM_SET_TAG,gcmTagLen,gcmTag))
+                {
+                    exitcode+=4;
+                }
+                else if (!EVP_DecryptFinal_ex(ctx,((*dstBuf)+cont),&written))
+                {
+                    exitcode+=3;
+                }
+                else
+                {
+                    cont+=written;
+                }
+            }
+            *dstWritten=cont;
+            (*dstBuf)[cont]='\0';
+            if (ctx)
+            {
+                EVP_CIPHER_CTX_free(ctx);
+                ctx=NULL;
+            }
+        }
+        else
+        {
+            result=cmeCipherFinal(&ctx,((*dstBuf)+cont),&written,mode);
+            exitcode+=result;
+            cont += written;
+            *dstWritten=cont;
+            (*dstBuf)[cont]='\0'; //Decryption does not guarantee that an unencrypted string will be null terminated.
+        }
+        }
+    memset(gcmTag,0,sizeof(gcmTag));
     cmeFree(rndBytes);
     return (0);
 }
