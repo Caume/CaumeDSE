@@ -776,7 +776,19 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
             return (3);
         }
     }
-    getchar ();                     //TODO (OHR#2#): Clear temporal "wait for enter"; create web service Exception Handler (stop) function.
+    {
+        const char *nonInteractive = getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
+        if (nonInteractive && *nonInteractive && strcmp(nonInteractive,"0"))
+        {
+#ifdef DEBUG
+            sleep(1);
+#endif
+        }
+        else
+        {
+            getchar ();                     //TODO (OHR#2#): Clear temporal "wait for enter"; create web service Exception Handler (stop) function.
+        }
+    }
     cmeWebServiceSetupFree();
     return(0);
 }

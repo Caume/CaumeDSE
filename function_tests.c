@@ -44,6 +44,19 @@ Copyright 2010-2021 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
+static int cmeDebugTestsNonInteractiveEnabled(void)
+{
+    const char *env = getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
+    return (env && *env && strcmp(env,"0"));
+}
+
+static char *cmeTestPath(const char *relativePath)
+{
+    char *result = NULL;
+    cmeStrConstrAppend(&result, "%s%s", cmeDefaultFilePath, relativePath);
+    return result;
+}
+
 static int aes_gcm_encrypt(const unsigned char *plaintext, int plaintext_len,
                            const unsigned char *aad, int aad_len,
                            const unsigned char *key, const unsigned char *iv,
@@ -159,20 +172,24 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     cont2 += written;
     printf ("---etSize: %d\n",cont2);
 
-    fp=fopen("/opt/cdse/testfiles/enciphered.bin","wb");
-    if (fp)
     {
-        result=fwrite(ciphertext,cont2,1,fp);
-        if (result != 1)
+        char *encipheredPath = cmeTestPath("testfiles/enciphered.bin");
+        fp=fopen(encipheredPath,"wb");
+        if (fp)
         {
-            printf("---error writing file '/opt/cdse/testfiles/enciphered.bin'\n");
+            result=fwrite(ciphertext,cont2,1,fp);
+            if (result != 1)
+            {
+                printf("---error writing file '%s'\n",encipheredPath);
+            }
+            fflush(fp);
+            fclose(fp);
         }
-        fflush(fp);
-        fclose(fp);
-    }
-    else
-    {
-        printf("---error opening file '/opt/cdse/testfiles/enciphered.bin' for writing\n");
+        else
+        {
+            printf("---error opening file '%s' for writing\n",encipheredPath);
+        }
+        cmeFree(encipheredPath);
     }
     cmeFree(key);                          //Free stuff
     cmeFree(iv);
@@ -402,14 +419,16 @@ void testPerl (PerlInterpreter *myPerl)
     int cont=0;
     char *ilist[2];
     char *rlist[2];
+    char *testScriptPath=NULL;
     char ilist_1[]="This is string 1.\n";
     char ilist_2[]="This is string 2.\n";
 
     cmePerlParserInstruction ("print \"this is a single line instruction test\\n\";",myPerl);
     cmePerlParserRun(myPerl);
 
+    testScriptPath=cmeTestPath("testfiles/test.pl");
     ilist[0]="cdse";
-    ilist[1]="/opt/cdse/testfiles/test.pl";
+    ilist[1]=testScriptPath;
     result=cmePerlParserCmdLineInit(2,ilist,myPerl);    //initialize Parser and script's global variables
     ilist[0]=ilist_1;
     ilist[1]=ilist_2;
@@ -424,19 +443,21 @@ void testPerl (PerlInterpreter *myPerl)
 
 
     ilist[0]="cdse";
-    ilist[1]="/opt/cdse/testfiles/test.pl";
+    ilist[1]=testScriptPath;
     result=cmePerlParserCmdLineInit(2,ilist,myPerl);    //initialize Parser and script's global variables
     ilist[0]=ilist_1;
     ilist[1]=ilist_2;
     result=cmePerlParserScriptFunction("iterate",myPerl,ilist,2,rlist,2,&cont);
     printf ("perl function result 1: %s",rlist[0]);
     printf ("perl function result 2: %s",rlist[1]);
+    cmeFree(testScriptPath);
 }
 
 void testDB (PerlInterpreter* myPerl)
 {
     int cont,cont2,result __attribute__((unused));
     char *ilist[2];
+    char *testScriptPath=NULL;
     int numRows=0;
     int numColumns=0;
     sqlite3 *DB;
@@ -464,8 +485,9 @@ void testDB (PerlInterpreter* myPerl)
     cmeMemTableFinal(pQueryResult);
     cmeDBClose(DB);
 
+    testScriptPath=cmeTestPath("testfiles/test.pl");
     ilist[0]="cdse";
-    ilist[1]="/opt/cdse/testfiles/test.pl";
+    ilist[1]=testScriptPath;
     result=cmePerlParserCmdLineInit(2,ilist,myPerl);    //initialize Parser and script's global variables
     cmeDBCreateOpen (":memory:",&DB);       //Create memory DB
     cmeSQLRows(DB,"BEGIN TRANSACTION; CREATE TABLE table1 (key INTEGER PRIMARY KEY,"
@@ -485,6 +507,7 @@ void testDB (PerlInterpreter* myPerl)
                " COMMIT;","iterate",myPerl); //Select
     cmeResultMemTableClean();
     cmeDBClose(DB);
+    cmeFree(testScriptPath);
 }
 
 void testCSV ()
@@ -493,8 +516,9 @@ void testCSV ()
     int numCols=0;
     int numRows=0;
     int processedRows=0;
-    char fName[]="/opt/cdse/testfiles/CSVtest.csv";
-    char fName2[]="/opt/cdse/testfiles/CSVtest2.csv";
+    char *fName=NULL;
+    char *fName2=NULL;
+    char *resourcesDBPath=NULL;
     char **elements=NULL;
     char **pQueryResult=NULL;
     char **pQueryResult2=NULL;
@@ -502,6 +526,10 @@ void testCSV ()
     const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
     sqlite3 *resultDB=NULL;
     sqlite3 *pResourcesDB=NULL;
+
+    fName=cmeTestPath("testfiles/CSVtest.csv");
+    fName2=cmeTestPath("testfiles/CSVtest2.csv");
+    resourcesDBPath=cmeTestPath(cmeDefaultResourcesDBName);
 
     result=cmeCSVFileRowsToMemTable (fName, &elements, &numCols, &processedRows, 0, 6, 10);
     for (cont2=0; cont2<=processedRows; cont2++)
@@ -542,8 +570,11 @@ void testCSV ()
     result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
                           "password1",attributes, attributesData,2,1,"Payroll Database; Confidential.",
                           "file.csv", "AcmeIncPayroll.csv","storage1",cmeDefaultFilePath);
-    if (cmeDBOpen("/opt/cdse/ResourcesDB",&pResourcesDB)) //Error
+    if (cmeDBOpen(resourcesDBPath,&pResourcesDB)) //Error
     {
+        cmeFree(fName);
+        cmeFree(fName2);
+        cmeFree(resourcesDBPath);
         return;
     }
     cmeSecureDBToMemDB (&resultDB, pResourcesDB,"AcmeIncPayroll.csv","password1",cmeDefaultFilePath);
@@ -563,6 +594,9 @@ void testCSV ()
     else
     {
         fprintf(stderr,"CaumeDSE Error: testCSV(), cmeMemTable() failed. Skipping table to secure DB conversion.\n");
+        cmeFree(fName);
+        cmeFree(fName2);
+        cmeFree(resourcesDBPath);
         return;
     }
     result=cmeMemTableToSecureDB((const char **)pQueryResult,numCols,numRows,"User123","CaumeDSE",
@@ -588,6 +622,9 @@ void testCSV ()
         cmeMemTableFinal(pQueryResult);
         cmeDBClose(resultDB);
         cmeDBClose(pResourcesDB);
+        cmeFree(fName);
+        cmeFree(fName2);
+        cmeFree(resourcesDBPath);
         return;
     }
     cmeMemTableFinal(pQueryResult);
@@ -595,6 +632,9 @@ void testCSV ()
     cmeDBClose(resultDB);
     //result=cmeDeleteSecureDB(pResourcesDB,"AcmeIncPayroll Tests.csv", "password2",cmeDefaultFilePath);
     cmeDBClose(pResourcesDB);
+    cmeFree(fName);
+    cmeFree(fName2);
+    cmeFree(resourcesDBPath);
 }
 
 void testEngMgmnt ()
@@ -605,8 +645,29 @@ void testEngMgmnt ()
 
 void testWebServices ()
 {
-    printf("--- Testing Web server HTTP port %d (press enter to continue)\n",cmeDefaultWebservicePort);
-    cmeWebServiceSetup(cmeDefaultWebservicePort,0,NULL,NULL,NULL);
-    printf("--- Testing Web server HTTPS port %d (press enter to continue)\n",cmeDefaultWebServiceSSLPort);
-    cmeWebServiceSetup(cmeDefaultWebServiceSSLPort,1,cmeDefaultHTTPSKeyFile,cmeDefaultHTTPSCertFile,cmeDefaultCACertFile);
+    const char *httpEnv = getenv("CDSE_DEBUG_TEST_HTTP_PORT");
+    const char *httpsEnv = getenv("CDSE_DEBUG_TEST_HTTPS_PORT");
+    int httpPort = cmeDefaultWebservicePort;
+    int httpsPort = cmeDefaultWebServiceSSLPort;
+
+    if (cmeDebugTestsNonInteractiveEnabled())
+    {
+        httpPort = 8080;
+        httpsPort = 8443;
+    }
+    if (httpEnv && *httpEnv)
+    {
+        httpPort = atoi(httpEnv);
+    }
+    if (httpsEnv && *httpsEnv)
+    {
+        httpsPort = atoi(httpsEnv);
+    }
+
+    printf("--- Testing Web server HTTP port %d%s\n",httpPort,
+           cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)");
+    cmeWebServiceSetup(httpPort,0,NULL,NULL,NULL);
+    printf("--- Testing Web server HTTPS port %d%s\n",httpsPort,
+           cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)");
+    cmeWebServiceSetup(httpsPort,1,cmeDefaultHTTPSKeyFile,cmeDefaultHTTPSCertFile,cmeDefaultCACertFile);
 }
