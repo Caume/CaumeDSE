@@ -1,3 +1,44 @@
+2026-03-20 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+	* *.c, *.h, README: Updated copyright year range to 2010-2026 in all
+	source files and README.
+
+2026-03-16 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+	* function_tests.c, engine_admin.c: Made debug self-tests
+	non-interactive and configurable via the
+	CDSE_DEBUG_TESTS_NONINTERACTIVE environment variable; added
+	cmeDebugTestsNonInteractiveEnabled() helper and replaced hardcoded
+	/opt/cdse paths with cmeDefaultFilePath-relative paths via a new
+	cmeTestPath() helper; web service test now skips blocking getchar()
+	when running non-interactively.
+
+	* configure.ac, configure, config.guess, config.sub, Makefile.in,
+	compile, depcomp, install-sh, missing: Refreshed autotools auxiliary
+	scripts and host/build detection files for compatibility with modern
+	platforms (aarch64, riscv64, etc.).
+
+2025-09-27 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+	* common.h, crypto.c: Attempted to add AES-GCM support in cipher
+	routines; reverted pending further integration work. AES-GCM
+	encrypt/decrypt self-test (testCryptoSymmetricGCM) was retained in
+	function_tests.c using standalone EVP helpers.
+
+2025-07-06 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+	* Makefile, Makefile.in: Added config.$(OBJEXT) to the list of compiled
+	objects to ensure the config module is always linked into the binary.
+
+	* filehandling.c (cmeCSVFileRowsToMemTable): Replaced strcpy/sprintf
+	with snprintf for generic column name generation to prevent potential
+	buffer overflows; guarded _GNU_SOURCE definition with #ifndef to avoid
+	redefinition warnings.
+
+	* config.c: Added missing #include <stdlib.h> to fix implicit
+	declaration warnings and ensure correct initialization of the default
+	encryption algorithm.
+
+	* function_tests.c (testCryptoSymmetric): Fixed algorithm variable
+	declaration from a mutable char array copy to a const pointer, correctly
+	referencing cmeDefaultEncAlg.
+
 2021-05-07 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 	* *.c: Fixed unused-but-set variable warnings; fixed libmicrohttpd conversion 
 	warnings.
