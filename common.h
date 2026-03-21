@@ -55,6 +55,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define evpBufferSize 1024              //Default Cipher buffer size {4096}
 #define evpMaxKeyIvLen 64               //Max size for Key and IV arrays {64 bytes allows symmetric crypto keys of up to 512 bits}
 #define evpSaltBufferSize 16             //EVP_BytesToKey{} uses this many bytes long salts to derive key and iv.
+#define cmeGCMTagLen 16                 //Default tag length (bytes) to use for AES-GCM authenticated data.
 #define bioReadBufferSize 4096          //Buffer Size for BIO_read {RECOMMENDED: 4096}.
 #ifdef BYPASS_TLS_IN_HTTP
 #define cmeBypassTLSAuthenticationInHTTP BYPASS_TLS_IN_HTTP //Enable/disable bypassing TLS authentication with non TLS sessions {i.e. HTTP} with config. script {1=ON, 0=OFF}.
@@ -103,8 +104,8 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeDefaultHshAlg "sha256"           //Default algorithm for bytestring hashing {digest}.
 #define cmeDefaultMACAlg "sha256"             //Default algorithm for bytestring HMAC MACs .
 #define cmeDefaultInsertSqlRows 512         //Default # of rows to be inserted into a sqlite3 db at a time {within a Begin - Commit block}.
-#define cmeDefaultWebservicePort 80         //Default port for regular HTTP web services.
-#define cmeDefaultWebServiceSSLPort 443     //Default port for TLS/SSL web services.
+#define cmeDefaultWebservicePort 8080       //Default port for regular HTTP web services.
+#define cmeDefaultWebServiceSSLPort 8443    //Default port for TLS/SSL web services.
 #define cmeDefaultThreadWaitSeconds 0                     //Default number of seconds to wait for thread synchronization.
 #define cmeDefaultPerlIterationFunction     "cmePERLProcessRow"               //Name for the perl iteration function to be called when parsing SQL results with PERL
 #define cmeDefaultPerlColNameSetupFunction  "cmePERLProcessColumnNames"       //Name for the perl iteration function to be called when parsing SQL results with PERL
