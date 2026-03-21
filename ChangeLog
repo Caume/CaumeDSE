@@ -1,5 +1,15 @@
 2026-03-21 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+	* /opt/cdse/ (ResourcesDB, RolesDB, LogsDB, encrypted data parts):
+	Recreated all test databases from scratch using aes-256-gcm.  Full
+	test suite confirmed clean: 0 decrypt errors, 0 CaumeDSE Errors,
+	5,424 GCM encrypt/decrypt operations across testCryptoSymmetric,
+	testDB and testCSV; HMAC verify warnings (36) are expected and
+	limited to document-ID scan comparisons against non-matching rows.
+	Web service tests bind successfully to ports 8080 and 8443.
+
+2026-03-21 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
 	* common.h (cmeDefaultWebservicePort, cmeDefaultWebServiceSSLPort):
 	Changed default HTTP port from 80 to 8080 and default HTTPS port
 	from 443 to 8443, so the engine can be run without root privileges
