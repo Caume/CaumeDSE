@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-char cmeDefaultEncAlg[64] = "aes-256-cbc";
+char cmeDefaultEncAlg[64] = "aes-256-gcm";
 
 void cmeInitDefaultEncAlg()
 {
