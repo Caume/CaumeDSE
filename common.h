@@ -104,8 +104,8 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeDefaultHshAlg "sha256"           //Default algorithm for bytestring hashing {digest}.
 #define cmeDefaultMACAlg "sha256"             //Default algorithm for bytestring HMAC MACs .
 #define cmeDefaultInsertSqlRows 512         //Default # of rows to be inserted into a sqlite3 db at a time {within a Begin - Commit block}.
-#define cmeDefaultWebservicePort 80         //Default port for regular HTTP web services.
-#define cmeDefaultWebServiceSSLPort 443     //Default port for TLS/SSL web services.
+#define cmeDefaultWebservicePort 8080       //Default port for regular HTTP web services.
+#define cmeDefaultWebServiceSSLPort 8443    //Default port for TLS/SSL web services.
 #define cmeDefaultThreadWaitSeconds 0                     //Default number of seconds to wait for thread synchronization.
 #define cmeDefaultPerlIterationFunction     "cmePERLProcessRow"               //Name for the perl iteration function to be called when parsing SQL results with PERL
 #define cmeDefaultPerlColNameSetupFunction  "cmePERLProcessColumnNames"       //Name for the perl iteration function to be called when parsing SQL results with PERL

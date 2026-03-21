@@ -1,3 +1,35 @@
+2026-03-21 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
+	* common.h (cmeDefaultWebservicePort, cmeDefaultWebServiceSSLPort):
+	Changed default HTTP port from 80 to 8080 and default HTTPS port
+	from 443 to 8443, so the engine can be run without root privileges
+	or CAP_NET_BIND_SERVICE on Linux systems where
+	ip_unprivileged_port_start=1024.
+
+	* config.c (cmeDefaultEncAlg): Changed compile-time default
+	encryption algorithm from aes-256-cbc to aes-256-gcm.
+
+	* common.h (cmeGCMTagLen): Added define for the default AES-GCM
+	authentication tag length (16 bytes).
+
+	* crypto.c (cmeCipherInit): Added two-phase GCM initialization:
+	first call sets cipher and IV length via EVP_CTRL_GCM_SET_IVLEN,
+	second call supplies key and IV.
+
+	* crypto.c (cmeCipherByteString): Added full AES-GCM support:
+	detects GCM mode via EVP_CIPHER_mode(); on encryption appends the
+	16-byte authentication tag after the ciphertext; on decryption
+	strips and verifies the tag with EVP_CTRL_GCM_SET_TAG before
+	accepting plaintext.  Non-GCM path (e.g. aes-256-cbc) is
+	unchanged.
+
+	* function_tests.c, function_tests.h
+	(testCryptoSymmetricGCM_ByteString): Added encrypt/decrypt
+	round-trip test for aes-256-gcm through cmeCipherByteString.
+
+	* README (IV. Architecture): Updated default HTTP/HTTPS ports to
+	8080/8443 and default encryption algorithm to AES-256-GCM.
+
 2026-03-20 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 	* *.c, *.h, README: Updated copyright year range to 2010-2026 in all
 	source files and README.
