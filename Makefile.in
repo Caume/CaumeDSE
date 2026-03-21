@@ -130,12 +130,12 @@ am__v_at_1 =
 DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
-am__depfiles_remade = ./$(DEPDIR)/crypto.Po ./$(DEPDIR)/db.Po \
-	./$(DEPDIR)/engine_admin.Po ./$(DEPDIR)/engine_interface.Po \
-	./$(DEPDIR)/filehandling.Po ./$(DEPDIR)/function_tests.Po \
-	./$(DEPDIR)/main.Po ./$(DEPDIR)/perl_interpreter.Po \
-	./$(DEPDIR)/strhandling.Po ./$(DEPDIR)/webservice_interface.Po \
-	./$(DEPDIR)/xs_init.Po
+am__depfiles_remade = ./$(DEPDIR)/config.Po ./$(DEPDIR)/crypto.Po \
+	./$(DEPDIR)/db.Po ./$(DEPDIR)/engine_admin.Po \
+	./$(DEPDIR)/engine_interface.Po ./$(DEPDIR)/filehandling.Po \
+	./$(DEPDIR)/function_tests.Po ./$(DEPDIR)/main.Po \
+	./$(DEPDIR)/perl_interpreter.Po ./$(DEPDIR)/strhandling.Po \
+	./$(DEPDIR)/webservice_interface.Po ./$(DEPDIR)/xs_init.Po
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -502,6 +502,7 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/config.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/crypto.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/db.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/engine_admin.Po@am__quote@ # am--include-marker
@@ -903,7 +904,8 @@ clean-am: clean-generic clean-ipathbinPROGRAMS clean-local \
 
 distclean: distclean-recursive
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
-		-rm -f ./$(DEPDIR)/crypto.Po
+		-rm -f ./$(DEPDIR)/config.Po
+	-rm -f ./$(DEPDIR)/crypto.Po
 	-rm -f ./$(DEPDIR)/db.Po
 	-rm -f ./$(DEPDIR)/engine_admin.Po
 	-rm -f ./$(DEPDIR)/engine_interface.Po
@@ -962,7 +964,8 @@ installcheck-am:
 maintainer-clean: maintainer-clean-recursive
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -rf $(top_srcdir)/autom4te.cache
-		-rm -f ./$(DEPDIR)/crypto.Po
+		-rm -f ./$(DEPDIR)/config.Po
+	-rm -f ./$(DEPDIR)/crypto.Po
 	-rm -f ./$(DEPDIR)/db.Po
 	-rm -f ./$(DEPDIR)/engine_admin.Po
 	-rm -f ./$(DEPDIR)/engine_interface.Po

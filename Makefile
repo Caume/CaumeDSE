@@ -87,8 +87,8 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-build_triplet = x86_64-unknown-linux-gnu
-host_triplet = x86_64-unknown-linux-gnu
+build_triplet = aarch64-unknown-linux-gnu
+host_triplet = aarch64-unknown-linux-gnu
 ipathbin_PROGRAMS = CaumeDSE$(EXEEXT)
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -130,12 +130,12 @@ am__v_at_1 =
 DEFAULT_INCLUDES = -I.
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
-am__depfiles_remade = ./$(DEPDIR)/crypto.Po ./$(DEPDIR)/db.Po \
-	./$(DEPDIR)/engine_admin.Po ./$(DEPDIR)/engine_interface.Po \
-	./$(DEPDIR)/filehandling.Po ./$(DEPDIR)/function_tests.Po \
-	./$(DEPDIR)/main.Po ./$(DEPDIR)/perl_interpreter.Po \
-	./$(DEPDIR)/strhandling.Po ./$(DEPDIR)/webservice_interface.Po \
-	./$(DEPDIR)/xs_init.Po
+am__depfiles_remade = ./$(DEPDIR)/config.Po ./$(DEPDIR)/crypto.Po \
+	./$(DEPDIR)/db.Po ./$(DEPDIR)/engine_admin.Po \
+	./$(DEPDIR)/engine_interface.Po ./$(DEPDIR)/filehandling.Po \
+	./$(DEPDIR)/function_tests.Po ./$(DEPDIR)/main.Po \
+	./$(DEPDIR)/perl_interpreter.Po ./$(DEPDIR)/strhandling.Po \
+	./$(DEPDIR)/webservice_interface.Po ./$(DEPDIR)/xs_init.Po
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -266,14 +266,14 @@ distuninstallcheck_listfiles = find . -type f -print
 am__distuninstallcheck_listfiles = $(distuninstallcheck_listfiles) \
   | sed 's|^\./|$(prefix)/|' | grep -v '$(infodir)/dir$$'
 distcleancheck_listfiles = find . -type f -print
-ACLOCAL = ${SHELL} '/home/oherr/Projects/CaumeDSE/missing' aclocal-1.16
+ACLOCAL = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' aclocal-1.16
 ADDITIONAL_CFLAGS = -g -DDEBUG
 AMTAR = $${TAR-tar}
 AM_DEFAULT_VERBOSITY = 1
-AUTOCONF = ${SHELL} '/home/oherr/Projects/CaumeDSE/missing' autoconf
-AUTOHEADER = ${SHELL} '/home/oherr/Projects/CaumeDSE/missing' autoheader
-AUTOMAKE = ${SHELL} '/home/oherr/Projects/CaumeDSE/missing' automake-1.16
-AWK = gawk
+AUTOCONF = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' autoconf
+AUTOHEADER = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' autoheader
+AUTOMAKE = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' automake-1.16
+AWK = mawk
 BINDIR = /opt/cdse/bin
 CC = gcc
 CCDEPMODE = depmode=gcc3
@@ -294,9 +294,9 @@ ECHO_N = -n
 ECHO_T = 
 ETAGS = etags
 EXEEXT = 
-GENERAL_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/x86_64-linux-gnu/perl/5.34/CORE 
-HARDEN_CFLAGS =  -fwrapv -fno-strict-overflow -fno-strict-aliasing -D_FORTIFY_SOURCE=2 -fstack-protector-all -Wstack-protector --param ssp-buffer-size=1 -fPIE
-HARDEN_LDFLAGS =  -pie -Wl,-z,relro -Wl,-z,now
+GENERAL_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE 
+HARDEN_CFLAGS = 
+HARDEN_LDFLAGS = 
 INSTALL = /usr/bin/install -c
 INSTALL_DATA = ${INSTALL} -m 644
 INSTALL_PROGRAM = ${INSTALL}
@@ -307,7 +307,7 @@ LIBOBJS =
 LIBS = -lsqlite3 -lgnutls -lutil -lpthread -lperl -lnsl -lmicrohttpd -lm -ldl -lcrypto -lcrypt -lc 
 LN_S = ln -s
 LTLIBOBJS = 
-MAKEINFO = ${SHELL} '/home/oherr/Projects/CaumeDSE/missing' makeinfo
+MAKEINFO = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' makeinfo
 MKDIR_P = /usr/bin/mkdir -p
 OBJEXT = o
 PACKAGE = caumedse
@@ -319,21 +319,21 @@ PACKAGE_URL =
 PACKAGE_VERSION = 1.0.3
 PATH_SEPARATOR = :
 PERL = /usr/bin/perl
-PERL_CCOPTS =  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/x86_64-linux-gnu/perl/5.34/CORE 
-PERL_LDOPTS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/x86_64-linux-gnu/perl/5.34/CORE -lperl -ldl -lm -lpthread -lc -lcrypt
+PERL_CCOPTS =  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE 
+PERL_LDOPTS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/aarch64-linux-gnu/perl/5.38/CORE -lperl -ldl -lm -lpthread -lc -lcrypt
 PREFIX = /opt
 RANLIB = ranlib
 SECUREDIR = /opt/cdse/secureTmp
 SET_MAKE = 
 SHELL = /bin/bash
 STRIP = 
-TESTDB = 
+TESTDB = /opt/cdse
 TESTFILES = /opt/cdse/testfiles
 VERSION = 1.0.3
-abs_builddir = /home/oherr/Projects/CaumeDSE
-abs_srcdir = /home/oherr/Projects/CaumeDSE
-abs_top_builddir = /home/oherr/Projects/CaumeDSE
-abs_top_srcdir = /home/oherr/Projects/CaumeDSE
+abs_builddir = /home/orangepi/Projects/CaumeDSE
+abs_srcdir = /home/orangepi/Projects/CaumeDSE
+abs_top_builddir = /home/orangepi/Projects/CaumeDSE
+abs_top_srcdir = /home/orangepi/Projects/CaumeDSE
 ac_ct_CC = gcc
 ac_ct_CXX = g++
 am__include = include
@@ -342,9 +342,9 @@ am__quote =
 am__tar = $${TAR-tar} chof - "$$tardir"
 am__untar = $${TAR-tar} xf -
 bindir = ${exec_prefix}/bin
-build = x86_64-unknown-linux-gnu
+build = aarch64-unknown-linux-gnu
 build_alias = 
-build_cpu = x86_64
+build_cpu = aarch64
 build_os = linux-gnu
 build_vendor = unknown
 builddir = .
@@ -353,15 +353,15 @@ datarootdir = ${prefix}/share
 docdir = ${datarootdir}/doc/${PACKAGE_TARNAME}
 dvidir = ${docdir}
 exec_prefix = ${prefix}
-host = x86_64-unknown-linux-gnu
+host = aarch64-unknown-linux-gnu
 host_alias = 
-host_cpu = x86_64
+host_cpu = aarch64
 host_os = linux-gnu
 host_vendor = unknown
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /home/oherr/Projects/CaumeDSE/install-sh
+install_sh = ${SHELL} /home/orangepi/Projects/CaumeDSE/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
@@ -383,17 +383,17 @@ top_build_prefix =
 top_builddir = .
 top_srcdir = .
 SUBDIRS = .
-AM_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/x86_64-linux-gnu/perl/5.34/CORE  -g -DDEBUG  -fwrapv -fno-strict-overflow -fno-strict-aliasing -D_FORTIFY_SOURCE=2 -fstack-protector-all -Wstack-protector --param ssp-buffer-size=1 -fPIE
-AM_LDFLAGS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/x86_64-linux-gnu/perl/5.34/CORE -lperl -ldl -lm -lpthread -lc -lcrypt  -pie -Wl,-z,relro -Wl,-z,now
+AM_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE  -g -DDEBUG 
+AM_LDFLAGS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/aarch64-linux-gnu/perl/5.38/CORE -lperl -ldl -lm -lpthread -lc -lcrypt 
 ACLOCAL_AMFLAGS = -I m4 -I m4.local
 AUTOMAKE_OPTIONS = subdir-objects
 spath = /opt/cdse/secureTmp
-tdbpath = 
+tdbpath = /opt/cdse
 tpath = /opt/cdse/testfiles
 ipath = /opt
 ipathbindir = /opt/cdse/bin
 ipathdatadir = /opt/cdse
-CaumeDSE_SOURCES = main.c common.h crypto.c crypto.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+CaumeDSE_SOURCES = main.c common.h config.c crypto.c crypto.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = TEST README-alpha
 all: config.h
@@ -502,6 +502,7 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+include ./$(DEPDIR)/config.Po # am--include-marker
 include ./$(DEPDIR)/crypto.Po # am--include-marker
 include ./$(DEPDIR)/db.Po # am--include-marker
 include ./$(DEPDIR)/engine_admin.Po # am--include-marker
@@ -903,7 +904,8 @@ clean-am: clean-generic clean-ipathbinPROGRAMS clean-local \
 
 distclean: distclean-recursive
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
-		-rm -f ./$(DEPDIR)/crypto.Po
+		-rm -f ./$(DEPDIR)/config.Po
+	-rm -f ./$(DEPDIR)/crypto.Po
 	-rm -f ./$(DEPDIR)/db.Po
 	-rm -f ./$(DEPDIR)/engine_admin.Po
 	-rm -f ./$(DEPDIR)/engine_interface.Po
@@ -962,7 +964,8 @@ installcheck-am:
 maintainer-clean: maintainer-clean-recursive
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -rf $(top_srcdir)/autom4te.cache
-		-rm -f ./$(DEPDIR)/crypto.Po
+		-rm -f ./$(DEPDIR)/config.Po
+	-rm -f ./$(DEPDIR)/crypto.Po
 	-rm -f ./$(DEPDIR)/db.Po
 	-rm -f ./$(DEPDIR)/engine_admin.Po
 	-rm -f ./$(DEPDIR)/engine_interface.Po
