@@ -128,6 +128,16 @@ Right now, the software is in a stable release:
 	* Basic functionality is complete and tested but some features are
 	  still pending.
 
+	* AES-256-GCM is the default symmetric encryption algorithm as of
+	  version 1.0.3.  All internal databases (ResourcesDB, RolesDB,
+	  LogsDB) and encrypted data are created with authenticated
+	  encryption.  The full test suite passes with 0 decrypt errors
+	  and 0 runtime errors against fresh GCM databases.
+
+	* Default HTTP and HTTPS ports are 8080 and 8443 respectively,
+	  allowing the engine to run without root privileges on standard
+	  Linux systems.
+
 	* Basic documentation is available.
 
 If you would like to collaborate Please take a look at section VI 
