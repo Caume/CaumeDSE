@@ -259,6 +259,47 @@ void testCryptoSymmetricGCM()
     printf("GCM decrypted text: %s\n", decrypted);
 }
 
+void testCryptoSymmetricGCM_ByteString()
+{
+    const unsigned char cleartext[] = "This is cleartext for GCM via cmeCipherByteString.";
+    unsigned char *ciphertext = NULL;
+    unsigned char *deciphertext = NULL;
+    unsigned char *salt = NULL;
+    int written = 0;
+    int result;
+
+    result = cmeCipherByteString(cleartext, &ciphertext, &salt,
+                                 strlen((const char *)cleartext), &written,
+                                 "aes-256-gcm", "Password", 'e');
+    if (result || !ciphertext)
+    {
+        printf("TESTS: testCryptoSymmetricGCM_ByteString(), cmeCipherByteString() encrypt failed! result=%d\n", result);
+        cmeFree(salt);
+        return;
+    }
+    printf("TESTS: testCryptoSymmetricGCM_ByteString(), encrypted %d bytes (incl. 16-byte tag). salt: %s\n",
+           written, salt);
+
+    result = cmeCipherByteString(ciphertext, &deciphertext, &salt,
+                                 written, &written,
+                                 "aes-256-gcm", "Password", 'd');
+    if (result || !deciphertext)
+    {
+        printf("TESTS: testCryptoSymmetricGCM_ByteString(), cmeCipherByteString() decrypt failed! result=%d\n", result);
+    }
+    else
+    {
+        printf("TESTS: testCryptoSymmetricGCM_ByteString(), decrypted: %s\n", deciphertext);
+        if (strcmp((const char *)deciphertext, (const char *)cleartext) == 0)
+            printf("TESTS: testCryptoSymmetricGCM_ByteString(), PASS: plaintext matches.\n");
+        else
+            printf("TESTS: testCryptoSymmetricGCM_ByteString(), FAIL: plaintext mismatch!\n");
+    }
+    cmeFree(salt);
+    cmeFree(ciphertext);
+    cmeFree(deciphertext);
+}
+
 void testCryptoDigest_Str(unsigned char *bufIn)
 {
     int cont,cont2,cont3,written,ctSize;
