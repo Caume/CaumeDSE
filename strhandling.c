@@ -107,12 +107,12 @@ int cmeBytesToHexstr (unsigned const char *bytearray, unsigned char **hexstr, in
     while (cont<len)            //Important! hexstr must be twice as large as bytearray, +1 (for \0);
     {
         pHxs[0]  = BASE16_ENCODELO(*bytearray);
-        pHxs[1] |= BASE16_ENCODEHI(*bytearray);
+        pHxs[1]  = BASE16_ENCODEHI(*bytearray);
         bytearray += 1;
         pHxs += 2;
         cont++;
     }
-    pHxs = '\0';
+    pHxs[0] = '\0';
     return(0);
 }
 
@@ -131,7 +131,6 @@ int cmeStrToB64(unsigned char *bufIn, unsigned char **bufOut, int biLen, int *wr
 
     bio = BIO_new(BIO_s_mem());
     b64 = BIO_new(BIO_f_base64());
-    ///BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL); //No PEM standard (i.e. avoid adding NL after 64 chars and to last line)
     b64 = BIO_push(b64, bio);
     inlen=BIO_write(b64, bufIn, biLen);
 #ifdef DEBUG
@@ -165,7 +164,6 @@ int cmeB64ToStr(unsigned char *bufIn, unsigned char **bufOut, int biLen, int *wr
 #endif
     *bufOut=(unsigned char *)malloc((sizeof(unsigned char))*biLen); //Note that Caller is responsible for freeing *bufOut !
     b64 = BIO_new(BIO_f_base64());
-    ///BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL); //No PEM standard (i.e. avoid adding NL after 64 chars and to last line)
     bio = BIO_new_mem_buf(bufIn,biLen);
     bio = BIO_push(b64,bio);
     inlen=BIO_read(bio,*bufOut,biLen);
@@ -281,7 +279,7 @@ int cmeStrSqlINSERTConstruct (char **resultQuery, const char *tableName, const c
             cmeStrConstrAppend(resultQuery,",");
         }
     }
-    cmeStrConstrAppend(resultQuery,") VALUES(",colNamesValuesPairs[cont]);
+    cmeStrConstrAppend(resultQuery,") VALUES(");
     for (cont=1;cont<numColumns;cont+=2)  //Add values.
     {
         cmeStrConstrAppend(resultQuery,"'%s'",colNamesValuesPairs[cont]);
@@ -290,7 +288,7 @@ int cmeStrSqlINSERTConstruct (char **resultQuery, const char *tableName, const c
             cmeStrConstrAppend(resultQuery,",");
         }
     }
-    cmeStrConstrAppend(resultQuery,"); COMMIT;",colNamesValuesPairs[cont]); //Last part.
+    cmeStrConstrAppend(resultQuery,"); COMMIT;"); //Last part.
     //TODO (OHR#3#): Sanitize variables.
     return (0);  //Note that caller must free resultQuery!
 }
@@ -342,7 +340,7 @@ int cmeMemTableToCSVTableStr (const char** srcMemTable,char **resultCSVTableStr,
             cmeStrConstrAppend(resultCSVTableStr,"\"%s\"",srcMemTable[numColumns*cont+cont2]);
             if ((cont2+1)<numColumns) //If not the last value of the Row.
             {
-                cmeStrConstrAppend(resultCSVTableStr,",",srcMemTable[numColumns*cont+cont2]);
+                cmeStrConstrAppend(resultCSVTableStr,",");
             }
         }
         cmeStrConstrAppend(resultCSVTableStr,"\n");
