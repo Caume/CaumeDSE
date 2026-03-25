@@ -565,6 +565,8 @@ void testCSV ()
     char **pQueryResult2=NULL;
     const char *attributes[]={"shuffle","protect"};
     const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    const char *attributesMAC[]={"protect","MAC","MACProtected"};
+    const char *attributesMACData[]={cmeDefaultEncAlg,cmeDefaultMACAlg,cmeDefaultMACAlg};
     sqlite3 *resultDB=NULL;
     sqlite3 *pResourcesDB=NULL;
 
@@ -671,7 +673,46 @@ void testCSV ()
     cmeMemTableFinal(pQueryResult);
     cmeMemTableFinal(pQueryResult2);
     cmeDBClose(resultDB);
+    resultDB=NULL;
     //result=cmeDeleteSecureDB(pResourcesDB,"AcmeIncPayroll Tests.csv", "password2",cmeDefaultFilePath);
+
+    // Test "protect","MAC","MACProtected" column attributes: protect data, compute plaintext MAC
+    // and post-encryption MACProtected, then verify integrity on retrieval.
+    printf("\n--- Testing MAC and MACProtected column attributes:\n");
+    result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
+                                "password3",attributesMAC,attributesMACData,3,1,
+                                "Payroll Database MAC Test.",
+                                "file.csv","AcmeIncPayrollMAC.csv","storage3",cmeDefaultFilePath);
+    if (result)
+    {
+        fprintf(stderr,"CaumeDSE Error: testCSV() MAC test, cmeCSVFileToSecureDB() failed (result=%d)!\n",result);
+    }
+    else
+    {
+        cmeSecureDBToMemDB(&resultDB,pResourcesDB,"AcmeIncPayrollMAC.csv","password3",cmeDefaultFilePath);
+        printf("--- Retrieved data from secure table (MAC+MACProtected test):\n");
+        result=cmeMemTable(resultDB,"SELECT * FROM data;",&pQueryResult,&numRows,&numCols);
+        if (result==0 && pQueryResult)
+        {
+            for (cont=0;cont<=numRows;cont++)
+            {
+                for (cont2=0;cont2<numCols;cont2++)
+                {
+                    printf("[%s]",pQueryResult[(cont*numCols)+cont2]);
+                }
+                printf("\n");
+            }
+            cmeMemTableFinal(pQueryResult);
+            pQueryResult=NULL;
+        }
+        else
+        {
+            fprintf(stderr,"CaumeDSE Error: testCSV() MAC test, cmeMemTable() failed!\n");
+        }
+        cmeDBClose(resultDB);
+        resultDB=NULL;
+    }
+
     cmeDBClose(pResourcesDB);
     cmeFree(fName);
     cmeFree(fName2);

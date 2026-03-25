@@ -1,3 +1,42 @@
+2026-03-25 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
+	* configure.ac (AC_INIT): Bumped version to 1.0.4.
+
+	* README: Updated version references to 1.0.4 and documented new
+	column-level MAC protection attributes.
+
+	* db.c (cmeMemSecureDBProtect): Implemented the "MAC" column
+	protection attribute: for each data row, computes HMAC-SHA-256 of
+	the plaintext value (using the per-row salt and orgKey via PBKDF2)
+	and stores the 64-hex-char result in the MAC column of the data
+	table.  Also implemented the "MACProtected" attribute: re-reads
+	the already-encrypted value from the in-memory DB and stores its
+	HMAC in the MACProtected column.  Both use cmeHMACByteString()
+	with cmeDefaultMACAlg ("sha256").
+
+	* db.c (cmeMemSecureDBUnprotect): Implemented verification for
+	both new column attributes.  For "MAC": re-reads the decrypted
+	value from the DB after the "protect" unprotect step has run,
+	recomputes HMAC, and compares against the stored MAC value;
+	returns error 23 on mismatch.  For "MACProtected": uses the
+	encrypted-value snapshot (memData) taken at function entry,
+	recomputes HMAC, and compares against the stored MACProtected
+	value; returns error 25 on mismatch.  Either mismatch signals
+	data integrity failure.
+
+	* function_tests.c (testCSV): Added a test case for the
+	"protect"/"MAC"/"MACProtected" attribute set: calls
+	cmeCSVFileToSecureDB with those three attributes in sequence,
+	then retrieves via cmeSecureDBToMemDB and prints the decrypted
+	result.  All 10 rows pass MAC and MACProtected verification.
+
+	The expected column meta-table ordering for correct operation is
+	protect → MAC → MACProtected.  With this ordering, during protect
+	MAC uses the pre-encryption memData snapshot, and MACProtected
+	queries the DB after encryption.  During unprotect the reverse
+	holds: MAC queries the DB after decryption, and MACProtected uses
+	the pre-decryption snapshot.
+
 2026-03-21 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
 	* /opt/cdse/ (ResourcesDB, RolesDB, LogsDB, encrypted data parts):

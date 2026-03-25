@@ -93,7 +93,6 @@ int end(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl)
     OPENSSL_cleanup();
 #endif
 
-    /// PL_perl_destruct_level = 0;
     perl_destruct(*myPerl);
     perl_free(*myPerl);
     cmeFree(*bIn);
@@ -131,7 +130,8 @@ int main(int argc, char *argv[], char *env[])
     }
     testCryptoSymmetricGCM();
     testCryptoSymmetricGCM_ByteString();
-    testEngMgmnt();#ifdef DEBUG    // TODO (OHR#2#): Move tests to their own executable and add test checking to the configure script.
+    testEngMgmnt();
+#ifdef DEBUG    // TODO (OHR#2#): Move tests to their own executable and add test checking to the configure script.
     testCryptoSymmetric(bufIn,bufOut);
     testCryptoDigest_Str(bufIn);
     testCryptoHMAC();
