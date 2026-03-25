@@ -1,4 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 1.0.3
+Caume Data Security Engine (CaumeDSE) version 1.0.4
 
 CONTENTS
 ========
@@ -127,6 +127,11 @@ Right now, the software is in a stable release:
 
 	* Basic functionality is complete and tested but some features are
 	  still pending.
+
+	* Column-level HMAC protection is now implemented for "MAC" (HMAC
+	  of plaintext before encryption) and "MACProtected" (HMAC of
+	  ciphertext after encryption) column attributes.  These allow
+	  data-integrity verification independent of the encryption layer.
 
 	* AES-256-GCM is the default symmetric encryption algorithm as of
 	  version 1.0.3.  All internal databases (ResourcesDB, RolesDB,

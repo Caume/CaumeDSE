@@ -731,6 +731,9 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     char *sqlQuery=NULL;
     char *sanitizedStr=NULL;
     unsigned char *rndBytes=NULL;
+    char **memDataEncrypted=NULL;
+    int numRowsEncrypted=0;
+    int numColsEncrypted=0;
     const EVP_CIPHER *cipher=NULL;
     #define cmeMemSecureDBProtectFree() \
         do { \
@@ -755,6 +758,11 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
             { \
                 cmeMemTableFinal(memProtectMetaData); \
                 memProtectMetaData=NULL; \
+            } \
+            if (memDataEncrypted) \
+            { \
+                cmeMemTableFinal(memDataEncrypted); \
+                memDataEncrypted=NULL; \
             } \
             if (currentDataSalt) \
             { \
@@ -1069,13 +1077,111 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
                      cmeIDDColumnFileMeta_attribute_5, sizeof(cmeIDDColumnFileMeta_attribute_5)))
         {
-            //TODO (OHR#3#): MAC
+            //Compute HMAC of plaintext value and store in MAC column for each data row.
+            //memData snapshot always contains the original plaintext values taken before any protection.
+            for(cont2=1;cont2<=numRowsData;cont2++)
+            {
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
+                result=cmeHMACByteString(
+                    (const unsigned char*)memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                    (unsigned char**)&currentEncB64Data,
+                    strlen(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
+                    &written,cmeDefaultMACAlg,&(currentDataSalt[cont2-1]),orgKey);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeHMACByteString() Error, can't "
+                            "compute MAC for 'value' in data row id %s with algorithm %s!\n",
+                            currentDataId,cmeDefaultMACAlg);
+#endif
+                    cmeMemSecureDBProtectFree();
+                    return(21);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), computed MAC"
+                        " for 'value' in row id %s. Result: %s.\n",currentDataId,currentEncB64Data);
+#endif
+                cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE data SET MAC='%s' WHERE id=%s; COMMIT;",
+                                   currentEncB64Data,currentDataId);
+                cmeFree(currentEncB64Data);
+                result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
+                cmeFree(sqlQuery);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
+                            "store MAC for data row id %s!\n",currentDataId);
+#endif
+                    cmeMemSecureDBProtectFree();
+                    return(22);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), stored MAC for row id %s in table data.\n",
+                        currentDataId);
+#endif
+                cmeFree(currentDataId);
+            }
         }
         // Check if protection attribute = "MACProtected".
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
                      cmeIDDColumnFileMeta_attribute_6, sizeof(cmeIDDColumnFileMeta_attribute_6)))
         {
-            //TODO (OHR#3#): MACProtected
+            //Compute HMAC of the encrypted value and store in MACProtected column for each data row.
+            //Re-reads current (already-encrypted) values from DB since memData snapshot contains plaintext.
+            result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memDataEncrypted,&numRowsEncrypted,&numColsEncrypted);
+            if (result) //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeMemTable() Error, can't "
+                        "read 'data' table for MACProtected computation!\n");
+#endif
+                cmeMemSecureDBProtectFree();
+                return(23);
+            }
+            for(cont2=1;cont2<=numRowsData;cont2++)
+            {
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
+                result=cmeHMACByteString(
+                    (const unsigned char*)memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                    (unsigned char**)&currentEncB64Data,
+                    strlen(memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
+                    &written,cmeDefaultMACAlg,&(currentDataSalt[cont2-1]),orgKey);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeHMACByteString() Error, can't "
+                            "compute MACProtected for 'value' in data row id %s with algorithm %s!\n",
+                            currentDataId,cmeDefaultMACAlg);
+#endif
+                    cmeMemSecureDBProtectFree();
+                    return(24);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), computed MACProtected"
+                        " for 'value' in row id %s. Result: %s.\n",currentDataId,currentEncB64Data);
+#endif
+                cmeStrConstrAppend(&sqlQuery,"BEGIN; UPDATE data SET MACProtected='%s' WHERE id=%s; COMMIT;",
+                                   currentEncB64Data,currentDataId);
+                cmeFree(currentEncB64Data);
+                result=cmeSQLRows(memSecureDB,sqlQuery,NULL,NULL);
+                cmeFree(sqlQuery);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
+                            "store MACProtected for data row id %s!\n",currentDataId);
+#endif
+                    cmeMemSecureDBProtectFree();
+                    return(25);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), stored MACProtected for row id %s in table data.\n",
+                        currentDataId);
+#endif
+                cmeFree(currentDataId);
+            }
+            cmeMemTableFinal(memDataEncrypted);
+            memDataEncrypted=NULL;
         }
         //Finally, protect columnFile.Meta attribute, attributeData, userId and orgId in each row in meta table.
         //Protect Meta "attribute":
@@ -1204,6 +1310,9 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
     char *currentDataEncAlg=NULL;
     char *sanitizedStr=NULL;
     char *sqlQuery=NULL;
+    char **memDataDecrypted=NULL;
+    int numRowsDecrypted=0;
+    int numColsDecrypted=0;
     const EVP_CIPHER *cipher=NULL;
     //MEMORY CLEANUP MACRO for local function.
     #define cmeMemSecureDBUnprotectFree() \
@@ -1231,6 +1340,11 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
             { \
                 cmeMemTableFinal(memProtectMetaData); \
                 memProtectMetaData=NULL; \
+            } \
+            if (memDataDecrypted) \
+            { \
+                cmeMemTableFinal(memDataDecrypted); \
+                memDataDecrypted=NULL; \
             } \
         } while (0); //Local free() macro.
 
@@ -1679,13 +1793,106 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
         else if (!strncmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_5,
                           sizeof(cmeIDDColumnFileMeta_attribute_5)))
         {
-            //TODO (OHR#3#): MAC
+            //Verify HMAC of decrypted value against stored MAC column for each data row.
+            //Re-reads current (already-decrypted) values from DB; "protect" unprotect must run first
+            //(i.e., "protect" attribute must appear before "MAC" in the meta table).
+            result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memDataDecrypted,&numRowsDecrypted,&numColsDecrypted);
+            if (result) //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeMemTable() Error, can't "
+                        "read 'data' table for MAC verification!\n");
+#endif
+                cmeMemSecureDBUnprotectFree();
+                return(21);
+            }
+            for(cont2=1;cont2<=numRowsData;cont2++)
+            {
+                cmeStrConstrAppend(&currentDataSalt,"%s",memData[cont2*cmeIDDColumnFileDataNumCols+cmeIDDanydb_salt]);
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memDataDecrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
+                result=cmeHMACByteString(
+                    (const unsigned char*)memDataDecrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                    (unsigned char**)&currentEncB64Data,
+                    strlen(memDataDecrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
+                    &written,cmeDefaultMACAlg,&currentDataSalt,orgKey);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeHMACByteString() Error, can't "
+                            "compute MAC for 'value' in data row id %s with algorithm %s!\n",
+                            currentDataId,cmeDefaultMACAlg);
+#endif
+                    cmeMemSecureDBUnprotectFree();
+                    return(22);
+                }
+                if (strncmp(currentEncB64Data,
+                            memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_MAC],
+                            written)) //Error: MAC mismatch!
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), MAC mismatch for row id %s "
+                            "in data table! Data integrity check failed.\n",currentDataId);
+#endif
+                    cmeFree(currentEncB64Data);
+                    cmeMemSecureDBUnprotectFree();
+                    return(23);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBUnprotect(), verified MAC"
+                        " for 'value' in row id %s.\n",currentDataId);
+#endif
+                cmeFree(currentEncB64Data);
+                cmeFree(currentDataId);
+                cmeFree(currentDataSalt);
+            }
+            cmeMemTableFinal(memDataDecrypted);
+            memDataDecrypted=NULL;
         }
         // Check if protection attribute = "MACProtected".
         else if (!strncmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_6,
                           sizeof(cmeIDDColumnFileMeta_attribute_6)))
         {
-            //TODO (OHR#3#): MACProtected
+            //Verify HMAC of encrypted value against stored MACProtected column for each data row.
+            //Uses memData snapshot which always contains the original encrypted values taken at function start.
+            for(cont2=1;cont2<=numRowsData;cont2++)
+            {
+                cmeStrConstrAppend(&currentDataSalt,"%s",memData[cont2*cmeIDDColumnFileDataNumCols+cmeIDDanydb_salt]);
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
+                result=cmeHMACByteString(
+                    (const unsigned char*)memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                    (unsigned char**)&currentEncB64Data,
+                    strlen(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
+                    &written,cmeDefaultMACAlg,&currentDataSalt,orgKey);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeHMACByteString() Error, can't "
+                            "compute MACProtected for 'value' in data row id %s with algorithm %s!\n",
+                            currentDataId,cmeDefaultMACAlg);
+#endif
+                    cmeMemSecureDBUnprotectFree();
+                    return(24);
+                }
+                if (strncmp(currentEncB64Data,
+                            memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_MACProtected],
+                            written)) //Error: MACProtected mismatch!
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), MACProtected mismatch for row id %s "
+                            "in data table! Data integrity check failed.\n",currentDataId);
+#endif
+                    cmeFree(currentEncB64Data);
+                    cmeMemSecureDBUnprotectFree();
+                    return(25);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBUnprotect(), verified MACProtected"
+                        " for 'value' in row id %s.\n",currentDataId);
+#endif
+                cmeFree(currentEncB64Data);
+                cmeFree(currentDataId);
+                cmeFree(currentDataSalt);
+            }
         }
         //Free stuff in this FOR loop
         cmeFree(currentMetaAttribute);
