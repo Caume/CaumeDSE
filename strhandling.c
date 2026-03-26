@@ -515,3 +515,34 @@ int cmex509GetElementFromDN (const char* DN, const char *elementId, char **eleme
         return(0);
     }
 }
+
+int cmeStrSafeEq (const char *a, const char *b)
+{   //Constant-time string equality to prevent timing attacks on sensitive comparisons (e.g. post-decryption values).
+    //Returns 1 if strings are equal, 0 if not. Runs for max(strlen(a),strlen(b)) iterations regardless of content.
+    size_t la=strlen(a);
+    size_t lb=strlen(b);
+    size_t maxLen=(la > lb) ? la : lb;
+    unsigned char diff=(unsigned char)(la != lb);
+    size_t i;
+    for (i=0; i<maxLen; i++)
+    {
+        unsigned char ca=(i < la) ? (unsigned char)a[i] : 0;
+        unsigned char cb=(i < lb) ? (unsigned char)b[i] : 0;
+        diff|=ca ^ cb;
+    }
+    return (diff == 0);
+}
+
+int cmeMemSafeEq (const void *a, const void *b, size_t n)
+{   //Constant-time memory equality to prevent timing attacks on sensitive comparisons (e.g. MAC verification).
+    //Returns 1 if first n bytes are equal, 0 if not.
+    const unsigned char *pa=(const unsigned char *)a;
+    const unsigned char *pb=(const unsigned char *)b;
+    unsigned char diff=0;
+    size_t i;
+    for (i=0; i<n; i++)
+    {
+        diff|=pa[i] ^ pb[i];
+    }
+    return (diff == 0);
+}

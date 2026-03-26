@@ -1,5 +1,34 @@
 2026-03-26 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+	* configure.ac (AC_INIT): Bumped version to 1.0.8.
+
+	* strhandling.h, strhandling.c: Added cmeStrSafeEq() and
+	cmeMemSafeEq() — constant-time string and memory equality
+	functions that always run for the full length of their inputs,
+	preventing timing-based side-channel leakage on sensitive
+	post-decryption comparisons (fixes GitHub issue #5).
+
+	* webservice_interface.c (cmeWebServiceClientCertAuth): Replaced
+	three strcmp() calls that compared decrypted certificate CN/O
+	values against user-supplied userId and orgId with cmeStrSafeEq().
+
+	* engine_interface.c (cmeSecureSQLToMemDB, cmeDeleteSecureDB,
+	cmeExistsDocumentId): Replaced strncmp() MAC verification calls
+	with cmeMemSafeEq() and strcmp() decrypted documentId comparisons
+	with cmeStrSafeEq().
+
+	* filehandling.c (cmeSecureFileToTmpRAWFile): Replaced four
+	strncmp() MAC verification calls (documentId, documentType,
+	orgResourceId, storageId, columnFile) with cmeMemSafeEq() and
+	the four-field compound strcmp() identity check with
+	cmeStrSafeEq().
+
+	* function_tests.c (cmeTestThreadWorker): Added remove() at the
+	start of the test worker to eliminate stale DB files from a
+	previous failed run, ensuring idempotent test execution.
+
+2026-03-26 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
 	* configure.ac (AC_INIT): Bumped version to 1.0.7.
 
 	* configure.ac: Added --with-max-threads=N option (default 4).

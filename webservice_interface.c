@@ -9461,7 +9461,7 @@ int cmeWebServiceClientCertAuth (const char *userId, const char *orgId, struct M
     result=cmex509GetElementFromDN(userDN,"O",&userO,&len);
     result=cmex509GetElementFromDN(orgDN,"CN",&orgCN,&len);
     //Verify that user CN (in userDN), user O (in userDN) and org O (in orgDN) against corresponding userId and orgId:
-    if (strcmp(userId,userCN)) //Authentication error: userId does not match client certificate CN!
+    if (!cmeStrSafeEq(userId,userCN)) //Authentication error: userId does not match client certificate CN!
     {
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceClientCertAuth(), Warning, "
@@ -9470,7 +9470,7 @@ int cmeWebServiceClientCertAuth (const char *userId, const char *orgId, struct M
         cmeWebServiceClientCertAuthFree();
         return(9);
     }
-    if (strcmp(orgId,userO)) //Authentication error: orgId does not match client certificate O!
+    if (!cmeStrSafeEq(orgId,userO)) //Authentication error: orgId does not match client certificate O!
     {
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceClientCertAuth(), Warning, "
@@ -9479,7 +9479,7 @@ int cmeWebServiceClientCertAuth (const char *userId, const char *orgId, struct M
         cmeWebServiceClientCertAuthFree();
         return(10);
     }
-    if (strcmp(orgId,orgCN)) //Authentication error: orgId does not match issuer organization certificate CN!
+    if (!cmeStrSafeEq(orgId,orgCN)) //Authentication error: orgId does not match issuer organization certificate CN!
     {
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceClientCertAuth(), Warning, "
