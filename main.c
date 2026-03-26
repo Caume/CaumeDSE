@@ -46,9 +46,11 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 // --- Necessary globals
 PerlInterpreter *cdsePerl=NULL;
-char **cmeResultMemTable=NULL;
-int cmeResultMemTableRows=0;
-int cmeResultMemTableCols=0;
+pthread_mutex_t cmePerlMutex=PTHREAD_MUTEX_INITIALIZER;   //Protects cdsePerl (shared Perl interpreter).
+pthread_mutex_t cmePowerMutex=PTHREAD_MUTEX_INITIALIZER;  //Protects cmeEnginePowerStatus flag.
+__thread char **cmeResultMemTable=NULL;    //Thread-local SQL result table; each worker thread owns its copy.
+__thread int cmeResultMemTableRows=0;      //Thread-local row count.
+__thread int cmeResultMemTableCols=0;      //Thread-local column count.
 
 // --- Function prototypes
 int setup(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl); //Setup program variables and crypto

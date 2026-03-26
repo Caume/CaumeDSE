@@ -108,8 +108,8 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(ipathbindir)" \
 	"$(DESTDIR)$(ipathdatadir)"
 PROGRAMS = $(ipathbin_PROGRAMS)
-am_CaumeDSE_OBJECTS = main.$(OBJEXT) config.$(OBJEXT) crypto.$(OBJEXT) db.$(OBJEXT) \
-	engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
+am_CaumeDSE_OBJECTS = main.$(OBJEXT) config.$(OBJEXT) crypto.$(OBJEXT) \
+	db.$(OBJEXT) engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
 	filehandling.$(OBJEXT) function_tests.$(OBJEXT) \
 	perl_interpreter.$(OBJEXT) strhandling.$(OBJEXT) \
 	webservice_interface.$(OBJEXT) xs_init.$(OBJEXT)
@@ -273,7 +273,7 @@ AM_DEFAULT_VERBOSITY = 1
 AUTOCONF = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' autoconf
 AUTOHEADER = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' autoheader
 AUTOMAKE = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' automake-1.16
-AWK = mawk
+AWK = gawk
 BINDIR = /opt/cdse/bin
 CC = gcc
 CCDEPMODE = depmode=gcc3
@@ -295,8 +295,8 @@ ECHO_T =
 ETAGS = etags
 EXEEXT = 
 GENERAL_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE 
-HARDEN_CFLAGS = 
-HARDEN_LDFLAGS = 
+HARDEN_CFLAGS =  -fwrapv -fno-strict-overflow -fno-strict-aliasing -D_FORTIFY_SOURCE=2 -fstack-protector-all -Wstack-protector --param ssp-buffer-size=1 -fPIE
+HARDEN_LDFLAGS =  -pie -Wl,-z,relro -Wl,-z,now
 INSTALL = /usr/bin/install -c
 INSTALL_DATA = ${INSTALL} -m 644
 INSTALL_PROGRAM = ${INSTALL}
@@ -313,10 +313,10 @@ OBJEXT = o
 PACKAGE = caumedse
 PACKAGE_BUGREPORT = 0h3rr3r4@gmail.com
 PACKAGE_NAME = CaumeDSE
-PACKAGE_STRING = CaumeDSE 1.0.3
+PACKAGE_STRING = CaumeDSE 1.0.7
 PACKAGE_TARNAME = caumedse
 PACKAGE_URL = 
-PACKAGE_VERSION = 1.0.3
+PACKAGE_VERSION = 1.0.7
 PATH_SEPARATOR = :
 PERL = /usr/bin/perl
 PERL_CCOPTS =  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE 
@@ -329,7 +329,7 @@ SHELL = /bin/bash
 STRIP = 
 TESTDB = /opt/cdse
 TESTFILES = /opt/cdse/testfiles
-VERSION = 1.0.3
+VERSION = 1.0.7
 abs_builddir = /home/orangepi/Projects/CaumeDSE
 abs_srcdir = /home/orangepi/Projects/CaumeDSE
 abs_top_builddir = /home/orangepi/Projects/CaumeDSE
@@ -383,8 +383,8 @@ top_build_prefix =
 top_builddir = .
 top_srcdir = .
 SUBDIRS = .
-AM_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE  -g -DDEBUG 
-AM_LDFLAGS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/aarch64-linux-gnu/perl/5.38/CORE -lperl -ldl -lm -lpthread -lc -lcrypt 
+AM_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE  -g -DDEBUG  -fwrapv -fno-strict-overflow -fno-strict-aliasing -D_FORTIFY_SOURCE=2 -fstack-protector-all -Wstack-protector --param ssp-buffer-size=1 -fPIE
+AM_LDFLAGS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/aarch64-linux-gnu/perl/5.38/CORE -lperl -ldl -lm -lpthread -lc -lcrypt  -pie -Wl,-z,relro -Wl,-z,now
 ACLOCAL_AMFLAGS = -I m4 -I m4.local
 AUTOMAKE_OPTIONS = subdir-objects
 spath = /opt/cdse/secureTmp

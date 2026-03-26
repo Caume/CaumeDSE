@@ -719,10 +719,155 @@ void testCSV ()
     cmeFree(resourcesDBPath);
 }
 
+// ---------------------------------------------------------------------------
+// Thread-safety test: verify that cmeDefaultMaxThreads concurrent threads can
+// perform independent SQLite operations in parallel without data corruption.
+// Each thread creates its own in-memory DB, inserts rows, queries them back,
+// and checks the results match.  The test exercises thread-local cmeResultMemTable
+// and the SQLITE_OPEN_FULLMUTEX serialisation.
+// ---------------------------------------------------------------------------
+
+struct cmeTestThreadArgs
+{
+    int threadId;   //Input: unique id used to generate distinct values.
+    int result;     //Output: 0=success, non-zero=error.
+};
+
+static void *cmeTestThreadWorker (void *arg)
+{
+    struct cmeTestThreadArgs *a=(struct cmeTestThreadArgs *)arg;
+    int i,cont,result=0;
+    const int numRows=10;
+    char sql[256];
+    char expected[64];
+    sqlite3 *db=NULL;
+    char *dbPath=NULL;
+
+    // Each thread uses its own temporary file-based DB with a unique name.
+    cmeStrConstrAppend(&dbPath,"%stest_thread_%d.db",cmeDefaultFilePath,a->threadId);
+
+    // Open (create) the per-thread DB.
+    if (cmeDBCreateOpen(dbPath,&db))
+    {
+        fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: cmeDBCreateOpen() failed for '%s'.\n",
+                a->threadId,dbPath);
+        cmeFree(dbPath);
+        a->result=1;
+        return NULL;
+    }
+
+    // Create a simple table.
+    snprintf(sql,sizeof(sql),"CREATE TABLE IF NOT EXISTS ttest (id INTEGER, val TEXT);");
+    if (cmeSQLRows(db,sql,NULL,NULL))
+    {
+        fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: CREATE TABLE failed.\n",a->threadId);
+        cmeDBClose(db);
+        cmeFree(dbPath);
+        a->result=2;
+        return NULL;
+    }
+
+    // Insert numRows rows with values specific to this thread.
+    for (i=0;i<numRows;i++)
+    {
+        snprintf(sql,sizeof(sql),
+                 "BEGIN; INSERT INTO ttest(id,val) VALUES(%d,'thread_%d_row_%d'); COMMIT;",
+                 i, a->threadId, i);
+        if (cmeSQLRows(db,sql,NULL,NULL))
+        {
+            fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: INSERT row %d failed.\n",
+                    a->threadId,i);
+            cmeDBClose(db);
+            cmeFree(dbPath);
+            a->result=3;
+            return NULL;
+        }
+    }
+
+    // Query back and verify using the thread-local cmeResultMemTable.
+    snprintf(sql,sizeof(sql),"SELECT id,val FROM ttest ORDER BY id;");
+    if (cmeSQLRows(db,sql,NULL,NULL))
+    {
+        fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: SELECT failed.\n",a->threadId);
+        cmeDBClose(db);
+        cmeFree(dbPath);
+        a->result=4;
+        return NULL;
+    }
+
+    // Verify row count.
+    if (cmeResultMemTableRows!=numRows)
+    {
+        fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: expected %d rows, got %d.\n",
+                a->threadId,numRows,cmeResultMemTableRows);
+        cmeResultMemTableClean();
+        cmeDBClose(db);
+        cmeFree(dbPath);
+        a->result=5;
+        return NULL;
+    }
+
+    // Spot-check last row value.
+    snprintf(expected,sizeof(expected),"thread_%d_row_%d",a->threadId,numRows-1);
+    // cmeResultMemTable layout: row 0 = column headers; data starts at row 1.
+    // Each row has cmeResultMemTableCols entries.
+    cont=(cmeResultMemTableRows)*cmeResultMemTableCols + 1; // last row, second column (val)
+    if (!cmeResultMemTable[cont] || strcmp(cmeResultMemTable[cont],expected)!=0)
+    {
+        fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: last val mismatch: "
+                "expected '%s', got '%s'.\n",
+                a->threadId, expected,
+                cmeResultMemTable[cont] ? cmeResultMemTable[cont] : "(null)");
+        result=6;
+    }
+    cmeResultMemTableClean();
+    cmeDBClose(db);
+
+    // Remove the per-thread DB file.
+    remove(dbPath);
+    cmeFree(dbPath);
+    a->result=result;
+    return NULL;
+}
+
+void testThreadSafety ()
+{
+    int i,errors=0;
+    pthread_t threads[cmeDefaultMaxThreads];
+    struct cmeTestThreadArgs args[cmeDefaultMaxThreads];
+
+    printf("--- Testing thread safety: %d concurrent SQLite worker threads ---\n",
+           cmeDefaultMaxThreads);
+
+    for (i=0;i<cmeDefaultMaxThreads;i++)
+    {
+        args[i].threadId=i;
+        args[i].result=-1;
+        if (pthread_create(&threads[i],NULL,cmeTestThreadWorker,&args[i])!=0)
+        {
+            fprintf(stderr,"CaumeDSE Thread Test Error: pthread_create() failed for thread %d.\n",i);
+            errors++;
+        }
+    }
+    for (i=0;i<cmeDefaultMaxThreads;i++)
+    {
+        pthread_join(threads[i],NULL);
+        if (args[i].result!=0)
+        {
+            errors++;
+        }
+    }
+    if (errors==0)
+        printf("--- Thread safety test: PASSED (%d threads, 0 errors)\n",cmeDefaultMaxThreads);
+    else
+        printf("--- Thread safety test: FAILED (%d threads, %d errors)\n",cmeDefaultMaxThreads,errors);
+}
+
 void testEngMgmnt ()
 {
     int result __attribute__((unused));
     result=cmeSetupEngineAdminDBs();
+    testThreadSafety();
 }
 
 void testWebServices ()
@@ -746,10 +891,12 @@ void testWebServices ()
         httpsPort = atoi(httpsEnv);
     }
 
-    printf("--- Testing Web server HTTP port %d%s\n",httpPort,
-           cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)");
-    cmeWebServiceSetup(httpPort,0,NULL,NULL,NULL);
-    printf("--- Testing Web server HTTPS port %d%s\n",httpsPort,
-           cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)");
-    cmeWebServiceSetup(httpsPort,1,cmeDefaultHTTPSKeyFile,cmeDefaultHTTPSCertFile,cmeDefaultCACertFile);
+    printf("--- Testing Web server HTTP port %d%s (thread pool: %d)\n",httpPort,
+           cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)",
+           cmeDefaultMaxThreads);
+    cmeWebServiceSetup(httpPort,0,NULL,NULL,NULL,0);
+    printf("--- Testing Web server HTTPS port %d%s (thread pool: %d)\n",httpsPort,
+           cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)",
+           cmeDefaultMaxThreads);
+    cmeWebServiceSetup(httpsPort,1,cmeDefaultHTTPSKeyFile,cmeDefaultHTTPSCertFile,cmeDefaultCACertFile,0);
 }

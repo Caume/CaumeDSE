@@ -107,6 +107,12 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeDefaultWebservicePort 8080       //Default port for regular HTTP web services.
 #define cmeDefaultWebServiceSSLPort 8443    //Default port for TLS/SSL web services.
 #define cmeDefaultThreadWaitSeconds 0                     //Default number of seconds to wait for thread synchronization.
+#ifdef CDSE_MAX_THREADS
+#define cmeDefaultMaxThreads CDSE_MAX_THREADS             //Maximum number of concurrent HTTP/HTTPS worker threads (set by configure --with-max-threads=N).
+#else
+#define cmeDefaultMaxThreads 4                            //Default maximum number of concurrent HTTP/HTTPS worker threads.
+#endif
+#define cmeDefaultMaxConnections (cmeDefaultMaxThreads * 4) //Maximum number of queued connections (4x threads allows short bursts beyond pool capacity).
 #define cmeDefaultPerlIterationFunction     "cmePERLProcessRow"               //Name for the perl iteration function to be called when parsing SQL results with PERL
 #define cmeDefaultPerlColNameSetupFunction  "cmePERLProcessColumnNames"       //Name for the perl iteration function to be called when parsing SQL results with PERL
 #define cmeDefaultPBKDFCount 2000           //Default count for the key derivation function, cmePBKDF. {Recommended: 2,000. Note: 10,000 = iOS4; iOS3 uses 2,000, RFC 2898 recommends at least 1,000, but note that high values hava a huge impact on performance since we use a different key - different salt with same organization key- for each element!}.
@@ -477,6 +483,9 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #include <gnutls/x509.h>
 #endif
 
+// --- POSIX threads
+#include <pthread.h>
+
 // --- Embedded PERL includes
 #if HAVE_EXTERN_H
 #include <EXTERN.h> //for embedded perl interpreter
@@ -502,10 +511,12 @@ EXTERN_C void xs_init (pTHX); //for embedded perl interpreter (using dynamically
 #include "webservice_interface.h"
 
 // --- Necessary globals
-extern PerlInterpreter *cdsePerl;       //Used by cmeSQLIterate() & cmeWebServiceProcessParserScriptResource()
-extern char **cmeResultMemTable;        //Used by cmeSQLIterate() & cmeWebServiceProcessParserScriptResource()
-extern int cmeResultMemTableRows;       //Used by cmeSQLIterate() & cmeWebServiceProcessParserScriptResource()
-extern int cmeResultMemTableCols;       //Used by cmeSQLIterate() & cmeWebServiceProcessParserScriptResource()
+extern PerlInterpreter *cdsePerl;              //Shared Perl interpreter; access protected by cmePerlMutex.
+extern pthread_mutex_t cmePerlMutex;           //Mutex protecting cdsePerl and Perl-based SQL iteration.
+extern pthread_mutex_t cmePowerMutex;          //Mutex protecting the engine power status flag.
+extern __thread char **cmeResultMemTable;      //Thread-local SQL result table; one instance per worker thread.
+extern __thread int cmeResultMemTableRows;     //Thread-local row count for cmeResultMemTable.
+extern __thread int cmeResultMemTableCols;     //Thread-local column count for cmeResultMemTable.
 
 
 #endif // COMMON_H_INCLUDED

@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.68])
-AC_INIT([CaumeDSE], [1.0.6], [0h3rr3r4@gmail.com])
+AC_INIT([CaumeDSE], [1.0.7], [0h3rr3r4@gmail.com])
 AM_INIT_AUTOMAKE([dist-bzip2 color-tests readme-alpha])
 AC_CONFIG_SRCDIR([function_tests.c])
 AC_CONFIG_HEADERS([config.h])
@@ -208,11 +208,17 @@ AC_ARG_ENABLE([OLDPBKDF1],
 	[  --enable-OLDPBKDF1			Uses PBKDF1 (i.e. PKCS5v1.5, compatible with openssl's command line tool) instead of PBKDF2 (for testing; NOT RECOMMENDED!)],
 	[PBKDF=1],
 	[PBKDF=2])
+AC_ARG_WITH([max-threads],
+	[AS_HELP_STRING([--with-max-threads=N],
+		[Maximum number of simultaneous HTTP/HTTPS worker threads (default: 4)])],
+	[CDSE_MAX_THREADS="$withval"],
+	[CDSE_MAX_THREADS=4])
 
 # Set required configuration defines y config.h
 AC_DEFINE_UNQUOTED([PATH_DATADIR], ["$DATADIR"], [Path for default data and system databases.])
 AC_DEFINE_UNQUOTED([BYPASS_TLS_IN_HTTP], [$BYTLS], [Enables (1) or disables (0) bypassing TLS authentication when it is required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)])
 AC_DEFINE_UNQUOTED([PBKDF1_OPENSSL_CLI_COMPATIBILITY], [$PBKDF], [Enables (1) or disables (2) Use of old Password Based Key Derivation Function (PKCS5v1.5)])
+AC_DEFINE_UNQUOTED([CDSE_MAX_THREADS], [$CDSE_MAX_THREADS], [Maximum number of concurrent HTTP/HTTPS worker threads])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
@@ -237,6 +243,7 @@ echo \
 	Linker:		'${HARDEN_LDFLAGS}'
  Package features:
 	Build mode: 	'${compile_mode}'
+	Max threads:	'${CDSE_MAX_THREADS}'
 
  Now type 'make @<:@<target>@:>@' where the optional <target> is:
      all                - build all binaries

@@ -1,5 +1,59 @@
 2026-03-26 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+	* configure.ac (AC_INIT): Bumped version to 1.0.7.
+
+	* configure.ac: Added --with-max-threads=N option (default 4).
+	Defines CDSE_MAX_THREADS which controls the libmicrohttpd worker
+	thread pool size and the connection limit at build time.
+
+	* common.h: Added #include <pthread.h>.  Added cmeDefaultMaxThreads
+	and cmeDefaultMaxConnections macros.  Changed cmeResultMemTable,
+	cmeResultMemTableRows, cmeResultMemTableCols from plain extern to
+	extern __thread (GCC thread-local storage) so each worker thread
+	owns an independent result buffer.  Added extern declarations for
+	cmePerlMutex and cmePowerMutex.
+
+	* main.c: Changed the three cmeResultMemTable globals to __thread.
+	Added definitions of cmePerlMutex and cmePowerMutex, both
+	initialised to PTHREAD_MUTEX_INITIALIZER.
+
+	* engine_admin.h, engine_admin.c: Added numThreads parameter to
+	cmeWebServiceSetup().  Both MHD_start_daemon() calls (HTTP and
+	HTTPS) now use MHD_USE_INTERNAL_POLLING_THREAD with
+	MHD_OPTION_THREAD_POOL_SIZE and MHD_OPTION_CONNECTION_LIMIT,
+	enabling a bounded worker-thread pool.  cmeWebServiceStart() passes
+	numThreads=0 (uses cmeDefaultMaxThreads).
+
+	* webservice_interface.h: Added connectionStartTime (time_t) and
+	requestDataSize (long int) fields to cmeWebServiceConnectionInfoStruct
+	so per-connection timing and upload-size tracking is no longer held
+	in thread-unsafe static local variables.
+
+	* webservice_interface.c: Removed static local connectionStartTime
+	and requestDataSize from cmeWebServiceAnswerConnection(); replaced
+	with con_info->connectionStartTime and con_info->requestDataSize.
+	Promoted powerStatus from a static local inside
+	cmeWebServiceProcessRequest() to a file-scope static
+	cmeEnginePowerStatus, read under cmePowerMutex at request entry
+	and written through cmePowerMutex in the engineCommands handler.
+	cmeWebServiceProcessParserScriptResource() now acquires
+	cmePerlMutex at entry (via lock before work begins) and releases
+	it in the cmeWebServiceProcessParserScriptResourceFree() macro
+	that precedes every return, serialising concurrent access to the
+	shared Perl interpreter.
+
+	* function_tests.c, function_tests.h: Added testThreadSafety()
+	which spawns cmeDefaultMaxThreads POSIX threads; each thread opens
+	an independent SQLite database, inserts 10 rows, queries them back,
+	and verifies the results using the thread-local cmeResultMemTable.
+	Called automatically from testEngMgmnt().
+
+	* README: Updated version to 1.0.7; revised section II to document
+	the new multithreading engine; revised section IV layer 7 to
+	reflect that concurrent multi-user support is now available.
+
+2026-03-26 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
 	* configure.ac (AC_INIT): Bumped version to 1.0.6.
 
 	* README: Updated version to 1.0.6 and documented the ECDSA P-384
