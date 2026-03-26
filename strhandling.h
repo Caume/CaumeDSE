@@ -85,5 +85,9 @@ int cmeConstructWebServiceTableResponse (const char **resultTable, const int tab
                                          char ***responseHeaders, char **resultTableStr, int *responseCode);
 //Function to get an element (C, ST, L, O, OU or CN) from an x509 DN.
 int cmex509GetElementFromDN (const char* DN, const char *elementId, char **element, int *elementLen);
+// Constant-time string equality: returns 1 if equal, 0 if not (prevents timing attacks on sensitive comparisons).
+int cmeStrSafeEq (const char *a, const char *b);
+// Constant-time memory equality: returns 1 if first n bytes are equal, 0 if not.
+int cmeMemSafeEq (const void *a, const void *b, size_t n);
 
 #endif // STRHANDLING_H_INCLUDED

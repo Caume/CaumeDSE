@@ -1087,7 +1087,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
         cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
                           (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen),
                           &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
-        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],MACLen)) //MAC is correct; proceed with decryption.
+        if (cmeMemSafeEq(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId],MACLen)) //MAC is correct; proceed with decryption.
         {
             result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_documentId]+MACLen,
                                  &currentDocumentId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
@@ -1115,7 +1115,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
         cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type]+MACLen,
                           (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type]+MACLen),
                           &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
-        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type],MACLen)) //MAC is correct; proceed with decryption.
+        if (cmeMemSafeEq(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type],MACLen)) //MAC is correct; proceed with decryption.
         {
             result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_type]+MACLen,
                                  &currentDocumentType,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
@@ -1143,7 +1143,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
         cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId]+MACLen,
                           (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId]+MACLen),
                           &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
-        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId],MACLen)) //MAC is correct; proceed with decryption.
+        if (cmeMemSafeEq(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId],MACLen)) //MAC is correct; proceed with decryption.
         {
             result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_orgResourceId]+MACLen,
                                  &currentOrgResourceId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
@@ -1171,7 +1171,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
         cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId]+MACLen,
                           (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId]+MACLen),
                           &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
-        if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId],MACLen)) //MAC is correct; proceed with decryption.
+        if (cmeMemSafeEq(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId],MACLen)) //MAC is correct; proceed with decryption.
         {
             result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_storageId]+MACLen,
                                  &currentStorageId,cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),
@@ -1195,15 +1195,15 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
             cmeStrConstrAppend(&currentStorageId,""); //This pointer can't be null (strcmp() will segfault), so we point it to an empty string.
         }
         //Verify that this part belongs to the requested document. If so continue processing it:
-        if ((!(strcmp(currentDocumentId,documentId)))&&(!(strcmp(currentDocumentType,documentType)))
-            &&(!(strcmp(currentOrgResourceId,orgId)))&&(!(strcmp(currentStorageId,storageId))))  //This part belongs to the protected RAWFile -> process!
+        if (cmeStrSafeEq(currentDocumentId,documentId)&&cmeStrSafeEq(currentDocumentType,documentType)
+            &&cmeStrSafeEq(currentOrgResourceId,orgId)&&cmeStrSafeEq(currentStorageId,storageId))  //This part belongs to the protected RAWFile -> process!
         {
             //Unprotect columnFile:
             cmeFree(protectedValueMAC);
             cmeHMACByteString((const unsigned char*)queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
                               (unsigned char **)&protectedValueMAC,strlen(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen),
                               &written,cmeDefaultMACAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),orgKey);
-            if (!strncmp(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],MACLen)) //MAC is correct; proceed with decryption.
+            if (cmeMemSafeEq(protectedValueMAC,queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile],MACLen)) //MAC is correct; proceed with decryption.
             {
                 result=cmeUnprotectDBSaltedValue(queryResult[(cont*numCols)+cmeIDDResourcesDBDocuments_columnFile]+MACLen,
                                      &(colSQLDBfNames[dbNumCols]),cmeDefaultEncAlg,&(queryResult[(cont*numCols)+cmeIDDanydb_salt]),

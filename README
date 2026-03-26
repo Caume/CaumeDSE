@@ -1,4 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 1.0.7
+Caume Data Security Engine (CaumeDSE) version 1.0.8
 
 CONTENTS
 ========
@@ -127,6 +127,12 @@ Right now, the software is in a stable release:
 
 	* Basic functionality is complete and tested but some features are
 	  still pending.
+
+	* Constant-time comparisons (v1.0.8): all post-decryption string
+	  and MAC comparisons that could leak information via timing
+	  (strcmp/strncmp on decrypted values and HMAC results) replaced
+	  with new cmeStrSafeEq() and cmeMemSafeEq() functions.  Closes
+	  GitHub issue #5.
 
 	* Concurrent multi-user support added (v1.0.7): libmicrohttpd now
 	  runs a configurable worker-thread pool (default: 4 threads,

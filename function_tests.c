@@ -745,6 +745,7 @@ static void *cmeTestThreadWorker (void *arg)
 
     // Each thread uses its own temporary file-based DB with a unique name.
     cmeStrConstrAppend(&dbPath,"%stest_thread_%d.db",cmeDefaultFilePath,a->threadId);
+    remove(dbPath); // Ensure no stale data from a previous failed run.
 
     // Open (create) the per-thread DB.
     if (cmeDBCreateOpen(dbPath,&db))
