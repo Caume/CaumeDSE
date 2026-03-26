@@ -1,3 +1,38 @@
+2026-03-26 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
+	* configure.ac (AC_INIT): Bumped version to 1.0.6.
+
+	* README: Updated version to 1.0.6 and documented the ECDSA P-384
+	certificate update and the expanded gen_test_certs.sh algorithm menu.
+
+	* TEST/testCertAuth/gen_test_certs.sh: Extended to support 7
+	algorithm presets selectable via --algo / -a flag:
+	  rsa2048  (RSA 2048-bit + SHA-256)
+	  rsa4096  (RSA 4096-bit + SHA-256)
+	  ecp256   (ECDSA P-256  + SHA-256)
+	  ecp384   (ECDSA P-384  + SHA-384, new default)
+	  ecp521   (ECDSA P-521  + SHA-512)
+	  ed25519  (Ed25519, intrinsic hash, TLS 1.3+)
+	  ed448    (Ed448,   intrinsic hash, TLS 1.3+)
+	The script now uses 'openssl genpkey' uniformly for all key types.
+	X.509 keyUsage is set correctly per key family: RSA gets
+	keyEncipherment in addition to digitalSignature; EC/EdDSA get
+	digitalSignature only (key agreement is handled by ephemeral ECDH).
+	Added named flags --algo / --output-dir / --server-cn alongside the
+	existing positional arguments (backward compatible).
+	Certificate summary now shows the full signature algorithm string.
+
+	* TEST/testCertAuth/openssl.cnf: Removed keyEncipherment from
+	web_cert, usr_cert, and v3_req sections; replaced with
+	digitalSignature only (compatible with both RSA/ECDHE and EC/EdDSA).
+	Added explanatory comments for RSA-specific keyEncipherment.
+
+	* TEST/testCertAuth/ca.pem, server.key, server.pem, engineOrg.key,
+	engineOrg.pem, engineAdmin.key, engineAdmin.pem, engineAdmin.p12,
+	caChain.pem: Regenerated with ECDSA P-384 / SHA-384 (previously
+	RSA 4096-bit / SHA-256).  TLS 1.3 negotiates TLS_AES_256_GCM_SHA384.
+	Handshake time ~30ms vs ~71ms for RSA 4096 on the same hardware.
+
 2026-03-25 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
 	* configure.ac (AC_INIT): Bumped version to 1.0.5.

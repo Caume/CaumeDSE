@@ -1,4 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 1.0.5
+Caume Data Security Engine (CaumeDSE) version 1.0.6
 
 CONTENTS
 ========
@@ -128,12 +128,17 @@ Right now, the software is in a stable release:
 	* Basic functionality is complete and tested but some features are
 	  still pending.
 
-	* TLS digital certificates updated to RSA 4096-bit keys with
-	  SHA-256 signatures (up from RSA 2048-bit / SHA-1), valid until
-	  2036.  Server certificate now includes a Subject Alternative Name
-	  (SAN) for localhost, required by modern TLS clients.  A new
-	  script (TEST/testCertAuth/gen_test_certs.sh) allows regenerating
-	  all test certificates and keys from scratch using openssl.
+	* gen_test_certs.sh updated to support 7 algorithm presets: rsa2048,
+	  rsa4096, ecp256, ecp384, ecp521, ed25519, ed448.  Each preset
+	  automatically pairs the correct hash algorithm and sets the right
+	  X.509 keyUsage extensions (keyEncipherment for RSA;
+	  digitalSignature only for EC/EdDSA).  Default preset: ecp384.
+
+	* TLS digital certificates regenerated with ECDSA P-384 / SHA-384
+	  (replacing RSA 4096-bit / SHA-256 from v1.0.5), negotiating
+	  TLS 1.3 with TLS_AES_256_GCM_SHA384.  Handshake is ~2.4x faster
+	  than RSA 4096 on the same hardware (30ms vs 71ms).  Server cert
+	  includes a Subject Alternative Name (SAN) for localhost.
 
 	* Column-level HMAC protection is now implemented for "MAC" (HMAC
 	  of plaintext before encryption) and "MACProtected" (HMAC of
