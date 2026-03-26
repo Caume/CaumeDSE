@@ -52,12 +52,14 @@ struct cmeWebServiceConnectionInfoStruct
     struct MHD_Connection *connection;
     struct MHD_PostProcessor *postProcessor;
     FILE *filePointer;
-    char *fileName;     //required by remove ()
-    char *answerString; //Note: this will be dynamically allocated! cmeWebServicePOSTIterationCompleted must free it.
-    char **postArglist; //Note: this will be dynamically allocated! cmeWebServicePOSTIterationCompleted must free it.
+    char *fileName;            //required by remove ()
+    char *answerString;        //Note: this will be dynamically allocated! cmeWebServicePOSTIterationCompleted must free it.
+    char **postArglist;        //Note: this will be dynamically allocated! cmeWebServicePOSTIterationCompleted must free it.
     int postArgCont;
     int answerCode;
-    int threadStatus; //signal to the thread that it is ok to clean stuff here. 0=in progress, 1=thread done,waiting, 2=thread done, closing.
+    int threadStatus;          //signal to the thread that it is ok to clean stuff here. 0=in progress, 1=thread done,waiting, 2=thread done, closing.
+    time_t connectionStartTime;//Per-connection timestamp set when the connection is first seen (replaces former static local).
+    long int requestDataSize;  //Per-connection accumulated POST body size (replaces former static local).
 };
 
 //Structure to hold content reader information to be shared during ContentReader iterations.

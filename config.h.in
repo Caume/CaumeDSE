@@ -5,6 +5,9 @@
    */
 #undef BYPASS_TLS_IN_HTTP
 
+/* Maximum number of concurrent HTTP/HTTPS worker threads */
+#undef CDSE_MAX_THREADS
+
 /* Define to 1 if you have the <ctype.h> header file. */
 #undef HAVE_CTYPE_H
 

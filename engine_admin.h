@@ -52,7 +52,9 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
                                const int numSQLDBparts, const char *orgKey, const char *userId, const char *orgId, const char *resourceInfo,
                                const char *type, const char *documentId, const char *storageId, const char *orgResourceId);
 //Function to setup WebServices on specified TCP port (HTTP or HTTPS) using libmicrohttpd.
-int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile, const char *sslCertFile, const char *caCertFile);
+// numThreads: size of the MHD worker-thread pool (0 = use cmeDefaultMaxThreads).
+int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile, const char *sslCertFile, const char *caCertFile,
+                        unsigned int numThreads);
 //Function to create default roles within RolesDB for a default Admin user within the default engine organization.
 int cmeWebServiceInitAdminSetup (const char *orgKey);
 //Function to validate resource permissions for the specified userId and orgId in RolesDB.

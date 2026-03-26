@@ -1,4 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 1.0.6
+Caume Data Security Engine (CaumeDSE) version 1.0.7
 
 CONTENTS
 ========
@@ -128,6 +128,21 @@ Right now, the software is in a stable release:
 	* Basic functionality is complete and tested but some features are
 	  still pending.
 
+	* Concurrent multi-user support added (v1.0.7): libmicrohttpd now
+	  runs a configurable worker-thread pool (default: 4 threads,
+	  adjustable at build time with --with-max-threads=N).  Shared
+	  mutable state is protected:
+	    - SQL result tables (cmeResultMemTable) use thread-local
+	      storage (__thread) so each worker thread has its own copy.
+	    - The embedded Perl interpreter is serialised with a POSIX
+	      mutex (cmePerlMutex); non-Perl requests run in parallel.
+	    - The engine power-status flag is serialised with a second
+	      mutex (cmePowerMutex).
+	    - Per-connection start-time and upload-size counters moved
+	      from static locals to the per-connection info struct.
+	  A new testThreadSafety() test verifies correct parallel
+	  SQLite operation across cmeDefaultMaxThreads threads.
+
 	* gen_test_certs.sh updated to support 7 algorithm presets: rsa2048,
 	  rsa4096, ecp256, ecp384, ecp521, ed25519, ed448.  Each preset
 	  automatically pairs the correct hash algorithm and sets the right
@@ -242,13 +257,15 @@ The architecture of CaumeDSE is composed of several layers:
 	   embedded Perl interpreter.
 
 	7. Sessions and multi-threading - CaumeDSE uses stateless REST
-	   connections and does not support multiple execution threads. 
-	   Also, it currently supports only one user at a time.  While this
-	   imposes some limits to operations, it also makes it easier to
-	   detect and fix issues.  Multiple instances to support several
-	   users at any single time may be managed by a controlling
-	   application in the future.  This layered model will allow us to
-	   improve usability without compromising security.
+	   connections.  As of v1.0.7 a configurable number of simultaneous
+	   users is supported through a libmicrohttpd worker-thread pool
+	   (default: 4 threads; set at build time with --with-max-threads=N).
+	   Each thread handles one connection at a time; concurrent
+	   connections are distributed across the pool.  Shared state
+	   (Perl interpreter, engine power flag) is protected by POSIX
+	   mutexes; SQL result tables use thread-local storage so parallel
+	   requests do not interfere with each other's results.  The
+	   maximum number of queued connections is 4x the thread-pool size.
 
 
 2. Resource hierarchy 

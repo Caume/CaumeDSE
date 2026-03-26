@@ -55,8 +55,6 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     int exitcode=1;
     int numUrlElements=0;
     int responseCode=0;
-    static time_t connectionStartTime=0;
-    static long int requestDataSize=0;
     long int responseDataSize=0;
     char *page=NULL;
     const char *pOutputType=NULL;                         //Ptr to constant str. for output type. No need to free.
@@ -141,8 +139,8 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
 #endif
             return MHD_NO;
         }
-        connectionStartTime=time(NULL);
-        requestDataSize=(long int)*upload_data_size;
+        con_info->connectionStartTime=time(NULL);
+        con_info->requestDataSize=(long int)*upload_data_size;
         con_info->threadStatus=0;
         con_info->answerString=NULL;
         con_info->answerCode=0;
@@ -198,7 +196,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     else
     {
         con_info=*con_cls;
-        requestDataSize+=(long int)*upload_data_size;
+        con_info->requestDataSize+=(long int)*upload_data_size;
     }
     if ((con_info->connectionType)==POST) //Iterate POST request.
     {
@@ -340,7 +338,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         exitcode=MHD_queue_response (connection, responseCode, response);
     }
     con_info->threadStatus=2; //Now the POST handling routing thread can free memory and finish.
-    result=cmeWebServiceLogConnection (connection,con_info,connectionStartTime,method,url,requestDataSize,responseDataSize,
+    result=cmeWebServiceLogConnection (connection,con_info,con_info->connectionStartTime,method,url,con_info->requestDataSize,responseDataSize,
                                        (const char **)headerElements,(const char **)responseHeaders,(const char **)argumentElements,
                                        (const char **)urlElements,numUrlElements);
     cmeWebServiceAnswerConnectionFree();  //Free stuff
@@ -433,6 +431,10 @@ int cmeWebServiceParseKeys(void *cls, enum MHD_ValueKind kind, const char *key, 
     return MHD_YES;
 }
 
+// File-scope engine power status flag.  Access is serialised with cmePowerMutex so that
+// concurrent requests see a consistent value when the operator toggles the engine on/off.
+static int cmeEnginePowerStatus=1;
+
 int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
                                  const char *url, const char **urlElements, int numUrlElements,
                                  const char **headerElements,const char **argumentElements, const char *method,
@@ -440,7 +442,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 {   //IDD 1.0.21
     int cont,result;
     int authentication=0;
-    static int powerStatus=1;   //TODO (OHR#5#) Set engine default to 'off'?
+    int powerStatus;  //Local snapshot of cmeEnginePowerStatus, read under cmePowerMutex.
     char *userId=NULL;
     char *orgId=NULL;
     char *orgKey=NULL;
@@ -464,6 +466,11 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             } \
             cmeResultMemTableClean(); \
         } while (0); //Local free() macro.
+
+    // Read the shared engine power status once, under the mutex.
+    pthread_mutex_lock(&cmePowerMutex);
+    powerStatus=cmeEnginePowerStatus;
+    pthread_mutex_unlock(&cmePowerMutex);
 
     //TODO (OHR#2#): Sanitizing function for all inputs (filter:  ",',;,=,`)
     if ((numUrlElements==1)&&(strcmp("favicon.ico",urlElements[0])==0)&&(strcmp("GET",method)==0)) //Process favicon.ico; powerStatus='on' not required.
@@ -786,7 +793,9 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
                     "engine command resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-        result=cmeWebServiceProcessEngineResource(responseText, responseCode, url, argumentElements, method, &powerStatus);
+        pthread_mutex_lock(&cmePowerMutex);
+        result=cmeWebServiceProcessEngineResource(responseText, responseCode, url, argumentElements, method, &cmeEnginePowerStatus);
+        pthread_mutex_unlock(&cmePowerMutex);
         if (result) //Error, return error code + 100.
         {
             return(result+100);
@@ -7972,7 +7981,11 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                 resultDB=NULL; \
             } \
             cmeResultMemTableClean(); \
+            pthread_mutex_unlock(&cmePerlMutex); \
         } while (0); //Local free() macro.
+
+    // Serialise access to the shared Perl interpreter for this entire function.
+    pthread_mutex_lock(&cmePerlMutex);
 
     columnValues=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnNames=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).

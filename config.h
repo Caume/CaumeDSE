@@ -4,7 +4,10 @@
 /* Enables (1) or disables (0) bypassing TLS authentication when it is
    required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)
    */
-#define BYPASS_TLS_IN_HTTP 0
+#define BYPASS_TLS_IN_HTTP 1
+
+/* Maximum number of concurrent HTTP/HTTPS worker threads */
+#define CDSE_MAX_THREADS 4
 
 /* Define to 1 if you have the <ctype.h> header file. */
 #define HAVE_CTYPE_H 1
@@ -162,7 +165,7 @@
 #define PACKAGE_NAME "CaumeDSE"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "CaumeDSE 1.0.6"
+#define PACKAGE_STRING "CaumeDSE 1.0.7"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "caumedse"
@@ -171,7 +174,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.0.6"
+#define PACKAGE_VERSION "1.0.7"
 
 /* Path for default data and system databases. */
 #define PATH_DATADIR "/opt/cdse"
@@ -186,7 +189,7 @@
 #define STDC_HEADERS 1
 
 /* Version number of package */
-#define VERSION "1.0.6"
+#define VERSION "1.0.7"
 
 /* Define for Solaris 2.5.1 so the uint64_t typedef from <sys/synch.h>,
    <pthread.h>, or <semaphore.h> is not used. If the typedef were allowed, the

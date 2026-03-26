@@ -55,6 +55,7 @@ void testPerl (PerlInterpreter *myPerl);
 void testDB (PerlInterpreter* myPerl);
 void testCSV ();
 void testEngMgmnt ();
+void testThreadSafety ();
 void testWebServices ();
 
 #endif // FUNCTION_TESTS_H_INCLUDED
