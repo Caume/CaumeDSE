@@ -1,5 +1,38 @@
 2026-03-25 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+	* configure.ac (AC_INIT): Bumped version to 1.0.5.
+
+	* README: Updated version to 1.0.5 and documented the new TLS
+	certificate improvements.
+
+	* TEST/testCertAuth/gen_test_certs.sh (new file): Shell script that
+	regenerates all CaumeDSE TLS test certificates and keys from scratch
+	using openssl.  Generates a full chain: self-signed root CA,
+	engineOrg intermediate CA, server TLS certificate (with SAN), and
+	engineAdmin client certificate.  All keys are RSA 4096-bit; all
+	signatures use SHA-256.  Certificates are valid for 3650 days
+	(~10 years).  The script also builds caChain.pem and the
+	engineAdmin.p12 PKCS12 bundle (password: engineAdmin), then
+	verifies every certificate against the CA chain.
+
+	* TEST/testCertAuth/server.key, server.pem, ca.pem, engineOrg.key,
+	engineOrg.pem, engineAdmin.key, engineAdmin.pem, engineAdmin.p12,
+	caChain.pem: Regenerated with RSA 4096-bit / SHA-256 (previously
+	RSA 2048-bit / SHA-1, expired 2022).  Server certificate now
+	includes a subjectAltName (SAN) for DNS:localhost and IP:127.0.0.1,
+	as required by modern TLS clients.  New expiry: 2036-03-23.
+
+	* TEST/testCertAuth/openssl.cnf: Updated default_bits from 1024 to
+	4096 and default_md from "default" to "sha256" to match the new
+	security baseline.
+
+	* TEST/testCertAuth/README.txt: Updated manual certificate
+	generation instructions to use RSA 4096-bit keys and SHA-256
+	signatures throughout both the OpenSSL and GnuTLS certtool sections.
+	Added reference to the new gen_test_certs.sh script at the top.
+
+2026-03-25 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
 	* configure.ac (AC_INIT): Bumped version to 1.0.4.
 
 	* README: Updated version references to 1.0.4 and documented new
