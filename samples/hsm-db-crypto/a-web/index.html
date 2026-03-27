@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<!--
+  CaumeDSE Web Client — HSM / DB / Crypto
+  =========================================
+  Self-contained single-page application (no external dependencies).
+  Run via proxy.py, which serves this file and forwards /cdse/* to the
+  CDSE HTTPS API (default: https://localhost:8443).
+
+  CORS note: All API calls go through the /cdse/ proxy prefix so the browser
+  treats them as same-origin requests.  Direct access to https://localhost:8443
+  from a browser would be blocked by CORS unless the CDSE server is configured
+  with permissive CORS headers.
+
+  TLS note: If the CDSE server uses a self-signed certificate, start proxy.py
+  with --insecure.  Alternatively, visit https://localhost:8443 once in the
+  browser and accept the security exception before using this client.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CaumeDSE Client — HSM / DB / Crypto</title>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #1a1a2e;
+    --bg2:       #16213e;
+    --bg3:       #0f3460;
+    --accent:    #4ecca3;
+    --accent2:   #38b48b;
+    --text:      #e0e0e0;
+    --text-dim:  #8888aa;
+    --error:     #e94560;
+    --error-bg:  #2a0a14;
+    --ok-bg:     #0a2a20;
+    --border:    #2a2a4a;
+    --input-bg:  #0d1b2a;
+    --radius:    6px;
+    --font-mono: 'Courier New', Courier, monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--bg3);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 2px solid var(--accent);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  header h1 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.03em;
+  }
+  header .badge {
+    font-size: 0.72rem;
+    background: var(--bg2);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-left: auto;
+  }
+
+  /* ── Layout ── */
+  main { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
+
+  /* ── Connection panel ── */
+  .conn-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 20px;
+  }
+  .conn-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .conn-toggle:hover { background: rgba(78,204,163,0.06); }
+  .conn-toggle .arrow { transition: transform 0.2s; }
+  .conn-toggle.open .arrow { transform: rotate(180deg); }
+  .conn-body {
+    display: none;
+    padding: 12px 16px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .conn-body.open { display: block; }
+  .conn-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  /* ── Form controls ── */
+  label { display: block; font-size: 0.82rem; color: var(--text-dim); margin-bottom: 4px; }
+  input[type=text], input[type=password], textarea, select {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 7px 10px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input[type=text]:focus, input[type=password]:focus,
+  textarea:focus, select:focus {
+    border-color: var(--accent);
+  }
+  textarea { resize: vertical; font-family: var(--font-mono); min-height: 64px; }
+  input[type=file] {
+    color: var(--text);
+    font-size: 0.88rem;
+  }
+  input[type=file]::file-selector-button {
+    background: var(--bg3);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 4px 10px;
+    cursor: pointer;
+    margin-right: 8px;
+    font-size: 0.85rem;
+  }
+
+  /* ── Buttons ── */
+  button, .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg3);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 7px 16px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 600;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  button:hover, .btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  button:active { opacity: 0.8; }
+  button.danger { border-color: var(--error); color: var(--error); }
+  button.danger:hover { background: var(--error); color: #fff; }
+  button.primary { background: var(--accent); color: var(--bg); }
+  button.primary:hover { background: var(--accent2); }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid var(--border); }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    padding: 8px 18px;
+    color: var(--text-dim);
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 0;
+    transition: color 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); background: transparent; }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: transparent;
+  }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* ── Sub-panels (cards) ── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 14px;
+  }
+  .card h3 {
+    font-size: 0.9rem;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .form-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .form-row .field { flex: 1 1 150px; }
+  .form-row .field-wide { flex: 2 1 240px; }
+  .form-row .actions { flex: 0 0 auto; }
+
+  /* ── Output area ── */
+  .result-area {
+    margin-top: 16px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 48px;
+    max-height: 400px;
+    overflow-y: auto;
+    color: var(--text-dim);
+  }
+  .result-area.ok  { border-color: var(--accent); color: var(--accent); background: var(--ok-bg); }
+  .result-area.err { border-color: var(--error);  color: var(--error);  background: var(--error-bg); }
+
+  /* ── Tables ── */
+  .csv-table-wrap { overflow-x: auto; margin-top: 12px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    font-family: var(--font-mono);
+  }
+  th {
+    background: var(--bg3);
+    color: var(--accent);
+    text-align: left;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  td {
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    vertical-align: top;
+    word-break: break-word;
+  }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.03); }
+  tr:hover td { background: rgba(78,204,163,0.06); }
+
+  /* ── Download link ── */
+  .dl-link { display: inline-block; margin-top: 8px; color: var(--accent); text-decoration: none; }
+  .dl-link:hover { text-decoration: underline; }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Misc ── */
+  hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .section-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .help-text { font-size: 0.78rem; color: var(--text-dim); margin-top: 4px; }
+  @media (max-width: 600px) {
+    header h1 { font-size: 1rem; }
+    .form-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ HEADER ═══════════════════════════════ -->
+<header>
+  <h1>CaumeDSE Client — HSM / DB / Crypto</h1>
+  <span class="badge">REST Sample</span>
+</header>
+
+<main>
+
+  <!-- ═══════════════════════ CONNECTION PANEL ═══════════════════════════ -->
+  <div class="conn-panel">
+    <div class="conn-toggle open" id="connToggle" onclick="toggleConn()">
+      <span>Connection Settings</span>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="conn-body open" id="connBody">
+      <div class="conn-grid">
+        <div>
+          <label for="userId">User ID</label>
+          <input type="text" id="userId" value="User123" placeholder="e.g. User123">
+        </div>
+        <div>
+          <label for="orgId">Organisation ID</label>
+          <input type="text" id="orgId" value="CaumeDSE" placeholder="e.g. CaumeDSE">
+        </div>
+        <div>
+          <label for="orgKey">Organisation Key</label>
+          <input type="password" id="orgKey" value="" placeholder="password / org key">
+        </div>
+        <div>
+          <label for="storage">Storage Name</label>
+          <input type="text" id="storage" value="EngineStorage" placeholder="e.g. EngineStorage">
+        </div>
+      </div>
+      <p class="help-text" style="margin-top:10px;">
+        Requests go to <code>/cdse/</code> — the proxy.py script forwards them to the CDSE HTTPS server.
+        If using a self-signed certificate run <code>proxy.py --insecure</code>.
+      </p>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════ TABS ═══════════════════════════════════ -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('secrets',this)">Secrets</button>
+    <button class="tab-btn"        onclick="switchTab('database',this)">Database</button>
+    <button class="tab-btn"        onclick="switchTab('auditlog',this)">Audit Log</button>
+    <button class="tab-btn"        onclick="switchTab('info',this)">Info</button>
+  </div>
+
+  <!-- ══════════════════════════ SECRETS TAB ══════════════════════════════ -->
+  <div class="tab-pane active" id="tab-secrets">
+
+    <!-- Upload -->
+    <div class="card">
+      <h3>Upload Secret</h3>
+      <div class="form-row">
+        <div class="field">
+          <label for="sec-upload-name">Secret Name (document ID)</label>
+          <input type="text" id="sec-upload-name" placeholder="e.g. mySecret.bin">
+        </div>
+        <div class="field">
+          <label for="sec-upload-file">File</label>
+          <input type="file" id="sec-upload-file">
+        </div>
+        <div class="field">
+          <label for="sec-upload-info">Resource Info</label>
+          <input type="text" id="sec-upload-info" placeholder="Optional description">
+        </div>
+        <div class="actions">
+          <button onclick="uploadSecret()">Upload</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Retrieve -->
+    <div class="card">
+      <h3>Retrieve Secret</h3>
+      <div class="form-row">
+        <div class="field-wide">
+          <label for="sec-get-name">Secret Name</label>
+          <input type="text" id="sec-get-name" placeholder="e.g. mySecret.bin">
+        </div>
+        <div class="actions">
+          <button onclick="retrieveSecret()">Retrieve</button>
+        </div>
+      </div>
+      <div id="sec-get-download"></div>
+    </div>
+
+    <!-- Delete -->
+    <div class="card">
+      <h3>Delete Secret</h3>
+      <div class="form-row">
+        <div class="field-wide">
+          <label for="sec-del-name">Secret Name</label>
+          <input type="text" id="sec-del-name" placeholder="e.g. mySecret.bin">
+        </div>
+        <div class="actions">
+          <button class="danger" onclick="deleteSecret()">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- List -->
+    <div class="section-actions">
+      <button onclick="listSecrets()">List All Secrets</button>
+    </div>
+
+    <div class="result-area" id="result-secrets">Results appear here…</div>
+  </div><!-- /tab-secrets -->
+
+  <!-- ══════════════════════════ DATABASE TAB ══════════════════════════════ -->
+  <div class="tab-pane" id="tab-database">
+
+    <!-- Create DB -->
+    <div class="card">
+      <h3>Create Database</h3>
+      <div class="form-row">
+        <div class="field">
+          <label for="db-create-name">Database Name</label>
+          <input type="text" id="db-create-name" placeholder="e.g. MyDB.csv">
+        </div>
+        <div class="field">
+          <label for="db-create-cols">Columns (comma-separated)</label>
+          <input type="text" id="db-create-cols" placeholder="e.g. name,age,email">
+        </div>
+        <div class="actions">
+          <button onclick="createDatabase()">Create</button>
+        </div>
+      </div>
+      <p class="help-text">
+        The database is stored as a CSV-format secure document.
+        The first row of the file contains the column headers.
+      </p>
+    </div>
+
+    <!-- Insert Row -->
+    <div class="card">
+      <h3>Insert Row</h3>
+      <div class="form-row">
+        <div class="field">
+          <label for="db-ins-name">Database Name</label>
+          <input type="text" id="db-ins-name" placeholder="e.g. MyDB.csv">
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <label for="db-ins-vals">Column values (one per line: <code>colName=value</code>)</label>
+        <textarea id="db-ins-vals" rows="4" placeholder="name=Alice&#10;age=30&#10;email=alice@example.com"></textarea>
+      </div>
+      <div style="margin-top:10px;">
+        <button onclick="insertRow()">Insert Row</button>
+      </div>
+    </div>
+
+    <!-- Query -->
+    <div class="card">
+      <h3>Query Database</h3>
+      <div class="form-row">
+        <div class="field">
+          <label for="db-q-name">Database Name</label>
+          <input type="text" id="db-q-name" placeholder="e.g. MyDB.csv">
+        </div>
+        <div class="field">
+          <label for="db-q-row">Row Number (blank = all rows)</label>
+          <input type="text" id="db-q-row" placeholder="e.g. 2">
+        </div>
+        <div class="actions">
+          <button onclick="queryDatabase()">Query</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Update Row -->
+    <div class="card">
+      <h3>Update Row</h3>
+      <div class="form-row">
+        <div class="field">
+          <label for="db-upd-name">Database Name</label>
+          <input type="text" id="db-upd-name" placeholder="e.g. MyDB.csv">
+        </div>
+        <div class="field">
+          <label for="db-upd-row">Row Number</label>
+          <input type="text" id="db-upd-row" placeholder="e.g. 2">
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <label for="db-upd-vals">New values (one per line: <code>colName=value</code>)</label>
+        <textarea id="db-upd-vals" rows="4" placeholder="name=Bob&#10;age=31"></textarea>
+      </div>
+      <div style="margin-top:10px;">
+        <button onclick="updateRow()">Update Row</button>
+      </div>
+    </div>
+
+    <!-- Delete Row -->
+    <div class="card">
+      <h3>Delete Row</h3>
+      <div class="form-row">
+        <div class="field">
+          <label for="db-delrow-name">Database Name</label>
+          <input type="text" id="db-delrow-name" placeholder="e.g. MyDB.csv">
+        </div>
+        <div class="field">
+          <label for="db-delrow-num">Row Number</label>
+          <input type="text" id="db-delrow-num" placeholder="e.g. 2">
+        </div>
+        <div class="actions">
+          <button class="danger" onclick="deleteRow()">Delete Row</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete DB -->
+    <div class="card">
+      <h3>Delete Database</h3>
+      <div class="form-row">
+        <div class="field-wide">
+          <label for="db-del-name">Database Name</label>
+          <input type="text" id="db-del-name" placeholder="e.g. MyDB.csv">
+        </div>
+        <div class="actions">
+          <button class="danger" onclick="deleteDatabase()">Delete DB</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- List DBs -->
+    <div class="section-actions">
+      <button onclick="listDatabases()">List All Databases</button>
+    </div>
+
+    <div class="result-area" id="result-database">Results appear here…</div>
+  </div><!-- /tab-database -->
+
+  <!-- ══════════════════════════ AUDIT LOG TAB ═════════════════════════════ -->
+  <div class="tab-pane" id="tab-auditlog">
+    <div class="card">
+      <h3>Audit / Transaction Log</h3>
+      <p class="help-text" style="margin-bottom:12px;">
+        Loads all recorded API transactions from the CDSE engine.
+        Requires appropriate read permissions for the authenticated user/org.
+      </p>
+      <button onclick="loadAuditLog()">Load Audit Log</button>
+    </div>
+    <div class="result-area" id="result-auditlog">Results appear here…</div>
+  </div><!-- /tab-auditlog -->
+
+  <!-- ══════════════════════════ INFO TAB ═════════════════════════════════ -->
+  <div class="tab-pane" id="tab-info">
+    <div class="card">
+      <h3>User / Organisation Info</h3>
+      <p class="help-text" style="margin-bottom:12px;">
+        Retrieves metadata for the authenticated user and organisation from CDSE.
+      </p>
+      <button onclick="loadInfo()">Load Info</button>
+    </div>
+    <div class="result-area" id="result-info">Results appear here…</div>
+  </div><!-- /tab-info -->
+
+</main>
+
+<!-- ═══════════════════════════════ JAVASCRIPT ═══════════════════════════ -->
+<script>
+'use strict';
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * UI helpers
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** Toggle visibility of the connection settings panel. */
+function toggleConn() {
+  const toggle = document.getElementById('connToggle');
+  const body   = document.getElementById('connBody');
+  toggle.classList.toggle('open');
+  body.classList.toggle('open');
+}
+
+/** Switch the active tab. */
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+/** Display a result (text or HTML) in the given result area. */
+function showResult(areaId, data, isError, isHTML) {
+  const el = document.getElementById(areaId);
+  el.classList.remove('ok', 'err');
+  el.classList.add(isError ? 'err' : 'ok');
+  if (isHTML) {
+    el.innerHTML = data;
+  } else {
+    el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  }
+}
+
+/** Show a spinner inside the given element while work is ongoing. */
+function setLoading(areaId) {
+  const el = document.getElementById(areaId);
+  el.className = 'result-area';
+  el.innerHTML = '<span class="spinner"></span> Loading…';
+}
+
+/** Read connection settings from the UI. */
+function connSettings() {
+  return {
+    userId:  document.getElementById('userId').value.trim(),
+    orgId:   document.getElementById('orgId').value.trim(),
+    orgKey:  document.getElementById('orgKey').value,
+    storage: document.getElementById('storage').value.trim() || 'EngineStorage',
+  };
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * API helpers
+ *
+ * All paths use the /cdse prefix so requests are forwarded by proxy.py to
+ * the actual CDSE HTTPS server.
+ *
+ * Authentication is credential-based: userId, orgId, orgKey are passed as
+ * query-string parameters on every request.  The CDSE engine validates them
+ * against its encrypted resources database.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+const CDSE = '/cdse';
+
+/** Build a URLSearchParams with the mandatory auth credentials plus extras. */
+function buildParams(extra = {}) {
+  const c = connSettings();
+  return new URLSearchParams({ userId: c.userId, orgId: c.orgId, orgKey: c.orgKey, ...extra });
+}
+
+/** Base URL for document resources in a given storage bucket. */
+function docsBase(orgId, storage) {
+  return `${CDSE}/organizations/${encodeURIComponent(orgId)}/storage/${encodeURIComponent(storage)}/documentTypes/file.raw/documents`;
+}
+
+/** GET request; returns the fetch Response. */
+async function apiGet(path, params) {
+  const url = params ? `${path}?${params}` : path;
+  return fetch(url, { method: 'GET' });
+}
+
+/** DELETE request; returns the fetch Response. */
+async function apiDelete(path, params) {
+  const url = params ? `${path}?${params}` : path;
+  return fetch(url, { method: 'DELETE' });
+}
+
+/**
+ * POST request with a FormData body.
+ * Auth params are included in the query string AND inside the FormData
+ * (CDSE expects them in the multipart body for document creation).
+ */
+async function apiPost(path, params, formData) {
+  const url = params ? `${path}?${params}` : path;
+  return fetch(url, { method: 'POST', body: formData });
+}
+
+/** PUT request; all parameters go in the query string. */
+async function apiPut(path, params) {
+  const url = params ? `${path}?${params}` : path;
+  return fetch(url, { method: 'PUT' });
+}
+
+/** Parse a CSV string into an HTML table string. */
+function parseCSVToTable(csv) {
+  if (!csv || !csv.trim()) return '<em>(empty response)</em>';
+
+  // Split into rows, handling \r\n and \n.
+  const lines = csv.trim().split(/\r?\n/);
+  if (lines.length === 0) return '<em>(empty)</em>';
+
+  // Simple CSV split — handles basic quoting.
+  function splitCSVRow(row) {
+    const cells = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < row.length; i++) {
+      const ch = row[i];
+      if (ch === '"') {
+        if (inQ && row[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === ',' && !inQ) {
+        cells.push(cur); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    cells.push(cur);
+    return cells;
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  const headers = splitCSVRow(lines[0]);
+  let html = '<div class="csv-table-wrap"><table><thead><tr>';
+  headers.forEach(h => { html += `<th>${esc(h)}</th>`; });
+  html += '</tr></thead><tbody>';
+
+  for (let r = 1; r < lines.length; r++) {
+    if (!lines[r].trim()) continue;
+    const cells = splitCSVRow(lines[r]);
+    html += '<tr>';
+    cells.forEach(c => { html += `<td>${esc(c)}</td>`; });
+    html += '</tr>';
+  }
+  html += '</tbody></table></div>';
+  return html;
+}
+
+/** Format an HTTP response as readable text for the result area. */
+async function formatResponse(resp, preferBinary) {
+  const ct = resp.headers.get('Content-Type') || '';
+  if (preferBinary || (!ct.includes('text') && !ct.includes('csv') && !ct.includes('json'))) {
+    // Return raw bytes as a Blob URL for download.
+    const blob = await resp.blob();
+    return { text: `Binary response (${blob.size} bytes, type: ${blob.type || 'unknown'})`, blob };
+  }
+  const text = await resp.text();
+  return { text };
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Secrets tab actions
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Upload a secret (arbitrary binary or text file) to CDSE.
+ *
+ * API: POST /organizations/{orgId}/storage/{storage}/documentTypes/file.raw/documents/{name}
+ *   Body: multipart/form-data with fields:
+ *     file        — the file content
+ *     userId      — authenticating user
+ *     orgId       — authenticating org
+ *     orgKey      — org password/key
+ *     *resourceInfo — optional metadata string
+ */
+async function uploadSecret() {
+  const area   = 'result-secrets';
+  const name   = document.getElementById('sec-upload-name').value.trim();
+  const fileEl = document.getElementById('sec-upload-file');
+  const info   = document.getElementById('sec-upload-info').value.trim();
+
+  if (!name) { showResult(area, 'Error: Secret Name is required.', true); return; }
+  if (!fileEl.files.length) { showResult(area, 'Error: Please select a file to upload.', true); return; }
+
+  setLoading(area);
+  const c = connSettings();
+  const base = docsBase(c.orgId, c.storage);
+
+  // CDSE expects auth credentials in the FormData body for POST requests.
+  const fd = new FormData();
+  fd.append('file', fileEl.files[0], name);
+  fd.append('userId', c.userId);
+  fd.append('orgId',  c.orgId);
+  fd.append('orgKey', c.orgKey);
+  if (info) fd.append('*resourceInfo', info);
+
+  try {
+    const resp = await apiPost(`${base}/${encodeURIComponent(name)}`, null, fd);
+    const text = await resp.text();
+    const ok   = resp.ok || resp.status === 201;
+    showResult(area, `HTTP ${resp.status}\n\n${text}`, !ok);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/**
+ * Retrieve a secret's raw content from CDSE.
+ *
+ * API: GET /organizations/{orgId}/storage/{storage}/documentTypes/file.raw/documents/{name}/content
+ *   Params: userId, orgId, orgKey
+ */
+async function retrieveSecret() {
+  const area = 'result-secrets';
+  const name = document.getElementById('sec-get-name').value.trim();
+  const dlArea = document.getElementById('sec-get-download');
+  dlArea.innerHTML = '';
+
+  if (!name) { showResult(area, 'Error: Secret Name is required.', true); return; }
+
+  setLoading(area);
+  const c    = connSettings();
+  const base = docsBase(c.orgId, c.storage);
+  const params = buildParams();
+
+  try {
+    const resp = await apiGet(`${base}/${encodeURIComponent(name)}/content`, params);
+    if (!resp.ok) {
+      const text = await resp.text();
+      showResult(area, `HTTP ${resp.status}\n\n${text}`, true);
+      return;
+    }
+    const ct = resp.headers.get('Content-Type') || '';
+    // If content is text, display inline; otherwise offer a download link.
+    if (ct.includes('text') || ct.includes('csv') || ct.includes('json') || ct.includes('xml')) {
+      const text = await resp.text();
+      showResult(area, text, false);
+    } else {
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      showResult(area, `Binary content received (${blob.size} bytes).`, false);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = name;
+      link.className = 'dl-link';
+      link.textContent = `Download: ${name}`;
+      dlArea.appendChild(link);
+    }
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/**
+ * Delete a secret document from CDSE.
+ *
+ * API: DELETE /organizations/{orgId}/storage/{storage}/documentTypes/file.raw/documents/{name}
+ *   Params: userId, orgId, orgKey
+ */
+async function deleteSecret() {
+  const area = 'result-secrets';
+  const name = document.getElementById('sec-del-name').value.trim();
+  if (!name) { showResult(area, 'Error: Secret Name is required.', true); return; }
+
+  setLoading(area);
+  const c    = connSettings();
+  const base = docsBase(c.orgId, c.storage);
+  const params = buildParams();
+
+  try {
+    const resp = await apiDelete(`${base}/${encodeURIComponent(name)}`, params);
+    const text = await resp.text();
+    showResult(area, `HTTP ${resp.status}\n\n${text}`, !resp.ok);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/**
+ * List all secrets (documents of type file.raw) in the storage bucket.
+ *
+ * API: GET /organizations/{orgId}/storage/{storage}/documentTypes/file.raw/documents
+ *   Params: userId, orgId, orgKey, outputType=csv
+ */
+async function listSecrets() {
+  const area = 'result-secrets';
+  setLoading(area);
+  const c      = connSettings();
+  const base   = docsBase(c.orgId, c.storage);
+  const params = buildParams({ outputType: 'csv' });
+
+  try {
+    const resp = await apiGet(base, params);
+    const text = await resp.text();
+    if (!resp.ok) { showResult(area, `HTTP ${resp.status}\n\n${text}`, true); return; }
+    const html = `<strong>Secrets in ${c.storage}:</strong>` + parseCSVToTable(text);
+    showResult(area, html, false, true);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Database tab actions
+ *
+ * CaumeDSE stores encrypted databases as CSV-format documents.
+ * The document content is a CSV where the first row is the header (columns)
+ * and subsequent rows are data rows.  Individual rows are accessed via the
+ * .../content/contentRows/{N} sub-resource (1-based row index).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Create a new encrypted database (CSV document with header row only).
+ *
+ * API: POST .../documents/{name}  (same as upload secret)
+ *   The file content is a CSV header: "col1,col2,...\n"
+ */
+async function createDatabase() {
+  const area = 'result-database';
+  const name = document.getElementById('db-create-name').value.trim();
+  const cols = document.getElementById('db-create-cols').value.trim();
+  if (!name) { showResult(area, 'Error: Database Name is required.', true); return; }
+  if (!cols) { showResult(area, 'Error: At least one column name is required.', true); return; }
+
+  setLoading(area);
+  const c      = connSettings();
+  const base   = docsBase(c.orgId, c.storage);
+  const csvHeader = cols + '\n';
+  const blob   = new Blob([csvHeader], { type: 'text/csv' });
+
+  const fd = new FormData();
+  fd.append('file', blob, name);
+  fd.append('userId', c.userId);
+  fd.append('orgId',  c.orgId);
+  fd.append('orgKey', c.orgKey);
+  fd.append('*resourceInfo', `Database: ${name}; columns: ${cols}`);
+
+  try {
+    const resp = await apiPost(`${base}/${encodeURIComponent(name)}`, null, fd);
+    const text = await resp.text();
+    showResult(area, `HTTP ${resp.status}\n\n${text}`, !resp.ok && resp.status !== 201);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/**
+ * Insert a new row into an encrypted database.
+ *
+ * Strategy:
+ *   1. GET .../content?outputType=csv  to retrieve all current content.
+ *   2. Count the existing data rows (header is row 0; first data row is 1).
+ *   3. POST to .../contentRows/{newRowNum} with column=value params.
+ *
+ * API: POST .../documents/{name}/contentRows/{N}?col1=val1&col2=val2&userId=...
+ */
+async function insertRow() {
+  const area = 'result-database';
+  const name = document.getElementById('db-ins-name').value.trim();
+  const valsRaw = document.getElementById('db-ins-vals').value.trim();
+  if (!name)    { showResult(area, 'Error: Database Name is required.', true); return; }
+  if (!valsRaw) { showResult(area, 'Error: Column values are required.', true); return; }
+
+  setLoading(area);
+  const c      = connSettings();
+  const base   = docsBase(c.orgId, c.storage);
+  const params = buildParams();
+
+  // Step 1: fetch current content to count rows.
+  let rowCount = 0;
+  try {
+    const resp = await apiGet(
+      `${base}/${encodeURIComponent(name)}/content`,
+      buildParams({ outputType: 'csv' })
+    );
+    if (resp.ok) {
+      const text = await resp.text();
+      // Count non-empty lines minus header.
+      rowCount = text.trim().split(/\r?\n/).filter(l => l.trim()).length - 1;
+      if (rowCount < 0) rowCount = 0;
+    }
+    // If not found (404) we proceed with rowCount=0 (insert as row 1).
+  } catch (_) { /* ignore; proceed with row 1 */ }
+
+  const newRow = rowCount + 1;
+
+  // Step 2: parse col=value pairs from textarea.
+  const kvPairs = {};
+  valsRaw.split(/\r?\n/).forEach(line => {
+    const eq = line.indexOf('=');
+    if (eq > 0) {
+      const k = line.slice(0, eq).trim();
+      const v = line.slice(eq + 1).trim();
+      if (k) kvPairs[k] = v;
+    }
+  });
+
+  const insertParams = buildParams({ ...kvPairs });
+
+  try {
+    const resp = await apiPost(
+      `${base}/${encodeURIComponent(name)}/contentRows/${newRow}`,
+      insertParams,
+      new FormData() // empty FormData; payload is in query string
+    );
+    const text = await resp.text();
+    showResult(area, `Inserted as row ${newRow}.\nHTTP ${resp.status}\n\n${text}`, !resp.ok);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/**
+ * Query a database — all rows or a specific row.
+ *
+ * API (all rows):  GET .../documents/{name}/content?outputType=csv&userId=...
+ * API (one row):   GET .../documents/{name}/contentRows/{N}?outputType=csv&userId=...
+ */
+async function queryDatabase() {
+  const area   = 'result-database';
+  const name   = document.getElementById('db-q-name').value.trim();
+  const rowNum = document.getElementById('db-q-row').value.trim();
+  if (!name) { showResult(area, 'Error: Database Name is required.', true); return; }
+
+  setLoading(area);
+  const c      = connSettings();
+  const base   = docsBase(c.orgId, c.storage);
+  const params = buildParams({ outputType: 'csv' });
+
+  const path = rowNum
+    ? `${base}/${encodeURIComponent(name)}/contentRows/${encodeURIComponent(rowNum)}`
+    : `${base}/${encodeURIComponent(name)}/content`;
+
+  try {
+    const resp = await apiGet(path, params);
+    const text = await resp.text();
+    if (!resp.ok) { showResult(area, `HTTP ${resp.status}\n\n${text}`, true); return; }
+    const label = rowNum ? `Row ${rowNum} of <strong>${name}</strong>:` : `Contents of <strong>${name}</strong>:`;
+    showResult(area, label + parseCSVToTable(text), false, true);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/**
+ * Update an existing row in an encrypted database.
+ *
+ * API: PUT .../documents/{name}/contentRows/{N}?col1=val1&col2=val2&userId=...
+ */
+async function updateRow() {
+  const area   = 'result-database';
+  const name   = document.getElementById('db-upd-name').value.trim();
+  const rowNum = document.getElementById('db-upd-row').value.trim();
+  const valsRaw = document.getElementById('db-upd-vals').value.trim();
+  if (!name)    { showResult(area, 'Error: Database Name is required.', true); return; }
+  if (!rowNum)  { showResult(area, 'Error: Row Number is required.', true); return; }
+  if (!valsRaw) { showResult(area, 'Error: Column values are required.', true); return; }
+
+  setLoading(area);
+  const c    = connSettings();
+  const base = docsBase(c.orgId, c.storage);
+
+  const kvPairs = {};
+  valsRaw.split(/\r?\n/).forEach(line => {
+    const eq = line.indexOf('=');
+    if (eq > 0) {
+      const k = line.slice(0, eq).trim();
+      const v = line.slice(eq + 1).trim();
+      if (k) kvPairs[k] = v;
+    }
+  });
+
+  const params = buildParams({ ...kvPairs });
+
+  try {
+    const resp = await apiPut(
+      `${base}/${encodeURIComponent(name)}/contentRows/${encodeURIComponent(rowNum)}`,
+      params
+    );
+    const text = await resp.text();
+    showResult(area, `HTTP ${resp.status}\n\n${text}`, !resp.ok);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/**
+ * Delete a specific row from an encrypted database.
+ *
+ * API: DELETE .../documents/{name}/contentRows/{N}?userId=...&orgId=...&orgKey=...
+ */
+async function deleteRow() {
+  const area   = 'result-database';
+  const name   = document.getElementById('db-delrow-name').value.trim();
+  const rowNum = document.getElementById('db-delrow-num').value.trim();
+  if (!name)   { showResult(area, 'Error: Database Name is required.', true); return; }
+  if (!rowNum) { showResult(area, 'Error: Row Number is required.', true); return; }
+
+  setLoading(area);
+  const c    = connSettings();
+  const base = docsBase(c.orgId, c.storage);
+  const params = buildParams();
+
+  try {
+    const resp = await apiDelete(
+      `${base}/${encodeURIComponent(name)}/contentRows/${encodeURIComponent(rowNum)}`,
+      params
+    );
+    const text = await resp.text();
+    showResult(area, `HTTP ${resp.status}\n\n${text}`, !resp.ok);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/**
+ * Delete an entire encrypted database document.
+ *
+ * API: DELETE .../documents/{name}?userId=...&orgId=...&orgKey=...
+ */
+async function deleteDatabase() {
+  const area = 'result-database';
+  const name = document.getElementById('db-del-name').value.trim();
+  if (!name) { showResult(area, 'Error: Database Name is required.', true); return; }
+
+  setLoading(area);
+  const c    = connSettings();
+  const base = docsBase(c.orgId, c.storage);
+  const params = buildParams();
+
+  try {
+    const resp = await apiDelete(`${base}/${encodeURIComponent(name)}`, params);
+    const text = await resp.text();
+    showResult(area, `HTTP ${resp.status}\n\n${text}`, !resp.ok);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/**
+ * List all database documents (same endpoint as listSecrets — both are
+ * documents of type file.raw in the storage bucket; databases are
+ * distinguished by their CSV content and naming convention).
+ */
+async function listDatabases() {
+  const area = 'result-database';
+  setLoading(area);
+  const c      = connSettings();
+  const base   = docsBase(c.orgId, c.storage);
+  const params = buildParams({ outputType: 'csv' });
+
+  try {
+    const resp = await apiGet(base, params);
+    const text = await resp.text();
+    if (!resp.ok) { showResult(area, `HTTP ${resp.status}\n\n${text}`, true); return; }
+    const html = `<strong>Documents in ${c.storage}:</strong>` + parseCSVToTable(text);
+    showResult(area, html, false, true);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Audit Log tab actions
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Load the CDSE transaction / audit log.
+ *
+ * API: GET /cdse/transactions?userId=...&orgId=...&orgKey=...&outputType=csv
+ *
+ * The transactions table records every API request processed by the engine,
+ * including method, URL, timestamp, and response code.
+ */
+async function loadAuditLog() {
+  const area   = 'result-auditlog';
+  setLoading(area);
+  const params = buildParams({ outputType: 'csv' });
+
+  try {
+    const resp = await apiGet(`${CDSE}/transactions`, params);
+    const text = await resp.text();
+    if (!resp.ok) { showResult(area, `HTTP ${resp.status}\n\n${text}`, true); return; }
+    showResult(area, '<strong>Audit / Transaction Log:</strong>' + parseCSVToTable(text), false, true);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Info tab actions
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Load user and organisation metadata from CDSE.
+ *
+ * APIs used:
+ *   GET /cdse/organizations/{orgId}?userId=...&orgId=...&orgKey=...&outputType=csv
+ *
+ * Returns metadata (resourceInfo, certificate, publicKey, etc.) registered
+ * for the authenticating organisation.
+ */
+async function loadInfo() {
+  const area = 'result-info';
+  setLoading(area);
+  const c      = connSettings();
+  const params = buildParams({ outputType: 'csv' });
+
+  try {
+    const resp = await apiGet(
+      `${CDSE}/organizations/${encodeURIComponent(c.orgId)}`,
+      params
+    );
+    const text = await resp.text();
+    if (!resp.ok) { showResult(area, `HTTP ${resp.status}\n\n${text}`, true); return; }
+    const html = `<strong>Organisation info for <em>${c.orgId}</em>:</strong>`
+               + parseCSVToTable(text);
+    showResult(area, html, false, true);
+  } catch (e) {
+    showResult(area, `Network error: ${e.message}`, true);
+  }
+}
+</script>
+</body>
+</html>

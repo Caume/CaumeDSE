@@ -1,4 +1,4 @@
-Caume Data Security Engine (CaumeDSE) version 1.0.8
+Caume Data Security Engine (CaumeDSE) version 1.0.9
 
 CONTENTS
 ========
@@ -127,6 +127,21 @@ Right now, the software is in a stable release:
 
 	* Basic functionality is complete and tested but some features are
 	  still pending.
+
+	* Sample applications added (v1.0.9): a new samples/hsm-db-crypto/
+	  directory provides four independent client implementations that
+	  demonstrate the CDSE API as a hybrid HSM / encrypted database /
+	  general cryptographic command interface:
+	    a) Web (HTML5 + JavaScript SPA with a local CORS proxy)
+	    b) Python 3 CLI (requires: requests)
+	    c) Go CLI (standard library only, no external dependencies)
+	    d) Perl CLI (requires: LWP::UserAgent, HTTP::Request::Common)
+	  All CLI variants support interactive sessions (credentials entered
+	  once) and one-shot parameter mode (credentials per call, or via
+	  environment variables CDSE_SERVER/CDSE_USER_ID/CDSE_ORG_ID/
+	  CDSE_ORG_KEY/CDSE_STORAGE).  Operations covered: encrypted secret
+	  storage, encrypted CSV databases (insert/query/update/delete),
+	  user/org info, and transaction audit log.
 
 	* Constant-time comparisons (v1.0.8): all post-decryption string
 	  and MAC comparisons that could leak information via timing

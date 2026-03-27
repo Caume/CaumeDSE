@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.68])
-AC_INIT([CaumeDSE], [1.0.8], [0h3rr3r4@gmail.com])
+AC_INIT([CaumeDSE], [1.0.9], [0h3rr3r4@gmail.com])
 AM_INIT_AUTOMAKE([dist-bzip2 color-tests readme-alpha])
 AC_CONFIG_SRCDIR([function_tests.c])
 AC_CONFIG_HEADERS([config.h])
