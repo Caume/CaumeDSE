@@ -127,8 +127,12 @@ sub make_ua {
 # Helpers: URL building and request execution
 ###############################################################################
 
-# Base URL for the API
-sub base_url { "https://$cfg{server}" }
+# Base URL for the API.  If $cfg{server} already contains a scheme
+# ("http://" or "https://") it is used as-is; otherwise "https://" is prepended.
+sub base_url {
+    return $cfg{server} if $cfg{server} =~ m{^https?://};
+    return "https://$cfg{server}";
+}
 
 # Auth query parameters (always required)
 sub auth_params {
@@ -202,12 +206,12 @@ sub do_post_multipart {
     my ($ua, $path, $file_path, $resource_info, %extra_params) = @_;
     my $url = base_url() . $path;
     my @content = (
-        file     => [$file_path],
-        userId   => $cfg{userId},
-        orgId    => $cfg{orgId},
-        orgKey   => $cfg{orgKey},
+        file             => [$file_path],
+        userId           => $cfg{userId},
+        orgId            => $cfg{orgId},
+        orgKey           => $cfg{orgKey},
+        '*resourceInfo'  => (defined $resource_info ? $resource_info : ''),
     );
-    push @content, '*resourceInfo', $resource_info if defined $resource_info && $resource_info ne '';
     for my $k (sort keys %extra_params) {
         push @content, $k, $extra_params{$k};
     }
@@ -226,13 +230,14 @@ sub do_post_csv_create {
     # Build a temporary in-memory "file" from the CSV header line
     require HTTP::Request::Common;
     my @content = (
-        file   => [undef, 'schema.csv',
-                   'Content-Type'        => 'text/csv',
-                   'Content-Disposition' => 'form-data; name="file"; filename="schema.csv"',
-                   Content => $csv_header],
-        userId => $cfg{userId},
-        orgId  => $cfg{orgId},
-        orgKey => $cfg{orgKey},
+        file             => [undef, 'schema.csv',
+                             'Content-Type'        => 'text/csv',
+                             'Content-Disposition' => 'form-data; name="file"; filename="schema.csv"',
+                             Content => $csv_header],
+        userId           => $cfg{userId},
+        orgId            => $cfg{orgId},
+        orgKey           => $cfg{orgKey},
+        '*resourceInfo'  => '',
     );
     my $req = POST($url,
         Content_Type => 'form-data',

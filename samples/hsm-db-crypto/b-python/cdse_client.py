@@ -156,8 +156,7 @@ def cmd_store_secret(session, cfg, name, filepath, info=None):
            f"/storage/{cfg['storage']}"
            f"/documentTypes/file.raw/documents/{name}")
     params = dict(_auth_params(cfg))
-    if info:
-        params["*resourceInfo"] = info
+    params["*resourceInfo"] = info if info else ""
     try:
         with open(filepath, "rb") as fh:
             files = {"file": (os.path.basename(filepath), fh)}
@@ -226,7 +225,7 @@ def cmd_db_create(session, cfg, name, columns_str):
     # Build an in-memory CSV containing only the header row.
     header_csv = columns_str.strip() + "\r\n"
     files = {"file": (f"{name}.csv", io.BytesIO(header_csv.encode()), "text/csv")}
-    resp = session.post(url, params=_auth_params(cfg), files=files)
+    resp = session.post(url, params={**_auth_params(cfg), "*resourceInfo": ""}, files=files)
     if _check(resp):
         print(f"Created CSV document '{name}' with columns: {columns_str}")
 

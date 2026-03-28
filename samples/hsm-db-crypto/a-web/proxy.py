@@ -44,7 +44,11 @@ def make_handler(cdse_server, ssl_context):
                 self.send_error(404, 'Not found (use /cdse/... to reach CDSE)')
                 return
 
-            url = f'https://{cdse_server}{target_path}'
+            # Support both https:// (default) and http:// target servers.
+            if cdse_server.startswith('http://') or cdse_server.startswith('https://'):
+                url = f'{cdse_server.rstrip("/")}{target_path}'
+            else:
+                url = f'https://{cdse_server}{target_path}'
 
             # Collect request body if present.
             length = int(self.headers.get('Content-Length', 0) or 0)
@@ -137,6 +141,7 @@ def main():
     args = parser.parse_args()
 
     # Build the SSL context used when contacting the CDSE server.
+    # ssl_context is used only for https:// targets; ignored for http://.
     if args.insecure:
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
@@ -147,9 +152,10 @@ def main():
 
     handler = make_handler(args.cdse_server, ssl_context)
     server = http.server.HTTPServer(('', args.port), handler)
+    scheme = args.cdse_server if args.cdse_server.startswith('http') else f'https://{args.cdse_server}'
     print(f'CaumeDSE proxy running.')
     print(f'  Open: http://localhost:{args.port}/')
-    print(f'  Forwarding /cdse/* -> https://{args.cdse_server}/*')
+    print(f'  Forwarding /cdse/* -> {scheme}/*')
     print('Press Ctrl+C to stop.')
     try:
         server.serve_forever()
