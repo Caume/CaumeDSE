@@ -1,3 +1,40 @@
+2026-03-27 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
+	* configure.ac (AC_INIT): Bumped version to 1.0.9.
+
+	* samples/hsm-db-crypto/: New directory with four independent
+	sample client applications demonstrating the CDSE API as a hybrid
+	HSM / encrypted-database / general-crypto interface.
+
+	* samples/hsm-db-crypto/a-web/index.html: Single-page HTML5/CSS3/
+	JavaScript application.  Provides tabbed UI for Secrets (file.raw),
+	Database (file.csv CRUD), Audit Log, and Info.  Uses the CORS
+	proxy below; no external JS/CSS dependencies.
+
+	* samples/hsm-db-crypto/a-web/proxy.py: Python 3 CORS proxy.
+	Serves index.html at http://localhost:8080 and forwards /cdse/*
+	requests to https://localhost:8443 (configurable).  Standard
+	library only; supports --insecure for development.
+
+	* samples/hsm-db-crypto/b-python/cdse_client.py: Python 3 CLI.
+	Supports interactive (-i) and one-shot parameter modes.  Reads
+	credentials from CLI flags or env vars (CDSE_SERVER, CDSE_USER_ID,
+	CDSE_ORG_ID, CDSE_ORG_KEY, CDSE_STORAGE).  Requires: requests.
+
+	* samples/hsm-db-crypto/c-golang/cdse_client.go: Go CLI.  Uses
+	standard library only (net/http, crypto/tls, mime/multipart,
+	encoding/csv).  Supports interactive (-i) and one-shot modes.
+	Build: go build -o cdse_client .
+
+	* samples/hsm-db-crypto/d-perl/cdse_client.pl: Perl CLI.  Uses
+	LWP::UserAgent and HTTP::Request::Common.  Supports interactive
+	(-i) and one-shot modes; optional Term::ReadKey for hidden
+	password input.
+
+	* samples/hsm-db-crypto/README: Plain-text quick-start guide
+	covering all four clients, API command-to-endpoint mapping table,
+	credential environment variables, and security notes.
+
 2026-03-26 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
 	* configure.ac (AC_INIT): Bumped version to 1.0.8.

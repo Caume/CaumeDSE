@@ -1,0 +1,256 @@
+CaumeDSE Sample Client Applications - HSM / Encrypted Database / Crypto Interface
+==================================================================================
+
+CONTENTS
+========
+I.      Overview
+II.     Prerequisites
+III.    Directory structure
+IV.     Quick start
+V.      Common operations
+VI.     Interactive vs. parameter mode
+VII.    Security notes
+VIII.   API mapping
+
+
+I. Overview
+-----------
+
+These four sample clients demonstrate using CaumeDSE (Caume Data Security
+Engine) as a hybrid HSM / encrypted database / general cryptographic command
+interface via its REST API.
+
+Each client covers the same set of operations:
+
+  * Encrypted secret storage - arbitrary binary blobs stored as file.raw
+    documents, encrypted at rest inside the CDSE engine.
+
+  * Encrypted CSV databases - structured tabular data stored as file.csv
+    documents, supporting full CRUD (create, insert, query, update, delete).
+
+  * User / organization info - retrieve metadata for the authenticated user
+    and organization.
+
+  * Audit log - retrieve the transaction log for all operations performed
+    against the engine.
+
+The clients are intentionally straightforward so that they serve as a
+starting point for integrating CDSE into real applications.
+
+
+II. Prerequisites
+-----------------
+
+  * A running CaumeDSE instance.  The samples default to:
+
+      https://localhost:8443
+
+  * Default admin credentials used by the samples:
+
+      userId  : EngineAdmin
+      orgId   : EngineOrg
+      orgKey  : 0CDBB9AF76AF43BDB72E095989E612CC
+      storage : EngineStorage
+
+  * TLS certificate: development builds ship with a self-signed certificate.
+    Pass --insecure (or -insecure for Go) to disable TLS verification, or
+    supply the CA certificate path if your client supports it.  Never use
+    --insecure in production.
+
+
+III. Directory structure
+------------------------
+
+  a-web/              HTML5 single-page application with a Python CORS proxy
+    proxy.py            Python 3 reverse proxy (forwards browser requests to
+                        CDSE and adds CORS headers)
+
+  b-python/           Python 3 command-line client
+    cdse_client.py      Main client script
+
+  c-golang/           Go command-line client
+    cdse_client.go      Main client source
+    go.mod              Go module definition
+
+  d-perl/             Perl command-line client
+    cdse_client.pl      Main client script
+
+
+IV. Quick start
+---------------
+
+1. Web client (a-web)
+
+   The browser cannot contact CDSE directly when origins differ, so proxy.py
+   must be running first.
+
+     cd a-web
+     python3 proxy.py --insecure
+
+   Then open http://localhost:8080 in a browser.  The page connects to
+   proxy.py, which forwards requests to https://localhost:8443.
+
+2. Python client (b-python)
+
+   Dependency:
+
+     pip install requests
+
+   Interactive mode (prompts for credentials and command):
+
+     python3 cdse_client.py --insecure -i
+
+   One-shot example (store a secret):
+
+     python3 cdse_client.py --insecure \
+       --user EngineAdmin --org EngineOrg --key 0CDBB9AF76AF43BDB72E095989E612CC \
+       --storage EngineStorage store-secret my_key /path/to/keyfile.bin
+
+3. Go client (c-golang)
+
+   Build:
+
+     cd c-golang
+     go build -o cdse_client .
+
+   Interactive mode:
+
+     ./cdse_client -insecure -i
+
+   One-shot example (query a database):
+
+     ./cdse_client -insecure \
+       -user EngineAdmin -org EngineOrg -key 0CDBB9AF76AF43BDB72E095989E612CC \
+       -storage EngineStorage db-query contacts
+
+4. Perl client (d-perl)
+
+   Dependencies:
+
+     apt install libwww-perl          # Debian / Ubuntu
+     # or
+     cpan LWP::UserAgent HTTP::Request::Common
+
+   Interactive mode:
+
+     perl cdse_client.pl --insecure -i
+
+   One-shot example (retrieve a secret):
+
+     perl cdse_client.pl --insecure \
+       --user EngineAdmin --org EngineOrg --key 0CDBB9AF76AF43BDB72E095989E612CC \
+       --storage EngineStorage get-secret my_key /path/to/output.bin
+
+
+V. Common operations
+--------------------
+
+The examples below use the default credentials.  In interactive mode the
+client will prompt for each value instead.
+
+  # Show user / organization info
+  info
+
+  # Store a secret (encrypt and upload a binary file)
+  store-secret my_key /path/to/keyfile.bin
+
+  # Retrieve a secret (download and decrypt)
+  get-secret my_key /path/to/output.bin
+
+  # List stored secrets
+  list-secrets
+
+  # Delete a secret
+  delete-secret my_key
+
+  # Create an encrypted CSV database with named columns
+  db-create contacts id,name,email,phone
+
+  # Insert a row (key=value pairs)
+  db-insert contacts id=1 name=Alice email=alice@example.com phone=555-0100
+
+  # Query all rows
+  db-query contacts
+
+  # Update a row (by row number, 1-based)
+  db-update contacts 1 email=alice@newdomain.com
+
+  # Delete a row
+  db-delete-row contacts 1
+
+  # List all databases
+  db-list
+
+  # View audit log
+  audit-log
+
+
+VI. Interactive vs. parameter mode
+-----------------------------------
+
+Interactive mode (-i / --interactive)
+
+  The client prompts for the server URL, credentials, and the command to run.
+  Sensitive values such as orgKey are not echoed.  This is the recommended
+  mode for manual use.
+
+Parameter mode
+
+  All values are supplied as command-line flags followed by the command name
+  and its arguments.  Suitable for scripting.
+
+Environment variables (all clients honor these when set):
+
+  CDSE_SERVER     Base URL of the CDSE instance  (default: https://localhost:8443)
+  CDSE_USER_ID    userId for authentication       (default: EngineAdmin)
+  CDSE_ORG_ID     orgId for authentication        (default: EngineOrg)
+  CDSE_ORG_KEY    orgKey (encryption key)         (default: none)
+  CDSE_STORAGE    storage instance name           (default: EngineStorage)
+
+Environment variables take precedence over built-in defaults but are
+overridden by explicit command-line flags.
+
+
+VII. Security notes
+-------------------
+
+  * orgKey is the organization encryption key.  Treat it as a secret.
+    Passing it on the command line exposes it in shell history and process
+    listings.  Prefer interactive mode or the CDSE_ORG_KEY environment
+    variable set for the session only (export in a subshell or prefix the
+    command).
+
+  * The --insecure flag disables TLS certificate verification.  Use it only
+    in development against a local CDSE instance.  In any other environment
+    supply the CA certificate so that the server identity is verified.
+
+  * The default credentials (EngineAdmin / 0CDBB9AF76AF43BDB72E095989E612CC)
+    are publicly documented.  Change them before deploying CDSE in any
+    environment that handles real data.
+
+
+VIII. API mapping
+-----------------
+
+Each client command maps to a CDSE REST endpoint as follows.  The path
+prefix /organizations/{orgId}/storage/{storage}/documentTypes is abbreviated
+as .../documentTypes below.
+
+  Command         Method   CDSE Endpoint
+  --------------- -------- -------------------------------------------------------
+  info            GET      /organizations/{orgId}/users/{userId}
+  list-secrets    GET      .../documentTypes/file.raw/documents
+  store-secret    POST     .../documentTypes/file.raw/documents/{name}
+  get-secret      GET      .../documentTypes/file.raw/documents/{name}/content
+  delete-secret   DELETE   .../documentTypes/file.raw/documents/{name}
+  db-list         GET      .../documentTypes/file.csv/documents
+  db-create       POST     .../documentTypes/file.csv/documents/{name}
+  db-insert       POST     .../documentTypes/file.csv/documents/{name}/contentRows/{N}
+  db-query        GET      .../documentTypes/file.csv/documents/{name}/content
+  db-update       PUT      .../documentTypes/file.csv/documents/{name}/contentRows/{N}
+  db-delete-row   DELETE   .../documentTypes/file.csv/documents/{name}/contentRows/{N}
+  audit-log       GET      /transactions
+
+All requests are authenticated via the orgKey, which CDSE uses both to
+identify the organization and as the root from which document encryption keys
+are derived.  No key material is stored inside the engine.
