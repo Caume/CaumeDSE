@@ -9,14 +9,23 @@ reports pass / fail for each step.
 Requirements:
   - A CaumeDSE binary built with --enable-BYPASSTLSAUTHINHTTP (allows HTTP
     testing without TLS client certificates).
-  - Existing CDSE databases at PATH_DATADIR (default /opt/cdse/).
-  - The orgKey matching those databases, set via CDSE_ORG_KEY or env.sh.
+  - CDSE databases at PATH_DATADIR (default /opt/cdse/).
+
+Key handling:
+  - If CDSE_ORG_KEY is already set (e.g. via `source env.sh`), it is used
+    directly.  This is the normal path when testing against the included
+    development databases.
+  - If CDSE_ORG_KEY is NOT set, CDSE is expected to start with empty databases.
+    The test manager captures the randomly generated orgKey from CDSE's
+    first-run console output, stores it temporarily in CDSE_ORG_KEY for the
+    duration of the test run, and removes it when done.
 
 Usage:
-  # Source credentials first
+  # Existing databases — source the included credentials first
   source env.sh
+  python3 cdse_test_manager.py
 
-  # Run the full test suite
+  # Fresh databases — let the test manager capture the key automatically
   python3 cdse_test_manager.py
 
   # Override the binary path
@@ -83,6 +92,28 @@ def _wait_for_log(pattern, timeout=120):
                 return True
         time.sleep(0.5)
     return False
+
+
+def _capture_org_key(timeout=60):
+    """Wait for CDSE first-run output and extract the generated orgKey.
+
+    CDSE prints a line of the form:
+        Default Admin orgKey      : <KEY>
+    when it initialises fresh databases.  This function waits for that line,
+    parses the key, and returns it.  Returns None if not found within timeout.
+    """
+    start = time.time()
+    while time.time() - start < timeout:
+        with log_lock:
+            for line in log_lines:
+                if "Default Admin orgKey" in line:
+                    idx = line.find(":")
+                    if idx >= 0:
+                        key = line[idx + 1:].strip()
+                        if key:
+                            return key
+        time.sleep(0.5)
+    return None
 
 
 def _curl(url, timeout=10):
@@ -236,18 +267,19 @@ def test_web_proxy():
 # ---------------------------------------------------------------------------
 
 def main():
-    if not ORG_KEY:
-        print("[!] CDSE_ORG_KEY is not set.")
-        print("    Source env.sh or export the key before running:")
-        print("      source env.sh")
-        print("      python3 cdse_test_manager.py")
-        sys.exit(1)
+    global ORG_KEY
+    key_was_temporary = False
 
     cdse_bin = os.path.realpath(CDSE_BIN)
     if not os.path.isfile(cdse_bin):
         print(f"[!] CaumeDSE binary not found: {cdse_bin}")
         print("    Build the project first (make), then re-run.")
         sys.exit(1)
+
+    if ORG_KEY:
+        print("[*] Using CDSE_ORG_KEY from environment.")
+    else:
+        print("[*] CDSE_ORG_KEY not set — will capture key from CDSE first-run output.")
 
     print(f"[*] Starting CDSE: {cdse_bin}")
     master_fd, slave_fd = pty.openpty()
@@ -259,6 +291,24 @@ def main():
 
     t = threading.Thread(target=_pty_monitor, args=(master_fd,), daemon=True)
     t.start()
+
+    if not ORG_KEY:
+        print("[*] Waiting for CDSE to generate orgKey (up to 60 s)...")
+        key = _capture_org_key(timeout=60)
+        if not key:
+            print("[!] Failed to capture orgKey from CDSE output. Last log:")
+            with log_lock:
+                for l in log_lines[-10:]:
+                    print(f"  {l}")
+            proc.terminate()
+            os.close(master_fd)
+            sys.exit(1)
+        ORG_KEY = key
+        os.environ["CDSE_ORG_KEY"] = key
+        key_was_temporary = True
+        print("[*] Captured new orgKey — stored temporarily in CDSE_ORG_KEY.")
+        # Acknowledge the key display so CDSE continues to start the HTTP server.
+        os.write(master_fd, b"Y\n")
 
     print("[*] Waiting for HTTP server (up to 60 s)...")
     if not _wait_for_log("Testing Web server HTTP port 8080", timeout=60):
@@ -307,6 +357,11 @@ def main():
         proc.terminate()
         proc.wait()
     os.close(master_fd)
+
+    if key_was_temporary:
+        os.environ.pop("CDSE_ORG_KEY", None)
+        print("[*] Temporary CDSE_ORG_KEY removed from environment.")
+
     print("[*] Done")
 
 

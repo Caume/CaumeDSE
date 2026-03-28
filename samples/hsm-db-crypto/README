@@ -293,6 +293,28 @@ VII. Security notes
     Never enable this in production.  It exists solely to simplify automated
     testing without requiring TLS client certificates.
 
+  * Key material in logs:
+
+    - Audit log (LogsDB): every request URL — which includes the orgKey query
+      parameter — is encrypted with AES-256-GCM before being written to the
+      SQLite LogsDB.  For authenticated requests the key is NOT stored in
+      plaintext in any CDSE database.  Unauthenticated requests (which carry
+      no valid key) are stored unencrypted, but there is nothing sensitive to
+      expose in that case.
+
+    - Debug builds: when compiled with -DDEBUG (the default development
+      configuration), CDSE prints the orgKey to stdout for every request via
+      its cmeProcessURLMatchSaveParameters() trace output.  This output is
+      only present in debug builds and should never be redirected to a
+      persistent log file in environments where the key must be kept secret.
+      Production builds (without -DDEBUG) do not emit these trace lines.
+
+    - First-run console output: when CDSE initialises empty databases it
+      prints the newly generated orgKey once to stdout and waits for the
+      operator to acknowledge it.  This is intentional — it is the only
+      opportunity to record the key.  The key is zeroed from memory
+      immediately afterwards.
+
 
 VIII. API mapping
 -----------------
@@ -329,9 +351,30 @@ be ready, and exercises all four sample clients through the full secret
 lifecycle (store / get / delete).  It requires a BYPASSTLSAUTHINHTTP build
 so that HTTP can be used without TLS client certificates.
 
+Key handling during tests:
+
+  Two scenarios are supported:
+
+  a) Existing databases (normal case — included development databases):
+     Set CDSE_ORG_KEY before running (e.g. via `source env.sh`).  The test
+     manager uses the key as-is.
+
+     The orgKey for the included development databases at /opt/cdse/ is:
+
+       187465950C5F9018D04F91E976CAC1D7FA19CBA5FE26D94038630B18BCBAAAB6
+
+     This value is already set in env.sh.
+
+  b) Fresh databases (first run with empty /opt/cdse/):
+     Leave CDSE_ORG_KEY unset.  CDSE will generate a new random key when it
+     initialises the databases.  The test manager captures that key from
+     CDSE's console output, stores it temporarily in the CDSE_ORG_KEY
+     environment variable for the duration of the test run, and removes it
+     when the tests finish.  The key is never written to a file.
+
 Setup:
 
-  # 1. Source credentials
+  # 1. Source credentials (existing databases)
   source env.sh
 
   # 2. Point CDSE_BIN at a BYPASSTLSAUTHINHTTP build if the project binary
@@ -343,6 +386,7 @@ Setup:
 
 Expected output (all clients passing):
 
+  [*] Using CDSE_ORG_KEY from environment.
   [*] Starting CDSE: ...
   [*] HTTP server ready.
   [OK] HTTP responding
@@ -379,13 +423,13 @@ Expected output (all clients passing):
 Note: list-secrets may return [OK] with a 404 body if no secrets have been
 stored yet; that is expected behaviour (empty document list).
 
-Obtaining / updating the orgKey:
+Obtaining / updating the orgKey after a fresh install:
 
   When CDSE starts with empty databases it prints the new orgKey to the
   console.  Copy it and update env.sh:
 
     export CDSE_ORG_KEY="<key printed at startup>"
 
-  The key can also be obtained from the CDSE startup log using grep:
-
-    ./CaumeDSE 2>&1 | grep -i "orgKey\|org key\|key for"
+  The test manager handles this automatically when CDSE_ORG_KEY is unset:
+  it captures the key, uses it for the test run, then discards it.  To
+  make the key permanent for subsequent runs, update env.sh manually.
