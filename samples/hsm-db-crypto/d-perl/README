@@ -1,0 +1,367 @@
+cdse_client.pl — Perl CLI Client
+==================================
+
+Perl 5 command-line client for the CaumeDSE REST API.  Supports encrypted
+secret storage, encrypted CSV databases, user/org info, and the audit log.
+Runs in one-shot mode (single command per invocation) or in an interactive
+REPL.
+
+
+CONTENTS
+========
+I.    Prerequisites
+II.   Credentials
+III.  Quick start
+IV.   Command reference
+V.    Secrets — full walkthrough
+VI.   Encrypted CSV database — full walkthrough
+VII.  Interactive mode
+VIII. Environment variable reference
+IX.   TLS options
+X.    Exit codes
+
+
+I. Prerequisites
+----------------
+
+The following Perl modules are required:
+
+  LWP::UserAgent
+  HTTP::Request::Common
+  URI::Escape
+  Term::ReadKey        (optional — enables hidden org-key entry in interactive mode)
+
+Install via your system package manager:
+
+  apt install libwww-perl libterm-readkey-perl   # Debian / Ubuntu
+
+Or via CPAN:
+
+  cpan LWP::UserAgent HTTP::Request::Common URI::Escape Term::ReadKey
+
+If modules are installed to a non-standard path (e.g. via cpanm to ~/perl5),
+add the library path with -I:
+
+  perl -I~/perl5/lib/perl5 cdse_client.pl [OPTIONS] COMMAND [ARGS...]
+
+The automated test suite sets this automatically.
+
+
+II. Credentials
+---------------
+
+Source the env.sh file in the parent directory to export credentials for
+the included development installation:
+
+  source ../env.sh
+
+This exports:
+
+  CDSE_SERVER   = https://localhost:8443
+  CDSE_USER_ID  = EngineAdmin
+  CDSE_ORG_ID   = EngineOrg
+  CDSE_ORG_KEY  = 187465950C5F9018D04F91E976CAC1D7FA19CBA5FE26D94038630B18BCBAAAB6
+  CDSE_STORAGE  = EngineStorage
+
+All examples below assume these variables are exported.  The equivalent
+flags are shown in Section IV for reference.
+
+Never pass the org key on the command line in production — it appears in
+shell history and process listings.  Prefer the CDSE_ORG_KEY environment
+variable or interactive mode.
+
+
+III. Quick start
+----------------
+
+  # Source the development credentials
+  source ../env.sh
+
+  # Verify the engine is reachable
+  perl cdse_client.pl --insecure info
+
+  # Store a file as an encrypted secret
+  echo "top secret payload" > /tmp/payload.txt
+  perl cdse_client.pl --insecure store-secret demo-secret /tmp/payload.txt
+
+  # Retrieve it to stdout
+  perl cdse_client.pl --insecure get-secret demo-secret
+
+  # Clean up
+  perl cdse_client.pl --insecure delete-secret demo-secret
+
+For HTTP (BYPASSTLSAUTHINHTTP build) replace --insecure with
+--server http://localhost:8080.
+
+
+IV. Command reference
+---------------------
+
+Usage:
+  perl cdse_client.pl [OPTIONS] COMMAND [ARGS...]
+
+Options:
+
+  --server HOST          CaumeDSE server URL or host:port.
+                         Default: $CDSE_SERVER or localhost:8443.
+                         If no scheme is given, https:// is prepended.
+  --userId USER_ID       userId credential.  Default: $CDSE_USER_ID.
+  --orgId ORG_ID         orgId credential.   Default: $CDSE_ORG_ID.
+  --orgKey ORG_KEY       orgKey (encryption key).  Default: $CDSE_ORG_KEY.
+                         Prefer the environment variable or interactive mode.
+  --storage STORAGE      Storage bucket name.  Default: $CDSE_STORAGE or
+                         EngineStorage.
+  --ca-cert FILE         Path to a PEM CA certificate for TLS verification.
+                         Example: --ca-cert /opt/cdse/ca.pem
+  --insecure             Disable TLS certificate verification.
+                         Development/local testing only.
+  --interactive / -i     Enter interactive REPL mode after credential setup.
+
+Commands:
+
+  info
+      Show userId, orgId, role, and storage information for the
+      authenticated user.
+
+  list-secrets
+      List the names of all encrypted raw-file secrets in the storage,
+      as CSV output.
+
+  store-secret NAME FILE [INFO]
+      Upload FILE and store it as an AES-256-GCM encrypted secret named NAME.
+      INFO is optional free-text metadata attached to the document.
+
+  get-secret NAME [OUTFILE]
+      Retrieve and decrypt the secret named NAME.  If OUTFILE is given, the
+      binary content is written there; otherwise it is printed to stdout.
+
+  delete-secret NAME
+      Permanently delete the secret named NAME.
+
+  db-list
+      List the names of all encrypted CSV database documents, as CSV.
+
+  db-create NAME col1,col2,...
+      Create a new encrypted CSV database named NAME.  Columns are given as a
+      comma-separated list with no spaces.
+
+  db-insert NAME col=val ...
+      Append one row to database NAME.  Each column value is a col=val pair.
+      Columns not specified remain empty.
+
+  db-query NAME [ROW]
+      Print all rows of database NAME as CSV, or print only row ROW (1-based)
+      if specified.
+
+  db-update NAME ROW col=val ...
+      Update one or more columns in row ROW of database NAME.
+
+  db-delete-row NAME ROW
+      Delete row ROW from database NAME.
+
+  db-delete NAME
+      Delete the entire CSV database document NAME.
+
+  audit-log
+      Retrieve and print the engine's transaction audit log as CSV.
+
+  help
+      Print the usage block from the top of cdse_client.pl.
+
+
+V. Secrets — full walkthrough
+------------------------------
+
+Prepare a test secret file:
+
+  echo "AES-256 master key material" > /tmp/master.key
+
+Store the secret with optional metadata:
+
+  perl cdse_client.pl --insecure \
+      store-secret master-key /tmp/master.key "AES-256 key for prod DB"
+
+Expected output:
+  <html>...<b>200 OK - Document resource created...</b>...
+
+List all stored secrets:
+
+  perl cdse_client.pl --insecure list-secrets
+
+Expected output (CSV with document metadata):
+  documentId,...
+  master-key,...
+
+Retrieve the secret to a file:
+
+  perl cdse_client.pl --insecure \
+      get-secret master-key /tmp/master-retrieved.key
+
+Expected output:
+  Secret saved to: /tmp/master-retrieved.key
+
+Verify the round-trip:
+
+  diff /tmp/master.key /tmp/master-retrieved.key
+
+Retrieve to stdout:
+
+  perl cdse_client.pl --insecure get-secret master-key
+
+Expected output:
+  AES-256 master key material
+
+Delete the secret:
+
+  perl cdse_client.pl --insecure delete-secret master-key
+
+Expected output:
+  <html>...<b>200 OK - Document resource deleted...</b>...
+
+
+VI. Encrypted CSV database — full walkthrough
+----------------------------------------------
+
+Create the database:
+
+  perl cdse_client.pl --insecure db-create contacts id,name,email,phone
+
+Insert rows:
+
+  perl cdse_client.pl --insecure \
+      db-insert contacts id=1 name=Alice email=alice@example.com phone=555-0100
+
+  perl cdse_client.pl --insecure \
+      db-insert contacts id=2 name=Bob email=bob@example.com phone=555-0200
+
+  perl cdse_client.pl --insecure \
+      db-insert contacts id=3 name=Carol email=carol@example.com phone=555-0300
+
+Query all rows:
+
+  perl cdse_client.pl --insecure db-query contacts
+
+Expected output (CSV):
+  id,name,email,phone
+  1,Alice,alice@example.com,555-0100
+  2,Bob,bob@example.com,555-0200
+  3,Carol,carol@example.com,555-0300
+
+Query a specific row (1-based index):
+
+  perl cdse_client.pl --insecure db-query contacts 2
+
+Expected output:
+  id,name,email,phone
+  2,Bob,bob@example.com,555-0200
+
+Update row 1:
+
+  perl cdse_client.pl --insecure \
+      db-update contacts 1 email=alice@newdomain.com phone=555-9999
+
+Verify the update:
+
+  perl cdse_client.pl --insecure db-query contacts 1
+
+Expected output:
+  id,name,email,phone
+  1,Alice,alice@newdomain.com,555-9999
+
+Delete row 3:
+
+  perl cdse_client.pl --insecure db-delete-row contacts 3
+
+Delete the entire database:
+
+  perl cdse_client.pl --insecure db-delete contacts
+
+Confirm removal:
+
+  perl cdse_client.pl --insecure db-list
+
+
+VII. Interactive mode
+---------------------
+
+Start interactive mode.  Credentials not supplied as flags are prompted;
+the org key is hidden if Term::ReadKey is available:
+
+  perl cdse_client.pl --insecure --interactive
+
+Or supply some credentials as flags:
+
+  perl cdse_client.pl --insecure -i \
+      --server https://localhost:8443 \
+      --userId EngineAdmin --orgId EngineOrg
+
+When prompted, leave a field blank to keep its current value (from env
+variables or flags).
+
+At the cdse> prompt, type commands without credentials:
+
+  cdse> info
+  cdse> store-secret mykey /tmp/key.bin "optional description"
+  cdse> list-secrets
+  cdse> get-secret mykey /tmp/out.bin
+  cdse> delete-secret mykey
+  cdse> db-create vault id,secret,label
+  cdse> db-insert vault id=1 secret=abc123 label=dev
+  cdse> db-query vault
+  cdse> db-update vault 1 label=production
+  cdse> db-delete-row vault 1
+  cdse> db-delete vault
+  cdse> audit-log
+  cdse> help
+  cdse> quit
+
+Press Ctrl-D or type quit/exit to leave the session.
+
+
+VIII. Environment variable reference
+--------------------------------------
+
+  CDSE_SERVER    Base URL or host:port of the CDSE instance.
+                 Default: localhost:8443
+                 Example: https://myserver:8443
+                          http://localhost:8080  (BYPASSTLSAUTHINHTTP build)
+
+  CDSE_USER_ID   userId credential.
+                 Example: EngineAdmin
+
+  CDSE_ORG_ID    orgId credential.
+                 Example: EngineOrg
+
+  CDSE_ORG_KEY   Organisation encryption key.  No default — must be set.
+                 Example: 187465950C5F9018D04F91E976CAC1D7FA19CBA5FE26D94038630B18BCBAAAB6
+                 (development installation key; see ../env.sh)
+
+  CDSE_STORAGE   Storage bucket name.
+                 Default: EngineStorage
+
+Command-line flags override environment variables.
+
+
+IX. TLS options
+---------------
+
+Verify the server using the included development CA certificate:
+
+  perl cdse_client.pl --ca-cert /opt/cdse/ca.pem info
+
+Disable verification (development only):
+
+  perl cdse_client.pl --insecure info
+
+Use HTTP (BYPASSTLSAUTHINHTTP build, no TLS):
+
+  perl cdse_client.pl --server http://localhost:8080 info
+
+Never use --insecure or the HTTP port in production.
+
+
+X. Exit codes
+-------------
+
+  0   Success.
+  1   Missing credential, unknown command, or API error.

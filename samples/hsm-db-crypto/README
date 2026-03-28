@@ -11,6 +11,7 @@ V.      Common operations
 VI.     Interactive vs. parameter mode
 VII.    Security notes
 VIII.   API mapping
+IX.     Automated testing
 
 
 I. Overview
@@ -45,17 +46,31 @@ II. Prerequisites
 
       https://localhost:8443
 
-  * Default admin credentials used by the samples:
+    For development builds compiled with --enable-BYPASSTLSAUTHINHTTP, the
+    HTTP port (default 8080) can also be used without TLS client certificates:
+
+      http://localhost:8080
+
+  * Admin credentials used by the samples:
 
       userId  : EngineAdmin
       orgId   : EngineOrg
-      orgKey  : 0CDBB9AF76AF43BDB72E095989E612CC
+      orgKey  : (randomly generated — see below)
       storage : EngineStorage
 
-  * TLS certificate: development builds ship with a self-signed certificate.
-    Pass --insecure (or -insecure for Go) to disable TLS verification, or
-    supply the CA certificate path if your client supports it.  Never use
-    --insecure in production.
+    The orgKey is generated randomly by CDSE the first time it starts with
+    empty databases and is never stored in clear text.  It is printed to the
+    console during initial startup — note it immediately.
+
+    For the local development installation the current key is stored in
+    env.sh.  Source that file to export all credentials at once:
+
+      source env.sh
+
+  * TLS certificate: development builds ship with a self-signed CA at
+    /opt/cdse/ca.pem.  Pass --insecure (or -insecure for Go) to disable
+    TLS verification, or supply --ca-cert /opt/cdse/ca.pem to verify the
+    server certificate explicitly.  Never use --insecure in production.
 
 
 III. Directory structure
@@ -75,9 +90,18 @@ III. Directory structure
   d-perl/             Perl command-line client
     cdse_client.pl      Main client script
 
+  env.sh              Sourceable shell file that exports credentials for the
+                      local development installation
+  cdse_test_manager.py
+                      Automated test runner for all four clients
+
 
 IV. Quick start
 ---------------
+
+Source credentials first (recommended for all examples below):
+
+  source env.sh
 
 1. Web client (a-web)
 
@@ -90,6 +114,10 @@ IV. Quick start
    Then open http://localhost:8080 in a browser.  The page connects to
    proxy.py, which forwards requests to https://localhost:8443.
 
+   For a BYPASSTLSAUTHINHTTP build, point the proxy at the HTTP port:
+
+     python3 proxy.py --insecure --cdse-server http://localhost:8080
+
 2. Python client (b-python)
 
    Dependency:
@@ -98,13 +126,20 @@ IV. Quick start
 
    Interactive mode (prompts for credentials and command):
 
-     python3 cdse_client.py --insecure -i
+     python3 b-python/cdse_client.py --insecure -i
 
    One-shot example (store a secret):
 
-     python3 cdse_client.py --insecure \
-       --user EngineAdmin --org EngineOrg --key 0CDBB9AF76AF43BDB72E095989E612CC \
+     python3 b-python/cdse_client.py --insecure \
+       --user-id EngineAdmin --org-id EngineOrg --org-key "$CDSE_ORG_KEY" \
        --storage EngineStorage store-secret my_key /path/to/keyfile.bin
+
+   Using HTTP (BYPASSTLSAUTHINHTTP build):
+
+     python3 b-python/cdse_client.py \
+       --server http://localhost:8080 \
+       --user-id EngineAdmin --org-id EngineOrg --org-key "$CDSE_ORG_KEY" \
+       --storage EngineStorage info
 
 3. Go client (c-golang)
 
@@ -120,8 +155,15 @@ IV. Quick start
    One-shot example (query a database):
 
      ./cdse_client -insecure \
-       -user EngineAdmin -org EngineOrg -key 0CDBB9AF76AF43BDB72E095989E612CC \
+       -userId EngineAdmin -orgId EngineOrg -orgKey "$CDSE_ORG_KEY" \
        -storage EngineStorage db-query contacts
+
+   Using HTTP (BYPASSTLSAUTHINHTTP build):
+
+     ./cdse_client -insecure \
+       -server http://localhost:8080 \
+       -userId EngineAdmin -orgId EngineOrg -orgKey "$CDSE_ORG_KEY" \
+       -storage EngineStorage info
 
 4. Perl client (d-perl)
 
@@ -129,24 +171,31 @@ IV. Quick start
 
      apt install libwww-perl          # Debian / Ubuntu
      # or
-     cpan LWP::UserAgent HTTP::Request::Common
+     cpan LWP::UserAgent HTTP::Request::Common URI::Escape Term::ReadKey
 
    Interactive mode:
 
-     perl cdse_client.pl --insecure -i
+     perl d-perl/cdse_client.pl --insecure -i
 
    One-shot example (retrieve a secret):
 
-     perl cdse_client.pl --insecure \
-       --user EngineAdmin --org EngineOrg --key 0CDBB9AF76AF43BDB72E095989E612CC \
+     perl d-perl/cdse_client.pl --insecure \
+       --userId EngineAdmin --orgId EngineOrg --orgKey "$CDSE_ORG_KEY" \
        --storage EngineStorage get-secret my_key /path/to/output.bin
+
+   Using HTTP (BYPASSTLSAUTHINHTTP build):
+
+     perl d-perl/cdse_client.pl \
+       --server http://localhost:8080 \
+       --userId EngineAdmin --orgId EngineOrg --orgKey "$CDSE_ORG_KEY" \
+       --storage EngineStorage info
 
 
 V. Common operations
 --------------------
 
-The examples below use the default credentials.  In interactive mode the
-client will prompt for each value instead.
+The examples below assume CDSE_ORG_KEY is exported (source env.sh).
+In interactive mode the client will prompt for each value instead.
 
   # Show user / organization info
   info
@@ -199,12 +248,25 @@ Parameter mode
   All values are supplied as command-line flags followed by the command name
   and its arguments.  Suitable for scripting.
 
+Flag names per client:
+
+  Option          Python          Go          Perl
+  --------------- --------------- ----------- ---------------
+  Server URL      --server        -server     --server
+  User ID         --user-id       -userId     --userId
+  Org ID          --org-id        -orgId      --orgId
+  Org key         --org-key       -orgKey     --orgKey
+  Storage         --storage       -storage    --storage
+  Skip TLS verify --insecure      -insecure   --insecure
+  CA certificate  --ca-cert       -ca-cert    --ca-cert
+  Interactive     --interactive   -i          --interactive
+
 Environment variables (all clients honor these when set):
 
   CDSE_SERVER     Base URL of the CDSE instance  (default: https://localhost:8443)
   CDSE_USER_ID    userId for authentication       (default: EngineAdmin)
   CDSE_ORG_ID     orgId for authentication        (default: EngineOrg)
-  CDSE_ORG_KEY    orgKey (encryption key)         (default: none)
+  CDSE_ORG_KEY    orgKey (encryption key)         (no default — must be set)
   CDSE_STORAGE    storage instance name           (default: EngineStorage)
 
 Environment variables take precedence over built-in defaults but are
@@ -214,19 +276,44 @@ overridden by explicit command-line flags.
 VII. Security notes
 -------------------
 
-  * orgKey is the organization encryption key.  Treat it as a secret.
-    Passing it on the command line exposes it in shell history and process
-    listings.  Prefer interactive mode or the CDSE_ORG_KEY environment
-    variable set for the session only (export in a subshell or prefix the
-    command).
+  * orgKey is the organization encryption key.  CDSE generates it randomly
+    at first run and never stores it — losing the orgKey means losing access
+    to all encrypted data.  Store it in a password manager or HSM.
+
+  * Passing orgKey on the command line exposes it in shell history and
+    process listings.  Prefer interactive mode or the CDSE_ORG_KEY
+    environment variable (source env.sh or export for the session only).
 
   * The --insecure flag disables TLS certificate verification.  Use it only
     in development against a local CDSE instance.  In any other environment
-    supply the CA certificate so that the server identity is verified.
+    supply the CA certificate (--ca-cert /opt/cdse/ca.pem) so that the
+    server identity is verified.
 
-  * The default credentials (EngineAdmin / 0CDBB9AF76AF43BDB72E095989E612CC)
-    are publicly documented.  Change them before deploying CDSE in any
-    environment that handles real data.
+  * BYPASSTLSAUTHINHTTP (HTTP port 8080) bypasses TLS client authentication.
+    Never enable this in production.  It exists solely to simplify automated
+    testing without requiring TLS client certificates.
+
+  * Key material in logs:
+
+    - Audit log (LogsDB): every request URL — which includes the orgKey query
+      parameter — is encrypted with AES-256-GCM before being written to the
+      SQLite LogsDB.  For authenticated requests the key is NOT stored in
+      plaintext in any CDSE database.  Unauthenticated requests (which carry
+      no valid key) are stored unencrypted, but there is nothing sensitive to
+      expose in that case.
+
+    - Debug builds: when compiled with -DDEBUG (the default development
+      configuration), CDSE prints the orgKey to stdout for every request via
+      its cmeProcessURLMatchSaveParameters() trace output.  This output is
+      only present in debug builds and should never be redirected to a
+      persistent log file in environments where the key must be kept secret.
+      Production builds (without -DDEBUG) do not emit these trace lines.
+
+    - First-run console output: when CDSE initialises empty databases it
+      prints the newly generated orgKey once to stdout and waits for the
+      operator to acknowledge it.  This is intentional — it is the only
+      opportunity to record the key.  The key is zeroed from memory
+      immediately afterwards.
 
 
 VIII. API mapping
@@ -254,3 +341,95 @@ as .../documentTypes below.
 All requests are authenticated via the orgKey, which CDSE uses both to
 identify the organization and as the root from which document encryption keys
 are derived.  No key material is stored inside the engine.
+
+
+IX. Automated testing
+---------------------
+
+cdse_test_manager.py starts a CaumeDSE binary, waits for its HTTP server to
+be ready, and exercises all four sample clients through the full secret
+lifecycle (store / get / delete).  It requires a BYPASSTLSAUTHINHTTP build
+so that HTTP can be used without TLS client certificates.
+
+Key handling during tests:
+
+  Two scenarios are supported:
+
+  a) Existing databases (normal case — included development databases):
+     Set CDSE_ORG_KEY before running (e.g. via `source env.sh`).  The test
+     manager uses the key as-is.
+
+     The orgKey for the included development databases at /opt/cdse/ is:
+
+       187465950C5F9018D04F91E976CAC1D7FA19CBA5FE26D94038630B18BCBAAAB6
+
+     This value is already set in env.sh.
+
+  b) Fresh databases (first run with empty /opt/cdse/):
+     Leave CDSE_ORG_KEY unset.  CDSE will generate a new random key when it
+     initialises the databases.  The test manager captures that key from
+     CDSE's console output, stores it temporarily in the CDSE_ORG_KEY
+     environment variable for the duration of the test run, and removes it
+     when the tests finish.  The key is never written to a file.
+
+Setup:
+
+  # 1. Source credentials (existing databases)
+  source env.sh
+
+  # 2. Point CDSE_BIN at a BYPASSTLSAUTHINHTTP build if the project binary
+  #    is not already in the parent directory (adjust path as needed):
+  export CDSE_BIN=/home/orangepi/Projects/CaumeDSE/CaumeDSE
+
+  # 3. Run the test suite
+  python3 cdse_test_manager.py
+
+Expected output (all clients passing):
+
+  [*] Using CDSE_ORG_KEY from environment.
+  [*] Starting CDSE: ...
+  [*] HTTP server ready.
+  [OK] HTTP responding
+
+  === Python CLI (b-python/cdse_client.py) ===
+    [OK] info
+    [OK] list-secrets
+    [OK] store-secret
+    [OK] get-secret
+    [OK] delete-secret
+
+  === Go CLI (c-golang/cdse_client.go) ===
+    [OK] Build
+    [OK] info
+    [OK] store-secret
+    [OK] get-secret
+    [OK] delete-secret
+
+  === Perl CLI (d-perl/cdse_client.pl) ===
+    [OK] Perl modules available
+    [OK] info
+    [OK] list-secrets
+    [OK] store-secret
+    [OK] get-secret
+    [OK] delete-secret
+
+  === Web proxy (a-web/proxy.py) ===
+    [OK] index.html served
+    [OK] Proxy routing to CDSE
+
+  [*] HTTPS server started.
+  [*] Done
+
+Note: list-secrets may return [OK] with a 404 body if no secrets have been
+stored yet; that is expected behaviour (empty document list).
+
+Obtaining / updating the orgKey after a fresh install:
+
+  When CDSE starts with empty databases it prints the new orgKey to the
+  console.  Copy it and update env.sh:
+
+    export CDSE_ORG_KEY="<key printed at startup>"
+
+  The test manager handles this automatically when CDSE_ORG_KEY is unset:
+  it captures the key, uses it for the test run, then discards it.  To
+  make the key permanent for subsequent runs, update env.sh manually.

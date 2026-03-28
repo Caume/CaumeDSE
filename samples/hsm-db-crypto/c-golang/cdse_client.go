@@ -45,8 +45,13 @@ type CDSEClient struct {
 	HTTP    *http.Client
 }
 
-// baseURL constructs the HTTPS base URL for this client.
+// baseURL constructs the base URL for this client.
+// If Server already contains a scheme ("http://" or "https://") it is used
+// as-is; otherwise "https://" is prepended.
 func (c *CDSEClient) baseURL() string {
+	if strings.HasPrefix(c.Server, "http://") || strings.HasPrefix(c.Server, "https://") {
+		return strings.TrimRight(c.Server, "/")
+	}
 	return "https://" + c.Server
 }
 
@@ -111,23 +116,7 @@ func (c *CDSEClient) postMultipart(path string, fields map[string]string, filePa
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 
-	// Write credential fields first (required by CaumeDSE).
-	for _, k := range []string{"userId", "orgId", "orgKey"} {
-		var v string
-		switch k {
-		case "userId":
-			v = c.UserID
-		case "orgId":
-			v = c.OrgID
-		case "orgKey":
-			v = c.OrgKey
-		}
-		if err := mw.WriteField(k, v); err != nil {
-			return nil, err
-		}
-	}
-
-	// Write any additional text fields (e.g. resourceInfo).
+	// Write text fields (credentials are sent via URL query string, not here).
 	for k, v := range fields {
 		if err := mw.WriteField(k, v); err != nil {
 			return nil, err
@@ -234,11 +223,8 @@ func (c *CDSEClient) cmdListSecrets() error {
 // name is the document name; filePath is the local file; resourceInfo is optional metadata.
 func (c *CDSEClient) cmdStoreSecret(name, filePath, resourceInfo string) error {
 	path := c.orgPath() + "/documentTypes/file.raw/documents/" + url.PathEscape(name)
-	fields := map[string]string{}
-	if resourceInfo != "" {
-		fields["*resourceInfo"] = resourceInfo
-	}
-	body, err := c.postMultipart(path, fields, filePath, nil)
+	extra := url.Values{"*resourceInfo": {resourceInfo}}
+	body, err := c.postMultipart(path, nil, filePath, extra)
 	if err != nil {
 		return err
 	}
@@ -293,7 +279,7 @@ func (c *CDSEClient) cmdDBList() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(body))
+	fmt.Println(strhttps://github.com/Caume/CaumeDSE/pull/57/conflict?name=samples%252Fhsm-db-crypto%252Fc-golang%252Fcdse_client.go&base_oid=40b57dec2d16b637a306f34587ebac5f2cd6eb1a&head_oid=3ca6071648dabcf1ef16119356b2cb3bda75d7efing(body))
 	return nil
 }
 
@@ -313,7 +299,7 @@ func (c *CDSEClient) cmdDBCreate(name, cols string) error {
 	tmp.Close()
 
 	path := c.orgPath() + "/documentTypes/file.csv/documents/" + url.PathEscape(name)
-	body, err := c.postMultipart(path, nil, tmp.Name(), nil)
+	body, err := c.postMultipart(path, nil, tmp.Name(), url.Values{"*resourceInfo": {""}})
 	if err != nil {
 		return err
 	}
