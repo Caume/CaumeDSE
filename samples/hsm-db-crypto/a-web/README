@@ -1,0 +1,334 @@
+CaumeDSE Web Client
+===================
+
+HTML5 single-page application with a Python CORS proxy.  The browser UI
+covers the same set of operations as the CLI clients: encrypted secret
+storage, encrypted CSV databases, user/org info, and the audit log.
+
+
+CONTENTS
+========
+I.    How it works
+II.   Prerequisites
+III.  Starting the proxy
+IV.   Using the web UI
+V.    UI section reference
+VI.   Working with secrets
+VII.  Working with the encrypted database
+VIII. Viewing the audit log and user info
+IX.   TLS notes
+X.    Proxy command reference
+
+
+I. How it works
+---------------
+
+The web client consists of two parts:
+
+  index.html    Self-contained single-page application (HTML + CSS +
+                JavaScript, no external dependencies).  The page makes
+                all API calls to http://localhost:<port>/cdse/* using
+                the browser's fetch API.
+
+  proxy.py      Python 3 reverse proxy.  It serves index.html at the
+                root URL (/) and strips the /cdse prefix before
+                forwarding every other request to the actual CDSE HTTPS
+                server.
+
+Browsers block direct cross-origin requests to the CDSE HTTPS server
+(Same-Origin Policy).  proxy.py resolves this by making both the page and
+the API appear to come from the same origin.
+
+
+II. Prerequisites
+-----------------
+
+  Python 3 (standard library only — no pip installs needed)
+  A running CaumeDSE instance (HTTPS on port 8443 by default, or
+  HTTP on port 8080 for BYPASSTLSAUTHINHTTP builds)
+
+
+III. Starting the proxy
+-----------------------
+
+From the a-web directory:
+
+  # Against the default HTTPS server (self-signed cert)
+  python3 proxy.py --insecure
+
+  # Against the HTTP port (BYPASSTLSAUTHINHTTP build, no TLS)
+  python3 proxy.py --insecure --cdse-server http://localhost:8080
+
+  # Using a specific local port (default is 8080, which conflicts with
+  # the CDSE HTTP port — use 8088 or another free port when both run together)
+  python3 proxy.py --insecure --port 8088
+
+  # Verify the server certificate with the development CA
+  python3 proxy.py --cdse-server localhost:8443 \
+      # (requires configuring ssl_context in proxy.py with the CA cert)
+
+After starting you should see:
+
+  CaumeDSE proxy running.
+    Open: http://localhost:8080/
+    Forwarding /cdse/* -> https://localhost:8443/*
+  Press Ctrl+C to stop.
+
+Then open the displayed URL in a browser.
+
+
+IV. Using the web UI
+--------------------
+
+Connection panel (top of page)
+  Enter the userId, orgId, orgKey, and storage name before making any
+  request.  For the included development installation these are:
+
+    userId  : EngineAdmin
+    orgId   : EngineOrg
+    orgKey  : 187465950C5F9018D04F91E976CAC1D7FA19CBA5FE26D94038630B18BCBAAAB6
+    storage : EngineStorage
+
+  The orgKey field is a password input — its value is not shown in the
+  browser's developer tools request log as a plaintext string, though it
+  is transmitted as a URL query parameter to the proxy.  Use this client
+  on trusted networks only.
+
+  Click the connection panel header to collapse or expand it once
+  credentials are entered.
+
+Tabs
+  The page is divided into four tabs:
+
+    Secrets    — raw-file secrets management
+    Database   — encrypted CSV database management
+    Audit Log  — engine transaction log
+    Info       — user and organisation metadata
+
+
+V. UI section reference
+-----------------------
+
+Secrets tab
+
+  Upload Secret
+    Secret name : identifier under which the file will be stored
+    File        : local file to upload and encrypt
+    Description : optional free-text metadata (resourceInfo)
+    [Upload Secret] button
+
+  Get / Download Secret
+    Secret name : identifier to retrieve
+    [Get Secret]      — retrieves and displays text content in the
+                        results area
+    [Download Secret] — downloads the decrypted content as a file named
+                        after the secret
+
+  Delete Secret
+    Secret name : identifier to delete
+    [Delete Secret] button
+
+  List Secrets
+    [List Secrets] — lists all stored secret names (result area below)
+
+  Results area — shows the raw API response for the last action.
+
+Database tab
+
+  Create Database
+    Database name  : document identifier (e.g. contacts)
+    Column headers : comma-separated column names (e.g. id,name,email)
+    [Create Database] button
+
+  Insert Row
+    Database name  : target document
+    Values         : one col=val pair per line, e.g.
+                       id=1
+                       name=Alice
+                       email=alice@example.com
+    [Insert Row] button
+
+  Query Database
+    Database name  : target document
+    Row number     : optional; leave blank to retrieve all rows
+    [Query] button
+
+  Update Row
+    Database name  : target document
+    Row number     : 1-based row index
+    Values         : one col=val pair per line for columns to update
+    [Update Row] button
+
+  Delete Row
+    Database name  : target document
+    Row number     : 1-based row index
+    [Delete Row] button
+
+  Delete Database
+    Database name  : document to delete entirely
+    [Delete Database] button
+
+  List Databases
+    [List Databases] — lists all CSV documents
+
+  Results area — shows the raw API response.
+
+Audit Log tab
+  [Load Audit Log] — fetches and displays the full transaction log.
+
+Info tab
+  [Get Info] — retrieves user/org information and displays it.
+
+
+VI. Working with secrets
+------------------------
+
+1. Enter credentials in the Connection panel.
+
+2. On the Secrets tab, select a local file (e.g. a key file or certificate)
+   in the Upload section.  Enter a short name and an optional description,
+   then click [Upload Secret].
+
+   The results area shows a 200 OK response confirming the upload.
+
+3. To retrieve the secret, enter its name in the Get section and click
+   [Get Secret] to view text content, or [Download Secret] to save the
+   decrypted file to disk.
+
+4. To verify the list of stored secrets, click [List Secrets].
+
+5. To remove a secret, enter its name in the Delete section and click
+   [Delete Secret].
+
+Example sequence (using the development credentials):
+  Name:        my-tls-cert
+  File:        /path/to/server.pem
+  Description: TLS certificate for web server
+
+  → Upload → List Secrets (confirm) → Download Secret (verify) → Delete
+
+
+VII. Working with the encrypted database
+-----------------------------------------
+
+1. Create a database on the Database tab:
+     Name:    employees
+     Columns: id,name,department,salary
+
+   Click [Create Database].
+
+2. Insert rows one at a time using the Insert section.  Each col=val pair
+   goes on its own line:
+     Database: employees
+     Values:
+       id=1
+       name=Alice
+       department=Engineering
+       salary=90000
+
+   Click [Insert Row].  Repeat for additional rows.
+
+3. Query all rows: enter the database name, leave Row number blank, click
+   [Query].
+
+   Expected output (CSV):
+     id,name,department,salary
+     1,Alice,Engineering,90000
+     2,Bob,Marketing,75000
+
+4. Query a single row: enter the database name and a row number, click
+   [Query].
+
+5. Update a row: enter the database name, row number, and the col=val pairs
+   to change, click [Update Row].
+     Row:    1
+     Values:
+       salary=95000
+
+6. Delete a row: enter the database name and row number, click [Delete Row].
+
+7. Delete the entire database: enter the name in the Delete Database
+   section and click [Delete Database].
+
+
+VIII. Viewing the audit log and user info
+------------------------------------------
+
+Audit Log tab
+  Click [Load Audit Log] to retrieve the full transaction log.  Each row
+  in the CSV output represents one API request with its timestamp, method,
+  URL, response code, and authentication status.
+
+  Note: the CDSE engine stores all field values encrypted.  The audit-log
+  endpoint decrypts them using the orgKey before returning the CSV, so you
+  must supply valid credentials to see human-readable entries.
+
+Info tab
+  Click [Get Info] to retrieve the authenticated user's metadata, including
+  the userId, orgId, role, and storage resource name.
+
+
+IX. TLS notes
+--------------
+
+  * If CDSE uses a self-signed certificate, start proxy.py with --insecure.
+    This disables certificate verification only between proxy.py and CDSE;
+    the browser connects to the proxy over plain HTTP.
+
+  * Alternatively, visit https://localhost:8443 once in the browser and
+    accept the security exception.  Then start proxy.py without --insecure
+    so the proxy verifies the certificate.
+
+  * For the BYPASSTLSAUTHINHTTP build, point the proxy at the HTTP port to
+    avoid any TLS configuration entirely:
+
+      python3 proxy.py --insecure --cdse-server http://localhost:8080
+
+  * Never use --insecure or the HTTP port in production.
+
+
+X. Proxy command reference
+---------------------------
+
+Usage:
+  python3 proxy.py [--port PORT] [--cdse-server HOST:PORT] [--insecure]
+
+Options:
+
+  --port PORT            Local port to listen on.
+                         Default: 8080.
+                         Use a different port (e.g. 8088) when the CDSE
+                         HTTP server is also using 8080.
+
+  --cdse-server HOST     Target CDSE server.  May include a scheme
+                         (http:// or https://).
+                         Default: localhost:8443
+                         Examples:
+                           localhost:8443
+                           https://cdse.internal:8443
+                           http://localhost:8080
+
+  --insecure             Disable TLS certificate verification when
+                         forwarding to the CDSE HTTPS server.
+                         Development use only.
+
+URL routing:
+
+  GET /             Serves index.html from the same directory as proxy.py.
+  GET /index.html   Same as above.
+  * /cdse/*         Strips /cdse prefix and forwards to the CDSE server.
+  * Other paths     Returns 404.
+
+Example — automated test:
+
+  # Start proxy on port 8088 so it does not conflict with CDSE HTTP (8080)
+  python3 proxy.py --insecure --cdse-server http://localhost:8080 --port 8088 &
+
+  # Check index.html is served
+  curl -s http://localhost:8088/ | grep -i caume
+
+  # Exercise an API call through the proxy
+  curl -s "http://localhost:8088/cdse/organizations/EngineOrg/users/EngineAdmin\
+?userId=EngineAdmin&orgId=EngineOrg&orgKey=$CDSE_ORG_KEY"
+
+  kill %1   # stop the proxy
