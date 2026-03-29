@@ -1,3 +1,50 @@
+2026-03-28 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
+	* configure.ac (AC_INIT): Bumped version to 1.0.10.
+
+	* db.c (cmeDBCreateOpen, cmeDBOpen): Enable WAL journal mode,
+	synchronous=NORMAL, and 8 MB page cache (PRAGMA cache_size=-8000)
+	on every database open, allowing concurrent readers, removing the
+	double-fsync overhead of the default DELETE journal, and keeping
+	hot pages in memory.
+
+	* db.c (cmeMemTableToMemDB): Replace O(n²) cmeStrConstrAppend
+	batch-INSERT loop with an exponential-growth buffer managed by the
+	SQL_ENSURE macro, reducing insert time from quadratic to O(n log n)
+	amortized.
+
+	* db.c (cmeSQLRows): Use exponential realloc doubling for the
+	result-row array instead of a fixed pre-allocation, then trim to
+	exact size at the end; eliminates over-allocation for small result
+	sets and re-allocation for large ones.
+
+	* db.c (cmeResultMemTableClean): Add NULL guard on the outer array
+	and cache the element pointer before memset to avoid computing
+	strlen twice per element.
+
+	* db.c, engine_interface.c, engine_admin.c: Remove deprecated
+	PRAGMA empty_result_callbacks = ON from all five call sites;
+	sqlite3_get_table already returns column names for empty tables
+	without it.
+
+	* engine_admin.c (cmeEngineAdminSetup): Add covering indexes
+	(userId, orgId) on all six AdminDB tables (documents, users,
+	organizations, storage, filterWhitelist, filterBlacklist) and on
+	all twenty RolesDB tables.
+
+	* filehandling.c (cmeCSVFileToSecureSQL, cmeMemTableToSecureDB):
+	Cache strlen of the current CSV row before the column-count inner
+	loop, eliminating an O(n²) strlen call per row; add CREATE INDEX
+	on the data and meta tables immediately after CREATE TABLE.
+
+	* webservice_interface.c (cmeWebServiceLogRequest): Add
+	CREATE INDEX on the per-session LogsDB transactions table.
+
+	* samples/hsm-db-crypto/c-golang/cdse_client.go (cmdInfo): Fix
+	bad-merge corruption that embedded a GitHub conflict URL inside
+	string(body), causing Go build failure (closes regression
+	introduced in devtest merge commit 6c005b4).
+
 2026-03-27 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
 	* configure.ac (AC_INIT): Bumped version to 1.0.9.

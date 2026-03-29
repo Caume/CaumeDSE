@@ -110,30 +110,33 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
     resStr=(lineLen==-1)?NULL:curRow;
     cont=0;
     cont2=1;
-    do          //Get # of columns
     {
-        if (curRow[cont]==',')
+        int rowLen=(int)strlen(curRow); // Cache length once to avoid O(n^2) in loop condition.
+        do          //Get # of columns
         {
-            cont2++;
-        }
-        else if (curRow[cont]=='\"')
-        {
-            do
+            if (curRow[cont]==',')
             {
-                cont++;
-            }while ((cont<(int)strlen(curRow))&&(curRow[cont]!='\"'));
-            if (cont>=(int)strlen(curRow)) //Error, quoted element not closed
-            {
-#ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeCSVFileRowsToMem(), Error, quoted "
-                "element not closed at first row, in CSV file: %s !\n",fName);
-#endif
-                fclose(fp);
-                return (3);
+                cont2++;
             }
-        }
-        cont++;
-    }while (cont<(int)strlen(curRow));
+            else if (curRow[cont]=='\"')
+            {
+                do
+                {
+                    cont++;
+                }while ((cont<rowLen)&&(curRow[cont]!='\"'));
+                if (cont>=rowLen) //Error, quoted element not closed
+                {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeCSVFileRowsToMem(), Error, quoted "
+                    "element not closed at first row, in CSV file: %s !\n",fName);
+#endif
+                    fclose(fp);
+                    return (3);
+                }
+            }
+            cont++;
+        }while (cont<rowLen);
+    }
     *numCols=cont2;
     colNames=(char **)malloc(sizeof(char **) * (*numCols));  //reserve memory for column name pointers
     *elements=(char **)malloc(sizeof(char **) * (*numCols) *
@@ -676,6 +679,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                                     "(id INTEGER PRIMARY KEY, userId TEXT, orgId TEXT, salt TEXT,"
                                     " value TEXT, rowOrder TEXT, MAC TEXT, sign TEXT, MACProtected TEXT,"
                                     " signProtected TEXT, otphDkey TEXT);"
+                                    "CREATE INDEX idx_data_user_org ON data(userId,orgId,rowOrder);"
                                     "COMMIT;");
                 if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'data'.
                 {
@@ -689,7 +693,9 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                 cmeFree(sqlQuery);  //Free memory that was used for queries.
                 cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE meta "
                                     "(id INTEGER PRIMARY KEY, userId TEXT, orgID TEXT, salt TEXT,"
-                                    " attribute TEXT, attributeData TEXT); COMMIT;");
+                                    " attribute TEXT, attributeData TEXT);"
+                                    "CREATE INDEX idx_meta_user_attr ON meta(userId,attribute);"
+                                    "COMMIT;");
                 if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'meta'.
                 {
 #ifdef ERROR_LOG
@@ -1651,6 +1657,7 @@ void cmeContentReaderFreeCallback (void *cls)
                                 "(id INTEGER PRIMARY KEY, userId TEXT, orgId TEXT, salt TEXT,"
                                 " value TEXT, rowOrder TEXT, MAC TEXT, sign TEXT, MACProtected TEXT,"
                                 " signProtected TEXT, otphDkey TEXT);"
+                                "CREATE INDEX idx_data_user_org ON data(userId,orgId,rowOrder);"
                                 "COMMIT;");
             if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'data'.
             {
@@ -1664,7 +1671,9 @@ void cmeContentReaderFreeCallback (void *cls)
             cmeFree(sqlQuery);  //Free memory that was used for queries.
             cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE meta "
                                 "(id INTEGER PRIMARY KEY, userId TEXT, orgID TEXT, salt TEXT,"
-                                " attribute TEXT, attributeData TEXT); COMMIT;");
+                                " attribute TEXT, attributeData TEXT);"
+                                "CREATE INDEX idx_meta_user_attr ON meta(userId,attribute);"
+                                "COMMIT;");
             if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'meta'.
             {
 #ifdef ERROR_LOG

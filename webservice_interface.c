@@ -11897,8 +11897,9 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
                                 "userId TEXT, orgId TEXT, salt TEXT, requestMethod TEXT, requestUrl TEXT, "
                                 "requestHeaders TEXT, startTimestamp TEXT, endTimestamp TEXT, requestDataSize TEXT, "
                                 "responseDataSize TEXT, orgResourceId TEXT, requestIPAddress TEXT, responseCode TEXT, "
-                                "responseHeaders TEXT, authenticated TEXT); COMMIT;",
-                                tableName);
+                                "responseHeaders TEXT, authenticated TEXT); "
+                                "CREATE INDEX \"idx_log_%s_uo\" ON \"%s\"(orgId,userId); COMMIT;",
+                                tableName,tableName,tableName);
             cmeSQLRows(pDB,sqlCreate,NULL,NULL);
             cmeFree(sqlCreate);
             sqlCreate=NULL;

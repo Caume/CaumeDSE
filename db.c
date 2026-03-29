@@ -62,6 +62,8 @@ int cmeDBCreateOpen (const char *filename, sqlite3 **ppDB)
     }
     else
     {
+        sqlite3_exec(*ppDB,"PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000;",
+                     NULL,NULL,NULL); //Enable WAL for concurrent readers + writer; NORMAL avoids double-fsync.
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeDBCreateOpen(), Created/opened sqlite3 database file: %s.\n",filename);
 #endif
@@ -86,6 +88,8 @@ int cmeDBOpen (const char *filename, sqlite3 **ppDB)
     }
     else
     {
+        sqlite3_exec(*ppDB,"PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000;",
+                     NULL,NULL,NULL); //Enable WAL for concurrent readers + writer; NORMAL avoids double-fsync.
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeDBOpen(), Opened sqlite3 database file: %s.\n",filename);
 #endif
@@ -274,8 +278,9 @@ int cmeSQLIterate (const char *args,int numCols,char **pStrResults,char **pColNa
 int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
                 PerlInterpreter *myPerl)
 {
-    int result,cont,cont2,numCols;
+    int result,cont,numCols;
     int regCount=0;
+    int rowCapacity=0; // current allocated row count for doubling-realloc strategy
     sqlite3_stmt *sqlStatemnt=NULL;
     char **columnNames=NULL;
     char **columnValues=NULL;
@@ -329,19 +334,24 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
                     }
                     //Insert column names into new table:
                     cmeResultMemTableCols=numCols; //Set column names of Tmp MemTable.
-                    cmeResultMemTable=(char **)malloc(sizeof(char*)*numCols); //There can't be more results than there are columns (for now).
-                    for(cont=0;cont<numCols;cont++) //Copy column names.
+                    rowCapacity=8; // Initial capacity; grows by doubling.
+                    cmeResultMemTable=(char **)malloc(sizeof(char*)*(size_t)numCols*(1+rowCapacity));
+                    for(cont=0;cont<numCols*(1+rowCapacity);cont++) cmeResultMemTable[cont]=NULL;
+                    for(cont=0;cont<numCols;cont++) //Copy column names into row 0.
                     {
-                        cmeResultMemTable[cont]=NULL;
                         cmeStrConstrAppend(&(cmeResultMemTable[cont]),"%s",columnNames[cont]);
                     }
                     cmeResultMemTableRows=0; //Column names are always included (row 0), even if row count ignores them.
                 }
                 cmeResultMemTableRows++; //Increase the number of rows included in the Tmp MemTable.
-                cmeResultMemTable=(char **)realloc(cmeResultMemTable,sizeof(char*)*(cmeResultMemTableCols*cmeResultMemTableRows+numCols)); //Add space for one additional row
-                if (!cmeResultMemTable) //Realloc error.
+                if (cmeResultMemTableRows>rowCapacity) //Grow with doubling to avoid O(n^2) realloc.
                 {
-                    return(1);
+                    int newCap=rowCapacity*2;
+                    cmeResultMemTable=(char **)realloc(cmeResultMemTable,sizeof(char*)*(size_t)numCols*(1+newCap));
+                    if (!cmeResultMemTable) { return(1); }
+                    for (cont=numCols*(1+rowCapacity);cont<numCols*(1+newCap);cont++)
+                        cmeResultMemTable[cont]=NULL;
+                    rowCapacity=newCap;
                 }
                 for (cont=(cmeResultMemTableCols*cmeResultMemTableRows);cont<(cmeResultMemTableCols*cmeResultMemTableRows+numCols);cont++)
                 {
@@ -363,6 +373,12 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
             //3.5) Cycle for next SQL instruction. if available
             pSqlInstruction=tail;
         } while (sqlStatemnt);
+        // Trim over-allocated pointer array to exact row count.
+        if (cmeResultMemTable && rowCapacity>cmeResultMemTableRows)
+        {
+            char **tmp=(char **)realloc(cmeResultMemTable,sizeof(char*)*(size_t)cmeResultMemTableCols*(1+cmeResultMemTableRows));
+            if (tmp) cmeResultMemTable=tmp;
+        }
         //4)  Close DB connection; this will be done outside of this function.
     }
     else //Callback function required
@@ -403,17 +419,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
                     }
                     if (cmeResultMemTable)//cmeResultMemTable is not empty, free all variables.
                     {
-                        for (cont2=0;cont2<=cmeResultMemTableRows;cont2++) //Process each row. (Note that column names are put in row 0; we need to include this row).
-                        {
-                            for(cont=0;cont<cmeResultMemTableCols;cont++) //Process each column.
-                            {
-                                memset(cmeResultMemTable[cont2*cmeResultMemTableCols+cont],0,strlen(cmeResultMemTable[cont2*cmeResultMemTableCols+cont])); //Wipe sensitive data.
-                                cmeFree(cmeResultMemTable[cont2*cmeResultMemTableCols+cont]);
-                            }
-                        }
-                        cmeFree(cmeResultMemTable);
-                        cmeResultMemTableCols=0;
-                        cmeResultMemTableRows=0;
+                        cmeResultMemTableClean(); //Reuse central clean function (NULL-safe, caches strlen).
                     }
                 }
                 for (cont=0;cont<numCols;cont++) //Point to column values.
@@ -442,6 +448,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
 int cmeResultMemTableClean ()
 {
     int cont,cont2;
+    char *_p;
 
     if (cmeResultMemTable)//cmeResultMemTable is not empty, free all variables.
     {
@@ -449,7 +456,8 @@ int cmeResultMemTableClean ()
         {
             for(cont=0;cont<cmeResultMemTableCols;cont++) //Process each column.
             {
-                memset(cmeResultMemTable[cont2*cmeResultMemTableCols+cont],0,strlen(cmeResultMemTable[cont2*cmeResultMemTableCols+cont])); //Wipe sensitive data.
+                _p=cmeResultMemTable[cont2*cmeResultMemTableCols+cont];
+                if (_p) { memset(_p,0,strlen(_p)); } //Wipe sensitive data; cache length to avoid redundant strlen in memset.
                 cmeFree(cmeResultMemTable[cont2*cmeResultMemTableCols+cont]);
             }
         }
@@ -463,28 +471,27 @@ int cmeResultMemTableClean ()
 int cmeMemTable (sqlite3 *db, const char *sqlQuery,char ***pQueryResult,
                  int *numRows, int *numColumns)
 {
-    int result __attribute__((unused));    char *pzErrmsg=NULL; // TODO (OHR#2#): Delete pErrmsg from parameters; passing back errors from sqlite3 is complicated since associated memory needs to be freed with sqlite3_free. We will deal with those errors only within functions that call sqlite functions directly!
-    //TODO (ANY#8#): replace call to sqlite3_get_table() with calls to sqlite3_exec() and use PRAGMA table_info
-    // This is because sqlite3_get_table is apparently obsolete (??) and should be avoided, according to docs.
-    result=sqlite3_get_table(db, sqlQuery, pQueryResult, numRows, numColumns,
-                             &pzErrmsg);
-            //NOTE: numRows does not consider the header row at index 0.
-            //sqlite3_get_table allways includes a header row; real number of rows= numRows+1 !
-    if (pzErrmsg!=NULL) // Then we have a problem...
+    // sqlite3_get_table() is used here because its result format is required by
+    // cmeMemTableFinal()/sqlite3_free_table().  The deprecated PRAGMA
+    // "empty_result_callbacks = ON" has been removed from all callers; sqlite3_get_table
+    // already returns column names for empty tables without that PRAGMA.
+    char *pzErrmsg=NULL;
+    sqlite3_get_table(db, sqlQuery, pQueryResult, numRows, numColumns, &pzErrmsg);
+    if (pzErrmsg!=NULL)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeSQLTable(), sqlite3_get_table() error: %s\n",
+        fprintf(stderr,"CaumeDSE Error: cmeMemTable(), sqlite3_get_table() error: %s\n",
                 pzErrmsg);
         sqlite3_free(pzErrmsg);
 #endif
         return(1);
     }
 #ifdef DEBUG
-    fprintf(stdout,"CaumeDSE Debug: cmeSQLTable(), sqlite3_get_table() successful.\n");
+    fprintf(stdout,"CaumeDSE Debug: cmeMemTable(), sqlite3_get_table() successful (%d rows, %d cols).\n",
+            *numRows,*numColumns);
 #endif
     return(0);
 }
-
 int cmeMemTableFinal (char **QueryResult)
 {
     sqlite3_free_table(QueryResult);
@@ -501,10 +508,12 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
     int rowsBlocks;
     int rowsLastBlock;
     int currentRow=1;
+    int sqlWritten; // snprintf return value
     char *sqlInsertQuery=NULL;
     char *sqlCreateCols=NULL;
     char *sqlInsertCols=NULL;
     char *sanitizedStr=NULL;
+    size_t sqlBufCap=0,sqlBufUsed=0; // pre-allocated buffer size and current usage
     const char *defaultTableName="data";
     #define cmeMemTableToMemDBFree() \
         do { \
@@ -513,6 +522,16 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
             cmeFree(sqlCreateCols); \
             cmeFree(sanitizedStr); \
         } while (0); //Local free() macro.
+    // Macro to grow sqlInsertQuery buffer by doubling when needed (avoids O(n^2) realloc).
+    #define SQL_ENSURE(need) \
+        do { \
+            while (sqlBufUsed + (size_t)(need) + 1 > sqlBufCap) { \
+                size_t _newCap = sqlBufCap ? sqlBufCap * 2 : 4096UL; \
+                char *_tmp = (char *)realloc(sqlInsertQuery, _newCap); \
+                if (!_tmp) { cmeMemTableToMemDBFree(); return(2); } \
+                sqlInsertQuery = _tmp; sqlBufCap = _newCap; \
+            } \
+        } while (0)
 
     if (!numCols) //If MemTable is empty, we do nothing and exit
     {
@@ -553,70 +572,75 @@ int cmeMemTableToMemDB (sqlite3 *dstMemDB, const char **srcMemTable, const int n
     }
     for (cont=0; cont < rowsBlocks; cont++) //process all blocks of cmeDefaultInsertSqlRows rows.
     {
-        cmeFree(sqlInsertQuery);
-        result=cmeStrConstrAppend(&sqlInsertQuery,"BEGIN TRANSACTION;"); // First part of block
+        // Reset buffer for this block (reuse allocation; doubling avoids O(n^2) realloc across blocks).
+        sqlBufUsed=0;
+        SQL_ENSURE(20);
+        sqlWritten=snprintf(sqlInsertQuery,sqlBufCap,"BEGIN TRANSACTION;");
+        sqlBufUsed=(size_t)sqlWritten;
         for (cont2=0; cont2 < cmeDefaultInsertSqlRows; cont2++) //Process all rows.
         {
-            result=cmeStrConstrAppend(&sqlInsertQuery," INSERT INTO \"%s\" (%s) VALUES (NULL", //Prepare INSERT statement.
-                                      sqlTableName,sqlInsertCols);
-            if (numCols)
-            {
-                result=cmeStrConstrAppend(&sqlInsertQuery,",");
-            }
+            SQL_ENSURE(64+(int)strlen(sqlTableName)+(int)strlen(sqlInsertCols));
+            sqlWritten=snprintf(sqlInsertQuery+sqlBufUsed,sqlBufCap-sqlBufUsed,
+                                " INSERT INTO \"%s\" (%s) VALUES (NULL",sqlTableName,sqlInsertCols);
+            sqlBufUsed+=(size_t)sqlWritten;
+            if (numCols) { SQL_ENSURE(2); sqlInsertQuery[sqlBufUsed++]=','; sqlInsertQuery[sqlBufUsed]='\0'; }
             for (cont3=0; cont3<numCols; cont3++) //Process all fields in row.
             {
                 cmeFree(sanitizedStr);
-                cmeSanitizeStrForSQL(srcMemTable[(currentRow*numCols)+cont3],&sanitizedStr); //Sanitize parameter for use in SQL statement.
-                result=cmeStrConstrAppend(&sqlInsertQuery,"'%s'",sanitizedStr);
-                if((cont3+1)<numCols)
-                {
-                    result=cmeStrConstrAppend(&sqlInsertQuery,",");
-                }
+                cmeSanitizeStrForSQL(srcMemTable[(currentRow*numCols)+cont3],&sanitizedStr);
+                SQL_ENSURE((int)strlen(sanitizedStr)+4);
+                sqlWritten=snprintf(sqlInsertQuery+sqlBufUsed,sqlBufCap-sqlBufUsed,"'%s'",sanitizedStr);
+                sqlBufUsed+=(size_t)sqlWritten;
+                if ((cont3+1)<numCols) { SQL_ENSURE(2); sqlInsertQuery[sqlBufUsed++]=','; sqlInsertQuery[sqlBufUsed]='\0'; }
             }
             currentRow++;
-            result=cmeStrConstrAppend(&sqlInsertQuery,");"); //Finish INSERT statement.
+            SQL_ENSURE(3);
+            sqlInsertQuery[sqlBufUsed++]=')'; sqlInsertQuery[sqlBufUsed++]=';'; sqlInsertQuery[sqlBufUsed]='\0';
         }
-        result=cmeStrConstrAppend(&sqlInsertQuery,"COMMIT;"); // Last part of block
-        if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL)) //insert row.
+        SQL_ENSURE(8);
+        memcpy(sqlInsertQuery+sqlBufUsed,"COMMIT;",8); // includes '\0'
+        if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL)) //insert block.
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeMemTableToMemDB(), cmeSQLRows() Error, can't "
-                    "insert values, sqlquery: %s in table: %s !\n",sqlInsertQuery,sqlTableName);
+                    "insert values in table: %s !\n",sqlTableName);
 #endif
             cmeMemTableToMemDBFree();
             return(2);
         }
     }
     //Process last block.
-    cmeFree(sqlInsertQuery);
-    result=cmeStrConstrAppend(&sqlInsertQuery,"BEGIN TRANSACTION;"); // First part of block.
+    sqlBufUsed=0;
+    SQL_ENSURE(20);
+    sqlWritten=snprintf(sqlInsertQuery,sqlBufCap,"BEGIN TRANSACTION;");
+    sqlBufUsed=(size_t)sqlWritten;
     for (cont2=0; cont2 < rowsLastBlock; cont2++) //process all columns in each row.
     {
-        result=cmeStrConstrAppend(&sqlInsertQuery," INSERT INTO \"%s\" (%s) VALUES (NULL", //Prepare INSERT statement.
-                                  sqlTableName,sqlInsertCols);
-        if (numCols)
-        {
-            result=cmeStrConstrAppend(&sqlInsertQuery,",");
-        }
-        for (cont3=0; cont3<numCols; cont3++) //Add values
+        SQL_ENSURE(64+(int)strlen(sqlTableName)+(int)strlen(sqlInsertCols));
+        sqlWritten=snprintf(sqlInsertQuery+sqlBufUsed,sqlBufCap-sqlBufUsed,
+                            " INSERT INTO \"%s\" (%s) VALUES (NULL",sqlTableName,sqlInsertCols);
+        sqlBufUsed+=(size_t)sqlWritten;
+        if (numCols) { SQL_ENSURE(2); sqlInsertQuery[sqlBufUsed++]=','; sqlInsertQuery[sqlBufUsed]='\0'; }
+        for (cont3=0; cont3<numCols; cont3++) //Add values.
         {
             cmeFree(sanitizedStr);
-            cmeSanitizeStrForSQL(srcMemTable[(currentRow*numCols)+cont3],&sanitizedStr); //Sanitize parameter for use in SQL statement.
-            result=cmeStrConstrAppend(&sqlInsertQuery,"'%s'",sanitizedStr);
-            if((cont3+1)<numCols)
-            {
-                result=cmeStrConstrAppend(&sqlInsertQuery,",");
-            }
+            cmeSanitizeStrForSQL(srcMemTable[(currentRow*numCols)+cont3],&sanitizedStr);
+            SQL_ENSURE((int)strlen(sanitizedStr)+4);
+            sqlWritten=snprintf(sqlInsertQuery+sqlBufUsed,sqlBufCap-sqlBufUsed,"'%s'",sanitizedStr);
+            sqlBufUsed+=(size_t)sqlWritten;
+            if ((cont3+1)<numCols) { SQL_ENSURE(2); sqlInsertQuery[sqlBufUsed++]=','; sqlInsertQuery[sqlBufUsed]='\0'; }
         }
         currentRow++;
-        result=cmeStrConstrAppend(&sqlInsertQuery,");"); //Finish INSERT statement.
+        SQL_ENSURE(3);
+        sqlInsertQuery[sqlBufUsed++]=')'; sqlInsertQuery[sqlBufUsed++]=';'; sqlInsertQuery[sqlBufUsed]='\0';
     }
-    result=cmeStrConstrAppend(&sqlInsertQuery,"COMMIT;"); // Last part of block.
-    if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL)) //insert row.
+    SQL_ENSURE(8);
+    memcpy(sqlInsertQuery+sqlBufUsed,"COMMIT;",8);
+    if (cmeSQLRows(dstMemDB,sqlInsertQuery,NULL,NULL)) //insert last block.
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeMemTableToMemDB(), cmeSQLRows() Error, can't "
-                "insert values, sqlquery: %s in table: %s !\n",sqlInsertQuery,sqlTableName);
+                "insert values in table: %s !\n",sqlTableName);
 #endif
         cmeMemTableToMemDBFree();
         return(3);
