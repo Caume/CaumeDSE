@@ -279,7 +279,7 @@ func (c *CDSEClient) cmdDBList() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(strhttps://github.com/Caume/CaumeDSE/pull/57/conflict?name=samples%252Fhsm-db-crypto%252Fc-golang%252Fcdse_client.go&base_oid=40b57dec2d16b637a306f34587ebac5f2cd6eb1a&head_oid=3ca6071648dabcf1ef16119356b2cb3bda75d7efing(body))
+	fmt.Println(string(body))
 	return nil
 }
 
