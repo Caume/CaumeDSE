@@ -594,9 +594,8 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
 
     *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
-    //TODO (OHR#3#): Check alternative for enabling tables with no results to return column names as 1st row;
-    //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
-    cmeStrConstrAppend(&query,"PRAGMA empty_result_callbacks = ON; SELECT * FROM %s;",
+    //cmeMemTable uses sqlite3_prepare_v2 which returns column names for empty tables without PRAGMA.
+    cmeStrConstrAppend(&query,"SELECT * FROM %s;",
                        tableName);
     result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
     if (result) //Error
@@ -726,9 +725,8 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
 
     *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
-    //TODO (OHR#3#): Check alternative for enabling tables with no results to return column names as 1st row;
-    //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
-    cmeStrConstrAppend(&query,"PRAGMA empty_result_callbacks = ON; SELECT * FROM %s;",
+    //cmeMemTable uses sqlite3_prepare_v2 which returns column names for empty tables without PRAGMA.
+    cmeStrConstrAppend(&query,"SELECT * FROM %s;",
                        tableName);
     result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
     cmeFree(query);
@@ -950,9 +948,8 @@ int cmePutProtectDBRegisters (sqlite3 *pDB, const char *tableName, const char **
 
     *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
-    //TODO (OHR#3#): Check alternative for enabling tables with no results to return column names as 1st row;
-    //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
-    cmeStrConstrAppend(&query,"PRAGMA empty_result_callbacks = ON; SELECT * FROM %s;",
+    //cmeMemTable uses sqlite3_prepare_v2 which returns column names for empty tables without PRAGMA.
+    cmeStrConstrAppend(&query,"SELECT * FROM %s;",
                        tableName);
     result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
     cmeFree(query);
@@ -1375,9 +1372,8 @@ int cmeGetUnprotectDBTransactions (sqlite3 *pDB, const char *tableName, const ch
 
     *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
-    //TODO (OHR#3#): Check alternative for enabling tables with no results to return column names as 1st row;
-    //               'PRAGMA empty_result_callbacks = ON' is deprecated according to SQLITE 3 docs!
-    cmeStrConstrAppend(&query,"PRAGMA empty_result_callbacks = ON; SELECT * FROM %s;",
+    //cmeMemTable uses sqlite3_prepare_v2 which returns column names for empty tables without PRAGMA.
+    cmeStrConstrAppend(&query,"SELECT * FROM %s;",
                        tableName);
     result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
     if (result) //Error
