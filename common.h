@@ -72,7 +72,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeMaxCSVColumns 256            //Max # of column parts in a CSV file
 #define cmeMaxCSVPartsPerColumn 10000   //Max {estimated} number of parts that a CSV table can hold {required by cmeSecureDBtoMemDB}.
 #define cmeMaxRAWDataInPart 4000        //Max number of bytes in a secure file slice {part}, estimated from smallest SQLITE secureDB column files. {RECOMMENDED: 5120}
-#define cmeDefaultContentReaderCallbackPageSize 1024*32     //Default Page size for ContentReaderCallback functions.    {RECOMMENDED: 1024*32}
+#define cmeDefaultContentReaderCallbackPageSize (1024*64)   //Default Page size for ContentReaderCallback functions.
 
 #ifdef PATH_DATADIR
 #define cmeDefaultFilePath PATH_DATADIR "/"                     //Default virtual root path for storing engine files {DBs}.
@@ -394,7 +394,7 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeWSEncoding_XML 4                         //XML+plaintext encoding for WS response.
 #define cmeWSEncoding_RAW 3                         //plaintext encoding for WS response.
 #define cmeWSEncoding_HTML 4                        //HTML encoding for WS response {DEFAULT}.
-#define cmeWSPostBufferSize 512                     //Buffer size for iterating POST requests.
+#define cmeWSPostBufferSize (1024*16)               //Buffer size for iterating POST requests.
 
 #define cmeFree(a) {if(a){ free(a); a=NULL;}}       //Internal free function that resets pointers to NULL.
 #define MHD_PLATFORM_H                              //for microhttpd.
