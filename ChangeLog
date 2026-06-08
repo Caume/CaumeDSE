@@ -1,3 +1,30 @@
+2026-06-07 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
+	* common.h: Increase default POST processing and response callback
+	buffer sizes to reduce callback overhead for larger requests and
+	responses.
+
+	* TODO.md: Add numbered speed and verification TODO items, mark the
+	streaming/POST buffer-size optimization and DEBUG verifier item as
+	complete, and record the remaining prepared-statement work in
+	filehandling.c.
+
+	* db.c (cmeMemTableToMemDB): Replace generated hot-loop INSERT SQL
+	strings with a reusable sqlite3 prepared statement and bound column
+	values, while preserving the existing batch transaction boundaries.
+
+	* db.c (cmeMemSecureDBProtect, cmeMemSecureDBUnprotect): Replace
+	generated hot-loop UPDATE statements for data/meta protection,
+	unprotection, shuffle, MAC, and MACProtected flows with reusable
+	prepared statements and bound parameters, preserving the existing
+	per-row commit behavior needed for consistency.
+
+	* TEST/run_debug_components.sh: Add an independent DEBUG component
+	verification script.  It configures a TESTDATABASE install, builds,
+	installs, runs the engine non-interactively, extracts per-component
+	logs, checks required/forbidden markers, supports skip-build/skip-web
+	modes, and reports a concise pass/fail summary.
+
 2026-03-28 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
 	* configure.ac (AC_INIT): Bumped version to 1.0.10.
