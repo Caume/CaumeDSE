@@ -44,6 +44,24 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
+static int cmeIsSafeSQLIdentifier(const char *identifier)
+{
+    int cont;
+
+    if ((!identifier)||(!identifier[0]))
+    {
+        return(0);
+    }
+    for (cont=0; identifier[cont]; cont++)
+    {
+        if ((!isalnum((unsigned char)identifier[cont]))&&(identifier[cont]!='_'))
+        {
+            return(0);
+        }
+    }
+    return(1);
+}
+
 int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *documentId,
                         const char *orgKey, const char *storagePath)
 {   //IDD v.1.0.21
@@ -839,28 +857,44 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
                               const char **columnValues,const int numColumnValues, const char *orgKey)
 {   //NOTE: Authorization and parameter validation takes place outside (at web interface level!).
     int cont,result,protectedValueLen,protectedValueMACLen;
+    int bindIndex=1;
     char *sqlStatement=NULL;
     char *protectedValue=NULL;
     char *protectedValueMAC=NULL;
     char *salt=NULL;
-    char *sanitizedStr=NULL;
+    char *boundValue=NULL;
+    sqlite3_stmt *insertStmt=NULL;
     #define cmePostProtectDBRegisterFree() \
         do { \
             cmeFree(sqlStatement); \
             cmeFree(protectedValue); \
             cmeFree(protectedValueMAC); \
             cmeFree(salt); \
-            cmeFree(sanitizedStr); \
+            cmeFree(boundValue); \
+            if (insertStmt) \
+            { \
+                sqlite3_finalize(insertStmt); \
+                insertStmt=NULL; \
+            } \
         } while (0); //Local free() macro.
 
-    cmeStrConstrAppend (&sqlStatement,"BEGIN TRANSACTION; INSERT INTO \"%s\" (id,",tableName); //First part. id goes by default.
+    if (!cmeIsSafeSQLIdentifier(tableName))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), unsafe table name: %s!\n",
+                tableName ? tableName : "(null)");
+#endif
+        cmePostProtectDBRegisterFree();
+        return(1);
+    }
+    cmeStrConstrAppend (&sqlStatement,"INSERT INTO \"%s\" (id",tableName); //First part. id goes by default.
     for (cont=0; cont<numColumnValues; cont++)
     {
-        if (!columnNames[cont]) //Error, colName is NULL!
+        if ((!columnNames[cont])||(!cmeIsSafeSQLIdentifier(columnNames[cont]))) //Error, colName is NULL or unsafe!
         {
- #ifdef ERROR_LOG
+	 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), Error,"
-                    "NULL pointer at columnNames[%d]\n",cont);
+                    "NULL or unsafe pointer at columnNames[%d]\n",cont);
 #endif
             cmePostProtectDBRegisterFree();
             return(1);
@@ -869,47 +903,105 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
         {
             if (columnValues[cont]) //user provided value; else use NULL
             {
-                cmeFree(sanitizedStr);
-                cmeSanitizeStrForSQL(columnValues[cont],&sanitizedStr);   //Sanitize parameter salt for use in SQL statement.
                 //TODO (OHR#3#): verify salt requirements. If bad, ERROR!
-                cmeStrConstrAppend(&salt,"%s",sanitizedStr);
+                cmeStrConstrAppend(&salt,"%s",columnValues[cont]);
             }
         }
         else
         {
-            cmeStrConstrAppend(&sqlStatement,"%s",columnNames[cont]); //add column.
-            if ((cont+1)<numColumnValues)  //Still one left...
-            {
-                cmeStrConstrAppend(&sqlStatement,","); //add comma.
-            }
+            cmeStrConstrAppend(&sqlStatement,",\"%s\"",columnNames[cont]); //add column.
         }
     }
-    cmeStrConstrAppend (&sqlStatement,",salt) VALUES (NULL,"); //Second part. id=NULL goes by default.
+    cmeStrConstrAppend (&sqlStatement,",salt) VALUES (NULL"); //Second part. id=NULL goes by default.
     for (cont=0; cont<numColumnValues; cont++)
     {
-        if ((strcmp(columnNames[cont],"salt")!=0)&&(columnValues[cont]!=NULL)) //Skip salt, we will add it at the end.
+        if (strcmp(columnNames[cont],"salt")!=0)
         {
-            cmeProtectDBSaltedValue(columnValues[cont],&protectedValue,cmeDefaultEncAlg,&salt,orgKey,&protectedValueLen);
-            cmeHMACByteString((const unsigned char *)protectedValue,(unsigned char **)&protectedValueMAC,protectedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,&salt,orgKey);
-            cmeStrConstrAppend(&sqlStatement,"'%s%s'",protectedValueMAC,protectedValue); //add MAC+Encrypted(salted) column value to query.
-            cmeFree(protectedValue);
-            cmeFree(protectedValueMAC);
-            if ((cont+1)<numColumnValues)  //Still one left...
-            {
-                cmeStrConstrAppend(&sqlStatement,","); //add comma.
-            }
+            cmeStrConstrAppend(&sqlStatement,",?");
         }
     }
-    cmeStrConstrAppend (&sqlStatement,",'%s'); COMMIT;",salt); //Last part.
-    result=cmeSQLRows(pDB,sqlStatement,NULL,NULL);
-    if (result) //Error.
+    cmeStrConstrAppend(&sqlStatement,",?);");
+    result=sqlite3_prepare_v2(pDB,sqlStatement,-1,&insertStmt,NULL);
+    if (result!=SQLITE_OK)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), cmeSQLRows() Error, can't "
-                "create register in table: %s with sql statement %s!\n",tableName,sqlStatement);
+        fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), sqlite3_prepare_v2() Error, can't "
+                "prepare insert in table: %s with sql statement %s: %s!\n",tableName,sqlStatement,sqlite3_errmsg(pDB));
 #endif
         cmePostProtectDBRegisterFree();
         return(2);
+    }
+    if (cmeSQLRows(pDB,"BEGIN TRANSACTION;",NULL,NULL))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), cmeSQLRows() Error, can't "
+                "begin transaction for table: %s!\n",tableName);
+#endif
+        cmePostProtectDBRegisterFree();
+        return(3);
+    }
+    for (cont=0; cont<numColumnValues; cont++)
+    {
+        if (strcmp(columnNames[cont],"salt")!=0) //Skip salt, we will add it at the end.
+        {
+            if (columnValues[cont]!=NULL)
+            {
+                result=cmeProtectDBSaltedValue(columnValues[cont],&protectedValue,cmeDefaultEncAlg,&salt,orgKey,&protectedValueLen);
+                if (!result)
+                {
+                    result=cmeHMACByteString((const unsigned char *)protectedValue,(unsigned char **)&protectedValueMAC,
+                                             protectedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,&salt,orgKey);
+                }
+                if (!result)
+                {
+                    cmeStrConstrAppend(&boundValue,"%s%s",protectedValueMAC,protectedValue);
+                    result=sqlite3_bind_text(insertStmt,bindIndex,boundValue,-1,SQLITE_TRANSIENT);
+                }
+                cmeFree(protectedValue);
+                cmeFree(protectedValueMAC);
+                cmeFree(boundValue);
+            }
+            else
+            {
+                result=sqlite3_bind_null(insertStmt,bindIndex);
+            }
+            if (result!=SQLITE_OK)
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), sqlite3_bind_text() Error, can't "
+                        "bind column %s in table: %s: %s!\n",columnNames[cont],tableName,sqlite3_errmsg(pDB));
+#endif
+                cmeSQLRows(pDB,"ROLLBACK;",NULL,NULL);
+                cmePostProtectDBRegisterFree();
+                return(4);
+            }
+            bindIndex++;
+        }
+    }
+    result=sqlite3_bind_text(insertStmt,bindIndex,salt ? salt : "",-1,SQLITE_TRANSIENT);
+    if (result==SQLITE_OK)
+    {
+        result=sqlite3_step(insertStmt);
+    }
+    if (result!=SQLITE_DONE) //Error.
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), sqlite3_step() Error, can't "
+                "create register in table: %s with sql statement %s: %s!\n",tableName,sqlStatement,sqlite3_errmsg(pDB));
+#endif
+        cmeSQLRows(pDB,"ROLLBACK;",NULL,NULL);
+        cmePostProtectDBRegisterFree();
+        return(5);
+    }
+    if (cmeSQLRows(pDB,"COMMIT;",NULL,NULL))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), cmeSQLRows() Error, can't "
+                "commit transaction for table: %s!\n",tableName);
+#endif
+        cmeSQLRows(pDB,"ROLLBACK;",NULL,NULL);
+        cmePostProtectDBRegisterFree();
+        return(6);
     }
     cmePostProtectDBRegisterFree();
     return(0);
