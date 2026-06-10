@@ -48,6 +48,8 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 // Wrapper function for sqlite3_open_v2() to create a new database file
 int cmeDBCreateOpen (const char *filename, sqlite3 **ppDB);
+// Wrapper function for sqlite3_open_v2() to create a new memory database
+int cmeMemDBCreateOpen (sqlite3 **ppDB);
 // Wrapper function for sqlite3_open_v2() to open an esisting database file for R/W
 int cmeDBOpen (const char *filename, sqlite3 **ppDB);
 // Wrapper function for sqlite3_close()

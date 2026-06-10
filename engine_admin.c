@@ -614,7 +614,7 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
             }
         }
     }
-    result=cmeDBCreateOpen(":memory:",&saveDB);
+    result=cmeMemDBCreateOpen(&saveDB);
     if (result) //Error
     {
 #ifdef ERROR_LOG

@@ -58,6 +58,8 @@ struct cmeWebServiceConnectionInfoStruct
     int postArgCont;
     int answerCode;
     int threadStatus;          //signal to the thread that it is ok to clean stuff here. 0=in progress, 1=thread done,waiting, 2=thread done, closing.
+    pthread_mutex_t threadStatusMutex;
+    pthread_cond_t threadStatusCond;
     time_t connectionStartTime;//Per-connection timestamp set when the connection is first seen (replaces former static local).
     long int requestDataSize;  //Per-connection accumulated POST body size (replaces former static local).
 };

@@ -44,6 +44,25 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
+static int cmeDBApplyPragmas(sqlite3 *pDB, const char *functionName, const char *filename, const char *pragmas)
+{
+    int result;
+    char *errorMessage=NULL;
+
+    result=sqlite3_exec(pDB,pragmas,NULL,NULL,&errorMessage);
+    if (result!=SQLITE_OK)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: %s(), sqlite3_exec() PRAGMA error for database '%s': %s\n",
+                functionName,filename,(errorMessage)?errorMessage:sqlite3_errmsg(pDB));
+#endif
+        sqlite3_free(errorMessage);
+        return(1);
+    }
+    sqlite3_free(errorMessage);
+    return(0);
+}
+
 //TODO (OHR#5#):create and call function to sanitize all input that will be included in DB queries!
 int cmeDBCreateOpen (const char *filename, sqlite3 **ppDB)
 {
@@ -62,10 +81,40 @@ int cmeDBCreateOpen (const char *filename, sqlite3 **ppDB)
     }
     else
     {
-        sqlite3_exec(*ppDB,"PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000;",
-                     NULL,NULL,NULL); //Enable WAL for concurrent readers + writer; NORMAL avoids double-fsync.
+        if (strcmp(filename,":memory:") &&
+            cmeDBApplyPragmas(*ppDB,"cmeDBCreateOpen",filename,
+                              "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000;"))
+        {
+            sqlite3_close(*ppDB);
+            *ppDB=NULL;
+            return(2);
+        }
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeDBCreateOpen(), Created/opened sqlite3 database file: %s.\n",filename);
+#endif
+        return(0);
+    }
+}
+
+int cmeMemDBCreateOpen (sqlite3 **ppDB)
+{
+    int result;
+
+    result = sqlite3_open_v2(":memory:", ppDB,SQLITE_OPEN_READWRITE|
+                             SQLITE_OPEN_CREATE|SQLITE_OPEN_FULLMUTEX, NULL);
+    if (result!=SQLITE_OK)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMemDBCreateOpen(), sqlite_open_v2() error: %s\n",
+                sqlite3_errmsg(*ppDB));
+#endif
+        sqlite3_close(*ppDB);
+        return(1);
+    }
+    else
+    {
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeMemDBCreateOpen(), Created/opened sqlite3 memory database.\n");
 #endif
         return(0);
     }
@@ -88,8 +137,13 @@ int cmeDBOpen (const char *filename, sqlite3 **ppDB)
     }
     else
     {
-        sqlite3_exec(*ppDB,"PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000;",
-                     NULL,NULL,NULL); //Enable WAL for concurrent readers + writer; NORMAL avoids double-fsync.
+        if (cmeDBApplyPragmas(*ppDB,"cmeDBOpen",filename,
+                              "PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000;"))
+        {
+            sqlite3_close(*ppDB);
+            *ppDB=NULL;
+            return(2);
+        }
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeDBOpen(), Opened sqlite3 database file: %s.\n",filename);
 #endif
