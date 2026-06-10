@@ -44,6 +44,44 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
+static void cmeWebServiceSetThreadStatus(struct cmeWebServiceConnectionInfoStruct *con_info, int threadStatus)
+{
+    pthread_mutex_lock(&(con_info->threadStatusMutex));
+    con_info->threadStatus=threadStatus;
+    pthread_cond_broadcast(&(con_info->threadStatusCond));
+    pthread_mutex_unlock(&(con_info->threadStatusMutex));
+}
+
+static int cmeWebServiceGetThreadStatus(struct cmeWebServiceConnectionInfoStruct *con_info)
+{
+    int threadStatus;
+
+    pthread_mutex_lock(&(con_info->threadStatusMutex));
+    threadStatus=con_info->threadStatus;
+    pthread_mutex_unlock(&(con_info->threadStatusMutex));
+    return(threadStatus);
+}
+
+static void cmeWebServiceWaitThreadStatusNot(struct cmeWebServiceConnectionInfoStruct *con_info, int threadStatus)
+{
+    pthread_mutex_lock(&(con_info->threadStatusMutex));
+    while (con_info->threadStatus==threadStatus)
+    {
+        pthread_cond_wait(&(con_info->threadStatusCond),&(con_info->threadStatusMutex));
+    }
+    pthread_mutex_unlock(&(con_info->threadStatusMutex));
+}
+
+static void cmeWebServiceWaitThreadStatus(struct cmeWebServiceConnectionInfoStruct *con_info, int threadStatus)
+{
+    pthread_mutex_lock(&(con_info->threadStatusMutex));
+    while (con_info->threadStatus!=threadStatus)
+    {
+        pthread_cond_wait(&(con_info->threadStatusCond),&(con_info->threadStatusMutex));
+    }
+    pthread_mutex_unlock(&(con_info->threadStatusMutex));
+}
+
 int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection, const char *url,
                                    const char *method, const char *version, const char *upload_data,
                                    size_t *upload_data_size, void **con_cls)
@@ -142,6 +180,25 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         con_info->connectionStartTime=time(NULL);
         con_info->requestDataSize=(long int)*upload_data_size;
         con_info->threadStatus=0;
+        if (pthread_mutex_init(&(con_info->threadStatusMutex),NULL))
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceAnswerConnection(), pthread_mutex_init() failed."
+                    " Method: '%s', url: '%s'!\n",method,url);
+#endif
+            cmeFree(con_info);
+            return MHD_NO;
+        }
+        if (pthread_cond_init(&(con_info->threadStatusCond),NULL))
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceAnswerConnection(), pthread_cond_init() failed."
+                    " Method: '%s', url: '%s'!\n",method,url);
+#endif
+            pthread_mutex_destroy(&(con_info->threadStatusMutex));
+            cmeFree(con_info);
+            return MHD_NO;
+        }
         con_info->answerString=NULL;
         con_info->answerCode=0;
         con_info->filePointer=NULL;
@@ -169,7 +226,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
 #endif
                 //cmeFree(con_info);
                 con_info->connectionType=GET; //Don't reject a POST with parameters in the URI, process as a GET request
-                con_info->threadStatus=2;
+                cmeWebServiceSetThreadStatus(con_info,2);
                 //return MHD_NO;
             }
             else
@@ -188,7 +245,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
                     "Method: %s, url: %s.\n", method, url);
 #endif
             con_info->connectionType=GET;
-            con_info->threadStatus=2;
+            cmeWebServiceSetThreadStatus(con_info,2);
         }
         *con_cls=(void *)con_info;
         return MHD_YES;
@@ -206,20 +263,17 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
             *upload_data_size = 0;
             return MHD_YES;
         }
-        else if (NULL != con_info->answerString) //If no data is available but we have an answer, signal job is done.
-        {
-            con_info->threadStatus=1; //Signal: POST iterator job is done, waiting...
-        }
         if (con_info->filePointer) //We need to close the file before cmeWebServiceRequestCompleted() is called, since cmeWebServiceProcessRequest() will use it.
         {
             fclose (con_info->filePointer);
             con_info->filePointer=NULL;
         }
+        if (*upload_data_size == 0) //No more data is available; signal that POST parsing is done.
+        {
+            cmeWebServiceSetThreadStatus(con_info,1);
+        }
     }
-    do  //Wait until the POST processor has collected all data.
-    {
-        sleep(cmeDefaultThreadWaitSeconds);
-    } while (con_info->threadStatus==0);
+    cmeWebServiceWaitThreadStatusNot(con_info,0); //Wait until the POST processor has collected all data.
     //Allocate space for headers and response headers:
     headerElements=(char **)malloc((sizeof (char *))*cmeWSHTTPMaxHeaders*2); //*2 since headers consist of headerElements PAIRS.
     responseHeaders=(char **)malloc((sizeof (char *))*cmeWSHTTPMaxResponseHeaders*2); //*2 since headers consist of headerElements PAIRS.
@@ -337,7 +391,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         }
         exitcode=MHD_queue_response (connection, responseCode, response);
     }
-    con_info->threadStatus=2; //Now the POST handling routing thread can free memory and finish.
+    cmeWebServiceSetThreadStatus(con_info,2); //Now the POST handling routing thread can free memory and finish.
     result=cmeWebServiceLogConnection (connection,con_info,con_info->connectionStartTime,method,url,con_info->requestDataSize,responseDataSize,
                                        (const char **)headerElements,(const char **)responseHeaders,(const char **)argumentElements,
                                        (const char **)urlElements,numUrlElements);
@@ -7071,14 +7125,8 @@ int cmeWebServicePOSTIteration (void *coninfo_cls, enum MHD_ValueKind kind, cons
             cmeFree(tmpFilename); \
         } while (0); //Local free() macro.
 
-    if (con_info->threadStatus==1) //Job is done, but we need to wait until the request has been fully processed by other parts of the program
+    if (cmeWebServiceGetThreadStatus(con_info)>=1) //Job is done; ignore any later POST iterator callbacks.
     {
-        sleep(cmeDefaultThreadWaitSeconds);
-        return MHD_YES;
-    }
-    else if (con_info->threadStatus==2) //Job is done and request processing is done as well. Finish the routine.
-    {
-        sleep(cmeDefaultThreadWaitSeconds);
         return MHD_YES;
     }
     if (0 != strcmp (key, "file"))
@@ -7206,10 +7254,7 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
     {
         return;
     }
-    do  //Wait until the POST processor has collected all data and the request has been processed.
-    {
-        sleep(cmeDefaultThreadWaitSeconds);
-    } while (con_info->threadStatus!=2);
+    cmeWebServiceWaitThreadStatus(con_info,2); //Wait until the POST processor has collected all data and the request has been processed.
     if (con_info->connectionType == POST)
     {
         if (NULL != con_info->postProcessor)
@@ -7251,6 +7296,8 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
         }
     }
     cmeFree(con_info->answerString);
+    pthread_cond_destroy(&(con_info->threadStatusCond));
+    pthread_mutex_destroy(&(con_info->threadStatusMutex));
     cmeFree(con_info);
     *coninfo_cls = NULL;
 }

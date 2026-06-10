@@ -13,9 +13,10 @@
   - Done: `db.c` memory table insert and secure DB protect/unprotect update loops now use prepared statements.
   - Done: `filehandling.c` CSV and memory-table import insert builders for `meta` and `data` tables now use prepared statements.
 
-- [ ] #3 Replace request spin/yield waits with event-driven synchronization.
+- [x] #3 Replace request spin/yield waits with event-driven synchronization.
   - Current `sleep(cmeDefaultThreadWaitSeconds)` loops can become busy-yield loops when the wait value is zero.
   - Prefer libmicrohttpd request lifecycle handling or `pthread_cond_t` signaling.
+  - Done: POST request status handoff now uses per-connection `pthread_cond_t` signaling instead of `sleep(0)` loops.
 
 - [ ] #4 Narrow the parser script Perl mutex.
   - Keep shared Perl interpreter calls serialized.
