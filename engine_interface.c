@@ -62,6 +62,12 @@ static int cmeIsSafeSQLIdentifier(const char *identifier)
     return(1);
 }
 
+static int cmeIsResourcesDBDocumentLookupColumn (const char *columnName);
+static const char *cmeResourcesDBDocumentLookupColumnForMatch (const char *columnName);
+static int cmeBuildProtectedDBSelectQuery (sqlite3 *pDB, char **query, const char *tableName, const char **columnNames,
+                                           const char **columnValues, const int numColumnValues,
+                                           const char *orgKey);
+
 int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *documentId,
                         const char *orgKey, const char *storagePath)
 {   //IDD v.1.0.21
@@ -86,6 +92,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
     char *currentRawFileContent=NULL;
     char *protectedValueMAC=NULL;
     char *bkpFName=NULL;
+    char *query=NULL;
     char *sqlTableName="data"; //default table name for memory databases
     unsigned char *decodedEncryptedString=NULL;
     sqlite3 **memDBcol=NULL;
@@ -97,6 +104,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
             cmeFree(protectedValueMAC); \
             cmeFree(resultMemTable); \
             cmeFree (bkpFName); \
+            cmeFree(query); \
             cmeFree (decodedEncryptedString); \
             if (memDBcol) \
             { \
@@ -167,7 +175,15 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
         cmeSecureDBToMemDBFree(); //CLEANUP.
         return(1);
     }
-    result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols);
+    result=cmeBuildProtectedDBSelectQuery(pResourcesDB,&query,"documents",
+                                          (const char *[]){cmeIDDResourcesDBDocuments_documentId_name},
+                                          (const char *[]){documentId},1,orgKey);
+    if (result)
+    {
+        cmeSecureDBToMemDBFree(); //CLEANUP.
+        return(2);
+    }
+    result=cmeMemTable(pResourcesDB,query,&queryResult,&numRows,&numCols);
     if(result) // Error
     {
         cmeSecureDBToMemDBFree(); //CLEANUP.
@@ -459,7 +475,16 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
         fprintf(stdout,"CaumeDSE Debug: cmeDeleteSecureDB(), documentId %s already exists; "
                 "proceeding to delete it.\n",documentId);
 #endif
-        result=cmeMemTable(pResourcesDB,"SELECT * FROM documents;",&queryResult,&numRows,&numCols);
+        result=cmeBuildProtectedDBSelectQuery(pResourcesDB,&sqlQuery,"documents",
+                                              (const char *[]){cmeIDDResourcesDBDocuments_documentId_name},
+                                              (const char *[]){documentId},1,orgKey);
+        if (result)
+        {
+            cmeDeleteSecureDBFree();
+            return(1);
+        }
+        result=cmeMemTable(pResourcesDB,sqlQuery,&queryResult,&numRows,&numCols);
+        cmeFree(sqlQuery);
         if(result) // Error
         {
             cmeDeleteSecureDBFree();
@@ -587,6 +612,116 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
     return(0);
 }
 
+static int cmeIsResourcesDBDocumentLookupColumn (const char *columnName)
+{
+    return((!strcmp(columnName,cmeIDDResourcesDBDocuments_documentIdLookup_name)) ||
+           (!strcmp(columnName,cmeIDDResourcesDBDocuments_storageIdLookup_name)) ||
+           (!strcmp(columnName,cmeIDDResourcesDBDocuments_orgResourceIdLookup_name)));
+}
+
+static const char *cmeResourcesDBDocumentLookupColumnForMatch (const char *columnName)
+{
+    if (!strcmp(columnName,cmeIDDResourcesDBDocuments_documentId_name))
+    {
+        return(cmeIDDResourcesDBDocuments_documentIdLookup_name);
+    }
+    if (!strcmp(columnName,cmeIDDResourcesDBDocuments_storageId_name))
+    {
+        return(cmeIDDResourcesDBDocuments_storageIdLookup_name);
+    }
+    if (!strcmp(columnName,cmeIDDResourcesDBDocuments_orgResourceId_name))
+    {
+        return(cmeIDDResourcesDBDocuments_orgResourceIdLookup_name);
+    }
+    return(NULL);
+}
+
+static int cmeProtectedDBTableHasColumn (sqlite3 *pDB, const char *tableName, const char *columnName, int *hasColumn)
+{
+    int cont,result,numRows=0,numColumns=0;
+    char *pragmaQuery=NULL;
+    char **queryResult=NULL;
+    #define cmeProtectedDBTableHasColumnFree() \
+        do { \
+            cmeFree(pragmaQuery); \
+            if (queryResult) \
+            { \
+                cmeMemTableFinal(queryResult); \
+            } \
+        } while (0); //Local free() macro
+
+    *hasColumn=0;
+    cmeStrConstrAppend(&pragmaQuery,"PRAGMA table_info(\"%s\");",tableName);
+    result=cmeMemTable(pDB,pragmaQuery,&queryResult,&numRows,&numColumns);
+    if (result)
+    {
+        cmeProtectedDBTableHasColumnFree();
+        return(1);
+    }
+    for (cont=1;cont<=numRows;cont++)
+    {
+        if (!strcmp(queryResult[(cont*numColumns)+1],columnName))
+        {
+            *hasColumn=1;
+            break;
+        }
+    }
+    cmeProtectedDBTableHasColumnFree();
+    return(0);
+}
+
+static int cmeBuildProtectedDBSelectQuery (sqlite3 *pDB, char **query, const char *tableName, const char **columnNames,
+                                           const char **columnValues, const int numColumnValues,
+                                           const char *orgKey)
+{
+    int cont;
+    int hasLookupColumn=0;
+    int lookupFilterAdded=0;
+    char *lookupValue=NULL;
+    const char *lookupColumnName=NULL;
+    #define cmeBuildProtectedDBSelectQueryFree() \
+        do { \
+            cmeFree(lookupValue); \
+        } while (0); //Local free() macro
+
+    cmeStrConstrAppend(query,"SELECT * FROM %s",tableName);
+    if (strcmp(tableName,"documents"))
+    {
+        cmeStrConstrAppend(query,";");
+        cmeBuildProtectedDBSelectQueryFree();
+        return(0);
+    }
+    for (cont=0;cont<numColumnValues;cont++)
+    {
+        lookupColumnName=cmeResourcesDBDocumentLookupColumnForMatch(columnNames[cont]);
+        if (lookupColumnName)
+        {
+            if (cmeProtectedDBTableHasColumn(pDB,tableName,lookupColumnName,&hasLookupColumn))
+            {
+                cmeBuildProtectedDBSelectQueryFree();
+                return(1);
+            }
+            if (!hasLookupColumn)
+            {
+                continue;
+            }
+            cmeFree(lookupValue);
+            if (cmeGetProtectDBLookupValue(columnNames[cont],columnValues[cont],orgKey,&lookupValue))
+            {
+                cmeBuildProtectedDBSelectQueryFree();
+                return(1);
+            }
+            cmeStrConstrAppend(query,"%s (%s='%s' OR %s IS NULL)",
+                               (lookupFilterAdded)?" AND":" WHERE",
+                               lookupColumnName,lookupValue,lookupColumnName);
+            lookupFilterAdded=1;
+        }
+    }
+    cmeStrConstrAppend(query,";");
+    cmeBuildProtectedDBSelectQueryFree();
+    return(0);
+}
+
 int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char **columnNames,
                                 const char **columnValues,const int numColumnValues, char ***resultRegisterCols,
                                 int *numResultRegisterCols, int *numResultRegisters, const char *orgKey)
@@ -613,8 +748,12 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
     *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
     //cmeMemTable uses sqlite3_prepare_v2 which returns column names for empty tables without PRAGMA.
-    cmeStrConstrAppend(&query,"SELECT * FROM %s;",
-                       tableName);
+    result=cmeBuildProtectedDBSelectQuery(pDB,&query,tableName,columnNames,columnValues,numColumnValues,orgKey);
+    if (result)
+    {
+        cmeGetUnprotectDBRegisterFree();
+        return(1);
+    }
     result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
     if (result) //Error
     {
@@ -642,6 +781,7 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
         {
             cmeFree((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]); //Clear memory space before use.
             if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
+                &&(!cmeIsResourcesDBDocumentLookupColumn(sqlTable[cont2]))
                 &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
             {
                 if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
@@ -678,11 +818,12 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
             else  //We just compare ('salt' and 'id' column names).
             {
                 cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                   "%s",sqlTable[cont*numColumns+cont2]);
+                                   "%s",(sqlTable[cont*numColumns+cont2])?sqlTable[cont*numColumns+cont2]:"");
                 for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
                 {
                     if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) && //Matches column name.
-                        (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                        (strcmp((sqlTable[cont*numColumns+cont2])?sqlTable[cont*numColumns+cont2]:"",
+                                columnValues[cont3])==0))  //And matches value filter.
                     {
                         numMatch++;
                     }
@@ -744,8 +885,12 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
     *numResultRegisters=1; //We will reserve memory for at least one result register.
     //1st Load all encrypted registers in a memTable.
     //cmeMemTable uses sqlite3_prepare_v2 which returns column names for empty tables without PRAGMA.
-    cmeStrConstrAppend(&query,"SELECT * FROM %s;",
-                       tableName);
+    result=cmeBuildProtectedDBSelectQuery(pDB,&query,tableName,columnNames,columnValues,numColumnValues,orgKey);
+    if (result)
+    {
+        cmeDeleteUnprotectDBRegisterFree();
+        return(1);
+    }
     result=cmeMemTable(pDB,(const char *)query,&sqlTable,&numRows,&numColumns);
     cmeFree(query);
     if (result) //Error
@@ -775,6 +920,7 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
         {
             cmeFree((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]); //Clear memory space before use.
             if ((strcmp(sqlTable[cont2],"id")!=0)&&(strcmp(sqlTable[cont2],"salt")!=0)
+                &&(!cmeIsResourcesDBDocumentLookupColumn(sqlTable[cont2]))
                 &&(sqlTable[cont*numColumns+cont2]!=NULL))  //We decrypt and compare, except if column name is 'id' or 'salt'.
             {
                 if (strlen(sqlTable[cont*numColumns+cont2])>(size_t)MACLen) //Good, protected value is longer than MAC value.
@@ -811,11 +957,12 @@ int cmeDeleteUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const ch
             else  //We just compare ('salt' and 'id' column names).
             {
                 cmeStrConstrAppend(&((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]),
-                                   "%s",sqlTable[cont*numColumns+cont2]);
+                                   "%s",(sqlTable[cont*numColumns+cont2])?sqlTable[cont*numColumns+cont2]:"");
                 for (cont3=0;cont3<numColumnValues;cont3++) //Check each relevant column by name.
                 {
                     if ((strcmp(sqlTable[cont2],columnNames[cont3])==0) &&      //Matches column name.
-                        (strcmp(sqlTable[cont*numColumns+cont2],columnValues[cont3])==0))  //And matches value filter.
+                        (strcmp((sqlTable[cont*numColumns+cont2])?sqlTable[cont*numColumns+cont2]:"",
+                                columnValues[cont3])==0))  //And matches value filter.
                     {
                         numMatch++;
                     }
@@ -1349,12 +1496,14 @@ int cmeExistsDocumentId (sqlite3 *pResourcesDB,const char *documentId, const cha
     char **queryResult=NULL;
     char *currentDocumentId=NULL;
     char *protectedValueMAC=NULL;
+    char *query=NULL;
     char **cmeResultMemTableBKP=NULL; //We will hold a copy of cmeResultMemTable (pointer) since we will destroy it with a query. Therefore we don't free it!
     //MEMORY CLEANUP MACRO for local function.
     #define cmeExistsDocumentIdFree() \
         do { \
             cmeFree(currentDocumentId); \
             cmeFree(protectedValueMAC); \
+            cmeFree(query); \
             cmeResultMemTableClean(); \
             if (queryResult) \
             { \
@@ -1378,7 +1527,15 @@ int cmeExistsDocumentId (sqlite3 *pResourcesDB,const char *documentId, const cha
         cmeResultMemTableBKP=cmeResultMemTable;
         cmeResultMemTable=NULL;
     }
-    result=cmeMemTable(pResourcesDB,"SELECT * FROM documents",&queryResult,&numRows,&numCols);
+    result=cmeBuildProtectedDBSelectQuery(pResourcesDB,&query,"documents",
+                                          (const char *[]){cmeIDDResourcesDBDocuments_documentId_name},
+                                          (const char *[]){documentId},1,orgKey);
+    if (result)
+    {
+        cmeExistsDocumentIdFree(); //CLEANUP.
+        return(1);
+    }
+    result=cmeMemTable(pResourcesDB,query,&queryResult,&numRows,&numCols);
     if(result) // Error
     {
         cmeExistsDocumentIdFree(); //CLEANUP.

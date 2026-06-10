@@ -1,3 +1,60 @@
+2026-06-10 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
+
+	* engine_interface.c, webservice_interface.c: Mitigate SQL
+	injection risk in protected insert paths by replacing generated SQL
+	value lists with sqlite3 prepared statements and bound parameters
+	for protected register writes and multipart POST parameter handling.
+
+	* filehandling.c: Replace generated file-import INSERT statements
+	with reusable sqlite3 prepared statements for secure CSV and memory
+	table imports, preserving existing protection behavior while
+	removing ad hoc value interpolation.
+
+	* webservice_interface.h, webservice_interface.c: Replace POST
+	processing spin waits with condition-variable signaling.  Track POST
+	terminal states explicitly so worker threads can sleep until upload
+	processing, abort, or response readiness changes.
+
+	* webservice_interface.c: Signal terminal POST status on abort paths
+	so waiting request handlers do not remain blocked after parser or
+	connection failures.
+
+	* db.h, db.c, engine_admin.c, engine_interface.c, filehandling.c,
+	function_tests.c: Avoid repeated database PRAGMA setup on already
+	open sqlite3 handles by centralizing post-open tuning in
+	cmeDBApplyPragmas().
+
+	* db.c (cmeMemSecureDBReintegrate): Batch duplicate-column
+	reintegration with a prepared INSERT inside one in-memory
+	transaction instead of rebuilding SQL per row.
+
+	* common.h: Add ResourcesDB document lookup column identifiers and a
+	fixed lookup salt for deterministic protected lookup generation.
+
+	* db.h, db.c (cmeGetProtectDBLookupValue,
+	cmeEnsureResourcesDBDocumentLookups): Add field-separated keyed HMAC
+	lookup values for documentId, storageId and orgResourceId, plus
+	migration support for nullable lookup columns and indexes on
+	existing ResourcesDB documents tables.
+
+	* engine_admin.c: Create and populate documentIdLookup,
+	storageIdLookup and orgResourceIdLookup columns when registering
+	secure documents, and include those appended columns when saving the
+	shuffled ResourcesDB document index.
+
+	* engine_interface.c: Use protected lookup columns to narrow
+	exact-match ResourcesDB document queries and deletes for documentId,
+	storageId and orgResourceId when the columns are present, while
+	still decrypting and verifying protected values and retaining
+	fallback support for legacy rows with NULL lookup values.
+
+	* README: Document protected lookup indexes, their scope, fallback
+	behavior, and the fact that lookup filtering does not replace
+	encrypted/MAC-protected value verification.
+
+	* TODO.md: Mark the safer default lookup item complete and record
+	the duplicate-column reintegration prepared-statement batch.
+
 2026-06-07 Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
 	* common.h: Increase default POST processing and response callback

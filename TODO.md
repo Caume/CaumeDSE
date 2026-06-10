@@ -2,10 +2,11 @@
 
 ## Speed Optimizations That Preserve Security and Integrity
 
-- [ ] #1 Add deterministic protected lookup columns for searchable encrypted fields.
+- [x] #1 Add deterministic protected lookup columns for searchable encrypted fields.
   - Target fields include `documentId`, `orgResourceId`, `storageId`, `type`, and user/organization identifiers used in filters.
   - Use a keyed blind index such as `HMAC(searchKey, fieldName || "\0" || plaintext)` and add SQLite indexes over those lookup columns.
   - Keep encrypted values, salts, and MAC verification unchanged.
+  - Done: safer default lookup columns are applied only to `documentId`, `orgResourceId`, and `storageId` in ResourcesDB documents.
 
 - [x] #2 Replace generated hot-loop INSERT/UPDATE SQL strings with prepared statements.
   - Use `sqlite3_prepare_v2`, `sqlite3_bind_*`, `sqlite3_step`, and `sqlite3_reset` in bulk insert/update loops.
@@ -38,6 +39,7 @@
 - [ ] #8 Batch only in-memory transformations before immediate durable saves.
   - Combine related temporary memory DB updates with prepared statements or a transaction.
   - Do not defer protected file/resources DB writes after a logical change.
+  - Done: duplicate-column reintegration now copies rows with a prepared statement inside one in-memory transaction.
 
 - [x] #9 Add an independent component verification script for DEBUG builds.
   - Create a script such as `TEST/run_debug_components.sh` that configures a DEBUG/TESTDATABASE install under `/tmp`, builds, installs, runs the engine non-interactively, and writes one log per component.

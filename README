@@ -269,6 +269,20 @@ The architecture of CaumeDSE is composed of several layers:
 	   Scripts should therefore access columns by name and not by their
 	   position).
 
+	   ResourcesDB document indexes also keep deterministic protected
+	   lookup values for documentId, storageId and orgResourceId.  These
+	   lookup values are keyed HMACs with field-specific domain
+	   separation, and are used only to narrow exact-match searches on
+	   these high-cardinality identifiers.  They do not replace the
+	   encrypted and MAC-protected register values: matching registers
+	   are still decrypted and verified before being returned or
+	   deleted.  Lookup values are intentionally not generated for
+	   low-cardinality or arbitrary document attributes, preserving the
+	   protection provided by encrypted values and column shuffling.
+	   Older databases are migrated with nullable lookup columns, and
+	   registers without lookup values remain readable through the
+	   normal protected-value verification path.
+
 	6. Resource processing - All data processing including encryption
 	   and decryption takes place in memory (with a few exceptions, such
 	   as file uploads that are stored in a specific directory before
@@ -493,7 +507,9 @@ orgResourceId
 	Stores the identifier of an {organization} resource. For
 	transactions, if the user was correctly authenticated, then this
 	value will be protected (indicated by the 'authenticated'
-	parameter).
+	parameter).  For ResourcesDB document registers, exact-match
+	queries may use the protected orgResourceIdLookup index as a
+	candidate filter before normal protected-value verification.
 
 basicAuthPwdHash
 	Resources/ResourceTypes: users, {user}
@@ -539,6 +555,9 @@ documentId
 	taken from the URI.
 
 	Stores the identifier of a {document} resource.
+	For ResourcesDB document registers, exact-match queries may use the
+	protected documentIdLookup index as a candidate filter before normal
+	protected-value verification.
 
 storageId
 	Resources/ResourceTypes: storage
@@ -547,6 +566,9 @@ storageId
 	taken from the URI.
 
 	Stores the identifier of a {storage} resource.
+	For ResourcesDB document registers, exact-match queries may use the
+	protected storageIdLookup index as a candidate filter before normal
+	protected-value verification.
 
 partHash
 	Resources/ResourceTypes: documents, {document}
@@ -1295,6 +1317,12 @@ documents
 			Engine-results: <number of matching registers>
 		RESPONSE BODY:
 			<Attribute table for matching resources>
+
+	Exact-match filters for _documentId, _storageId and _orgResourceId
+	may use protected lookup indexes when available.  These indexes only
+	narrow the candidate set; CaumeDSE still decrypts and verifies the
+	protected document attributes before returning, updating or deleting
+	registers.  Legacy registers without lookup values remain supported.
 
 	Example 1) 	List attribute table for all document resources of
 			type file.raw

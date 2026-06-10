@@ -88,6 +88,16 @@ int cmeSetupEngineAdminDBs ()
         fprintf(stdout,"CaumeDSE Debug: cmeSetupEngineAdminDBs(), DB file %s already exists;"
                 " skipping.\n",currentDBName);
 #endif
+        result=cmeEnsureResourcesDBDocumentLookups(currentDB);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), cmeEnsureResourcesDBDocumentLookups() failed "
+                    "with Engine Admin. DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(1);
+        }
         cmeSetupEngineAdminDBsFree();
     }
     else
@@ -106,8 +116,12 @@ int cmeSetupEngineAdminDBs ()
                                     "CREATE TABLE documents (id INTEGER PRIMARY KEY,"
                                     " userId TEXT, orgId TEXT, salt TEXT, resourceInfo TEXT,"
                                     " columnFile TEXT, type TEXT, documentId TEXT, storageId TEXT, orgResourceId TEXT,"
-                                    " partMAC TEXT, totalParts TEXT, partId TEXT, lastModified TEXT, columnId TEXT); "
+                                    " partMAC TEXT, totalParts TEXT, partId TEXT, lastModified TEXT, columnId TEXT,"
+                                    " documentIdLookup TEXT, storageIdLookup TEXT, orgResourceIdLookup TEXT); "
                                     "CREATE INDEX idx_doc_uo ON documents(userId,orgId); "
+                                    "CREATE INDEX idx_doc_documentIdLookup ON documents(documentIdLookup); "
+                                    "CREATE INDEX idx_doc_storageIdLookup ON documents(storageIdLookup); "
+                                    "CREATE INDEX idx_doc_orgResourceIdLookup ON documents(orgResourceIdLookup); "
                                     "CREATE TABLE users (id INTEGER PRIMARY KEY,"
                                     " userId TEXT, orgId TEXT, salt TEXT, resourceInfo TEXT,"
                                     " certificate TEXT, publicKey TEXT, userResourceId TEXT, basicAuthPwdHash TEXT,"
@@ -422,7 +436,7 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     int numRows=0;
     int numColumns=0;
     time_t timeStamp=0;
-    const int numDocumentDBCols=cmeIDDResourcesDBDocumentsNumCols-2;          //Number of columns to handle in the documents DB table, except ID and salt;
+    const int numDocumentDBProtectedCols=cmeIDDResourcesDBDocuments_columnId-1; //Protected document columns handled here, except ID and salt.
     const char dbFName[]="ResourcesDB";
     sqlite3 *currentDB=NULL;
     sqlite3 *saveDB=NULL;
@@ -434,6 +448,9 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     char *totalParts=NULL;          //Will contain the text equivalent total parts per column of each column file
     char *lastModified=NULL;        //Will contain the text equivalent of current date (timestamp)
     char *columnId=NULL;            //Will contain the text equivalent of the column number, so that each part can be reassembled within the corresponding column.
+    char *documentIdLookup=NULL;
+    char *storageIdLookup=NULL;
+    char *orgResourceIdLookup=NULL;
     char **sqlTable=NULL;
     unsigned char **currentMACProtectedSaltedData=NULL;
     unsigned char *hexStrSalt=NULL;
@@ -445,12 +462,15 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
             cmeFree(totalParts); \
             cmeFree(lastModified); \
             cmeFree(columnId); \
+            cmeFree(documentIdLookup); \
+            cmeFree(storageIdLookup); \
+            cmeFree(orgResourceIdLookup); \
             cmeFree(hexStrSalt); \
             cmeFree(currentProtectedData); \
             cmeFree(currentDataMAC); \
             if (currentMACProtectedSaltedData) \
             { \
-                for (cont=0;cont<numDocumentDBCols;cont++) \
+                for (cont=0;cont<numDocumentDBProtectedCols;cont++) \
                 { \
                     cmeFree(currentMACProtectedSaltedData[cont]); \
                 } \
@@ -472,8 +492,8 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
             } \
         } //Local free() macro
 
-    currentMACProtectedSaltedData=(unsigned char **)malloc((sizeof(unsigned char *))*numDocumentDBCols);
-    for (cont=0;cont<numDocumentDBCols;cont++) //Initialize pointers.
+    currentMACProtectedSaltedData=(unsigned char **)malloc((sizeof(unsigned char *))*numDocumentDBProtectedCols);
+    for (cont=0;cont<numDocumentDBProtectedCols;cont++) //Initialize pointers.
     {
         currentMACProtectedSaltedData[cont]=NULL;
     }
@@ -488,7 +508,17 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
         cmeRegisterSecureDBFree();
         return(1);
     }
-    else  //Register rows
+    result=cmeEnsureResourcesDBDocumentLookups(currentDB);
+    if (result)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeEnsureResourcesDBDocumentLookups() failed "
+                "with Engine Admin. DB file: %s!\n",currentDBName);
+#endif
+        cmeRegisterSecureDBFree();
+        return(1);
+    }
+    //Register rows
     {
         cmeStrConstrAppend(&totalParts,"%d",numSQLDBparts); //Set text variable with total number of parts (i.e. column fragments)
         timeStamp=time(NULL);
@@ -587,17 +617,33 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
             cmeStrConstrAppend((char **)&currentMACProtectedSaltedData[12],"%s%s",currentDataMAC,currentProtectedData);
             cmeFree(currentDataMAC);
             cmeFree(currentProtectedData);
+            cmeFree(documentIdLookup);
+            cmeFree(storageIdLookup);
+            cmeFree(orgResourceIdLookup);
+            if (cmeGetProtectDBLookupValue(cmeIDDResourcesDBDocuments_documentId_name,documentId,orgKey,&documentIdLookup) ||
+                cmeGetProtectDBLookupValue(cmeIDDResourcesDBDocuments_storageId_name,storageId,orgKey,&storageIdLookup) ||
+                cmeGetProtectDBLookupValue(cmeIDDResourcesDBDocuments_orgResourceId_name,orgResourceId,orgKey,&orgResourceIdLookup))
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeRegisterSecureDB(), cmeGetProtectDBLookupValue() Error, can't "
+                        "compute document lookup values!\n");
+#endif
+                cmeRegisterSecureDBFree();
+                return(2);
+            }
             // Insert row in database:
             cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; " //Parameters sanitized by protection (Encryption+B64 conversion).
                                 "INSERT INTO documents (id, userId, orgId, salt, resourceInfo,"
                                 " columnFile, type, documentId, storageId, orgResourceId, partMAC,"
-                                " totalParts, partId, lastModified, columnId)"
-                                "VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
+                                " totalParts, partId, lastModified, columnId,"
+                                " documentIdLookup, storageIdLookup, orgResourceIdLookup)"
+                                "VALUES (NULL,'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s');"
                                 "COMMIT;",currentMACProtectedSaltedData[0],currentMACProtectedSaltedData[1],hexStrSalt,
                                 currentMACProtectedSaltedData[2],currentMACProtectedSaltedData[10],currentMACProtectedSaltedData[3],
                                 currentMACProtectedSaltedData[4],currentMACProtectedSaltedData[5],currentMACProtectedSaltedData[6],
                                 currentMACProtectedSaltedData[11],currentMACProtectedSaltedData[9],currentMACProtectedSaltedData[12],
-                                currentMACProtectedSaltedData[7],currentMACProtectedSaltedData[8]);
+                                currentMACProtectedSaltedData[7],currentMACProtectedSaltedData[8],
+                                documentIdLookup,storageIdLookup,orgResourceIdLookup);
             if (cmeSQLRows(currentDB,sqlQuery,NULL,NULL)) //insert row.
             {
 #ifdef ERROR_LOG
@@ -608,7 +654,7 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
                 return(2);
             }
             cmeFree(sqlQuery);
-            for (cont2=0;cont2<numDocumentDBCols;cont2++) //Clear protected values placeholders for next iteration.
+            for (cont2=0;cont2<numDocumentDBProtectedCols;cont2++) //Clear protected values placeholders for next iteration.
             {
                 cmeFree(currentMACProtectedSaltedData[cont2]);
             }
@@ -628,7 +674,8 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     //Process (copy+shuffle) table documents:
     result=cmeMemTable(currentDB, //cmeMemTable uses sqlite3_prepare_v2 which returns column names even for empty tables.
                        "SELECT userId, orgId, salt, resourceInfo, columnFile, type, documentId, storageId,"
-                       " orgResourceId, partMAC, totalParts, partId, lastModified, columnId FROM documents;",
+                       " orgResourceId, partMAC, totalParts, partId, lastModified, columnId,"
+                       " documentIdLookup, storageIdLookup, orgResourceIdLookup FROM documents;",
                        &sqlTable,&numRows,&numColumns); //We need to skip id, as it will be inserted by cmeMemTableToMemDB()
     if (result) //Error
     {

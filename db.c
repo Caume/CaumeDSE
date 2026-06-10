@@ -2512,6 +2512,131 @@ int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const c
     return (0);
 }
 
+int cmeGetProtectDBLookupValue (const char *columnName, const char *value, const char *orgKey,
+                                char **lookupValue)
+{
+    int result,written=0;
+    char *lookupInput=NULL;
+    char *lookupSalt=NULL;
+    #define cmeGetProtectDBLookupValueFree() \
+        do { \
+            cmeFree(lookupInput); \
+            cmeFree(lookupSalt); \
+        } while (0); //Local free() macro
+
+    *lookupValue=NULL;
+    if ((!columnName)||(!value)||(!orgKey))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeGetProtectDBLookupValue(), Error, NULL parameter.\n");
+#endif
+        cmeGetProtectDBLookupValueFree();
+        return(1);
+    }
+    cmeStrConstrAppend(&lookupInput,"CaumeDSE:protectedLookup:v1:%s:%lu:%s",
+                       columnName,(unsigned long)strlen(value),value);
+    cmeStrConstrAppend(&lookupSalt,"%s",cmeDefaultLookupSalt);
+    result=cmeHMACByteString((const unsigned char *)lookupInput,(unsigned char **)lookupValue,strlen(lookupInput),
+                             &written,cmeDefaultMACAlg,&lookupSalt,orgKey);
+    if (result)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeGetProtectDBLookupValue(), cmeHMACByteString() Error, can't "
+                "compute lookup value for column '%s'!\n",columnName);
+#endif
+        cmeGetProtectDBLookupValueFree();
+        return(2);
+    }
+    cmeGetProtectDBLookupValueFree();
+    return(0);
+}
+
+static int cmeDBTableHasColumn (sqlite3 *pDB, const char *tableName, const char *columnName, int *hasColumn)
+{
+    int cont,result,numRows=0,numColumns=0;
+    char *query=NULL;
+    char **queryResult=NULL;
+    #define cmeDBTableHasColumnFree() \
+        do { \
+            cmeFree(query); \
+            if (queryResult) \
+            { \
+                cmeMemTableFinal(queryResult); \
+            } \
+        } while (0); //Local free() macro
+
+    *hasColumn=0;
+    cmeStrConstrAppend(&query,"PRAGMA table_info(\"%s\");",tableName);
+    result=cmeMemTable(pDB,query,&queryResult,&numRows,&numColumns);
+    if (result)
+    {
+        cmeDBTableHasColumnFree();
+        return(1);
+    }
+    for (cont=1;cont<=numRows;cont++)
+    {
+        if (!strcmp(queryResult[(cont*numColumns)+1],columnName))
+        {
+            *hasColumn=1;
+            break;
+        }
+    }
+    cmeDBTableHasColumnFree();
+    return(0);
+}
+
+int cmeEnsureResourcesDBDocumentLookups (sqlite3 *pDB)
+{
+    int cont,result,hasColumn=0;
+    const char *lookupColumns[3]={
+        cmeIDDResourcesDBDocuments_documentIdLookup_name,
+        cmeIDDResourcesDBDocuments_storageIdLookup_name,
+        cmeIDDResourcesDBDocuments_orgResourceIdLookup_name
+    };
+    const char *lookupIndexes[3]={
+        "idx_doc_documentIdLookup",
+        "idx_doc_storageIdLookup",
+        "idx_doc_orgResourceIdLookup"
+    };
+    char *query=NULL;
+    #define cmeEnsureResourcesDBDocumentLookupsFree() \
+        do { \
+            cmeFree(query); \
+        } while (0); //Local free() macro
+
+    for (cont=0;cont<3;cont++)
+    {
+        result=cmeDBTableHasColumn(pDB,"documents",lookupColumns[cont],&hasColumn);
+        if (result)
+        {
+            cmeEnsureResourcesDBDocumentLookupsFree();
+            return(1);
+        }
+        if (!hasColumn)
+        {
+            cmeStrConstrAppend(&query,"ALTER TABLE documents ADD COLUMN %s TEXT;",lookupColumns[cont]);
+            result=cmeSQLRows(pDB,query,NULL,NULL);
+            cmeFree(query);
+            if (result)
+            {
+                cmeEnsureResourcesDBDocumentLookupsFree();
+                return(2);
+            }
+        }
+        cmeStrConstrAppend(&query,"CREATE INDEX IF NOT EXISTS %s ON documents(%s);",
+                           lookupIndexes[cont],lookupColumns[cont]);
+        result=cmeSQLRows(pDB,query,NULL,NULL);
+        cmeFree(query);
+        if (result)
+        {
+            cmeEnsureResourcesDBDocumentLookupsFree();
+            return(3);
+        }
+    }
+    cmeEnsureResourcesDBDocumentLookupsFree();
+    return(0);
+}
+
 int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                                const int dbNumCols, int *dbNumReintegratedCols)
 {
@@ -2531,12 +2656,16 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
     char *currentMetaSalt=NULL;
     char *currentMetaUserId=NULL;
     char *currentMetaOrgId=NULL;
-    char *sqlQuery=NULL;
-    char *sanitizedStr=NULL;
+    sqlite3_stmt *insertReintegratedDataStmt=NULL;
     sqlite3 *tmpPtr=NULL;       //Just a tmp pointer; no need for cmeFree().
     //MEMORY CLEANUP MACRO for local function.
     #define cmeMemSecureDBReintegrateFree() \
         do { \
+            if (insertReintegratedDataStmt) \
+            { \
+                sqlite3_finalize(insertReintegratedDataStmt); \
+                insertReintegratedDataStmt=NULL; \
+            } \
             cmeFree(numRowsData); \
             cmeFree(currentEncData); \
             cmeFree(currentEncB64Data); \
@@ -2546,8 +2675,6 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
             cmeFree(currentMetaSalt); \
             cmeFree(currentMetaUserId); \
             cmeFree(currentMetaOrgId); \
-            cmeFree(sqlQuery); \
-            cmeFree(sanitizedStr); \
             if (memColumnName) \
             { \
                 for (cont=0;cont<dbNumCols;cont++) \
@@ -2670,63 +2797,87 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                     {
                         if (!strcmp(memColumnName[cont3],memColumnName[cont])) //We have a duplicate!, insert data rows into first duplicate column and clear this column name.
                         {
+                            result=sqlite3_prepare_v2(memSecureDB[cont3],
+                                                      "INSERT INTO data "
+                                                      "(id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey) "
+                                                      "VALUES (NULL,?,?,?,?,?,?,?,?,?,?);",
+                                                      -1,&insertReintegratedDataStmt,NULL);
+                            if (result!=SQLITE_OK)
+                            {
+#ifdef ERROR_LOG
+                                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), sqlite3_prepare_v2() Error, can't "
+                                        "prepare reintegrated data insert in secured DB data table!\n");
+#endif
+                                cmeMemSecureDBReintegrateFree();
+                                return(5);
+                            }
+                            if (cmeSQLRows(memSecureDB[cont3],"BEGIN TRANSACTION;",NULL,NULL))
+                            {
+#ifdef ERROR_LOG
+                                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeSQLRows() Error, can't "
+                                        "begin reintegrated data transaction in secured DB data table!\n");
+#endif
+                                cmeMemSecureDBReintegrateFree();
+                                return(5);
+                            }
                             for (cont4=1;cont4<=numRowsData[cont];cont4++) //Insert rows, skipping column names
                             {
-                                cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION;"
-                                                   " INSERT INTO data (id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey)"
-                                                   " VALUES (NULL"); //First part of query.
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_userId],
-                                                     &sanitizedStr);   //Sanitize parameter userId for use in SQL statement.
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_orgId],
-                                                     &sanitizedStr);   //Sanitize parameter orgId for use in SQL statement.
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_salt],
-                                                     &sanitizedStr);   //Sanitize parameter salt for use in SQL statement.
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_value],
-                                                     &sanitizedStr);   //Sanitize parameter value for use in SQL statement.
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_rowOrder],
-                                                     &sanitizedStr);   //Sanitize parameter rowOrder for use in SQL statement.
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MAC],
-                                                     &sanitizedStr);   //Sanitize parameter MAC for use in SQL statement.
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_sign],
-                                                     &sanitizedStr);   //Sanitize parameter sign for use in SQL statement
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MACProtected],
-                                                     &sanitizedStr);   //Sanitize parameter MACProtected for use in SQL statement
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_signProtected],
-                                                     &sanitizedStr);   //Sanitize parameter signProtected for use in SQL statement
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeFree(sanitizedStr);
-                                cmeSanitizeStrForSQL(memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_otphDKey],
-                                                     &sanitizedStr);   //Sanitize parameter otphDkey for use in SQL statement
-                                cmeStrConstrAppend(&sqlQuery,",'%s'",sanitizedStr);
-                                cmeStrConstrAppend(&sqlQuery,"); COMMIT;"); //Last part of query.
-                                if (cmeSQLRows(memSecureDB[cont3],sqlQuery,NULL,NULL)) //insert row.
+                                result=sqlite3_bind_text(insertReintegratedDataStmt,1,
+                                                         memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_userId],
+                                                         -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_bind_text(insertReintegratedDataStmt,2,
+                                                                                memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_orgId],
+                                                                                -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_bind_text(insertReintegratedDataStmt,3,
+                                                                                memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDanydb_salt],
+                                                                                -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_bind_text(insertReintegratedDataStmt,4,
+                                                                                memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_value],
+                                                                                -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_bind_text(insertReintegratedDataStmt,5,
+                                                                                memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_rowOrder],
+                                                                                -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_bind_text(insertReintegratedDataStmt,6,
+                                                                                memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MAC],
+                                                                                -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_bind_text(insertReintegratedDataStmt,7,
+                                                                                memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_sign],
+                                                                                -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_bind_text(insertReintegratedDataStmt,8,
+                                                                                memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_MACProtected],
+                                                                                -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_bind_text(insertReintegratedDataStmt,9,
+                                                                                memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_signProtected],
+                                                                                -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_bind_text(insertReintegratedDataStmt,10,
+                                                                                memData[cont][cmeIDDColumnFileDataNumCols*cont4+cmeIDDColumnFileData_otphDKey],
+                                                                                -1,SQLITE_TRANSIENT);
+                                if (result==SQLITE_OK) result=sqlite3_step(insertReintegratedDataStmt);
+                                if (result!=SQLITE_DONE)
                                 {
 #ifdef ERROR_LOG
-                                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeSQLRows() Error, can't "
+                                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), sqlite3_step() Error, can't "
                                             "insert row in secured DB data table!\n");
 #endif
-                                    cmeFree(sqlQuery);
+                                    cmeSQLRows(memSecureDB[cont3],"ROLLBACK;",NULL,NULL);
+                                    cmeMemSecureDBReintegrateFree();
                                     return(5);
                                 }
-                                cmeFree(sqlQuery);
+                                sqlite3_reset(insertReintegratedDataStmt);
+                                sqlite3_clear_bindings(insertReintegratedDataStmt);
                             }
+                            if (cmeSQLRows(memSecureDB[cont3],"COMMIT;",NULL,NULL))
+                            {
+#ifdef ERROR_LOG
+                                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBReintegrate(), cmeSQLRows() Error, can't "
+                                        "commit reintegrated data transaction in secured DB data table!\n");
+#endif
+                                cmeSQLRows(memSecureDB[cont3],"ROLLBACK;",NULL,NULL);
+                                cmeMemSecureDBReintegrateFree();
+                                return(5);
+                            }
+                            sqlite3_finalize(insertReintegratedDataStmt);
+                            insertReintegratedDataStmt=NULL;
                             (*dbNumReintegratedCols)--;
                             cmeFree(memColumnName[cont]); //clear current column name, since it was a duplicate (we copy all rows to the first col. name duplicate only)
                             //cmeStrConstrAppend(&(memColumnName[cont]),"*%d",cont); //Mark current column name, since it was a duplicate (we copy all rows to the first col. name duplicate only)

@@ -91,6 +91,11 @@ int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const cha
 // Function to unprotect+unsalt (decodify B64, unencrypt and remove salt from value) a salt+protected text string.
 int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const char *encAlg, char **salt,
                                const char *orgKey, int *valueLen);
+// Function to compute deterministic keyed lookup values for selected protected exact-match columns.
+int cmeGetProtectDBLookupValue (const char *columnName, const char *value, const char *orgKey,
+                                char **lookupValue);
+// Function to ensure optional ResourcesDB document lookup columns and indexes exist.
+int cmeEnsureResourcesDBDocumentLookups (sqlite3 *pDB);
 // Function to reintegrate (before unprotecting) sliced DB columns of secure DB column files in memory.
 int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                                const int dbNumCols, int *dbNumReintegratedCols);
