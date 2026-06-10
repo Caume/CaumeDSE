@@ -82,6 +82,16 @@ static void cmeWebServiceWaitThreadStatus(struct cmeWebServiceConnectionInfoStru
     pthread_mutex_unlock(&(con_info->threadStatusMutex));
 }
 
+static void cmeWebServiceAbortPOST(struct cmeWebServiceConnectionInfoStruct *con_info)
+{
+    if (con_info->filePointer)
+    {
+        fclose(con_info->filePointer);
+        con_info->filePointer=NULL;
+    }
+    cmeWebServiceSetThreadStatus(con_info,2);
+}
+
 int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection, const char *url,
                                    const char *method, const char *version, const char *upload_data,
                                    size_t *upload_data_size, void **con_cls)
@@ -259,7 +269,12 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     {
         if (*upload_data_size != 0) //If data is available, retrieve it and exit function for another iteration.
         {
-            MHD_post_process (con_info->postProcessor, upload_data,*upload_data_size);
+            if (MHD_NO == MHD_post_process (con_info->postProcessor, upload_data,*upload_data_size))
+            {
+                *upload_data_size = 0;
+                cmeWebServiceAbortPOST(con_info);
+                return MHD_NO;
+            }
             *upload_data_size = 0;
             return MHD_YES;
         }
@@ -7185,6 +7200,7 @@ int cmeWebServicePOSTIteration (void *coninfo_cls, enum MHD_ValueKind kind, cons
             cmeStrConstrAppend(&(con_info->answerString),"<b>403 ERROR Forbidden request.</b><br><br>"
                                "Physical temporary file already exists.<br>METHOD: 'POST' - message chunk iteration<br>");
             con_info->answerCode = MHD_HTTP_FORBIDDEN;
+            cmeWebServiceAbortPOST(con_info);
             cmeWebServicePOSTIterationFree();
             return MHD_NO;
         }
@@ -7199,6 +7215,7 @@ int cmeWebServicePOSTIteration (void *coninfo_cls, enum MHD_ValueKind kind, cons
             cmeStrConstrAppend(&(con_info->answerString),"<b>500 ERROR Internal server error.</b><br><br>"
                                "Can't create local copy of file.<br>METHOD: 'POST' - message chunk iteration<br>");
             con_info->answerCode = MHD_HTTP_INTERNAL_SERVER_ERROR;
+            cmeWebServiceAbortPOST(con_info);
             cmeWebServicePOSTIterationFree();
             return MHD_NO;
         }
@@ -7225,6 +7242,7 @@ int cmeWebServicePOSTIteration (void *coninfo_cls, enum MHD_ValueKind kind, cons
             cmeStrConstrAppend(&(con_info->answerString),"<b>500 ERROR Internal server error.</b><br><br>"
                                "Can't append data to local file.<br>METHOD: 'POST' - message chunk iteration<br>");
             con_info->answerCode = MHD_HTTP_INTERNAL_SERVER_ERROR;
+            cmeWebServiceAbortPOST(con_info);
             cmeWebServicePOSTIterationFree();
             return MHD_NO;
         }
