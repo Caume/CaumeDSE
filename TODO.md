@@ -7,11 +7,11 @@
   - Use a keyed blind index such as `HMAC(searchKey, fieldName || "\0" || plaintext)` and add SQLite indexes over those lookup columns.
   - Keep encrypted values, salts, and MAC verification unchanged.
 
-- [ ] #2 Replace generated hot-loop INSERT/UPDATE SQL strings with prepared statements.
+- [x] #2 Replace generated hot-loop INSERT/UPDATE SQL strings with prepared statements.
   - Use `sqlite3_prepare_v2`, `sqlite3_bind_*`, `sqlite3_step`, and `sqlite3_reset` in bulk insert/update loops.
   - Preserve existing transaction boundaries where immediate consistency requires them.
   - Done: `db.c` memory table insert and secure DB protect/unprotect update loops now use prepared statements.
-  - Remaining: `filehandling.c` import/export insert builders for `meta` and `data` tables.
+  - Done: `filehandling.c` CSV and memory-table import insert builders for `meta` and `data` tables now use prepared statements.
 
 - [ ] #3 Replace request spin/yield waits with event-driven synchronization.
   - Current `sleep(cmeDefaultThreadWaitSeconds)` loops can become busy-yield loops when the wait value is zero.
