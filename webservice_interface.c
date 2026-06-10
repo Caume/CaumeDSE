@@ -11816,11 +11816,10 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
 {   //IDD version 1.0.21
     int cont,result,protectedValueLen,protectedValueMACLen;
     int authenticationFlag=0;
-    char *sqlStatement=NULL;
     char *protectedValue=NULL;
     char *protectedValueMAC=NULL;
     char *salt=NULL;
-    char *sanitizedStr=NULL;
+    char *boundValue=NULL;
     const int numColumns=cmeIDDLogsDBTransactionsNumCols-2;       //Constant: number of columns in table, ignoring id & salt
     const char *tableName="transactions";
     const char *columnNames[14]={"userId","orgId","requestMethod","requestUrl","requestHeaders","startTimestamp","endTimestamp","requestDataSize",
@@ -11829,15 +11828,20 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
     sqlite3 *pDB=NULL;
     char *dbFilePath=NULL;
     char *sqlCreate=NULL;
+    sqlite3_stmt *insertStmt=NULL;
     #define cmeWebServiceLogRequestFree() \
         do { \
-            cmeFree(sqlStatement); \
             cmeFree(protectedValue); \
             cmeFree(protectedValueMAC); \
             cmeFree(salt); \
-            cmeFree(sanitizedStr); \
+            cmeFree(boundValue); \
             cmeFree(dbFilePath); \
             cmeFree(sqlCreate); \
+            if (insertStmt) \
+            { \
+                sqlite3_finalize(insertStmt); \
+                insertStmt=NULL; \
+            } \
             if (pDB) \
             { \
                 cmeDBClose(pDB); \
@@ -11845,6 +11849,7 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
             } \
             for (cont=0;cont<numColumns;cont++) \
             { \
+                cmeFree(columnValues[cont]); \
                 columnValues[cont]=NULL; \
             } \
         } while (0); //Local free() macro.
@@ -11917,8 +11922,6 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
     {
         cmeStrConstrAppend(&salt,"");
     }
-    //Add connection log to LogsDB:
-    cmeStrConstrAppend (&sqlStatement,"BEGIN TRANSACTION; INSERT INTO \"%s\" (id,",tableName); //First part. id goes by default.
     for (cont=0; cont<numColumns; cont++)
     {
         if (!columnNames[cont]) //Error, colName is NULL!
@@ -11930,47 +11933,96 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
             cmeWebServiceLogRequestFree();
             return(1);
         }
-        cmeStrConstrAppend(&sqlStatement,"%s",columnNames[cont]); //add column.
-        if ((cont+1)<numColumns)  //Still one left...
-        {
-            cmeStrConstrAppend(&sqlStatement,","); //add comma.
-        }
     }
-    cmeStrConstrAppend (&sqlStatement,",salt) VALUES (NULL,"); //Second part. id=NULL goes by default.
+    result=sqlite3_prepare_v2(pDB,
+                              "INSERT INTO transactions "
+                              "(id,userId,orgId,requestMethod,requestUrl,requestHeaders,startTimestamp,endTimestamp,"
+                              "requestDataSize,responseDataSize,orgResourceId,requestIPAddress,responseCode,responseHeaders,"
+                              "authenticated,salt) VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);",
+                              -1,&insertStmt,NULL);
+    if (result!=SQLITE_OK)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), sqlite3_prepare_v2() Error, can't "
+                "prepare insert in table: %s: %s!\n",tableName,sqlite3_errmsg(pDB));
+#endif
+        cmeWebServiceLogRequestFree();
+        return(2);
+    }
+    if (cmeSQLRows(pDB,"BEGIN TRANSACTION;",NULL,NULL))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), cmeSQLRows() Error, can't "
+                "begin transaction for table: %s!\n",tableName);
+#endif
+        cmeWebServiceLogRequestFree();
+        return(3);
+    }
     for (cont=0; cont<numColumns; cont++)
     {
         if ((strcmp(columnNames[cont],"salt")!=0)&&(columnValues[cont]!=NULL)) //Skip salt, we will add it at the end.
         {
             if((!strcmp(columnNames[cont],"authenticated"))||(authenticationFlag==0)) //We don't encrypt the authentication flag, or any field if the authentication flag is 0.
             {
-                cmeFree(sanitizedStr);
-                cmeSanitizeStrForSQL(columnValues[cont],&sanitizedStr);     //Sanitize parameter for use in SQL statement.
-                cmeStrConstrAppend(&sqlStatement,"'%s'",sanitizedStr);      //Add unprotected column value (sanitized) to query.
+                result=sqlite3_bind_text(insertStmt,cont+1,columnValues[cont],-1,SQLITE_TRANSIENT);
             }
             else
             {
-                cmeProtectDBSaltedValue(columnValues[cont],&protectedValue,cmeDefaultEncAlg,&salt,orgKey,&protectedValueLen);
-                cmeHMACByteString((const unsigned char *)protectedValue,(unsigned char **)&protectedValueMAC,protectedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,&salt,orgKey);
-                cmeStrConstrAppend(&sqlStatement,"'%s%s'",protectedValueMAC,protectedValue); //add MAC+Encrypted(salted) column value to query.
+                result=cmeProtectDBSaltedValue(columnValues[cont],&protectedValue,cmeDefaultEncAlg,&salt,orgKey,&protectedValueLen);
+                if (!result)
+                {
+                    result=cmeHMACByteString((const unsigned char *)protectedValue,(unsigned char **)&protectedValueMAC,
+                                             protectedValueLen,&protectedValueMACLen,cmeDefaultMACAlg,&salt,orgKey);
+                }
+                if (!result)
+                {
+                    cmeStrConstrAppend(&boundValue,"%s%s",protectedValueMAC,protectedValue);
+                    result=sqlite3_bind_text(insertStmt,cont+1,boundValue,-1,SQLITE_TRANSIENT);
+                }
                 cmeFree(protectedValue);
                 cmeFree(protectedValueMAC);
-            }
-            if ((cont+1)<numColumns)  //Still one left...
-            {
-                cmeStrConstrAppend(&sqlStatement,","); //add comma.
+                cmeFree(boundValue);
             }
         }
+        else
+        {
+            result=sqlite3_bind_null(insertStmt,cont+1);
+        }
+        if (result!=SQLITE_OK)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), sqlite3_bind_text() Error, can't "
+                    "bind column %s in table: %s: %s!\n",columnNames[cont],tableName,sqlite3_errmsg(pDB));
+#endif
+            cmeSQLRows(pDB,"ROLLBACK;",NULL,NULL);
+            cmeWebServiceLogRequestFree();
+            return(4);
+        }
     }
-    cmeStrConstrAppend (&sqlStatement,",'%s'); COMMIT;",salt); //Last part.
-    result=cmeSQLRows(pDB,sqlStatement,NULL,NULL);
-    if (result) //Error.
+    result=sqlite3_bind_text(insertStmt,numColumns+1,salt ? salt : "",-1,SQLITE_TRANSIENT);
+    if (result==SQLITE_OK)
+    {
+        result=sqlite3_step(insertStmt);
+    }
+    if (result!=SQLITE_DONE) //Error.
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), sqlite3_step() Error, can't "
+                "create register in table: %s: %s!\n",tableName,sqlite3_errmsg(pDB));
+#endif
+        cmeSQLRows(pDB,"ROLLBACK;",NULL,NULL);
+        cmeWebServiceLogRequestFree();
+        return(5);
+    }
+    if (cmeSQLRows(pDB,"COMMIT;",NULL,NULL))
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), cmeSQLRows() Error, can't "
-                "create register in table: %s with sql statement %s!\n",tableName,sqlStatement);
+                "commit transaction for table: %s!\n",tableName);
 #endif
+        cmeSQLRows(pDB,"ROLLBACK;",NULL,NULL);
         cmeWebServiceLogRequestFree();
-        return(2);
+        return(6);
     }
     cmeWebServiceLogRequestFree();
     return(0);
