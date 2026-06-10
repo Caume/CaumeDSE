@@ -500,6 +500,33 @@ int cmeWebServiceParseKeys(void *cls, enum MHD_ValueKind kind, const char *key, 
     return MHD_YES;
 }
 
+static int cmeWebServiceHasUnsafeRequestInput(const char **urlElements, int numUrlElements,
+                                              const char **argumentElements)
+{
+    int cont;
+
+    for (cont=0;cont<numUrlElements;cont++)
+    {
+        if (cmeHasUnsafeSQLInputChars(urlElements[cont]))
+        {
+            return(1);
+        }
+    }
+    if (!argumentElements)
+    {
+        return(1);
+    }
+    for (cont=0;((cont+1)<cmeWSURIMaxArguments)&&(argumentElements[cont]);cont+=2)
+    {
+        if (cmeHasUnsafeSQLInputChars(argumentElements[cont])||
+            cmeHasUnsafeSQLInputChars(argumentElements[cont+1]))
+        {
+            return(1);
+        }
+    }
+    return(0);
+}
+
 // File-scope engine power status flag.  Access is serialised with cmePowerMutex so that
 // concurrent requests see a consistent value when the operator toggles the engine on/off.
 static int cmeEnginePowerStatus=1;
@@ -541,7 +568,17 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
     powerStatus=cmeEnginePowerStatus;
     pthread_mutex_unlock(&cmePowerMutex);
 
-    //TODO (OHR#2#): Sanitizing function for all inputs (filter:  ",',;,=,`)
+    if (cmeWebServiceHasUnsafeRequestInput(urlElements,numUrlElements,argumentElements))
+    {
+        cmeStrConstrAppend(responseText,"<b>400 ERROR Bad request.</b><br><br>"
+                           "Request contains unsupported input characters.");
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(), Error, request contains unsupported input characters.\n");
+#endif
+        *responseCode=400;
+        cmeWebServiceProcessRequestFree();
+        return(1);
+    }
     if ((numUrlElements==1)&&(strcmp("favicon.ico",urlElements[0])==0)&&(strcmp("GET",method)==0)) //Process favicon.ico; powerStatus='on' not required.
     {
 #ifdef DEBUG

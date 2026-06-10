@@ -270,10 +270,27 @@ int cmeStrSqlINSERTConstruct (char **resultQuery, const char *tableName, const c
                               const int numColumns)
 {
     int cont;
-    cmeStrConstrAppend(resultQuery,"BEGIN TRANSACTION; INSERT INTO %s (",tableName); //First part.
+    char *sanitizedValue=NULL;
+    #define cmeStrSqlINSERTConstructFree() \
+        do { \
+            cmeFree(sanitizedValue); \
+        } while (0); //Local free() macro.
+
+    if ((!resultQuery)||(!colNamesValuesPairs)||(!cmeIsSafeSQLIdentifier(tableName))||(numColumns<2)||(numColumns%2))
+    {
+        return(1);
+    }
+    for (cont=0;cont<numColumns;cont+=2)
+    {
+        if (!cmeIsSafeSQLIdentifier(colNamesValuesPairs[cont]))
+        {
+            return(2);
+        }
+    }
+    cmeStrConstrAppend(resultQuery,"BEGIN TRANSACTION; INSERT INTO \"%s\" (",tableName); //First part.
     for (cont=0;cont<numColumns;cont+=2)  //Add column names.
     {
-        cmeStrConstrAppend(resultQuery,"%s",colNamesValuesPairs[cont]);
+        cmeStrConstrAppend(resultQuery,"\"%s\"",colNamesValuesPairs[cont]);
         if ((cont+2)<numColumns) //still another column pending.
         {
             cmeStrConstrAppend(resultQuery,",");
@@ -282,14 +299,20 @@ int cmeStrSqlINSERTConstruct (char **resultQuery, const char *tableName, const c
     cmeStrConstrAppend(resultQuery,") VALUES(");
     for (cont=1;cont<numColumns;cont+=2)  //Add values.
     {
-        cmeStrConstrAppend(resultQuery,"'%s'",colNamesValuesPairs[cont]);
+        if (cmeSanitizeStrForSQL(colNamesValuesPairs[cont],&sanitizedValue))
+        {
+            cmeStrSqlINSERTConstructFree();
+            return(3);
+        }
+        cmeStrConstrAppend(resultQuery,"'%s'",sanitizedValue);
+        cmeFree(sanitizedValue);
         if ((cont+2)<numColumns) //still another column pending.
         {
             cmeStrConstrAppend(resultQuery,",");
         }
     }
     cmeStrConstrAppend(resultQuery,"); COMMIT;"); //Last part.
-    //TODO (OHR#3#): Sanitize variables.
+    cmeStrSqlINSERTConstructFree();
     return (0);  //Note that caller must free resultQuery!
 }
 
@@ -297,17 +320,49 @@ int cmeStrSqlUPDATEConstruct (char **resultQuery, const char *tableName, const c
                             const int numColumns, const char *matchColumn, const char *matchValue)
 {
     int cont;
-    cmeStrConstrAppend(resultQuery,"BEGIN TRANSACTION; UPDATE %s SET ",tableName); //First part.
+    char *sanitizedValue=NULL;
+    char *sanitizedMatchValue=NULL;
+    #define cmeStrSqlUPDATEConstructFree() \
+        do { \
+            cmeFree(sanitizedValue); \
+            cmeFree(sanitizedMatchValue); \
+        } while (0); //Local free() macro.
+
+    if ((!resultQuery)||(!colNamesValuesPairs)||(!cmeIsSafeSQLIdentifier(tableName))||(!cmeIsSafeSQLIdentifier(matchColumn))||
+        (numColumns<2)||(numColumns%2))
+    {
+        return(1);
+    }
+    for (cont=0;cont<numColumns;cont+=2)
+    {
+        if (!cmeIsSafeSQLIdentifier(colNamesValuesPairs[cont]))
+        {
+            return(2);
+        }
+    }
+    if (cmeSanitizeStrForSQL(matchValue,&sanitizedMatchValue))
+    {
+        cmeStrSqlUPDATEConstructFree();
+        return(3);
+    }
+    cmeStrConstrAppend(resultQuery,"BEGIN TRANSACTION; UPDATE \"%s\" SET ",tableName); //First part.
     for (cont=0;cont<numColumns;cont+=2)  //Add column names.
     {
-        cmeStrConstrAppend(resultQuery,"%s = '%s'",colNamesValuesPairs[cont],colNamesValuesPairs[cont+1]);
+        if (cmeSanitizeStrForSQL(colNamesValuesPairs[cont+1],&sanitizedValue))
+        {
+            cmeStrSqlUPDATEConstructFree();
+            return(4);
+        }
+        cmeStrConstrAppend(resultQuery,"\"%s\" = '%s'",colNamesValuesPairs[cont],sanitizedValue);
+        cmeFree(sanitizedValue);
         if ((cont+2)<numColumns) //still another column pending.
         {
             cmeStrConstrAppend(resultQuery,",");
         }
-    } //TODO (OHR#2#): Check WHERE usage; not necesarily equal to userId !!!
-    //TODO (OHR#3#): Sanitize variables.
-    cmeStrConstrAppend(resultQuery," WHERE %s = '%s'; COMMIT;",matchColumn,matchValue); //Last part.
+    }
+    // The match column is intentionally caller-selected; do not assume userId.
+    cmeStrConstrAppend(resultQuery," WHERE \"%s\" = '%s'; COMMIT;",matchColumn,sanitizedMatchValue); //Last part.
+    cmeStrSqlUPDATEConstructFree();
     return (0);  //Note that caller must free resultQuery!
 }
 

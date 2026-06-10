@@ -103,6 +103,10 @@ int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
 int cmeResultMemTableClean ();
 // Function to get (in cmeResultMemTable) a string array of column names for table tableName.
 int cmeMemTableWithTableColumnNames (sqlite3 *db, const char *tableName);
+// Function to validate a SQL identifier before embedding it in a query.
+int cmeIsSafeSQLIdentifier(const char *identifier);
+// Function to check for SQL metacharacters that are not accepted in direct web-service inputs.
+int cmeHasUnsafeSQLInputChars(const char *sourceString);
 // Function to sanitize an input string (doubles single quote characters) to avoid sql injection attacks in sql queries.
 int cmeSanitizeStrForSQL (const char *sourceString, char **sanitizedString);
 
