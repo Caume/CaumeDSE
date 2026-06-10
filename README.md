@@ -320,43 +320,43 @@ requested resource at the end (before any parameters).
 
 The resource hierarchy is listed below:
 
- https://{engine}
- |  /organizations
- |  |  /{organization}
- |  |  |  /users
- |  |  |  |  /{user}
-~|  |  |  |  |  /roleTables
- |  |  |  |  |  |  /{roleTable}
-~|  |  |  |  |  /filterWhitelist
-~|  |  |  |  |  /filterBlacklist
- |  |  |  /storage
- |  |  |  |  /{storage}
-~|  |  |  |  |  /documentTypes
- |  |  |  |  |  |  /{documentType}
- |  |  |  |  |  |  |  /documents
- |  |  |  |  |  |  |  |  /{document}
-~|  |  |  |  |  |  |  |  |  /parserScripts
- |  |  |  |  |  |  |  |  |  |  /{parserScript}
- |  |  |  |  |  |  |  |  |  /content
-~|  |  |  |  |  |  |  |  |  /contentRows
- |  |  |  |  |  |  |  |  |  |  /{contentRow}
-~|  |  |  |  |  |  |  |  |  /contentColumns
- |  |  |  |  |  |  |  |  |  |  /{contentColumn}
- |  /`favicon.ico`|  |  |  |  |  |  |
-~|  /dbNames |  |  |  |  |  |  |  |
-~|  |  /{dbName}|  |  |  |  |  |  |
-~|  |  |  /dbTables|  |  |  |  |  |
-~|  |  |  |  /{dbTable}  |  |  |  |
-~|  |  |  |  |  /tableRows  |  |  |
-~|  |  |  |  |  |  /{tableRow} |  |
-~|  |  |  |  |  /tableColumns  |  |
-~|  |  |  |  |  |  /{tableColumn} |
- |  /engineCommands|  |  |  |  |  |
- |  /transactions  |  |  |  |  |  |
- |  |  |  |  |  |  |  |  |  |  |  |
-    0  1  2  3  4  5  6  7  8  9  10 (resource/resourceType level)
+```text
+https://{engine}
+|-- /organizations
+|   `-- /{organization}
+|       |-- /users
+|       |   `-- /{user}
+|       |       |-- /roleTables [not implemented]
+|       |       |   `-- /{roleTable}
+|       |       |-- /filterWhitelist [not implemented]
+|       |       `-- /filterBlacklist [not implemented]
+|       `-- /storage
+|           `-- /{storage}
+|               |-- /documentTypes [not implemented]
+|               |   `-- /{documentType}
+|               |       `-- /documents
+|               |           `-- /{document}
+|               |               |-- /parserScripts [not implemented]
+|               |               |   `-- /{parserScript}
+|               |               |-- /content
+|               |               |-- /contentRows [not implemented]
+|               |               |   `-- /{contentRow}
+|               |               `-- /contentColumns [not implemented]
+|               |                   `-- /{contentColumn}
+|               `-- /dbNames [not implemented]
+|                   `-- /{dbName}
+|                       `-- /dbTables
+|                           `-- /{dbTable}
+|                               |-- /tableRows
+|                               |   `-- /{tableRow}
+|                               `-- /tableColumns
+|                                   `-- /{tableColumn}
+|-- /engineCommands
+|-- /transactions
+`-- /favicon.ico
+```
 
-~ = Not implemented (might be implemented in the future).
+`[not implemented]` marks resources that might be implemented in the future.
 
 Resources (listed within keys, { and }), must be called by their unique
 name.  Resource types are not listed within keys and they must be named
