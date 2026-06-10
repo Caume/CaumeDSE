@@ -1,0 +1,2007 @@
+# Caume Data Security Engine (CaumeDSE) version 1.0.9
+
+This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
+
+
+## Contents
+
+- [Purpose and Philosophy](#purpose-and-philosophy)
+- [Status](#status)
+- [License](#license)
+- [Architecture and Functionality](#architecture-and-functionality)
+- [REST Resource API Reference](#rest-resource-api-reference)
+- [Collaborating](#collaborating)
+- [Security Considerations](#security-considerations)
+
+
+## Purpose and Philosophy
+
+
+
+### 1. Purpose
+
+
+The idea behind CaumeDSE is to provide a free software solution that
+allowed the creation of reasonably secure and isolated workspaces to process
+and store sensitive data, within uncontrolled environments.
+
+With concepts such as the cloud and bring your own device as well as an
+increasing demand for mobile devices, it has become clear that the way in
+which companies operate is changing dramatically, and with it, the way in
+which we secure information and the infrastructure that supports business
+processes.
+
+CaumeDSE has been designed as a service platform that provides security to
+data by using free, well known and robust cryptographic software, as well as
+open an simple data structures and interfaces to make portability and
+extensibility easy.
+
+CaumeDSE is not an end-user solution. It is a service platform for
+supporting front end applications.
+
+
+### 2. Philosophy
+
+
+CaumeDSE is designed with solid security principles, that take into account
+new models of doing business and emerging information technologies.  It also
+takes into consideration the increasing number of data privacy regulations.
+
+Trust is essential for security. In fact, it is one of the main reasons why
+we put security in place on computer systems: to be able to trust them.  We
+aim to provide trust by following these principles:
+
+* Transparency. With free, open source software, you can check for yourself
+  what this software does, and know that others can and will do it as well
+  to help improving it.
+
+* Portability. With open standards and data structures, you avoid vendor
+  lock-ins with closed programs/technologies.  Moreover, by being free and
+  open source, this platform can be ported to many environments and modified
+  to suit your own needs.  You don't depend on a company being there to
+  continue its development.
+
+* Simplicity. We favor simplicity for doing all tasks as much as possible.
+  With the adoption of REST, we expect that interaction and development with
+  this platform will be easy and straightforward.
+
+* Secure by design. We developed this tool with security as a primary goal.
+  That is not to say it is perfect, but its development process has been
+  structured to ensure continued improvement in this area, independently of
+  other important requirements such as performance and interoperability
+
+* Need to know and use. We restrict as much as possible the access to
+  information.  One way that we do it is by not storing encryption keys
+  within the software.  This means that each organization (in the scope of
+  this software) is responsible of managing keys securely, but it also
+  allows them to have full control of who access what.
+
+* Traceability. Logging securely all relevant actions provides good control
+  on who did what, when, as well as evidence in case of an incident.
+
+* Thoroughness. We aim to do extensive debugging and security assessments
+  before any major release.  This won't eliminate all problems, but should
+  limit their number and provide a more stable platform.  We favor stability
+  and simplicity over new functionality, since the later can be developed
+  easily on top of this platform by other software.
+
+There are some important aspects regarding trust. Achieving trust is
+difficult, particularly since we human beings posses a natural bias towards
+risk assessment (e.g.  we tend to think that the closer to us things are,
+the more secure they are).
+
+No matter how sensitive a particular piece of data is or how much money you
+are willing to invest to protect it, in the end, for it to be useful, you
+will need to trust someone and/or something.
+
+There are many arguments in favor of hardware based protections, and it is
+true that such devices are usually more resistant to certain types of
+attacks than software, but you still end trusting the manufacturer of such
+products as much as you need to trust the developer of security software.
+Also, specialized hardware may offer better performance than software for
+some tasks, such as higher resistance against reverse engineering and
+internal processing monitoring.
+
+Like there are disadvantages to a software based approach, there are also
+some advantages to it.  Transparency is one of them.
+
+Even if your won't be checking the source code yourself, you know that it is
+available for many others to take a look at it (so the chances of finding
+problems and fixing them may be higher than that of closed hardware
+solutions).
+
+Another advantage is portability. Think about some possible scenarios you
+may face with new operation models such as the cloud.  An infrastructure
+provider in the cloud may not be offering hardware based security solutions,
+or you may not be able to install in their premises your preferred hardware
+based solution.  But still, if you have some control at some layer of the
+environment where data will be stored, transferred or processed, you can
+setup your "rules of engagement" there and create a virtual perimeter that
+may offer a reasonable level of protection for your data.
+
+In terms of compliance, remember that when you contract external services
+and personnel you may share with them some responsibility for protecting
+sensitive data and operations, but you cannot share accountability; that
+will remain on your side.
+
+
+## Status
+
+
+Right now, the software is in a stable release:
+
+- Basic functionality is complete and tested but some features are
+      still pending.
+
+- Sample applications added (v1.0.9): a new samples/hsm-db-crypto/
+      directory provides four independent client implementations that
+      demonstrate the CDSE API as a hybrid HSM / encrypted database /
+      general cryptographic command interface:
+  - Web (HTML5 + JavaScript SPA with a local CORS proxy)
+  - Python 3 CLI (requires: requests)
+  - Go CLI (standard library only, no external dependencies)
+  - Perl CLI (requires: LWP::UserAgent, HTTP::Request::Common)
+      All CLI variants support interactive sessions (credentials entered
+      once) and one-shot parameter mode (credentials per call, or via
+      environment variables CDSE_SERVER/CDSE_USER_ID/CDSE_ORG_ID/
+      CDSE_ORG_KEY/CDSE_STORAGE).  Operations covered: encrypted secret
+      storage, encrypted CSV databases (insert/query/update/delete),
+      user/org info, and transaction audit log.
+
+- Constant-time comparisons (v1.0.8): all post-decryption string
+      and MAC comparisons that could leak information via timing
+      (strcmp/strncmp on decrypted values and HMAC results) replaced
+      with new cmeStrSafeEq() and cmeMemSafeEq() functions.  Closes
+      GitHub issue #5.
+
+- Concurrent multi-user support added (v1.0.7): libmicrohttpd now
+      runs a configurable worker-thread pool (default: 4 threads,
+      adjustable at build time with --with-max-threads=N).  Shared
+      mutable state is protected:
+  - SQL result tables (cmeResultMemTable) use thread-local
+          storage (__thread) so each worker thread has its own copy.
+  - The embedded Perl interpreter is serialised with a POSIX
+          mutex (cmePerlMutex); non-Perl requests run in parallel.
+  - The engine power-status flag is serialised with a second
+          mutex (cmePowerMutex).
+  - Per-connection start-time and upload-size counters moved
+          from static locals to the per-connection info struct.
+      A new testThreadSafety() test verifies correct parallel
+      SQLite operation across cmeDefaultMaxThreads threads.
+
+- `gen_test_certs.sh` updated to support 7 algorithm presets: rsa2048,
+      rsa4096, ecp256, ecp384, ecp521, ed25519, ed448.  Each preset
+      automatically pairs the correct hash algorithm and sets the right
+      X.509 keyUsage extensions (keyEncipherment for RSA;
+      digitalSignature only for EC/EdDSA).  Default preset: ecp384.
+
+- TLS digital certificates regenerated with ECDSA P-384 / SHA-384
+      (replacing RSA 4096-bit / SHA-256 from v1.0.5), negotiating
+      TLS 1.3 with TLS_AES_256_GCM_SHA384.  Handshake is ~2.4x faster
+      than RSA 4096 on the same hardware (30ms vs 71ms).  Server cert
+      includes a Subject Alternative Name (SAN) for localhost.
+
+- Column-level HMAC protection is now implemented for "MAC" (HMAC
+      of plaintext before encryption) and "MACProtected" (HMAC of
+      ciphertext after encryption) column attributes.  These allow
+      data-integrity verification independent of the encryption layer.
+
+- `AES-256-GCM` is the default symmetric encryption algorithm as of
+      version 1.0.3.  All internal databases (ResourcesDB, RolesDB,
+      LogsDB) and encrypted data are created with authenticated
+      encryption.  The full test suite passes with 0 decrypt errors
+      and 0 runtime errors against fresh GCM databases.
+
+- Default HTTP and HTTPS ports are 8080 and 8443 respectively,
+      allowing the engine to run without root privileges on standard
+      Linux systems.
+
+- Basic documentation is available.
+
+If you would like to collaborate Please take a look at section VI
+(Collaborating).
+
+
+## License
+
+
+Caume Data Security Engine (also called CaumeDSE) is released under the GNU
+General Public License version 3 by the Copyright holder, with the
+additional exemption that compiling, linking, and/or using OpenSSL is
+allowed.
+
+The software is Copyright 2010-2026 by Omar Alejandro Herrera Reyna.
+
+Check licensing and copyright details for CaumeDSE and other included
+software in the file called COPYING and in the headers of the source code
+available for distribution.
+
+
+## Architecture and Functionality
+
+
+### 1. Layers
+
+
+The architecture of CaumeDSE is composed of several layers:
+
+1. API - Web based, RESTful API that handles requests to resources
+       using standard HTTP methods (GET, POST, PUT, DELETE, HEAD and
+       OPTIONS).  The requests can be received by HTTP (TCP port 8080;
+       only in DEBUG mode) or by HTTPS (TCP port 8443).  Libmicrohttpd is
+       used as an internal, standalone web server to handle the
+       requests, while TLS security is handled by GnuTLS.  Standard
+       query parameters and multipart/form-data encoded parameters (for
+       POST method) are supported in resource requests.
+
+2. Authentication - Authentication of users and applications is
+       handled at the web server level.  Right now, client
+       authentication with digital certificates with TLS is supported.
+
+3. Authorization - Authorization is handled internally by CaumeDSE
+       with role tables for each user.  Each role table maps each
+       available resource type with available HTTP methods (GET, POST,
+       PUT,...).  All roles are encrypted with the organization's key
+       (see resource hierarchy below).
+
+4. Resource access - CaumeDSE maintains internal index databases
+       that map data resources to their location.  All resources and
+       index database registers are encrypted with the organization's
+       key.  Currently 3 types of data resources are supported: raw
+       files, CSV files and Perl scripts.  File resources in addition
+       are split in several parts (CSV files are split in columns and
+       each column in different parts of a specific size).
+
+5. Resource protection - The resulting encrypted files are named
+       with pseudo random generated hexadecimal strings, and stored in
+       their corresponding storage directory (the relation between the
+       original files and each encrypted part is maintained in the
+       internal index database).  No encryption key is ever stored in an
+       internal database, and values in internal databases are salted
+       before being encrypted with one salt per register, and a second
+       salt per value (salts per register are not encrypted).  Since
+       encryption keys are rather handled as passwords, internally these
+       keys are processed using PBKDF2 (PKCS5v2.0 with HMAC-SHA1 + a
+       counter greater than 1) to generate a temporary key and its
+       corresponding initialization vector (iv) that are the ones
+       actually being used by the encryption/decryption algorithms.
+       This KEY/IV generation mechanism is not compatible anymore with
+       the OpenSSL's command line tool (You will need to generate
+       manually the keys and iv with this method before you can decrypt
+       manually each file and database register with this tool).
+       Resource indexes are shuffled when new elements are added (for
+       CSV files, columns are reconstructed maintaining the order of
+       their registers, but the order in which columns appear changes.
+       Scripts should therefore access columns by name and not by their
+       position).
+
+       ResourcesDB document indexes also keep deterministic protected
+       lookup values for documentId, storageId and orgResourceId.  These
+       lookup values are keyed HMACs with field-specific domain
+       separation, and are used only to narrow exact-match searches on
+       these high-cardinality identifiers.  They do not replace the
+       encrypted and MAC-protected register values: matching registers
+       are still decrypted and verified before being returned or
+       deleted.  Lookup values are intentionally not generated for
+       low-cardinality or arbitrary document attributes, preserving the
+       protection provided by encrypted values and column shuffling.
+       Older databases are migrated with nullable lookup columns, and
+       registers without lookup values remain readable through the
+       normal protected-value verification path.
+
+6. Resource processing - All data processing including encryption
+       and decryption takes place in memory (with a few exceptions, such
+       as file uploads that are stored in a specific directory before
+       being encrypted, overwritten and deleted).  Internal secure
+       databases (data tables organized in rows and columns like CSV
+       files) can be processed by Perl scripts in memory, using and
+       embedded Perl interpreter.
+
+7. Sessions and multi-threading - CaumeDSE uses stateless REST
+       connections.  As of v1.0.7 a configurable number of simultaneous
+       users is supported through a libmicrohttpd worker-thread pool
+       (default: 4 threads; set at build time with --with-max-threads=N).
+       Each thread handles one connection at a time; concurrent
+       connections are distributed across the pool.  Shared state
+       (Perl interpreter, engine power flag) is protected by POSIX
+       mutexes; SQL result tables use thread-local storage so parallel
+       requests do not interfere with each other's results.  The
+       maximum number of queued connections is 4x the thread-pool size.
+
+
+### 2. Resource hierarchy
+
+
+Resources are organized hierarchically using a REST approach. Reading the
+uniform resource identifier (URI) within an HTTP request from left to right
+will show resources and resource types that USE or CONTAIN the resource or
+resource type to the right of it within the hierarchy, until you find the
+requested resource at the end (before any parameters).
+
+The resource hierarchy is listed below:
+
+ https://{engine}
+ |  /organizations
+ |  |  /{organization}
+ |  |  |  /users
+ |  |  |  |  /{user}
+~|  |  |  |  |  /roleTables
+ |  |  |  |  |  |  /{roleTable}
+~|  |  |  |  |  /filterWhitelist
+~|  |  |  |  |  /filterBlacklist
+ |  |  |  /storage
+ |  |  |  |  /{storage}
+~|  |  |  |  |  /documentTypes
+ |  |  |  |  |  |  /{documentType}
+ |  |  |  |  |  |  |  /documents
+ |  |  |  |  |  |  |  |  /{document}
+~|  |  |  |  |  |  |  |  |  /parserScripts
+ |  |  |  |  |  |  |  |  |  |  /{parserScript}
+ |  |  |  |  |  |  |  |  |  /content
+~|  |  |  |  |  |  |  |  |  /contentRows
+ |  |  |  |  |  |  |  |  |  |  /{contentRow}
+~|  |  |  |  |  |  |  |  |  /contentColumns
+ |  |  |  |  |  |  |  |  |  |  /{contentColumn}
+ |  /`favicon.ico`|  |  |  |  |  |  |
+~|  /dbNames |  |  |  |  |  |  |  |
+~|  |  /{dbName}|  |  |  |  |  |  |
+~|  |  |  /dbTables|  |  |  |  |  |
+~|  |  |  |  /{dbTable}  |  |  |  |
+~|  |  |  |  |  /tableRows  |  |  |
+~|  |  |  |  |  |  /{tableRow} |  |
+~|  |  |  |  |  /tableColumns  |  |
+~|  |  |  |  |  |  /{tableColumn} |
+ |  /engineCommands|  |  |  |  |  |
+ |  /transactions  |  |  |  |  |  |
+ |  |  |  |  |  |  |  |  |  |  |  |
+    0  1  2  3  4  5  6  7  8  9  10 (resource/resourceType level)
+
+~ = Not implemented (might be implemented in the future).
+
+Resources (listed within keys, { and }), must be called by their unique
+name.  Resource types are not listed within keys and they must be named
+exactly as they are listed.
+
+For example, to get the resource representation of user EngineAdmin that is
+registered in organization EngineOrg at the CaumeDSE instance in ip address
+192.168.1.1, you would do an HTTPS GET request with an URI similar to this:
+
+https://192.168.1.1/organizations/EngineOrg/users/EngineAdmin?userId=EngineAdmin&
+orgId=EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+
+Check section V for access methods, parameters and examples for each
+resource/ resourceType requests and their expected results.
+
+
+### 3. Request parameters
+
+
+Common parameters to a resource request are passed either via a query string
+or as a multipart/form-data encoded body (in the case of POST requests).
+
+There are 3 types of parameters
+
+- Authorizations & Encryption parameters
+- Resource attribute parameters (to match or update)
+- Optional parameters
+
+#### 3.1 Authorizations & Encryption parameters
+
+
+These parameters are required in every request to decrypt resource indexes
+roles and resources, and allows the system to verify if the request is
+authorized (note that authentication takes place before any authorization
+and decryption).
+
+userId
+
+    Specifies the {user} to verify authorization (note that this same
+    user is authenticated previously).  The user referred to by userId
+    must be a resource of the organization defined within orgId.
+orgId
+
+    Specifies the {organization} to verify authorization and perform
+    resource operations.  This parameter does no need to match the
+    organization defined in the URI.  For example, a user with the right
+    privileges can create a new organization (defined in the URI) with a
+    POST request, but still authenticate and be authorized using the
+    userId and orgId parameters.
+orgKey
+
+    Specifies the organization key that is used to decrypt resources and
+    internal database values.  Every resource registered within the same
+    organization are encrypted with the same key (although with
+    different salt and initialization vector).  This includes users, and
+    is the reason why authentication is a separate process.
+
+#### 3.2 Resource attribute parameters (to match or update)
+
+
+These parameters, allow you to specify matching registers (exact matches
+only), if prepended with an underscore (_) and combined with methods such as
+GET, HEAD, PUT or DELETE, or to update resource values in POST and PUT
+methods if prepended with an asterisk (*).
+
+For example, a request using a PUT method to update all user resources
+(resource type users) whose resourceInfo value is 'new', by setting their
+certificate value to 'undefined' you would use a PUT request that would look
+similar to this one:
+
+https://192.168.1.1/organizations/EngineOrg/users?userId=EngineAdmin&
+orgId=EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC&_resourceInfo=new&
+*certificate=undefined
+
+Attribute parameters could be considered resources contained by the
+corresponding resource or resource type where they are being used.  As such,
+they may be included in the resource hierarchy in the future to provide a
+consistent and alternative form to be accessed.  Unfortunately, managing
+every attribute as a resource also means more requests to perform a simple
+function (e.g.  Suppose you have a resource with 5 attributes, you can
+create the resource and update all 5 attributes in a single request if you
+use attribute parameters, but if you manage attributes as resources
+contained by the main resource, it would take 6 requests to create the
+resource and each of its attributes)
+
+To check which attribute parameters are supported by each resource and
+resource type refer to section V (REST (Resource) API reference).
+
+#### `userId`
+
+    Resources/ResourceTypes: ANY
+
+    Prefixes: match (_) only.For POST/PUT updates the value is always
+    taken from the URI
+
+    When used with _ matches against the userId attribute of a resource.
+    This attribute contains the last user to modify (e.g.  with PUT) the
+    resource, or the user who created the resource (with POST) if it has
+    not been modified.
+
+    For other uses check: 3.1 Authorizations & Encryption parameters
+
+#### `orgId`
+
+    Resources/ResourceTypes: ANY
+
+    Prefixes: match (_) only.For POST/PUT updates the value is always
+    taken from the URI
+
+    When used with _ matches against the orgId attribute of a resource.
+    This attribute contains the orgId corresponding to the last user to
+    modify (e.g.  with PUT) the resource or to the user who created the
+    resource (with POST) if it has not been modified.
+
+    For other uses check: 3.1 Authorizations & Encryption parameters
+
+#### `resourceInfo`
+
+    Resources/ResourceTypes: organizations, {organization}, users,
+    {user}, storage {storage}, documents, {document}
+
+    Prefixes: match (_) and update (*).
+
+    Contains general information regarding the resource.
+
+#### `certificate`
+
+    Resources/ResourceTypes: organizations, {organization}, users,
+    {user}
+
+    Prefixes: match (_) and update (*).
+
+    Stores digital certificate information related to the resource. Note
+    that CaumeDSE does not use this information in any way for
+    authentication.  Organizations can store any string here (PEM
+    certificates, certificate issuer, certificate hash,...).
+
+#### `publicKey`
+
+    Resources/ResourceTypes: organizations, {organization}, users, {user}
+
+    Prefixes: match (_) and update (*).
+
+    Stores public key information related to the resource. Note that
+    CaumeDSE does not use this information in any way for
+    authentication.  Organizations can store any string here (PEM public
+    keys, public key file names, public key hash,...).
+
+#### `userResourceId`
+
+    Resources/ResourceTypes: users
+
+    Prefixes: match (_) only. For POST ({user}), this attribute is taken
+    from the URI.
+
+    Stores the identifier of a {user} resource.
+
+#### `orgResourceId`
+
+    Resources/ResourceTypes: organizations, transactions
+
+    Prefixes: match (_) only. For POST ({organization}) this attribute
+    is taken from the URI.
+
+    Stores the identifier of an {organization} resource. For
+    transactions, if the user was correctly authenticated, then this
+    value will be protected (indicated by the 'authenticated'
+    parameter).  For ResourcesDB document registers, exact-match
+    queries may use the protected orgResourceIdLookup index as a
+    candidate filter before normal protected-value verification.
+
+#### `basicAuthPwdHash`
+
+    Resources/ResourceTypes: users, {user}
+
+    Prefixes: match (_) and update (*).
+
+    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain
+    password hashes for user authentication via the HTTP basic
+    authentication method in the future.
+
+#### `oauthConsumerKey`
+
+    Resources/ResourceTypes: users, {user}
+
+    Prefixes: match (_) and update (*).
+
+    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
+    Consumer Secret for user authentication via OAUTH authentication
+    protocol in the future.
+
+#### `oauthConsumerSecret`
+
+    Resources/ResourceTypes: users, {user}
+
+    Prefixes: match (_) and update (*).
+
+    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
+    Consumer Secret for user authentication via OAUTH authentication
+    protocol in the future.
+
+#### `columnFile`
+
+    Resources/ResourceTypes: documents, {document}
+
+    Prefixes: match (_) only. For POST/PUT this attribute is calculated
+    by CaumeDSE.
+
+    Stores the name (hexadecimal string generated randomly) that
+    contains the encrypted content for the corresponding partId and
+    columnId.
+
+#### `documentId`
+
+    Resources/ResourceTypes: documents
+
+    Prefixes: match (_) only. For POST ({document}) this attribute is
+    taken from the URI.
+
+    Stores the identifier of a {document} resource.
+    For ResourcesDB document registers, exact-match queries may use the
+    protected documentIdLookup index as a candidate filter before normal
+    protected-value verification.
+
+#### `storageId`
+
+    Resources/ResourceTypes: storage
+
+    Prefixes: match (_) only. For POST ({storage}) this attribute is
+    taken from the URI.
+
+    Stores the identifier of a {storage} resource.
+    For ResourcesDB document registers, exact-match queries may use the
+    protected storageIdLookup index as a candidate filter before normal
+    protected-value verification.
+
+#### `partHash`
+
+    Resources/ResourceTypes: documents, {document}
+
+    Prefixes: match (_) only. For POST/PUT this attribute is calculated
+    by CaumeDSE.
+
+    Stores the hash of the encrypted content in the corresponding
+    columnFile.
+
+#### `totalParts`
+
+    Resources/ResourceTypes: documents, {document}
+
+    Prefixes: match (_) only. For POST/PUT this attribute is calculated
+    by CaumeDSE.
+
+    Stores the number of encrypted parts in which the original file was
+    divided.  For CSV files, this refers to the number of parts in which
+    every column was divided if you want to know the number of files
+    that contain pieces of a CSV files, just do (number of
+    columns)*totalParts.  The highest number in columnId is the number
+    of columns that a CSV resource has.
+
+partId
+    Resources/ResourceTypes: documents, {document}
+
+    Prefixes: match (_) only. For POST/PUT this attribute is calculated
+    by CaumeDSE.
+
+    Stores the sequential id for the part for the corresponding columnId.
+
+#### `lastModified`
+
+    Resources/ResourceTypes: documents, {document}
+
+    Prefixes: match (_) only. For POST/PUT this attribute is calculated
+    by CaumeDSE.
+
+    Stores the Unix time (epoch) corresponding to the last time that the
+    resource was updated (PUT), or to the time it was created (POST) if
+    it has not been updated yet.
+
+#### `columnId`
+
+    Resources/ResourceTypes: documents, {document}
+
+    Prefixes: match (_) only. For POST/PUT this attribute is calculated
+    by CaumeDSE.
+
+    Stores the column id corresponding to the column File. for document
+    types different from CSV files (e.g.  raw files), this value is
+    always 1 (i.e.  they consist of a single column).
+
+#### `location`
+
+    Resources/ResourceTypes: storage, {storage}
+
+    Prefixes: match (_) and update (*).
+
+    Stores information related to the location of the {storage}
+    resource.  You can store any text string here, it is not used by
+    CaumeDSE.
+
+#### `type`
+
+    Resources/ResourceTypes: storage, {storage}
+
+    Prefixes: match (_) and update (*).
+
+    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
+    type of storage to allow CaumeDSE to connect and use remote storage
+    in the future.  Right now, only regular file storage available
+    through standard input and output functions is supported.
+
+#### `accessPath`
+
+    Resources/ResourceTypes: storage, {storage}
+
+    Prefixes: match (_) and update (*).
+
+    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify an
+    access identifier to allow CaumeDSE to connect and use remote
+    storage in the future.  Right now, only regular file storage
+    available through standard input and output functions is supported.
+
+#### `accessUser`
+
+    Resources/ResourceTypes: storage, {storage}
+
+    Prefixes: match (_) and update (*).
+
+    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify the
+    user identifier to allow CaumeDSE to connect and use remote storage
+    in the future.  Right now, only regular file storage available
+    through standard input and output functions is supported.
+
+#### `accessPassword`
+
+    Resources/ResourceTypes: storage, {storage}
+
+    Prefixes: match (_) and update (*).
+
+    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may specify
+    access credentials to allow CaumeDSE to connect and use remote
+    storage in the future.  Right now, only regular file storage
+    available through standard input and output functions is supported.
+
+#### `_get`
+
+    Resources/ResourceTypes: {roleTable}
+
+    Prefixes: match (_) and update (*).
+
+    NOTE: with the match prefix you would have a 2 underscores at in the
+    parameter name.
+
+    This attribute specifies whether the corresponding {user} at the
+    specified {organization} is allowed to perform GET requests on
+    resources related to {roleTable}.
+
+    String "1" is for allow. string "0" is for deny.
+
+#### `_post`
+
+    Resources/ResourceTypes: {roleTable}
+
+    Prefixes: match (_) and update (*).
+
+    NOTE: with the match prefix you would have a 2 underscores at in the
+    parameter name.
+
+    This attribute specifies whether the corresponding {user} at the
+    specified {organization} is allowed to perform POST requests on
+    resources related to {roleTable}.
+
+    String "1" is for allow. string "0" is for deny.
+
+#### `_put`
+
+    Resources/ResourceTypes: {roleTable}
+
+    Prefixes: match (_) and update (*).
+
+    NOTE: with the match prefix you would have a 2 underscores at in the
+    parameter name.
+
+    This attribute specifies whether the corresponding {user} at the
+    specified {organization} is allowed to perform PUT requests on
+    resources related to {roleTable}.
+
+    String "1" is for allow. string "0" is for deny.
+
+#### `_delete`
+
+    Resources/ResourceTypes: {roleTable}
+
+    Prefixes: match (_) and update (*).
+
+    NOTE: with the match prefix you would have a 2 underscores at in the
+    parameter name.
+
+    This attribute specifies whether the corresponding {user} at the
+    specified {organization} is allowed to perform DELETE requests on
+    resources related to {roleTable}.
+
+    String "1" is for allow. string "0" is for deny.
+
+#### `_head`
+
+    Resources/ResourceTypes: {roleTable}
+
+    Prefixes: match (_) and update (*).
+
+    NOTE: with the match prefix you would have a 2 underscores at in the
+    parameter name.
+
+    This attribute specifies whether the corresponding {user} at the
+    specified {organization} is allowed to perform HEAD requests on
+    resources related to {roleTable}.
+
+    String "1" is for allow. string "0" is for deny.
+
+#### `_options`
+
+    Resources/ResourceTypes: {roleTable}
+
+    Prefixes: match (_) and update (*).
+
+    NOTE: with the match prefix you would have a 2 underscores at in the
+    parameter name.
+
+    This attribute specifies whether the corresponding {user} at the
+    specified {organization} is allowed to perform OPTIONS requests on
+    resources related to {roleTable}.
+
+    String "1" is for allow. string "0" is for deny.
+
+#### `requestMethod`
+
+    Resources/ResourceTypes: transactions
+
+    Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the HTTP method used by the user request.
+    If the user was correctly authenticated, then this value will be
+    protected (indicated by the 'authenticated' parameter).
+
+#### `requestUrl`
+
+    Resources/ResourceTypes: transactions
+
+    Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the URL used as part of the user request.
+    If the user was correctly authenticated, then this value will be
+    protected (indicated by the 'authenticated' parameter).
+
+#### `requestHeaders`
+
+    Resources/ResourceTypes: transactions
+
+    Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the HTTP Headers used as part of the user
+    request.  If the user was correctly authenticated, then this value
+    will be protected (indicated by the 'authenticated' parameter).
+
+#### `startTimestamp`
+
+    Resources/ResourceTypes: transactions
+
+    Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the timestamp of the moment at which the
+    user request was received.  If the user was correctly authenticated,
+    then this value will be protected (indicated by the 'authenticated'
+    parameter).
+
+#### `endTimestamp`
+
+    Resources/ResourceTypes: transactions
+
+    Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the timestamp of the moment at which the
+    user request was answered.  If the user was correctly authenticated,
+    then this value will be protected (indicated by the 'authenticated'
+    parameter).
+
+#### `requestDataSize`
+
+    Resources/ResourceTypes: transactions
+
+     Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the size of the body of the HTTP user's
+    request.  If the user was correctly authenticated, then this value
+    will be protected (indicated by the 'authenticated' parameter).
+
+#### `responseDataSize`
+
+    Resources/ResourceTypes: transactions
+
+    Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the size of the body of the HTTP engine's
+    answer.  If the user was correctly authenticated, then this value
+    will be protected (indicated by the 'authenticated' parameter).
+
+#### `requestIPAddress`
+
+    Resources/ResourceTypes: transactions
+
+     Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the IP address (v4 or v6) of the user
+    sending the request.  If the user was correctly authenticated, then
+    this value will be protected (indicated by the 'authenticated'
+    parameter).
+
+#### `responseCode`
+
+    Resources/ResourceTypes: transactions
+
+    Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the response code of the HTTP engine's
+    answer.  If the user was correctly authenticated, then this value
+    will be protected (indicated by the 'authenticated' parameter).
+
+#### `responseHeaders`
+
+    Resources/ResourceTypes: transactions
+
+    Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies the response headers of the HTTP engine's
+    answer.  If the user was correctly authenticated, then this value
+    will be protected (indicated by the 'authenticated' parameter).
+
+#### `authenticated`
+
+    Resources/ResourceTypes: transactions
+
+    Prefixes: match (_) only. For POST this attribute will be defined
+    automatically by CaumeDSE
+
+    This attribute specifies whether the user was authenticated ('1') or
+    not ('0').  If the user was correctly authenticated, then values
+    depending on the authenticated attribute will be encrypted;
+    otherwise they will be copied in cleartext.  This attribute is never
+    encrypted.
+
+    Note that there is a situation when an authenticated user uses an
+    incorrect orgKey.  In this case, transaction logs won't be readable
+    since they will be protected using the erroneous key.  Transactions
+    will be protected as whenever the user is authenticated, even if
+    he/she does not have the right priviledges to execute the request.
+
+#### `setEnginePower`
+
+    Resources/ResourceTypes: engineCommands
+
+    Prefixes: match (_) only. This parameter activates (value = on,
+    default) or deactivates (value = off) engine requests with the PUT
+    method.
+
+#### 3.3 Optional parameters
+
+
+salt
+    Specifies the salt to be used with all values of an internal
+    database register or a data resource for encryption/decryption.  if
+    not included, it will be generated by a pseudo random algorithm by
+    CaumeDSE.  If included it must be an hexadecimal string 16
+    characters long (i.e.  representing 8 bytes).
+
+    (Note that for values within the same register another salt is
+    generated and prepended to values before being encrypted (internally
+    this is called valueSalt), and removed after decryption, this second
+    salt is necessary to avoid same ciphertext for identical database
+    values within the same internal database register.)
+
+newOrgKey
+    In POST requests only (i.e 'create'), this parameter specifies the
+    organization key (orgKey) to be used for creating the new resource,
+    which is different from the orgKey used to protect the the userId's
+    roles of the requesting user (of course, the user must have POST
+    permission within its organization that can be decrypted with
+    orgKey).
+
+    This allows for example, an administrator to create a different
+    organization or resources within a different organization.  After
+    being created though, this administrator would need a user with the
+    right credentials to be authenticated and the corresponding
+    permissions within the role table for this new organization in order
+    to access the newly created resources.
+
+    If omitted, orgKey will be used to protect any new resource.
+
+outputType
+    Specifies the type of output for the result. Available values are
+    csv and HTML (the later is the default).  this is particularly
+    useful for results that return data tables, such as resource
+    specification queries or requests for the contents of csv type
+    files.
+
+#### 3.4 Document POST parameters
+
+
+These parameters are required in every POST request of {document} resources.
+
+file
+    Specifies the file name and contents (which does not necessarily
+    will be the same as the documentId of the resource in the URI) of
+    the file to be uploaded, to create a {document} resource.  POST
+    requests will contain the attribute parameters and the file contents
+    encoded in multipart/form-data format within the body.
+
+#### 3.5 Optional Column index parameters for content rows (`file.csv`)
+
+
+#### `[column_name]`
+
+    Specifies the value for the specified 'column_name'. The column name
+    must match an existing column name within a document resource of
+    type file.csv.
+
+## REST Resource API Reference
+
+
+Note that with the POST method you must define values for every updateable
+parameter, to ensure that every attribute is initialized by the user.  With
+the PUT method you can update just the values that need changes.
+
+While most examples of POST requests include data in the URI, be aware that
+the standard way is to encode both parameters (and any file) using
+multipart/form-data format.  Any POST request can be encoded in this way
+(CaumeDSE supports both encoding formats: URI appended parameters and
+multipart/form-data parameters).  However, you must use multipart/form-data
+encoding if you are uploading a file (See {document} resource examples
+below).
+
+### `engineCommands`
+
+    Supported HTTP methods: GET PUT OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            <NONE>
+        UPDATE:
+            *setEnginePower
+        RESPONSE HEADERS:
+            Engine-results: <engine active status>
+    RESPONSE BODY:
+        <Attribute table for matching resources>
+
+    Example 1)      Deactivate engine
+        METHOD:
+            PUT
+        URI:
+            https://localhost/engineCommands?userId=EngineAdmin&
+            orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&setEnginePower=off
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `organizations`
+
+    Supported HTTP methods: GET PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _certificate _publicKey
+            _orgResourceId
+        UPDATE:
+            *resourceInfo *certificate *publicKey
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resources>
+
+    Example 1)     List all organizations with publicKey = 'undefined'
+            in a CSV style list
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations?userId=EngineAdmin&
+            orgId=EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+            &_publicKey=undefined&outputType=csv
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `{organization}`
+
+    Supported HTTP methods: GET POST PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _certificate _publicKey
+        UPDATE:
+            *resourceInfo *certificate *publicKey
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resource>
+
+    Example 1)     Create a new organization called BusinessOrg, using
+            a new organization key: 3132333440414243, with
+            account EngineAdmin from EngineOrg (EngineAdmin is
+            assumed to have POST privileges for organizations)
+        METHOD:
+            POST
+        URI:
+            https://192.168.0.1/organizations/BusinessOrg?userId=
+            EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*resourceInfo=
+            new%20organization&*certificate=undefined&*publicKey=
+            undefined&newOrgKey=3132333440414243
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)    List attributes for organization EngineOrg
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg?userId=
+            EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 3)     Set attribute publicKey to 'serial:10F46D308B39' for
+            organization EngineOrg
+        METHOD:
+            PUT
+        URI:
+            https://localhost/organizations/EngineOrg?userId=
+            EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*publicKey=
+            serial%3A10F46D308B39
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `users`
+
+    Supported HTTP methods: GET PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _certificate _publicKey
+            _userResourceId _basicAuthPwdHash _oauthConsumerKey
+            _oauthConsumerSecret
+        UPDATE:
+            *resourceInfo *certificate *publicKey
+            *basicAuthPwdHash *oauthConsumerKey
+            *oauthConsumerSecret
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resources>
+
+    Example 1)    List attributes of all users of organization
+            EngineOrg
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/users?userId=
+            EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)    Set attribute publicKey to 'TBD' for all users in
+                organization BusinessOrg
+        METHOD:
+            PUT
+        URI:
+            https://localhost/organizations/BusinessOrg?userId=
+            BusinessAdmin&orgId=BusinessOrg&orgKey=3132333440414243
+            &*publicKey=TBD
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+{user}
+    Supported HTTP methods: GET POST PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _certificate _publicKey
+            _basicAuthPwdHash _oauthConsumerKey
+            _oauthConsumerSecret
+        UPDATE:
+            *resourceInfo *certificate *publicKey *basicAuthPwdHash
+            *oauthConsumerKey *oauthConsumerSecret
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resource>
+
+    Example 1)    Check if user1 exists within organization EngineOrg
+        METHOD:
+            HEAD
+        URI:
+            https://localhost/organizations/EngineOrg/users/user1?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)    Create user BusinessAdmin in organization
+            BusinessOrg, using BusinessOrg's (new) organization
+            key: 3132333440414243, with account EngineAdmin from
+            EngineOrg (EngineAdmin is assumed to have POST
+            privileges for users)
+        METHOD:
+            POST
+        URI:
+            https://192.168.0.1/organizations/BusinessOrg/
+            BusinessAdmin?userId=EngineAdmin&orgId=EngineOrg&
+            orgKey=0CDBB9AF76AF43BDB72E095989E612CC&*resourceInfo=
+            Administrator&*certificate=undefined&*publicKey=
+            undefined&*basicAuthPwdHash=undefined&
+            *oauthConsumerKey=undefined&*oauthConsumerSecret=
+            undefined&newOrgKey=3132333440414243
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `{roleTable}`
+
+    Supported HTTP methods: GET POST PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId __get __post __put __delete __head
+            __options
+        UPDATE:
+            *_get *_post *_put *_delete *_head *_options
+        TABLE NAMES:
+            documents users roleTables parserScripts content
+            organizations storage documentTypes engineCommands
+            transactions
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resource>
+
+    Example 1)     Get EngineAdmin permission table for resource table
+            users ( i.e.  for resources/resource type: users and
+            {user}), if any.
+        METHOD:
+                GET
+        URI:
+            https://localhost/organizations/EngineOrg/users/
+            EngineAdmin/roleTables/users?userId=EngineAdmin&orgId=
+            EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)     Allow user BusinessAdmin in organization
+            BusinessOrg, using BusinessOrg's (new) organization
+            key: 3132333440414243, with account EngineAdmin from
+            EngineOrg (EngineAdmin is assumed to have POST
+            privileges for users), to perform GET, HEAD, OPTIONS
+            AND PUT requests by creating new permissions in the
+            the users roleTable (i.e.  for resources/resource
+            type: users and {user}).
+        METHOD:
+            POST
+        URI:
+            https://192.168.0.1/organizations/BusinessOrg/
+            BusinessAdmin/roleTables/users?userId=EngineAdmin&
+            orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
+            *_put=1&*_delete=0&*_head=1&*_options=1&newOrgKey=
+            3132333440414243
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `storage`
+
+    Supported HTTP methods: GET PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _location _type
+            _storageId _accessPath _accessUser _accessPassword
+        UPDATE:
+            *resourceInfo *location *type *accessPath
+            *accessUser *accessPassword
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resources>
+
+    Example 1)     List attributes of storage with type = 'local'
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&_type=local
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)     Delete all storage resources with location
+            'localhost'
+        METHOD:
+            DELETE
+        URI:
+            https://localhost/organizations/EngineOrg/storage?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&_location=localhost
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `{storage}`
+
+    Supported HTTP methods: GET PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _location _type
+            _accessPath _accessUser _accessPassword
+        UPDATE:
+            *resourceInfo *location *type *accessPath
+            *accessUser *accessPassword
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resource>
+
+    Example 1)     List attributes of storage EngineStorage
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage?userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&_type=local
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)     Create storage resource EngineStorage2
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage?userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*resourceInfo=
+            storage%202&*location=localhost&*type=local&*accessPath
+            =/opt/storage2&*accessUser=undefined&*accessPassword=
+            undefined
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `{documentType}`
+
+    Supported HTTP methods: OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            <NONE>
+        UPDATE:
+            <NONE>
+        DOCUMENT TYPES:
+            file.csv file.raw script.perl
+        RESPONSE HEADERS:
+            <NONE>
+        RESPONSE BODY:
+            <OPTIONS>
+
+### `documents`
+
+    Supported HTTP methods: GET PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _columnFile _partHash
+            _totalParts _partId _lastModified _columnId
+            _documentId
+        UPDATE:
+            *resourceInfo
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resources>
+
+    Exact-match filters for _documentId, _storageId and _orgResourceId
+    may use protected lookup indexes when available.  These indexes only
+    narrow the candidate set; CaumeDSE still decrypts and verifies the
+    protected document attributes before returning, updating or deleting
+    registers.  Legacy registers without lookup values remain supported.
+
+    Example 1)     List attribute table for all document resources of
+            type file.raw
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.raw/documents?userId=
+            EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)     Delete all document resources of type file.csv
+        METHOD:
+            DELETE
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.csv/documents?userId=
+            EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `{document}`
+
+    Supported HTTP methods: GET POST PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _columnFile _partHash
+            _totalParts _partId _lastModified _columnId
+        UPDATE:
+            *resourceInfo
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resources>
+
+    Example 1)     List attribute table for document myfile.bin of type
+                file.raw
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.raw/documents/
+            myfile.bin?userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)     Create (Upload) document myfile.bin of type file.raw
+        METHOD:
+            POST (multipart/form-data)
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.raw/documents/
+            myfile.bin
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <Authentication/attribute update parameters, as
+             well as the file parameter in multipart/form-data
+             format>
+
+    Example 2.1)    HTML form to send parameters and file myfile.bin in
+            multipart/form-data format:
+
+```html
+<html><body>
+<h2>Caume Data Security Engine - Document resource post form example - file.raw
+</h2><br>
+<strong>RAW Document upload form:</strong><br>
+<form action="https://localhost/organizations/EngineOrg/storage/EngineStorage/
+documentTypes/file.raw/documents/myfile.bin" method="post" enctype=
+"multipart/form-data"><br>
+file: <input name="file" type="file" value="myfile.bin"><br>
+userId: <input name="userId" type="text" value="EngineAdmin"><br>
+orgId: <input name="orgId" type="text" value="EngineOrg"><br>
+orgKey: <input name="orgKey" type="password" value=
+"0CDBB9AF76AF43BDB72E095989E612CC"><br>
+*resourceInfo: <input name="*resourceInfo" type="text" value=
+"This is a raw file"><br>
+<input type="submit" value=" Send "></form>
+</body></html>
+```
+
+    Example 2.2)    Body part of a multipart/form-data encoded request
+            using the HTML example format above:
+
+```http
+-----------------------------204285202715621161041257990753
+Content-Disposition: form-data; name="file"; filename="cleartext.txt"
+Content-Type: text/plain
+
+This is cleartext This is cleartext This is cleartext This is cleartext.
+
+-----------------------------204285202715621161041257990753
+Content-Disposition: form-data; name="userId"
+
+EngineAdmin
+-----------------------------204285202715621161041257990753
+Content-Disposition: form-data; name="orgId"
+
+EngineOrg
+-----------------------------204285202715621161041257990753
+Content-Disposition: form-data; name="orgKey"
+
+0CDBB9AF76AF43BDB72E095989E612CC
+
+-----------------------------204285202715621161041257990753
+Content-Disposition: form-data; name="*resourceInfo"
+
+This is a raw file
+-----------------------------204285202715621161041257990753--
+```
+
+    Example 3)     Delete document resource myfile.bin of type file.raw
+        METHOD:
+            DELETE
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.raw/documents/
+            myfile.bin?userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `{parserScript}`
+
+    Supported HTTP methods: GET HEAD OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _columnFile _partHash
+            _totalParts _partId _lastModified _columnId
+        UPDATE:
+            <NONE>
+        PERL SCRIPT CALLBACK SUBROUTINES:
+            cmePERLProcessRow:
+                Called on each iteration to processes every
+                row.  Receives the whole row as an array
+                (@_).
+
+                The script main function is also called
+                before processing every row to perform
+                general tasks (e.g.  initialization).
+            cmePERLProcessColumnNames:
+                Called once to process the first row which
+                should contain the column names.  Receives
+                the whole row as an array (@_).  Should be
+                used to set indexes of columns to be
+                processed.
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Contents of parsed file.csv with perl script>
+
+    Example 1)     Get parsed contents of payroll.csv file (of type
+            file.csv) using script myscript.pl (of type
+            script.perl); get results in csv format.  Note that
+            the csv file will be decrypted and processed with
+            the embedded Perl interpreter in memory.
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.csv/documents/
+            payroll.csv/parserScripts/myscript.pl?userId=
+            EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&outputType=csv
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 1.1)    Sample output (remember columns are not reorganized
+            after decryption, only rows).
+
+```csv
+"id","salary","name","employeeId","lastName"
+"1","82400","Jacob","1","Nieves"
+"2","111787","Jerome","2","Hodges"
+"3","181281","Rooney","3","Atkins"
+"4","195943","Gregory","4","Sullivan"
+"5","240999","Jameson","5","Castro"
+"6","331326","Brandon","6","Clayton"
+"7","374552","Kadeem","7","Mcdowell"
+"8","517300","Upton","8","Mooney"
+"9","571197","Jelani","9","Wyatt"
+"10","711605","Bernard","10","Jackson"
+```
+
+    Example 1.2)    Sample payroll.csv file (should have been uploaded
+            as a file of type file.csv before the request).
+
+```csv
+name,lastName,employeeId,salary
+Jacob,Nieves,1,82400
+Jerome,Hodges,2,29387
+Rooney,Atkins,3,69494
+Gregory,Sullivan,4,14662
+Jameson,Castro,5,45056
+Brandon,Clayton,6,90327
+Kadeem,Mcdowell,7,43226
+Upton,Mooney,8,142748
+Jelani,Wyatt,9,53897
+Bernard,Jackson,10,140408
+```
+
+    Example 1.3)    Sample myscript.pl file (should have been uploaded
+            as a file of type script.perl before the request).
+            This particular scripts sums every number in the
+            salary columns and stores in this same column the
+            partial results (i.e.  the last value contains the
+            complete sum).
+
+```perl
+if ($init eq undef)
+{
+    print "Global initialization of Perl Script\n";
+    $init=1;
+    $colsum=0;
+    $index=-1;
+}
+else
+{
+    $init+=1;
+}
+print "This is run number ".$init."\n";
+sub cmePERLProcessRow              #Process a row - CaumeDSE Iterations
+{
+    my (@r) = @_;
+    print "PERL sub cmePERLProcessRow array: @r\n";
+    if ($index >= 0)
+    {
+        $colsum+=$r[$index];
+        $r[$index]=$colsum;  #Accumulate results in this column
+    } else {
+        print "PERL sub cmePERLProcessRow, no column named - salary - found!\n";
+    }
+    print "current sum = $colsum\n";
+    print "PERL sub cmePERLProcessRow, result array: @r\n";
+    (@r);
+}
+sub cmePERLProcessColumnNames       #Get (and optionally modify) column names
+{
+    $index=-1;   #set index for sum column
+    my $cont=0;
+    my (@cn) = @_;
+    foreach (@cn)
+    {
+        if ($_ eq "salary") #set index.
+        {
+            $index=$cont;
+            print "PERL sub cmePERLProcessColumnNames index for - salary - found: $index.\n";
+        }
+        $cont++;
+    }
+    print "PERL sub cmePERLProcessColumnNames array: @cn\n";
+    print "PERL sub cmePERLProcessColumnNames, result array: @cn\n";
+    (@cn);
+}
+```
+
+
+### `content`
+
+    Supported HTTP methods: GET HEAD OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _columnFile _partHash
+            _totalParts _partId _lastModified _columnId
+        UPDATE:
+            <NONE>
+        SUPPORTED FILE TYPES:
+            file.csv file.raw
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Contents the file>
+
+    Example 1)     Get contents of payroll.csv file (of type file.csv); get
+            results in csv format.
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.csv/documents/
+            payroll.csv/content?userId=EngineAdmin&orgId=EngineOrg
+            &orgKey=0CDBB9AF76AF43BDB72E095989E612CC&outputType=csv
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `{contentRow}`
+
+    Supported HTTP methods: POST PUT GET HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _columnFile _partHash
+            _totalParts _partId _lastModified _columnId
+        UPDATE:
+            [column_name]
+        UPDATE NOTES:
+            For POST, {contentRow} must be exactly the next
+            available numeric row (it behaves as an append);
+            existing column for which a new value was not
+            specified will receive a new empty string.
+
+            For PUT, {contentRow} must be in the range 1 - last
+            row; existing columns for which a new value was not
+            specified will retain their previous value.
+        SUPPORTED FILE TYPES:
+            file.csv
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Row contents or result of operation>
+
+    Example 1)    Get row 456 of document document.csv (of type file.csv);
+            get results in csv format.
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.csv/documents/
+            document.csv/contentRows/456?userId=EngineAdmin&orgId=
+            EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+            &outputType=csv
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)    Update columns salary (with 100.20 as new value) and
+            name (with James Duncan as new value) at row 100 of
+            document document.csv (of type file.csv).  Existing
+            columns lastName and employeeId will retain their
+            previous values.
+        METHOD:
+            PUT
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.csv/documents/
+            document.csv/contentRows/100?userId=EngineAdmin&orgId=
+            EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+            &[salary]=100.20&[name]=James
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 3)    Add row 101 (assuming there are currently 100 rows,
+            not counting column names) with column salary empty,
+            column lastName with value Robertson, column name
+            with value Sam and column employeeId with value 101,
+            to document document.csv (of type file.csv).
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.csv/documents/
+            document.csv/contentRows/101?userId=EngineAdmin&orgId=
+            EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+            &[name]=Sam&[lastName]=Robertson&[employeeId]=100
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `{contentColumn}`
+
+    Supported HTTP methods: POST GET HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId _resourceInfo _columnFile _partHash
+            _totalParts _partId _lastModified _columnId
+        UPDATE:
+            <NONE>
+        UPDATE NOTES:
+            For POST, {contentColumn} can refer to a new column
+            in a non-existent document.  In this case the
+            document will be created along with {contentColumn}
+            as its first column.
+
+            For DELETE, if {contentColumn} is the only column
+            left in the document, the whole document is deleted.
+        SUPPORTED FILE TYPES:
+            file.csv
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Row contents or result of operation>
+
+    Example 1)      Get column Col1 of document document.csv (of type
+            file.csv); get results in csv format.
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.csv/documents/
+            document.csv/contentColumns/Col1?userId=EngineAdmin
+            &orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&outputType=csv
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2)    Delete column salary of document document.csv (of
+            type file.csv).
+        METHOD:
+            DELETE
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.csv/documents/
+            document.csv/contentColumns/salary?userId=EngineAdmin
+            &orgId=
+            EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 3)    Add Column Col1 to non-existing document
+            newdocument.csv (which also creates the document of
+            type file.csv).
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/documentTypes/file.csv/documents/
+            newdocument.csv/contentColumns/Col1?userId=EngineAdmin
+            &orgId=
+            EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `transactions`
+
+    Supported HTTP methods: GET HEAD OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+    _userId _orgId _requestMethod _requestUrl
+            _requestHeaders _startTimestamp _endTimestamp
+            _requestDataSize _responseDataSize _orgResourceId
+            _requestIPAddress _responseCode _responseHeaders
+            _authenticated
+        UPDATE:
+            <NONE>
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching transactions>
+
+    Example 1)    List all transactions
+        METHOD:
+            GET
+        URI:
+            https://localhost/transactions?userId=
+            EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 1)    List all transactions for non authenticated users
+        METHOD:
+            GET
+        URI:
+            https://localhost/transactions?userId=
+            EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&_authenticated=0
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `favicon.ico`
+
+    Supported HTTP methods: GET
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            <NONE>
+        UPDATE:
+            <NONE>
+        RESPONSE HEADERS:
+            Content-Type: image/x-icon
+        RESPONSE BODY:
+            <Icon image of the CaumeDSE (typically used by browsers
+            )>
+    Example 1)     Get contents of the favicon.ico file.
+        METHOD:
+            GET
+        URI:
+            https://localhost/favicon.ico?userId=EngineAdmin&orgId=
+            EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <image file>
+
+
+## Collaborating
+
+
+Maintaining open source software with strict security requirements is hard.
+We appreciate all help we can get, be it by coding/ fixing code or just by
+submitting errors or functionality requests.
+
+We will do our best to listen to everybody an try to answer all requests.
+However, to maintain control and ensure quality we must restrict the number
+of people making decisions and not everyone's wishes will be pleased.
+Still, we expect that the layered model of the software platform will allow
+almost any functionality to be implemented in a higher level, while we try
+to maintain the engine (CaumeDSE) as small and stable as possible.
+
+If you wish to contribute in any way please visit the project page
+(Caume/CaumeDSE) in github.
+
+## Security Considerations
+
+
+While all operations are performed in memory and some measures have been
+implemented to limit data leaks, such as overwriting keys after use, it
+should be noted that users with sufficient privileges may still be able to
+access memory contents during operation (e.g.  by dumping the contents of
+memory devices in Unix based operating systems).  Also, memory swaps to
+disks may occur (these are controlled by the operating system).
+
+Also, permissions of directories where files are stored, particularly of the
+secureTmp directory (where unencrypted files are posted before being
+processed/encrypted and then overwritten as part of POST requests) should be
+restricted to limit unauthorized access.
+
+You may consider running this software with a limited account; just take
+into account that it has to be able to access Perl libraries, its own
+database directories, and listen to incoming HTTPS connections ( and also
+HTTP in DEBUG mode).  Alternatively you may consider running CaumeDSE in a
+chrooted environment.
+
+Note that DEBUG mode makes use of HTTP (and then switches to HTTPS after the
+first [enter] is pressed) which does not encrypt incoming connections.
+Debug mode also dumps to the console sensitive information including
+passwords.  The default is to compile in release mode.  To change to debug
+mode (which is slower), use the following parameter when running
+./configure:
+
+    --enable-DEBUG
+Before running CaumeDSE in DEBUG mode, copy the contents of TEST/testfiles to /opt/cdse/testfiles and TEST/testDB_opt_cdse to /opt/cdse (or the directory specified by PATH_DATADIR) to provide data for the internal tests.
+
+In release mode the software enters and infinite loop to answer connections;
+right now you need to kill the process to stop it).
+
+If you want to bypass TLS authentication for testing purposes in DEBUG mode
+with HTTP (which will obviously fail), you may enable this feature (FOR
+TESTING PURPOSES ONLY) with:
+
+    --enable-BYPASSTLSAUTHINHTTP
+
+If you want to enable the use of the old Password Based Key Derivation
+Function `PBKDF1` (i.e.  `PKCS5v1.5`, which is compatible with openssl's command
+line tool but is NOT RECOMMENDED; it uses MD5+the default cipher algorithm
+and a counter = 1) use the following configure switch.
+
+    --enable-OLDPBKDF1
+
+The default Password Based Key Derivation Function standard is now `PBKDF2`
+(`PKCS5v2.0`, which uses `HMAC-SHA1` + a default counter much greater than 1).
+
+Note that there is now an exception where `PBKDF2` runs a using a single
+iteration.  This happens when the key is an hexadecimal representation of a
+binary key that has a length greater or equal than the default cipher key
+length.  We assume that in this case the key was generated with a robust
+PRNG, and since the key length are the same, key expansion is unnecessary
+(actually, we just need one iteration to perform a single permitation within
+the whole keyspace to take into account the provided salt).  Using this kind
+of keys improves performance considerably.
+
+The default symmetric encryption algorithm used by CaumeDSE is `AES-256-GCM`.
+You may override this at runtime by setting the environment variable
+`CDSE_DEFAULT_ENC_ALG` to any cipher name recognized by OpenSSL, such as
+`aes-256-cbc` for AES in CBC mode.
+
+All other keys are assumed to be human generated passwords or passphrases
+which require key expansion with a slow function, in order to limit
+dictionary and brute force attacks.  Therefore, they are processed by the
+`PBKDF2` function using the defined number of iterations each time, which
+slows down all the encryption and decryption processes.
+
+The default key generated for EngineAdmin when creating a new database is
+now an hexadecimal representation of a binary key with the same langth as
+the default cipher key (i.e.  cryptographic operations are much faster).
+However, the example database included has a shorter key for the default
+administrator account EngineAdmin; using the example database with the
+EngineAdmin account is therefore much slower.
+
+By default, hardening parameters are included as parto of compiler and
+linker options.  If you need to disable them (e.g.  for testing) use:
+
+    --disable-HARDENING
