@@ -22,9 +22,10 @@
   - Keep shared Perl interpreter calls serialized.
   - Move DB/file work, secure DB reconstruction, response construction, and cleanup outside the global Perl lock where possible.
 
-- [ ] #5 Avoid reapplying SQLite PRAGMAs on every DB open.
+- [x] #5 Avoid reapplying SQLite PRAGMAs on every DB open.
   - Split memory DB and file DB open setup.
   - Apply WAL/synchronous/cache settings only where they are useful and check PRAGMA errors.
+  - Done: memory DB opens now bypass file-backed PRAGMAs, file create/open setup checks PRAGMA errors, and regular DB opens no longer reapply WAL mode.
 
 - [ ] #6 Cache logs table schema validation.
   - Validate/create the transactions table at startup or first use under a mutex.

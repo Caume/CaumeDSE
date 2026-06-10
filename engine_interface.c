@@ -158,7 +158,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
 
     *resultDB=NULL;  //Pointer to results must not point to anything previously! (Caller responsibility).
     //Open empty result DB (we must return at least an empty database in case of error). Caller must close it.
-    if (cmeDBCreateOpen(":memory:",resultDB))
+    if (cmeMemDBCreateOpen(resultDB))
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeDBCreateOpen() Error, can't "
@@ -321,7 +321,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
         }
         else //MAC OK; load column file.
         {
-            if (cmeDBCreateOpen(":memory:",&(memDBcol[cont])))
+            if (cmeMemDBCreateOpen(&(memDBcol[cont])))
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeSecureSQLToMemDB(), cmeDBCreateOpen() Error, can't "

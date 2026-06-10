@@ -504,7 +504,7 @@ void testDB (PerlInterpreter* myPerl)
     sqlite3 *DB;
     char **pQueryResult;        //Important: do not declare it as char ***
 
-    cmeDBCreateOpen (":memory:",&DB);       //Create memory DB
+    cmeMemDBCreateOpen(&DB);       //Create memory DB
     cmeSQLRows(DB,"BEGIN TRANSACTION; CREATE TABLE table1 (key INTEGER PRIMARY KEY,"
                "nombre TEXT, apellido TEXT, salario FLOAT);"
                "INSERT INTO table1 (nombre,apellido,salario) VALUES('Enrique','Sorcia',10011);"
@@ -530,7 +530,7 @@ void testDB (PerlInterpreter* myPerl)
     ilist[0]="cdse";
     ilist[1]=testScriptPath;
     result=cmePerlParserCmdLineInit(2,ilist,myPerl);    //initialize Parser and script's global variables
-    cmeDBCreateOpen (":memory:",&DB);       //Create memory DB
+    cmeMemDBCreateOpen(&DB);       //Create memory DB
     cmeSQLRows(DB,"BEGIN TRANSACTION; CREATE TABLE table1 (key INTEGER PRIMARY KEY,"
                "nombre TEXT, apellido TEXT, salario FLOAT);"
                "INSERT INTO table1 (nombre,apellido,salario) VALUES('Enrique','Sorcia',10011);"

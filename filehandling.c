@@ -676,7 +676,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             {
                 cmeGetRndSalt(&(SQLDBfNames[cont]));
                 //TODO (OHR#8#): Create SQLDBfNames collision handling routine. Just in case.
-                if (cmeDBCreateOpen(":memory:",&(ppDB[cont])))
+                if (cmeMemDBCreateOpen(&(ppDB[cont])))
                 {
 #ifdef ERROR_LOG
                     fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeDBCreateOpen() Error, can't "
@@ -1725,7 +1725,7 @@ void cmeContentReaderFreeCallback (void *cls)
         {
             cmeGetRndSalt(&(SQLDBfNames[cont]));
             //TODO (OHR#8#): Create SQLDBfNames collision handling routine. Just in case.
-            if (cmeDBCreateOpen(":memory:",&(ppDB[cont])))
+            if (cmeMemDBCreateOpen(&(ppDB[cont])))
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeDBCreateOpen() Error, can't "
