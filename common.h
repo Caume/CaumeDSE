@@ -98,6 +98,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeDefaultSecureDBSaltLen 16    //Default salt length for meta and data salts within secure databases.
 #define cmeDefaultValueSaltLen 16        //Default size for prep-ended bytes for internal databases' encrypted values.
 #define cmeDefaultValueSaltCharLen 2*cmeDefaultValueSaltLen             //Default size for CaumeDSE ByteHexStr value salts used in protected DBs.
+#define cmeDefaultLookupSalt "4361756d654453454c6f6f6b75703121"        //Fixed 16-byte hex salt for deterministic protected lookup HMAC derivation.
 #define cmeDefaultSqlBufferLen 8192         //Default size of Buffer for SQL queries. {8192}
 extern char cmeDefaultEncAlg[];             //Default algorithm for symmetric encryption in engine admin. databases.
 void cmeInitDefaultEncAlg();                //Initialize default algorithm from environment
@@ -164,7 +165,7 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeIDDColumnFileMeta_attribute_4 "signProtected"        //Column value {0 based} for WSID column digital signature after protection attribute
 #define cmeIDDColumnFileMeta_attribute_5 "MAC"                  //Column value {0 based} for WSID column MAC before protection attribute
 #define cmeIDDColumnFileMeta_attribute_6 "MACProtected"         //Column value {0 based} for WSID column MAC after protection attribute
-#define cmeIDDResourcesDBDocumentsNumCols 15                            //# of columns for User tables in ResourceDB databases
+#define cmeIDDResourcesDBDocumentsNumCols 18                            //# of columns for User tables in ResourceDB databases
 #define cmeIDDResourcesDBDocuments_resourceInfo 4                       //Column index {0 based} for WSID column resource information
 #define cmeIDDResourcesDBDocuments_resourceInfo_name "resourceInfo"     //Column name for WSID column resource information
 #define cmeIDDResourcesDBDocuments_columnFile 5                         //Column index {0 based} for WSID column column file
@@ -187,6 +188,12 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeIDDResourcesDBDocuments_lastModified_name "lastModified"     //Column name for WSID column last modified date {UNIX/POSIX time}
 #define cmeIDDResourcesDBDocuments_columnId 14                          //Column index {0 based} for WSID column column id
 #define cmeIDDResourcesDBDocuments_columnId_name "columnId"             //Column name for WSID column column id
+#define cmeIDDResourcesDBDocuments_documentIdLookup 15                  //Column index {0 based} for protected lookup of document id
+#define cmeIDDResourcesDBDocuments_documentIdLookup_name "documentIdLookup" //Column name for protected lookup of document id
+#define cmeIDDResourcesDBDocuments_storageIdLookup 16                   //Column index {0 based} for protected lookup of storage id
+#define cmeIDDResourcesDBDocuments_storageIdLookup_name "storageIdLookup" //Column name for protected lookup of storage id
+#define cmeIDDResourcesDBDocuments_orgResourceIdLookup 17               //Column index {0 based} for protected lookup of organization resource id
+#define cmeIDDResourcesDBDocuments_orgResourceIdLookup_name "orgResourceIdLookup" //Column name for protected lookup of organization resource id
 #define cmeIDDResourcesDBUsersNumCols 12                                //# of columns for User tables in ResourceDB databases
 #define cmeIDDResourcesDBUsers_resourceInfo 4                           //Column index {0 based} for WSID column resource information
 #define cmeIDDResourcesDBUsers_resourceInfo_name "resourceInfo"         //Column name for WSID column resource information
