@@ -49,3 +49,17 @@
   - Produce a concise final summary with component names, status, log paths, elapsed time, and the first failing marker so regressions do not require manually reading the full DEBUG output.
   - Implemented in `TEST/run_debug_components.sh`.
   - Longer-term: move DEBUG tests out of `main.c` into a dedicated test executable or selectable test harness so each unit/component can run independently without starting unrelated subsystems.
+
+- [x] #10 Migrate `ChangeLog` to GitHub-compatible Markdown.
+  - Preserve the existing chronological history and author/date information.
+  - Convert entries to Markdown headings and bullet lists that render cleanly on GitHub.
+  - Keep GNU-style file/function references readable, using backticks for paths, symbols, commands, and literal values.
+  - Add a short compatibility note if the canonical file name changes from `ChangeLog` to `CHANGELOG.md`, and update packaging or release references that still expect the old name.
+  - Done: `CHANGELOG.md` is now the canonical Markdown changelog, `ChangeLog` remains as a compatibility pointer, and distribution metadata includes the Markdown file.
+
+- [x] #11 Migrate `README` to GitHub-compatible Markdown.
+  - Preserve the current installation, configuration, architecture, security, API, and examples content.
+  - Convert plain-text section numbering to Markdown headings, lists, tables, and fenced code blocks where appropriate.
+  - Keep command examples copy/paste-safe and annotate shell, SQL, C, JSON, Perl, or configuration snippets with fenced-code language tags when known.
+  - Rename to `README.md` only after checking build, packaging, and distribution references that may still point to `README`.
+  - Done: `README.md` is now the canonical Markdown README, `README` remains as a compatibility pointer, and distribution metadata includes the Markdown file.
