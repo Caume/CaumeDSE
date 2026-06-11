@@ -7414,8 +7414,6 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
 {
     #define POST            1
     int cont,result __attribute__((unused));
-    long fileSize,lcont;
-    FILE *fp=NULL;
     struct cmeWebServiceConnectionInfoStruct *con_info = *coninfo_cls;
 
 #ifdef DEBUG
@@ -7451,19 +7449,7 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
         }
         if (con_info->fileName)
         {
-            fp=fopen(con_info->fileName,"r+b"); //Reopen file for updating in binary mode.
-            if (fp)
-            {
-                fseek(fp,0,SEEK_END);
-                fileSize=ftell(fp);     //Get size of file.
-                fseek(fp,0,SEEK_SET);
-                for (lcont=0;lcont<fileSize;lcont++) //Overwrite file with 0s.
-                {   // TODO (OHR#3#): Add a conditional compiling option to replace simple overwriting with a sanitizing scheme with multiple rounds.                    fputc(0,fp);
-                }
-                fclose (fp);
-                fp=NULL;
-            }
-            result=remove(con_info->fileName); //Finally, delete the temporary file.
+            result=cmeFileOverwriteAndDelete(con_info->fileName); //Overwrite and delete the temporary file.
             cmeFree(con_info->fileName);
         }
     }

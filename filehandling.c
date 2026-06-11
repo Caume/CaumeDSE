@@ -1470,13 +1470,73 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
     }
 }
 
+static int cmeFileOverwritePass(FILE *fp, long int fileLen, int pass)
+{
+    int result;
+    long int written=0;
+    size_t chunkLen;
+    unsigned char overwriteBuffer[cmeSecureOverwriteBufferSize];
+    unsigned char *randomBytes=NULL;
+
+    result=fseek(fp,0,SEEK_SET);
+    if (result)
+    {
+        return(1);
+    }
+    while (written<fileLen)
+    {
+        chunkLen=(size_t)(((fileLen-written)>cmeSecureOverwriteBufferSize)?
+                          cmeSecureOverwriteBufferSize:(fileLen-written));
+        if ((pass%3)==1)
+        {
+            memset(overwriteBuffer,0xFF,chunkLen);
+        }
+        else if ((pass%3)==2)
+        {
+            randomBytes=NULL;
+            result=cmePrngGetBytes(&randomBytes,(int)chunkLen);
+            if ((result)||(!randomBytes))
+            {
+                cmeFree(randomBytes);
+                return(2);
+            }
+            memcpy(overwriteBuffer,randomBytes,chunkLen);
+            cmeFree(randomBytes);
+        }
+        else
+        {
+            memset(overwriteBuffer,0,chunkLen);
+        }
+        if (fwrite(overwriteBuffer,1,chunkLen,fp)!=chunkLen)
+        {
+            return(3);
+        }
+        written+=(long int)chunkLen;
+    }
+    if (fflush(fp))
+    {
+        return(4);
+    }
+    if (fsync(fileno(fp)))
+    {
+        return(5);
+    }
+    return(0);
+}
+
 int cmeFileOverwriteAndDelete (const char *filePath)
 {
     int result;
-    long int cont,fileLen;
+    int pass;
+    int numPasses=CDSE_SECURE_OVERWRITE_PASSES;
+    long int fileLen;
     FILE *fp=NULL;
 
-    fp=fopen(filePath,"w");
+    if (numPasses<1)
+    {
+        numPasses=1;
+    }
+    fp=fopen(filePath,"r+b");
     if(!fp) //Error
     {
 #ifdef DEBUG
@@ -1494,10 +1554,26 @@ int cmeFileOverwriteAndDelete (const char *filePath)
         return(2);
     }
     fileLen=ftell(fp);
-    result=fseek(fp,0,SEEK_SET); //Go to Start of File
-    for (cont=0; cont<fileLen; cont++)
+    if (fileLen<0)
     {
-        result=fputc((int)'0',fp);
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeFileOverwriteAndDelete(), ftell() Error!\n");
+#endif
+        fclose(fp);
+        return(4);
+    }
+    for (pass=0;pass<numPasses;pass++)
+    {
+        result=cmeFileOverwritePass(fp,fileLen,pass);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeFileOverwriteAndDelete(), overwrite pass %d error %d for file '%s'!\n",
+                    pass,result,filePath);
+#endif
+            fclose(fp);
+            return(5);
+        }
     }
     fclose(fp);
     result=remove(filePath);
@@ -1510,8 +1586,8 @@ int cmeFileOverwriteAndDelete (const char *filePath)
         return(3);
     }
 #ifdef DEBUG
-        fprintf(stderr,"CaumeDSE Debug: cmeFileOverwriteAndDelete(), file '%s' of length %ld overwritten and deleted.\n",
-                filePath,fileLen);
+        fprintf(stderr,"CaumeDSE Debug: cmeFileOverwriteAndDelete(), file '%s' of length %ld overwritten with %d pass(es) and deleted.\n",
+                filePath,fileLen,numPasses);
 #endif
     return(0);
 }

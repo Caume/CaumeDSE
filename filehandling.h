@@ -79,8 +79,8 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
 int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
                                const char *documentType, const char *documentPath, const char *orgId,
                                const char *storageId, const char *orgKey);
-// Function to overwrite and delete a file (meant for Temporal files in restricted/memory storage.
-// TODO (ANY#3#): Check and apply the appropriate kind of secure deletion mechanism.
+// Function to overwrite and delete a file (meant for temporal files in restricted/memory storage).
+// Define CDSE_SECURE_OVERWRITE_PASSES at compile time to use multiple overwrite passes.
 int cmeFileOverwriteAndDelete (const char *filePath);
 // Function to process callback iterations from MHD_create_response_from_callback (libmicrohttpd).
 ssize_t cmeContentReaderCallback (void *cls, uint64_t pos, char *buf, size_t max);

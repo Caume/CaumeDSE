@@ -197,8 +197,9 @@
   - Source: `webservice_interface.c:6546`.
   - Done: added raw-compatible handlers for `file.txt`, `file.json`, `file.xml`, `file.html`, `file.pdf`, `file.png`, `file.jpg`, `file.gif`, `file.zip` and `file.bin`, while keeping `file.csv` and `script.perl` special.
 
-- [ ] #40 Add an optional multi-round secure overwrite scheme.
+- [x] #40 Add an optional multi-round secure overwrite scheme.
   - Source: `webservice_interface.c:7307`, `filehandling.h:83`.
+  - Done: `cmeFileOverwriteAndDelete()` now supports compile-time multi-pass overwrites via `CDSE_SECURE_OVERWRITE_PASSES`, and POST temporary file cleanup uses that shared helper.
 
 - [ ] #41 Vacuum memory DBs before durable saves when requested.
   - Source: `db.c:201`.

@@ -1978,6 +1978,12 @@ mode (which is slower), use the following parameter when running
     --enable-DEBUG
 Before running CaumeDSE in DEBUG mode, copy the contents of TEST/testfiles to /opt/cdse/testfiles and TEST/testDB_opt_cdse to /opt/cdse (or the directory specified by PATH_DATADIR) to provide data for the internal tests.
 
+Temporary-file deletion uses one zero-fill overwrite pass by default.  To
+compile with additional overwrite passes, define
+`CDSE_SECURE_OVERWRITE_PASSES` in `CFLAGS`, for example:
+
+    CFLAGS="-DCDSE_SECURE_OVERWRITE_PASSES=3" ./configure
+
 In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).
 
