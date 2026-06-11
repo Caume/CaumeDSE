@@ -582,6 +582,62 @@ static int cmeWebServiceGetBooleanParam(const char **argumentElements, const cha
     return(defaultValue);
 }
 
+static const char *cmeWebServiceSupportedDocumentTypes[]={
+    "file.csv",
+    "file.raw",
+    "file.txt",
+    "file.json",
+    "file.xml",
+    "file.html",
+    "file.pdf",
+    "file.png",
+    "file.jpg",
+    "file.gif",
+    "file.zip",
+    "file.bin",
+    "script.perl"
+};
+
+static const int cmeWebServiceNumSupportedDocumentTypes=
+    sizeof(cmeWebServiceSupportedDocumentTypes)/sizeof(cmeWebServiceSupportedDocumentTypes[0]);
+
+static int cmeWebServiceIsSupportedDocumentType(const char *documentType)
+{
+    int cont;
+
+    if (!documentType)
+    {
+        return(0);
+    }
+    for (cont=0;cont<cmeWebServiceNumSupportedDocumentTypes;cont++)
+    {
+        if (!strcmp(documentType,cmeWebServiceSupportedDocumentTypes[cont]))
+        {
+            return(1);
+        }
+    }
+    return(0);
+}
+
+static int cmeWebServiceIsRawFileDocumentType(const char *documentType)
+{
+    if (!documentType)
+    {
+        return(0);
+    }
+    return((!strcmp(documentType,"file.raw"))||
+           (!strcmp(documentType,"file.txt"))||
+           (!strcmp(documentType,"file.json"))||
+           (!strcmp(documentType,"file.xml"))||
+           (!strcmp(documentType,"file.html"))||
+           (!strcmp(documentType,"file.pdf"))||
+           (!strcmp(documentType,"file.png"))||
+           (!strcmp(documentType,"file.jpg"))||
+           (!strcmp(documentType,"file.gif"))||
+           (!strcmp(documentType,"file.zip"))||
+           (!strcmp(documentType,"file.bin")));
+}
+
 static int cmeWebServiceBuildSecureDBAttributes(const char **argumentElements,
                                                 const char **attributes, const char **attributeData,
                                                 int maxAttributes)
@@ -6151,14 +6207,13 @@ int cmeWebServiceProcessDocumentTypeClass (char **responseText, int *responseCod
                                            const char **argumentElements, const char *method)
 {
     int cont;
-    const char *docTypes[3]={"file.csv","file.raw","script.perl"};
 
     if(!strcmp(method,"GET"))
     {
         cmeStrConstrAppend(responseText,"<b>200 OK - Available document types:</b><br>");
-        for (cont=0; cont<3; cont++)
+        for (cont=0;cont<cmeWebServiceNumSupportedDocumentTypes;cont++)
         {
-            cmeStrConstrAppend(responseText,"%s<br>",docTypes[cont]);
+            cmeStrConstrAppend(responseText,"%s<br>",cmeWebServiceSupportedDocumentTypes[cont]);
         }
         *responseCode=200;
         return(0);
@@ -6186,7 +6241,7 @@ int cmeWebServiceProcessDocumentTypeClass (char **responseText, int *responseCod
 int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **responseFilePath, int *responseCode,
                                      const char *url, const char **urlElements, const char **argumentElements, const char *method)
 {   //IDD ver. 1.0.20 definitions.
-    int cont, cont2;
+    int cont;
     int orgArg=0;
     int usrArg=0;
     int keyArg=0;
@@ -6205,8 +6260,6 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
     char **columnNames=NULL;
     const int numColumns=12;            //Number of columns in corresponding resource table.
     const int numValidGETALLMatch=0;    //No matches necessary for this resource
-    const int numSupportedDocTypes=3;
-    const char *supportedDocTypes[3]={"file.csv","file.raw","script.perl"};
 
     #define cmeWebServiceProcessDocumentTypeResourceFree() \
         do { \
@@ -6287,15 +6340,7 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
                                           &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
         if ((numMatchArgs>=2)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId userId and >=2 Match)
         {
-            cont2=0;
-            for (cont=0; cont<numSupportedDocTypes; cont++)
-            {
-                if (!strcmp(urlElements[5],supportedDocTypes[cont])) //Check for valid document type.
-                {
-                    cont2++;
-                }
-            }
-            if (cont2) //OK - Supported type.
+            if (cmeWebServiceIsSupportedDocumentType(urlElements[5])) //OK - Supported type.
             {
                 cmeStrConstrAppend(responseText,"<b>200 OK - document type %s is supported. Options for document type resources:</b><br>"
                    "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
@@ -6617,7 +6662,8 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                             return(4);
                         }
                     }
-                    else if(!strcmp("script.perl",urlElements[5])) //Process 'script.perl' type
+                    else if((!strcmp("script.perl",urlElements[5]))||
+                            (cmeWebServiceIsRawFileDocumentType(urlElements[5]))) //Process raw-compatible secure file types.
                     {
                         resourceInfoText = (char *) MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"*resourceInfo");
                         if(newOrgKey) //Create resource using newOrgKey
@@ -6652,42 +6698,6 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                             return(5);
                         }
                     }
-                    else if(!strcmp("file.raw",urlElements[5])) //Process 'file.raw' type
-                    {
-                        resourceInfoText = (char *) MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"*resourceInfo");
-                        if(newOrgKey) //Create resource using newOrgKey
-                        {
-                            result=cmeRAWFileToSecureFile (postImportFile,userId,orgId,newOrgKey,resourceInfoText, //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                            urlElements[5], //document type
-                                                            urlElements[7], //documentId
-                                                            urlElements[3], //storageId
-                                                            storagePath);   //storagePath
-                        }
-                        else //Create resource using orgKey
-                        {
-                            result=cmeRAWFileToSecureFile (postImportFile,userId,orgId,orgKey,resourceInfoText, //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                            urlElements[5], //document type
-                                                            urlElements[7], //documentId
-                                                            urlElements[3], //storageId
-                                                            storagePath);   //storagePath
-                        }
-                        if (result) //Error, File couldn't be imported
-                        {
-                            cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
-                                           "Internal server error number '%d'."
-                                           "METHOD: '%s' URL: '%s'."
-                                            "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgDocumentOptions,
-                                            cmeInternalDBDefinitionsVersion);
-#ifdef ERROR_LOG
-                            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessDocumentResource(), Error, internal server error '%d'."
-                                    " Method: '%s', URL: '%s'!\n",result,method,url);
-#endif
-                            cmeWebServiceProcessDocumentResourceFree();
-                            *responseCode=500;
-                            return(6);
-                        }
-                    }
-                    // TODO (OHR#2#): process other file types with ' else if (!strcmp("file.XXX",urlElements[5])) {  } '
                     else //Error, unsupported file type
                     {
                         cmeStrConstrAppend(responseText,"<b>501 ERROR Not implemented.</b><br>"
@@ -8370,7 +8380,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(5);
                     }
                 }
-                else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
+                else if (cmeWebServiceIsRawFileDocumentType(urlElements[5])) //Raw-compatible files are stored as secure files, but parser execution on them is not implemented.
                 {
                     cmeStrConstrAppend(responseText,"<b>501 ERROR Not implemented.</b><br>"
                                        "The requested functionality has not been implemented."
@@ -8579,7 +8589,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(14);
                     }
                 }
-                else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
+                else if (cmeWebServiceIsRawFileDocumentType(urlElements[5])) //Raw-compatible files are stored as secure files, but parser execution on them is not implemented.
                 {
 #ifdef DEBUG
                     fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessParserScriptResource(), Debug, support "
@@ -9151,9 +9161,10 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     *responseCode=200;
                     return(0);
                 }
-                else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
+                else if (cmeWebServiceIsRawFileDocumentType(urlElements[5])) //If document type uses raw file storage, then...
                 {
                     fileNameValues[0]=(void*)urlElements[7]; //Just point to proper documentId for the file; no need to free it here.
+                    fileNameValues[1]=(void*)urlElements[5]; //Match against the requested raw-compatible document type.
                     //Get raw file :
                     result=cmeGetUnprotectDBRegisters(pDB,tableName,fileNameMatch,(const char **)fileNameValues,
                                                       2,&resultRegisterCols,&numResultRegisterCols,
@@ -9369,9 +9380,10 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     cmeWebServiceProcessContentClassFree();
                     return(0);
                 }
-                else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
+                else if (cmeWebServiceIsRawFileDocumentType(urlElements[5])) //If document type uses raw file storage, then...
                 {
                     fileNameValues[0]=(void*)urlElements[7]; //Just point to proper documentId for the file; no need to free it here.
+                    fileNameValues[1]=(void*)urlElements[5]; //Match against the requested raw-compatible document type.
                     //Get raw file :
                     result=cmeGetUnprotectDBRegisters(pDB,tableName,fileNameMatch,(const char **)fileNameValues,
                                                       2,&resultRegisterCols,&numResultRegisterCols,

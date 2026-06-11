@@ -247,8 +247,8 @@ The architecture of CaumeDSE is composed of several layers:
 4. Resource access - CaumeDSE maintains internal index databases
        that map data resources to their location.  All resources and
        index database registers are encrypted with the organization's
-       key.  Currently 3 types of data resources are supported: raw
-       files, CSV files and Perl scripts.  File resources in addition
+       key.  Supported data resources include CSV files, raw-compatible
+       file document types and Perl scripts.  File resources in addition
        are split in several parts (CSV files are split in columns and
        each column in different parts of a specific size).
 
@@ -1379,7 +1379,9 @@ below).
         UPDATE:
             <NONE>
         DOCUMENT TYPES:
-            file.csv file.raw script.perl
+            file.csv file.raw file.txt file.json file.xml file.html
+            file.pdf file.png file.jpg file.gif file.zip file.bin
+            script.perl
         RESPONSE HEADERS:
             <NONE>
         RESPONSE BODY:
@@ -1691,7 +1693,8 @@ sub cmePERLProcessColumnNames       #Get (and optionally modify) column names
         UPDATE:
             <NONE>
         SUPPORTED FILE TYPES:
-            file.csv file.raw
+            file.csv file.raw file.txt file.json file.xml file.html
+            file.pdf file.png file.jpg file.gif file.zip file.bin
         RESPONSE HEADERS:
             Engine-results: <number of matching registers>
         RESPONSE BODY:

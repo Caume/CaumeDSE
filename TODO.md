@@ -193,8 +193,9 @@
   - Source: `webservice_interface.c:6438`.
   - Done: CSV document uploads now take the remaining import option, `replaceDB`, from request parameters and document the accepted boolean values.
 
-- [ ] #39 Add handlers for additional file document types.
+- [x] #39 Add handlers for additional file document types.
   - Source: `webservice_interface.c:6546`.
+  - Done: added raw-compatible handlers for `file.txt`, `file.json`, `file.xml`, `file.html`, `file.pdf`, `file.png`, `file.jpg`, `file.gif`, `file.zip` and `file.bin`, while keeping `file.csv` and `script.perl` special.
 
 - [ ] #40 Add an optional multi-round secure overwrite scheme.
   - Source: `webservice_interface.c:7307`, `filehandling.h:83`.
