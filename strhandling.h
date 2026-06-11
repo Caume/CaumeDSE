@@ -84,6 +84,10 @@ int cmeFindInArgPairList (const char** stringPairs, const char *key, const char 
 int cmeConstructWebServiceTableResponse (const char **resultTable, const int tableCols, const int tableRows,
                                          const char **argumentElements, const char *method, const char *url, const char *documentId,
                                          char ***responseHeaders, char **resultTableStr, int *responseCode);
+// Function to construct a count responseStr and add corresponding headers, according to an optional outputType parameter.
+int cmeConstructWebServiceCountResponse (const char *resultName, const int resultCount,
+                                         const char **argumentElements, const char *method, const char *url,
+                                         char ***responseHeaders, char **resultStr, int *responseCode);
 //Function to get an element (C, ST, L, O, OU or CN) from an x509 DN.
 int cmex509GetElementFromDN (const char* DN, const char *elementId, char **element, int *elementLen);
 // Constant-time string equality: returns 1 if equal, 0 if not (prevents timing attacks on sensitive comparisons).

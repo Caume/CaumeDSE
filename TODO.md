@@ -174,8 +174,9 @@
   - Source: `strhandling.c:308`.
   - Done: `cmeStrSqlUPDATEConstruct()` has no current call sites and builds its `WHERE` clause from the explicit `matchColumn`/`matchValue` arguments, with identifier validation and value sanitization from item `#32`; documented that it must not assume `userId`.
 
-- [ ] #34 Add response formatting support for HTML, CSV, and other requested output types.
+- [x] #34 Add response formatting support for HTML, CSV, and other requested output types.
   - Source: `strhandling.c:376`, `webservice_interface.c:2444`, `webservice_interface.c:4113`, `webservice_interface.c:5343`.
+  - Done: added a shared count response formatter for DELETE results that honors `outputType=csv` and the default/explicit HTML format, and routed existing DELETE count responses through it.
 
 - [ ] #35 Add OAuth authentication or document the required external manager layer.
   - Source: `webservice_interface.c:615`.
@@ -184,14 +185,17 @@
   - Source: `webservice_interface.c:1015`.
   - Related roadmap item: `#15`.
 
-- [ ] #37 Move temporary POST attributes for `shuffle` and `protect` into API parameters.
+- [x] #37 Move temporary POST attributes for `shuffle` and `protect` into API parameters.
   - Source: `webservice_interface.c:6256`, `webservice_interface.c:9605`, `webservice_interface.c:10686`.
+  - Done: document, content-row and content-column CSV imports now derive `shuffle` and `protect` secure DB attributes from request parameters, with documented defaults and disable values.
 
-- [ ] #38 Ensure CSV upload parameters come from the API instead of predefined test values.
+- [x] #38 Ensure CSV upload parameters come from the API instead of predefined test values.
   - Source: `webservice_interface.c:6438`.
+  - Done: CSV document uploads now take the remaining import option, `replaceDB`, from request parameters and document the accepted boolean values.
 
-- [ ] #39 Add handlers for additional file document types.
+- [x] #39 Add handlers for additional file document types.
   - Source: `webservice_interface.c:6546`.
+  - Done: added raw-compatible handlers for `file.txt`, `file.json`, `file.xml`, `file.html`, `file.pdf`, `file.png`, `file.jpg`, `file.gif`, `file.zip` and `file.bin`, while keeping `file.csv` and `script.perl` special.
 
 - [ ] #40 Add an optional multi-round secure overwrite scheme.
   - Source: `webservice_interface.c:7307`, `filehandling.h:83`.

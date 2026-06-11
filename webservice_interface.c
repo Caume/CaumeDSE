@@ -527,6 +527,168 @@ static int cmeWebServiceHasUnsafeRequestInput(const char **urlElements, int numU
     return(0);
 }
 
+static int cmeWebServiceIsFalseValue(const char *value)
+{
+    return((value)&&((!strcmp(value,"0"))||(!strcasecmp(value,"false"))||
+                     (!strcasecmp(value,"no"))||(!strcasecmp(value,"off"))||
+                     (!strcasecmp(value,"none"))));
+}
+
+static int cmeWebServiceIsTrueValue(const char *value)
+{
+    return((value)&&((!strcmp(value,"1"))||(!strcasecmp(value,"true"))||
+                     (!strcasecmp(value,"yes"))||(!strcasecmp(value,"on"))||
+                     (!value[0])));
+}
+
+static int cmeWebServiceGetSecureDBAttributeParam(const char **argumentElements, const char *name,
+                                                  const char **value)
+{
+    char *starName=NULL;
+    int result;
+
+    if ((!argumentElements)||(!name)||(!value))
+    {
+        return(1);
+    }
+    if (!cmeFindInArgPairList(argumentElements,name,value))
+    {
+        return(0);
+    }
+    cmeStrConstrAppend(&starName,"*%s",name);
+    result=cmeFindInArgPairList(argumentElements,starName,value);
+    cmeFree(starName);
+    return(result);
+}
+
+static int cmeWebServiceGetBooleanParam(const char **argumentElements, const char *name,
+                                        int defaultValue)
+{
+    const char *value=NULL;
+
+    if ((cmeWebServiceGetSecureDBAttributeParam(argumentElements,name,&value))||
+        (!value))
+    {
+        return(defaultValue);
+    }
+    if (cmeWebServiceIsFalseValue(value))
+    {
+        return(0);
+    }
+    if (cmeWebServiceIsTrueValue(value))
+    {
+        return(1);
+    }
+    return(defaultValue);
+}
+
+static const char *cmeWebServiceSupportedDocumentTypes[]={
+    "file.csv",
+    "file.raw",
+    "file.txt",
+    "file.json",
+    "file.xml",
+    "file.html",
+    "file.pdf",
+    "file.png",
+    "file.jpg",
+    "file.gif",
+    "file.zip",
+    "file.bin",
+    "script.perl"
+};
+
+static const int cmeWebServiceNumSupportedDocumentTypes=
+    sizeof(cmeWebServiceSupportedDocumentTypes)/sizeof(cmeWebServiceSupportedDocumentTypes[0]);
+
+static int cmeWebServiceIsSupportedDocumentType(const char *documentType)
+{
+    int cont;
+
+    if (!documentType)
+    {
+        return(0);
+    }
+    for (cont=0;cont<cmeWebServiceNumSupportedDocumentTypes;cont++)
+    {
+        if (!strcmp(documentType,cmeWebServiceSupportedDocumentTypes[cont]))
+        {
+            return(1);
+        }
+    }
+    return(0);
+}
+
+static int cmeWebServiceIsRawFileDocumentType(const char *documentType)
+{
+    if (!documentType)
+    {
+        return(0);
+    }
+    return((!strcmp(documentType,"file.raw"))||
+           (!strcmp(documentType,"file.txt"))||
+           (!strcmp(documentType,"file.json"))||
+           (!strcmp(documentType,"file.xml"))||
+           (!strcmp(documentType,"file.html"))||
+           (!strcmp(documentType,"file.pdf"))||
+           (!strcmp(documentType,"file.png"))||
+           (!strcmp(documentType,"file.jpg"))||
+           (!strcmp(documentType,"file.gif"))||
+           (!strcmp(documentType,"file.zip"))||
+           (!strcmp(documentType,"file.bin")));
+}
+
+static int cmeWebServiceBuildSecureDBAttributes(const char **argumentElements,
+                                                const char **attributes, const char **attributeData,
+                                                int maxAttributes)
+{
+    int numAttributes=0;
+    const char *shuffleValue=NULL;
+    const char *protectValue=NULL;
+
+    if ((!attributes)||(!attributeData)||(maxAttributes<2))
+    {
+        return(0);
+    }
+    if ((cmeWebServiceGetSecureDBAttributeParam(argumentElements,"shuffle",&shuffleValue))||
+        (!shuffleValue))
+    {
+        shuffleValue=cmeDefaultEncAlg;
+    }
+    if ((cmeWebServiceGetSecureDBAttributeParam(argumentElements,"protect",&protectValue))||
+        (!protectValue))
+    {
+        protectValue=cmeDefaultEncAlg;
+    }
+    if (!cmeWebServiceIsFalseValue(shuffleValue))
+    {
+        attributes[numAttributes]="shuffle";
+        if (cmeWebServiceIsTrueValue(shuffleValue))
+        {
+            attributeData[numAttributes]=cmeDefaultEncAlg;
+        }
+        else
+        {
+            attributeData[numAttributes]=shuffleValue;
+        }
+        numAttributes++;
+    }
+    if (!cmeWebServiceIsFalseValue(protectValue))
+    {
+        attributes[numAttributes]="protect";
+        if (cmeWebServiceIsTrueValue(protectValue))
+        {
+            attributeData[numAttributes]=cmeDefaultEncAlg;
+        }
+        else
+        {
+            attributeData[numAttributes]=protectValue;
+        }
+        numAttributes++;
+    }
+    return(numAttributes);
+}
+
 // File-scope engine power status flag.  Access is serialised with cmePowerMutex so that
 // concurrent requests see a consistent value when the operator toggles the engine on/off.
 static int cmeEnginePowerStatus=1;
@@ -2015,9 +2177,9 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessUserResource(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessUserResourceFree();
                     return(0);
                 }
@@ -2460,9 +2622,9 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessUserClass(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"Deleted registers: %d <br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessUserClassFree();
                     return(0);
                 }
@@ -2478,7 +2640,6 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
                     fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessUserClass(), DELETE error!, "
                             "cmeDeleteUnporotectDBRegisters error!\n");
 #endif
-                    //TODO (OHR#3#): Create a function to process results according to user requests (plaintext, html, etc.) move the above code (HTML) there.
                     cmeWebServiceProcessUserClassFree();
                     return(15);
                 }
@@ -3442,9 +3603,9 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRoleTableResource(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessRoleTableResourceFree();
                     return(0);
                 }
@@ -4146,10 +4307,9 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessOrgResource(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    //TODO (OHR#3#): Create a function to process results according to user requests (plaintext, html, etc.) move the above code (HTML) there.
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessOrgResourceFree();
                     return(0);
                 }
@@ -4585,9 +4745,9 @@ int cmeWebServiceProcessOrgClass (char **responseText, char **responseFilePath, 
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessOrgClass(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessOrgClassFree();
                     return(0);
                 }
@@ -5376,10 +5536,9 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessStorageResource(), DELETE successful, but resource not found.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    //TODO (OHR#3#): Create a function to process results according to user requests (plaintext, html, etc.) move tha above code (HTML) there.
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessStorageResourceFree();
                     return(0);
                 }
@@ -5840,9 +5999,9 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessStorageClass(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessStorageClassFree();
                     return(0);
                 }
@@ -6048,14 +6207,13 @@ int cmeWebServiceProcessDocumentTypeClass (char **responseText, int *responseCod
                                            const char **argumentElements, const char *method)
 {
     int cont;
-    const char *docTypes[3]={"file.csv","file.raw","script.perl"};
 
     if(!strcmp(method,"GET"))
     {
         cmeStrConstrAppend(responseText,"<b>200 OK - Available document types:</b><br>");
-        for (cont=0; cont<3; cont++)
+        for (cont=0;cont<cmeWebServiceNumSupportedDocumentTypes;cont++)
         {
-            cmeStrConstrAppend(responseText,"%s<br>",docTypes[cont]);
+            cmeStrConstrAppend(responseText,"%s<br>",cmeWebServiceSupportedDocumentTypes[cont]);
         }
         *responseCode=200;
         return(0);
@@ -6083,7 +6241,7 @@ int cmeWebServiceProcessDocumentTypeClass (char **responseText, int *responseCod
 int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **responseFilePath, int *responseCode,
                                      const char *url, const char **urlElements, const char **argumentElements, const char *method)
 {   //IDD ver. 1.0.20 definitions.
-    int cont, cont2;
+    int cont;
     int orgArg=0;
     int usrArg=0;
     int keyArg=0;
@@ -6102,8 +6260,6 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
     char **columnNames=NULL;
     const int numColumns=12;            //Number of columns in corresponding resource table.
     const int numValidGETALLMatch=0;    //No matches necessary for this resource
-    const int numSupportedDocTypes=3;
-    const char *supportedDocTypes[3]={"file.csv","file.raw","script.perl"};
 
     #define cmeWebServiceProcessDocumentTypeResourceFree() \
         do { \
@@ -6184,15 +6340,7 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
                                           &userId, &orgId, &orgKey, &newOrgKey, &usrArg, &orgArg, &keyArg, &newKeyArg);
         if ((numMatchArgs>=2)&&(keyArg)&&(usrArg)&&(orgArg)) //Command successful; required number of arguments found (at least: orgKey, orgId userId and >=2 Match)
         {
-            cont2=0;
-            for (cont=0; cont<numSupportedDocTypes; cont++)
-            {
-                if (!strcmp(urlElements[5],supportedDocTypes[cont])) //Check for valid document type.
-                {
-                    cont2++;
-                }
-            }
-            if (cont2) //OK - Supported type.
+            if (cmeWebServiceIsSupportedDocumentType(urlElements[5])) //OK - Supported type.
             {
                 cmeStrConstrAppend(responseText,"<b>200 OK - document type %s is supported. Options for document type resources:</b><br>"
                    "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
@@ -6265,6 +6413,8 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
     int numResultRegisters=0;
     int processedRows=0;
     int numCols=0;
+    int numSecureDBAttributes=0;
+    int replaceDB=0;
     sqlite3 *pDB=NULL;
     char *orgKey=NULL;                  //requester orgKey.
     char *userId=NULL;                  //requester userId.
@@ -6290,8 +6440,8 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                                             "_partHash","_totalParts","_partId","_lastModified","_columnId"};
     const char *validPOSTSaveColumns[3]={"userId","orgId","*resourceInfo"};
     const char *validPUTSaveColumns[3]={"userId","orgId","*resourceInfo"};
-    const char *attributes[]={"shuffle","protect"};                           // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user, via API!
-    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    const char *attributes[2]={NULL,NULL};
+    const char *attributesData[2]={NULL,NULL};
     #define cmeWebServiceProcessDocumentResourceFree() \
         do { \
             cmeFree(orgKey); \
@@ -6359,6 +6509,8 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
        columnValuesToMatch[cont]=NULL;
        columnNamesToMatch[cont]=NULL;
     }
+    numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
+    replaceDB=cmeWebServiceGetBooleanParam(argumentElements,"replaceDB",0);
     cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
     if(!strcmp(method,"POST")) //Method = POST is ok, process:
     {
@@ -6440,7 +6592,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                 }
                 else //OK
                 {
-                    if (numResultRegisters>0) //resource is already in DB -> Error
+                    if ((numResultRegisters>0)&&((!replaceDB)||(strcmp("file.csv",urlElements[5])))) //resource is already in DB -> Error
                     {
                         cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>"
                                            "Document resource already exists! "
@@ -6472,12 +6624,12 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         return(3);
                     }
                     if(!strcmp("file.csv",urlElements[5])) //Process 'file.csv' type
-                    {   // TODO (OHR#1#): if CSV -> Ensure that attribute, attributeData and replaceDB are taken from user parameters via API (right now these are only predefined test values!)
+                    {
                         resourceInfoText = (char *) MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"*resourceInfo");
                         if(newOrgKey) //Create resource using newOrgKey
                         {
                             result=cmeCSVFileToSecureDB(postImportFile,1,&numCols,&processedRows,userId,orgId,newOrgKey,  //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                        attributes, attributesData,2,0,
+                                                        attributes, attributesData,numSecureDBAttributes,replaceDB,
                                                         resourceInfoText,
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId
@@ -6487,7 +6639,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         else //Create resource using orgKey
                         {
                             result=cmeCSVFileToSecureDB(postImportFile,1,&numCols,&processedRows,userId,orgId,orgKey,  //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                        attributes, attributesData,2,0,
+                                                        attributes, attributesData,numSecureDBAttributes,replaceDB,
                                                         resourceInfoText,
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId
@@ -6510,7 +6662,8 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                             return(4);
                         }
                     }
-                    else if(!strcmp("script.perl",urlElements[5])) //Process 'script.perl' type
+                    else if((!strcmp("script.perl",urlElements[5]))||
+                            (cmeWebServiceIsRawFileDocumentType(urlElements[5]))) //Process raw-compatible secure file types.
                     {
                         resourceInfoText = (char *) MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"*resourceInfo");
                         if(newOrgKey) //Create resource using newOrgKey
@@ -6545,42 +6698,6 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                             return(5);
                         }
                     }
-                    else if(!strcmp("file.raw",urlElements[5])) //Process 'file.raw' type
-                    {
-                        resourceInfoText = (char *) MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"*resourceInfo");
-                        if(newOrgKey) //Create resource using newOrgKey
-                        {
-                            result=cmeRAWFileToSecureFile (postImportFile,userId,orgId,newOrgKey,resourceInfoText, //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                            urlElements[5], //document type
-                                                            urlElements[7], //documentId
-                                                            urlElements[3], //storageId
-                                                            storagePath);   //storagePath
-                        }
-                        else //Create resource using orgKey
-                        {
-                            result=cmeRAWFileToSecureFile (postImportFile,userId,orgId,orgKey,resourceInfoText, //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                            urlElements[5], //document type
-                                                            urlElements[7], //documentId
-                                                            urlElements[3], //storageId
-                                                            storagePath);   //storagePath
-                        }
-                        if (result) //Error, File couldn't be imported
-                        {
-                            cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
-                                           "Internal server error number '%d'."
-                                           "METHOD: '%s' URL: '%s'."
-                                            "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgDocumentOptions,
-                                            cmeInternalDBDefinitionsVersion);
-#ifdef ERROR_LOG
-                            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessDocumentResource(), Error, internal server error '%d'."
-                                    " Method: '%s', URL: '%s'!\n",result,method,url);
-#endif
-                            cmeWebServiceProcessDocumentResourceFree();
-                            *responseCode=500;
-                            return(6);
-                        }
-                    }
-                    // TODO (OHR#2#): process other file types with ' else if (!strcmp("file.XXX",urlElements[5])) {  } '
                     else //Error, unsupported file type
                     {
                         cmeStrConstrAppend(responseText,"<b>501 ERROR Not implemented.</b><br>"
@@ -7039,9 +7156,9 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessDocumentResource(), DELETE successful, but resource not found.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessDocumentResourceFree();
                     return(0);
                 }
@@ -7862,9 +7979,9 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
                     }
                     cmeDBClose(pDB);
                     pDB=NULL;
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessDocumentClassFree();
                     return(0);
                 }
@@ -8263,7 +8380,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(5);
                     }
                 }
-                else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
+                else if (cmeWebServiceIsRawFileDocumentType(urlElements[5])) //Raw-compatible files are stored as secure files, but parser execution on them is not implemented.
                 {
                     cmeStrConstrAppend(responseText,"<b>501 ERROR Not implemented.</b><br>"
                                        "The requested functionality has not been implemented."
@@ -8472,7 +8589,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(14);
                     }
                 }
-                else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
+                else if (cmeWebServiceIsRawFileDocumentType(urlElements[5])) //Raw-compatible files are stored as secure files, but parser execution on them is not implemented.
                 {
 #ifdef DEBUG
                     fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessParserScriptResource(), Debug, support "
@@ -9044,9 +9161,10 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     *responseCode=200;
                     return(0);
                 }
-                else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
+                else if (cmeWebServiceIsRawFileDocumentType(urlElements[5])) //If document type uses raw file storage, then...
                 {
                     fileNameValues[0]=(void*)urlElements[7]; //Just point to proper documentId for the file; no need to free it here.
+                    fileNameValues[1]=(void*)urlElements[5]; //Match against the requested raw-compatible document type.
                     //Get raw file :
                     result=cmeGetUnprotectDBRegisters(pDB,tableName,fileNameMatch,(const char **)fileNameValues,
                                                       2,&resultRegisterCols,&numResultRegisterCols,
@@ -9262,9 +9380,10 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     cmeWebServiceProcessContentClassFree();
                     return(0);
                 }
-                else if (!strncmp(urlElements[5],"file.raw",8)) //If type of documentId to be parsed is file.raw, then...
+                else if (cmeWebServiceIsRawFileDocumentType(urlElements[5])) //If document type uses raw file storage, then...
                 {
                     fileNameValues[0]=(void*)urlElements[7]; //Just point to proper documentId for the file; no need to free it here.
+                    fileNameValues[1]=(void*)urlElements[5]; //Match against the requested raw-compatible document type.
                     //Get raw file :
                     result=cmeGetUnprotectDBRegisters(pDB,tableName,fileNameMatch,(const char **)fileNameValues,
                                                       2,&resultRegisterCols,&numResultRegisterCols,
@@ -9613,6 +9732,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
     int numMatchArgs=0;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
+    int numSecureDBAttributes=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -9639,8 +9759,8 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                                             "_partHash","_totalParts","_partId","_lastModified","_columnId"};
     const char *validPOSTSaveColumns[3]={"userId","orgId"};
     const char *validPUTSaveColumns[3]={"userId","orgId"};
-    const char *attributes[]={"shuffle","protect"};                           // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user, via API!
-    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    const char *attributes[2]={NULL,NULL};
+    const char *attributesData[2]={NULL,NULL};
     #define cmeWebServiceProcessContentRowResourceFree() \
         do { \
             cmeFree(orgKey); \
@@ -9730,6 +9850,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
         *responseCode=403;
         return(1);
     }
+    numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
     columnValues=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnNames=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnValuesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, column values to match (GET/PUT).
@@ -9913,7 +10034,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             }
             //Create new secureDB (delete old secureDB if it exists):
             result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                         attributes,attributesData,2,1,
+                                         attributes,attributesData,numSecureDBAttributes,1,
                                          resourceInfoText,
                                          urlElements[5], //document type
                                          urlElements[7], //documentId
@@ -10093,7 +10214,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             }
             //Create new secureDB (delete old secureDB by using replace flag):
             result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                         attributes,attributesData,2,1,
+                                         attributes,attributesData,numSecureDBAttributes,1,
                                          resourceInfoText,
                                          urlElements[5], //document type
                                          urlElements[7], //documentId
@@ -10574,7 +10695,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             }
             //Create new secureDB (delete old secureDB by using replace flag):
             result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                         attributes,attributesData,2,1,
+                                         attributes,attributesData,numSecureDBAttributes,1,
                                          resourceInfoText,
                                          urlElements[5], //document type
                                          urlElements[7], //documentId
@@ -10695,6 +10816,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     int requestedColNameIDX=0;
+    int numSecureDBAttributes=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -10720,8 +10842,8 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     const char *validGETALLMatchColumns[9]={"_userId","_orgId","_resourceInfo","_columnFile",
                                             "_partHash","_totalParts","_partId","_lastModified","_columnId"};
     const char *validPOSTSaveColumns[3]={"userId","orgId"};
-    const char *attributes[]={"shuffle","protect"};                           // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user, via API!
-    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    const char *attributes[2]={NULL,NULL};
+    const char *attributesData[2]={NULL,NULL};
     #define cmeWebServiceProcessContentColumnResourceFree() \
         do { \
             cmeFree(orgKey); \
@@ -10810,6 +10932,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
         *responseCode=403;
         return(1);
     }
+    numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
     result=cmeSanitizeStrForSQL(urlElements[9],&sanitizedSQLStr); //Sanitize contentColumn name so that it can be used in SQL queries.
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Sanitized (i.e. doubled single quotes) of "
@@ -10938,7 +11061,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 cmeStrConstrAppend(&(cmeResultMemTable[0]),"%s",urlElements[9]);
                 //Create new secureDB:
                 result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                             attributes,attributesData,2,1,
+                                             attributes,attributesData,numSecureDBAttributes,1,
                                              resourceInfoText,
                                              urlElements[5], //document type
                                              urlElements[7], //documentId
@@ -11048,7 +11171,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 }
                 //Create new secureDB (delete old secureDB if it exists):
                 result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                             attributes,attributesData,2,1,
+                                             attributes,attributesData,numSecureDBAttributes,1,
                                              resourceInfoText,
                                              urlElements[5], //document type
                                              urlElements[7], //documentId
@@ -11805,7 +11928,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 }
                 //Create new secureDB (delete old secureDB if it exists):
                 result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                             attributes,attributesData,2,1,
+                                             attributes,attributesData,numSecureDBAttributes,1,
                                              resourceInfoText,
                                              urlElements[5], //document type
                                              urlElements[7], //documentId

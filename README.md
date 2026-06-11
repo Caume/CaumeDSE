@@ -247,8 +247,8 @@ The architecture of CaumeDSE is composed of several layers:
 4. Resource access - CaumeDSE maintains internal index databases
        that map data resources to their location.  All resources and
        index database registers are encrypted with the organization's
-       key.  Currently 3 types of data resources are supported: raw
-       files, CSV files and Perl scripts.  File resources in addition
+       key.  Supported data resources include CSV files, raw-compatible
+       file document types and Perl scripts.  File resources in addition
        are split in several parts (CSV files are split in columns and
        each column in different parts of a specific size).
 
@@ -983,6 +983,26 @@ file
     requests will contain the attribute parameters and the file contents
     encoded in multipart/form-data format within the body.
 
+shuffle
+    Optional. Enables row-order shuffling metadata for secure CSV
+    storage.  If omitted, the default encryption algorithm is used.
+    Values 0, false, no, off and none disable this attribute; values 1,
+    true, yes and on use the default encryption algorithm; any other
+    value is stored as the attribute algorithm.
+
+protect
+    Optional. Enables value protection metadata for secure CSV storage.
+    If omitted, the default encryption algorithm is used.  Values 0,
+    false, no, off and none disable this attribute; values 1, true, yes
+    and on use the default encryption algorithm; any other value is
+    stored as the attribute algorithm.
+
+replaceDB
+    Optional for file.csv uploads.  If set to 1, true, yes or on, an
+    existing secure CSV database with the same documentId is replaced.
+    If omitted or set to 0, false, no, off or none, duplicate document
+    resources are rejected.
+
 #### 3.5 Optional Column index parameters for content rows (`file.csv`)
 
 
@@ -1359,7 +1379,9 @@ below).
         UPDATE:
             <NONE>
         DOCUMENT TYPES:
-            file.csv file.raw script.perl
+            file.csv file.raw file.txt file.json file.xml file.html
+            file.pdf file.png file.jpg file.gif file.zip file.bin
+            script.perl
         RESPONSE HEADERS:
             <NONE>
         RESPONSE BODY:
@@ -1671,7 +1693,8 @@ sub cmePERLProcessColumnNames       #Get (and optionally modify) column names
         UPDATE:
             <NONE>
         SUPPORTED FILE TYPES:
-            file.csv file.raw
+            file.csv file.raw file.txt file.json file.xml file.html
+            file.pdf file.png file.jpg file.gif file.zip file.bin
         RESPONSE HEADERS:
             Engine-results: <number of matching registers>
         RESPONSE BODY:
