@@ -189,8 +189,9 @@
   - Source: `webservice_interface.c:6256`, `webservice_interface.c:9605`, `webservice_interface.c:10686`.
   - Done: document, content-row and content-column CSV imports now derive `shuffle` and `protect` secure DB attributes from request parameters, with documented defaults and disable values.
 
-- [ ] #38 Ensure CSV upload parameters come from the API instead of predefined test values.
+- [x] #38 Ensure CSV upload parameters come from the API instead of predefined test values.
   - Source: `webservice_interface.c:6438`.
+  - Done: CSV document uploads now take the remaining import option, `replaceDB`, from request parameters and document the accepted boolean values.
 
 - [ ] #39 Add handlers for additional file document types.
   - Source: `webservice_interface.c:6546`.

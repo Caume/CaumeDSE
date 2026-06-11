@@ -534,6 +534,13 @@ static int cmeWebServiceIsFalseValue(const char *value)
                      (!strcasecmp(value,"none"))));
 }
 
+static int cmeWebServiceIsTrueValue(const char *value)
+{
+    return((value)&&((!strcmp(value,"1"))||(!strcasecmp(value,"true"))||
+                     (!strcasecmp(value,"yes"))||(!strcasecmp(value,"on"))||
+                     (!value[0])));
+}
+
 static int cmeWebServiceGetSecureDBAttributeParam(const char **argumentElements, const char *name,
                                                   const char **value)
 {
@@ -552,6 +559,27 @@ static int cmeWebServiceGetSecureDBAttributeParam(const char **argumentElements,
     result=cmeFindInArgPairList(argumentElements,starName,value);
     cmeFree(starName);
     return(result);
+}
+
+static int cmeWebServiceGetBooleanParam(const char **argumentElements, const char *name,
+                                        int defaultValue)
+{
+    const char *value=NULL;
+
+    if ((cmeWebServiceGetSecureDBAttributeParam(argumentElements,name,&value))||
+        (!value))
+    {
+        return(defaultValue);
+    }
+    if (cmeWebServiceIsFalseValue(value))
+    {
+        return(0);
+    }
+    if (cmeWebServiceIsTrueValue(value))
+    {
+        return(1);
+    }
+    return(defaultValue);
 }
 
 static int cmeWebServiceBuildSecureDBAttributes(const char **argumentElements,
@@ -579,9 +607,7 @@ static int cmeWebServiceBuildSecureDBAttributes(const char **argumentElements,
     if (!cmeWebServiceIsFalseValue(shuffleValue))
     {
         attributes[numAttributes]="shuffle";
-        if ((!strcmp(shuffleValue,"1"))||(!strcasecmp(shuffleValue,"true"))||
-            (!strcasecmp(shuffleValue,"yes"))||(!strcasecmp(shuffleValue,"on"))||
-            (!shuffleValue[0]))
+        if (cmeWebServiceIsTrueValue(shuffleValue))
         {
             attributeData[numAttributes]=cmeDefaultEncAlg;
         }
@@ -594,9 +620,7 @@ static int cmeWebServiceBuildSecureDBAttributes(const char **argumentElements,
     if (!cmeWebServiceIsFalseValue(protectValue))
     {
         attributes[numAttributes]="protect";
-        if ((!strcmp(protectValue,"1"))||(!strcasecmp(protectValue,"true"))||
-            (!strcasecmp(protectValue,"yes"))||(!strcasecmp(protectValue,"on"))||
-            (!protectValue[0]))
+        if (cmeWebServiceIsTrueValue(protectValue))
         {
             attributeData[numAttributes]=cmeDefaultEncAlg;
         }
@@ -6345,6 +6369,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
     int processedRows=0;
     int numCols=0;
     int numSecureDBAttributes=0;
+    int replaceDB=0;
     sqlite3 *pDB=NULL;
     char *orgKey=NULL;                  //requester orgKey.
     char *userId=NULL;                  //requester userId.
@@ -6440,6 +6465,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
        columnNamesToMatch[cont]=NULL;
     }
     numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
+    replaceDB=cmeWebServiceGetBooleanParam(argumentElements,"replaceDB",0);
     cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
     if(!strcmp(method,"POST")) //Method = POST is ok, process:
     {
@@ -6521,7 +6547,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                 }
                 else //OK
                 {
-                    if (numResultRegisters>0) //resource is already in DB -> Error
+                    if ((numResultRegisters>0)&&((!replaceDB)||(strcmp("file.csv",urlElements[5])))) //resource is already in DB -> Error
                     {
                         cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>"
                                            "Document resource already exists! "
@@ -6553,12 +6579,12 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         return(3);
                     }
                     if(!strcmp("file.csv",urlElements[5])) //Process 'file.csv' type
-                    {   // TODO (OHR#1#): if CSV -> Ensure that attribute, attributeData and replaceDB are taken from user parameters via API (right now these are only predefined test values!)
+                    {
                         resourceInfoText = (char *) MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"*resourceInfo");
                         if(newOrgKey) //Create resource using newOrgKey
                         {
                             result=cmeCSVFileToSecureDB(postImportFile,1,&numCols,&processedRows,userId,orgId,newOrgKey,  //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                        attributes, attributesData,numSecureDBAttributes,0,
+                                                        attributes, attributesData,numSecureDBAttributes,replaceDB,
                                                         resourceInfoText,
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId
@@ -6568,7 +6594,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         else //Create resource using orgKey
                         {
                             result=cmeCSVFileToSecureDB(postImportFile,1,&numCols,&processedRows,userId,orgId,orgKey,  //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                        attributes, attributesData,numSecureDBAttributes,0,
+                                                        attributes, attributesData,numSecureDBAttributes,replaceDB,
                                                         resourceInfoText,
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId

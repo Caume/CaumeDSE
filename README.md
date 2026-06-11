@@ -997,6 +997,12 @@ protect
     and on use the default encryption algorithm; any other value is
     stored as the attribute algorithm.
 
+replaceDB
+    Optional for file.csv uploads.  If set to 1, true, yes or on, an
+    existing secure CSV database with the same documentId is replaced.
+    If omitted or set to 0, false, no, off or none, duplicate document
+    resources are rejected.
+
 #### 3.5 Optional Column index parameters for content rows (`file.csv`)
 
 
