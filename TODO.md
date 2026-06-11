@@ -185,8 +185,9 @@
   - Source: `webservice_interface.c:1015`.
   - Related roadmap item: `#15`.
 
-- [ ] #37 Move temporary POST attributes for `shuffle` and `protect` into API parameters.
+- [x] #37 Move temporary POST attributes for `shuffle` and `protect` into API parameters.
   - Source: `webservice_interface.c:6256`, `webservice_interface.c:9605`, `webservice_interface.c:10686`.
+  - Done: document, content-row and content-column CSV imports now derive `shuffle` and `protect` secure DB attributes from request parameters, with documented defaults and disable values.
 
 - [ ] #38 Ensure CSV upload parameters come from the API instead of predefined test values.
   - Source: `webservice_interface.c:6438`.

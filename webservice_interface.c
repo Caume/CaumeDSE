@@ -527,6 +527,88 @@ static int cmeWebServiceHasUnsafeRequestInput(const char **urlElements, int numU
     return(0);
 }
 
+static int cmeWebServiceIsFalseValue(const char *value)
+{
+    return((value)&&((!strcmp(value,"0"))||(!strcasecmp(value,"false"))||
+                     (!strcasecmp(value,"no"))||(!strcasecmp(value,"off"))||
+                     (!strcasecmp(value,"none"))));
+}
+
+static int cmeWebServiceGetSecureDBAttributeParam(const char **argumentElements, const char *name,
+                                                  const char **value)
+{
+    char *starName=NULL;
+    int result;
+
+    if ((!argumentElements)||(!name)||(!value))
+    {
+        return(1);
+    }
+    if (!cmeFindInArgPairList(argumentElements,name,value))
+    {
+        return(0);
+    }
+    cmeStrConstrAppend(&starName,"*%s",name);
+    result=cmeFindInArgPairList(argumentElements,starName,value);
+    cmeFree(starName);
+    return(result);
+}
+
+static int cmeWebServiceBuildSecureDBAttributes(const char **argumentElements,
+                                                const char **attributes, const char **attributeData,
+                                                int maxAttributes)
+{
+    int numAttributes=0;
+    const char *shuffleValue=NULL;
+    const char *protectValue=NULL;
+
+    if ((!attributes)||(!attributeData)||(maxAttributes<2))
+    {
+        return(0);
+    }
+    if ((cmeWebServiceGetSecureDBAttributeParam(argumentElements,"shuffle",&shuffleValue))||
+        (!shuffleValue))
+    {
+        shuffleValue=cmeDefaultEncAlg;
+    }
+    if ((cmeWebServiceGetSecureDBAttributeParam(argumentElements,"protect",&protectValue))||
+        (!protectValue))
+    {
+        protectValue=cmeDefaultEncAlg;
+    }
+    if (!cmeWebServiceIsFalseValue(shuffleValue))
+    {
+        attributes[numAttributes]="shuffle";
+        if ((!strcmp(shuffleValue,"1"))||(!strcasecmp(shuffleValue,"true"))||
+            (!strcasecmp(shuffleValue,"yes"))||(!strcasecmp(shuffleValue,"on"))||
+            (!shuffleValue[0]))
+        {
+            attributeData[numAttributes]=cmeDefaultEncAlg;
+        }
+        else
+        {
+            attributeData[numAttributes]=shuffleValue;
+        }
+        numAttributes++;
+    }
+    if (!cmeWebServiceIsFalseValue(protectValue))
+    {
+        attributes[numAttributes]="protect";
+        if ((!strcmp(protectValue,"1"))||(!strcasecmp(protectValue,"true"))||
+            (!strcasecmp(protectValue,"yes"))||(!strcasecmp(protectValue,"on"))||
+            (!protectValue[0]))
+        {
+            attributeData[numAttributes]=cmeDefaultEncAlg;
+        }
+        else
+        {
+            attributeData[numAttributes]=protectValue;
+        }
+        numAttributes++;
+    }
+    return(numAttributes);
+}
+
 // File-scope engine power status flag.  Access is serialised with cmePowerMutex so that
 // concurrent requests see a consistent value when the operator toggles the engine on/off.
 static int cmeEnginePowerStatus=1;
@@ -6262,6 +6344,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
     int numResultRegisters=0;
     int processedRows=0;
     int numCols=0;
+    int numSecureDBAttributes=0;
     sqlite3 *pDB=NULL;
     char *orgKey=NULL;                  //requester orgKey.
     char *userId=NULL;                  //requester userId.
@@ -6287,8 +6370,8 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                                             "_partHash","_totalParts","_partId","_lastModified","_columnId"};
     const char *validPOSTSaveColumns[3]={"userId","orgId","*resourceInfo"};
     const char *validPUTSaveColumns[3]={"userId","orgId","*resourceInfo"};
-    const char *attributes[]={"shuffle","protect"};                           // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user, via API!
-    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    const char *attributes[2]={NULL,NULL};
+    const char *attributesData[2]={NULL,NULL};
     #define cmeWebServiceProcessDocumentResourceFree() \
         do { \
             cmeFree(orgKey); \
@@ -6356,6 +6439,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
        columnValuesToMatch[cont]=NULL;
        columnNamesToMatch[cont]=NULL;
     }
+    numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
     cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
     if(!strcmp(method,"POST")) //Method = POST is ok, process:
     {
@@ -6474,7 +6558,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         if(newOrgKey) //Create resource using newOrgKey
                         {
                             result=cmeCSVFileToSecureDB(postImportFile,1,&numCols,&processedRows,userId,orgId,newOrgKey,  //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                        attributes, attributesData,2,0,
+                                                        attributes, attributesData,numSecureDBAttributes,0,
                                                         resourceInfoText,
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId
@@ -6484,7 +6568,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         else //Create resource using orgKey
                         {
                             result=cmeCSVFileToSecureDB(postImportFile,1,&numCols,&processedRows,userId,orgId,orgKey,  //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
-                                                        attributes, attributesData,2,0,
+                                                        attributes, attributesData,numSecureDBAttributes,0,
                                                         resourceInfoText,
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId
@@ -9610,6 +9694,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
     int numMatchArgs=0;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
+    int numSecureDBAttributes=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -9636,8 +9721,8 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                                             "_partHash","_totalParts","_partId","_lastModified","_columnId"};
     const char *validPOSTSaveColumns[3]={"userId","orgId"};
     const char *validPUTSaveColumns[3]={"userId","orgId"};
-    const char *attributes[]={"shuffle","protect"};                           // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user, via API!
-    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    const char *attributes[2]={NULL,NULL};
+    const char *attributesData[2]={NULL,NULL};
     #define cmeWebServiceProcessContentRowResourceFree() \
         do { \
             cmeFree(orgKey); \
@@ -9727,6 +9812,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
         *responseCode=403;
         return(1);
     }
+    numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
     columnValues=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnNames=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnValuesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, column values to match (GET/PUT).
@@ -9910,7 +9996,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             }
             //Create new secureDB (delete old secureDB if it exists):
             result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                         attributes,attributesData,2,1,
+                                         attributes,attributesData,numSecureDBAttributes,1,
                                          resourceInfoText,
                                          urlElements[5], //document type
                                          urlElements[7], //documentId
@@ -10090,7 +10176,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             }
             //Create new secureDB (delete old secureDB by using replace flag):
             result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                         attributes,attributesData,2,1,
+                                         attributes,attributesData,numSecureDBAttributes,1,
                                          resourceInfoText,
                                          urlElements[5], //document type
                                          urlElements[7], //documentId
@@ -10571,7 +10657,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             }
             //Create new secureDB (delete old secureDB by using replace flag):
             result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                         attributes,attributesData,2,1,
+                                         attributes,attributesData,numSecureDBAttributes,1,
                                          resourceInfoText,
                                          urlElements[5], //document type
                                          urlElements[7], //documentId
@@ -10692,6 +10778,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     int requestedColNameIDX=0;
+    int numSecureDBAttributes=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -10717,8 +10804,8 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     const char *validGETALLMatchColumns[9]={"_userId","_orgId","_resourceInfo","_columnFile",
                                             "_partHash","_totalParts","_partId","_lastModified","_columnId"};
     const char *validPOSTSaveColumns[3]={"userId","orgId"};
-    const char *attributes[]={"shuffle","protect"};                           // TODO (OHR#2#): TMP attributes to test POST. We MUST take these arguments from the user, via API!
-    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    const char *attributes[2]={NULL,NULL};
+    const char *attributesData[2]={NULL,NULL};
     #define cmeWebServiceProcessContentColumnResourceFree() \
         do { \
             cmeFree(orgKey); \
@@ -10807,6 +10894,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
         *responseCode=403;
         return(1);
     }
+    numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
     result=cmeSanitizeStrForSQL(urlElements[9],&sanitizedSQLStr); //Sanitize contentColumn name so that it can be used in SQL queries.
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Sanitized (i.e. doubled single quotes) of "
@@ -10935,7 +11023,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 cmeStrConstrAppend(&(cmeResultMemTable[0]),"%s",urlElements[9]);
                 //Create new secureDB:
                 result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                             attributes,attributesData,2,1,
+                                             attributes,attributesData,numSecureDBAttributes,1,
                                              resourceInfoText,
                                              urlElements[5], //document type
                                              urlElements[7], //documentId
@@ -11045,7 +11133,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 }
                 //Create new secureDB (delete old secureDB if it exists):
                 result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                             attributes,attributesData,2,1,
+                                             attributes,attributesData,numSecureDBAttributes,1,
                                              resourceInfoText,
                                              urlElements[5], //document type
                                              urlElements[7], //documentId
@@ -11802,7 +11890,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 }
                 //Create new secureDB (delete old secureDB if it exists):
                 result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
-                                             attributes,attributesData,2,1,
+                                             attributes,attributesData,numSecureDBAttributes,1,
                                              resourceInfoText,
                                              urlElements[5], //document type
                                              urlElements[7], //documentId

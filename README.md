@@ -983,6 +983,20 @@ file
     requests will contain the attribute parameters and the file contents
     encoded in multipart/form-data format within the body.
 
+shuffle
+    Optional. Enables row-order shuffling metadata for secure CSV
+    storage.  If omitted, the default encryption algorithm is used.
+    Values 0, false, no, off and none disable this attribute; values 1,
+    true, yes and on use the default encryption algorithm; any other
+    value is stored as the attribute algorithm.
+
+protect
+    Optional. Enables value protection metadata for secure CSV storage.
+    If omitted, the default encryption algorithm is used.  Values 0,
+    false, no, off and none disable this attribute; values 1, true, yes
+    and on use the default encryption algorithm; any other value is
+    stored as the attribute algorithm.
+
 #### 3.5 Optional Column index parameters for content rows (`file.csv`)
 
 
