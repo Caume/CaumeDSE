@@ -70,7 +70,8 @@ int cmeStrConstrAppend (char **resultStr, const char *addString, ...);
 // Function to construct an INSERT query (SQL).
 int cmeStrSqlINSERTConstruct (char **resultQuery, const char *tableName, const char **colNamesValuesPairs,
                               const int numColumns);
-// Function to construct an UPDATE query (SQL)
+// Function to construct an UPDATE query (SQL). The WHERE column is caller-selected
+// through matchColumn and is not assumed to be userId.
 int cmeStrSqlUPDATEConstruct (char **resultQuery, const char *tableName, const char **colNamesValuesPairs,
                             const int numColumns, const char *matchColumn, const char *matchValue);
 // Function to create a string with an HTML representation of a MemTable

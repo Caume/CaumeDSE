@@ -63,7 +63,6 @@ static int cmeDBApplyPragmas(sqlite3 *pDB, const char *functionName, const char 
     return(0);
 }
 
-//TODO (OHR#5#):create and call function to sanitize all input that will be included in DB queries!
 int cmeDBCreateOpen (const char *filename, sqlite3 **ppDB)
 {
     int result;
@@ -2950,22 +2949,76 @@ int cmeMemTableWithTableColumnNames (sqlite3 *db, const char *tableName)
     return (0);
 }
 
+int cmeIsSafeSQLIdentifier(const char *identifier)
+{
+    int cont;
+
+    if ((!identifier)||(!identifier[0]))
+    {
+        return(0);
+    }
+    for (cont=0;identifier[cont];cont++)
+    {
+        if ((!isalnum((unsigned char)identifier[cont]))&&(identifier[cont]!='_'))
+        {
+            return(0);
+        }
+    }
+    return(1);
+}
+
+int cmeHasUnsafeSQLInputChars(const char *sourceString)
+{
+    int cont;
+
+    if (!sourceString)
+    {
+        return(1);
+    }
+    for (cont=0;sourceString[cont];cont++)
+    {
+        switch (sourceString[cont])
+        {
+            case '"':
+            case '\'':
+            case ';':
+            case '=':
+            case '`':
+                return(1);
+            default:
+                break;
+        }
+    }
+    return(0);
+}
+
 int cmeSanitizeStrForSQL (const char *sourceString, char **sanitizedString)
 {
     int cont,cont2;
     int sourceStringLen=0;
     int sanitizedStringLen=0;
 
-    if (!sourceString) //Error, source string can't be NULL
+    if ((!sourceString)||(!sanitizedString)) //Error, source string or output pointer can't be NULL
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeSanitizeStrForSQL(), Error, source string can't be NULL!\n");
+        fprintf(stderr,"CaumeDSE Error: cmeSanitizeStrForSQL(), Error, source string or output pointer can't be NULL!\n");
 #endif
         return(1);
     }
     sourceStringLen=strlen(sourceString);
     sanitizedStringLen=sourceStringLen;
+    if (*sanitizedString)
+    {
+        cmeFree(*sanitizedString);
+    }
     *sanitizedString=(char *)malloc(sizeof(char)*(sanitizedStringLen+1)); //Set length of sanitized string = length of source string to start.
+    if (!(*sanitizedString))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeSanitizeStrForSQL(), malloc() Error!\n");
+#endif
+        return(2);
+    }
     cont2=0;
     for (cont=0;cont<sourceStringLen;cont++)
     {
@@ -2975,6 +3028,13 @@ int cmeSanitizeStrForSQL (const char *sourceString, char **sanitizedString)
             cont2++;
             sanitizedStringLen++;
             *sanitizedString=(char *)realloc(*sanitizedString, sizeof(char)*(sanitizedStringLen+1)); //Add 1 character to the sanitized string.
+            if (!(*sanitizedString))
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeSanitizeStrForSQL(), realloc() Error!\n");
+#endif
+                return(3);
+            }
         }
         (*sanitizedString)[cont2]=sourceString[cont];
         cont2++;

@@ -63,3 +63,165 @@
   - Keep command examples copy/paste-safe and annotate shell, SQL, C, JSON, Perl, or configuration snippets with fenced-code language tags when known.
   - Rename to `README.md` only after checking build, packaging, and distribution references that may still point to `README`.
   - Done: `README.md` is now the canonical Markdown README, `README` remains as a compatibility pointer, and distribution metadata includes the Markdown file.
+
+- [ ] #12 Finish and verify `/organizations/{organization}/users/{user}/roleTables` resources.
+  - Review the existing `roleTables` URL routing and RolesDB table handling to identify whether the README marker is stale or the feature is only partially implemented.
+  - Define the supported methods for the `roleTables` collection and `{roleTable}` resource, including exact-match filters, update parameters, and response formats.
+  - Add or complete handlers for create, read, update, delete, head, and options behavior while preserving encrypted role-table storage and authorization checks.
+  - Add DEBUG/component tests that create a role table, query it, update permissions, verify enforcement, and reject unauthorized access.
+  - Update `README.md` to remove the `[not implemented]` marker once the behavior is verified.
+
+- [ ] #13 Implement `/organizations/{organization}/users/{user}/filterWhitelist` resources.
+  - Define the whitelist data model on top of the existing ResourcesDB/AdminDB `filterWhitelist` tables, including filter attributes, allowed methods, and ownership fields.
+  - Add request parsing and handlers for whitelist collection and item resources under the user resource hierarchy.
+  - Enforce whitelist checks in request authorization or filtering paths before resource operations are executed.
+  - Preserve encrypted internal database values, MAC verification, and existing role-table authorization semantics.
+  - Add tests covering allowlisted filters, missing whitelist entries, malformed filters, and interaction with role-table permissions.
+  - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+
+- [ ] #14 Implement `/organizations/{organization}/users/{user}/filterBlacklist` resources.
+  - Define the blacklist data model on top of the existing ResourcesDB/AdminDB `filterBlacklist` tables, mirroring whitelist ownership and filter attributes where appropriate.
+  - Add request parsing and handlers for blacklist collection and item resources under the user resource hierarchy.
+  - Enforce blacklist checks before resource operations, with deny behavior taking precedence over whitelist or role-table allows when both apply.
+  - Preserve encrypted internal database values, MAC verification, and existing role-table authorization semantics.
+  - Add tests covering denied filters, non-matching blacklist entries, whitelist/blacklist conflicts, malformed filters, and unauthorized updates.
+  - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+
+- [ ] #15 Finish and verify `/organizations/{organization}/storage/{storage}/documentTypes` resources.
+  - Review existing `documentTypes` routing and ResourcesDB table definitions to determine whether the README marker is stale or the feature is partial.
+  - Define supported document type names, allowed methods, options responses, and validation rules for `{documentType}`.
+  - Complete handlers so document type discovery and validation behave consistently for `file.raw`, `file.csv`, and `script.perl`.
+  - Add tests for listing supported types, requesting a valid type, rejecting unsupported types, and preserving existing document upload/query behavior.
+  - Update `README.md` to remove the `[not implemented]` marker once verified.
+
+- [ ] #16 Finish and verify `/documents/{document}/parserScripts` resources.
+  - Review existing `parserScripts` routing and script execution paths to determine whether the README marker is stale or the feature is partial.
+  - Define the supported methods for parser script collections and `{parserScript}` resources, including script type restrictions and output formats.
+  - Ensure script resources are loaded, decrypted, MAC-verified, and executed only after authorization succeeds.
+  - Keep embedded Perl interpreter access serialized while moving file/DB work outside the Perl mutex where possible.
+  - Add tests for valid script execution, missing scripts, unsupported script types, parser errors, and unauthorized access.
+  - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+
+- [ ] #17 Finish and verify `/documents/{document}/contentRows` resources for `file.csv`.
+  - Review existing `contentRows` routing and CSV row manipulation paths to determine whether the README marker is stale or the feature is partial.
+  - Define row numbering, append behavior, update semantics, delete behavior, and error codes for out-of-range rows.
+  - Implement or complete handlers using in-memory transformations followed by immediate durable secure-DB/file saves.
+  - Preserve CSV column integrity, encrypted part MAC verification, and column-shuffling security behavior.
+  - Add tests for get, append, update, delete, invalid row indexes, missing documents, non-CSV documents, and unauthorized access.
+  - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+
+- [ ] #18 Finish and verify `/documents/{document}/contentColumns` resources for `file.csv`.
+  - Review existing `contentColumns` routing and CSV column manipulation paths to determine whether the README marker is stale or the feature is partial.
+  - Define column creation, retrieval, deletion, empty-document creation, duplicate-column handling, and error behavior for missing columns.
+  - Implement or complete handlers using in-memory transformations followed by immediate durable secure-DB/file saves.
+  - Preserve encrypted part MAC verification and the security goal of column shuffling, including safe behavior when duplicate column names exist.
+  - Add tests for get, create, delete, duplicate names, last-column deletion, missing documents, non-CSV documents, and unauthorized access.
+  - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+
+- [ ] #19 Implement direct encrypted DB browsing resources under `/dbNames`.
+  - Define the scope and security model for `/dbNames`, `{dbName}`, `/dbTables`, `{dbTable}`, `/tableRows`, `{tableRow}`, `/tableColumns`, and `{tableColumn}`.
+  - Decide whether this hierarchy exposes only internal/admin databases, user data databases, or a restricted diagnostics view, and document the decision.
+  - Add route parsing and handlers that never expose decrypted protected values unless the caller is authorized and supplies the required organization key.
+  - Use prepared statements and strict identifier validation for database/table/row/column selectors.
+  - Add tests for listing databases, listing tables, reading rows/columns, rejecting invalid identifiers, authorization failures, and SQL injection attempts.
+  - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+
+## Source Code TODO/FIXME Markers
+
+- [ ] #20 Replace `main` placeholders in Autoconf library checks with real function probes.
+  - Source: `configure.ac:42`, `configure.ac:44`, `configure.ac:46`, `configure.ac:48`, `configure.ac:50`, `configure.ac:52`, `configure.ac:54`, `configure.ac:56`, `configure.ac:58`, `configure.ac:60`, `configure.ac:62`, `configure.ac:64`.
+
+- [ ] #21 Add cloud storage wrappers for file handling.
+  - Source: `filehandling.c:53`.
+
+- [ ] #22 Factor common in-memory DB creation for CSV and memory-table imports.
+  - Source: `filehandling.c:649`, `filehandling.c:1687`.
+
+- [ ] #23 Add SQL DB filename collision handling.
+  - Source: `filehandling.c:678`, `filehandling.c:1727`.
+
+- [ ] #24 Factor secure DB import insertion logic into a shared helper.
+  - Source: `filehandling.c:799`, `filehandling.c:1848`.
+
+- [ ] #25 Implement MAC and protected MAC calculation during secure DB import.
+  - Source: `filehandling.c:840`, `filehandling.c:1889`.
+
+- [ ] #26 Verify locale settings for `printf`, including UTF-8 behavior.
+  - Source: `main.c:66`.
+
+- [ ] #27 Move DEBUG tests into a dedicated executable or test harness.
+  - Source: `main.c:136`.
+  - Related roadmap item: `#9`.
+
+- [ ] #28 Improve administrator key screen cleanup or use a sensitive terminal I/O library.
+  - Source: `engine_admin.c:424`.
+
+- [ ] #29 Add basic error handling for certificate file loading.
+  - Source: `engine_admin.c:803`.
+
+- [ ] #30 Replace temporary web-service `getchar()` waits with an exception/stop handler.
+  - Source: `engine_admin.c:872`.
+
+- [ ] #31 Process whitelist and blacklist regex filter lists in ResourcesDB.
+  - Source: `engine_admin.c:1126`.
+  - Related roadmap items: `#13`, `#14`.
+
+- [x] #32 Sanitize variables used in string handling and generated queries.
+  - Source: `strhandling.c:292`, `strhandling.c:309`, `db.c:66`, `webservice_interface.c:544`.
+  - Done: added shared SQL identifier and unsafe input checks, sanitized legacy INSERT/UPDATE builder values, and rejected unsafe web-service route/query tokens before DB processing.
+
+- [x] #33 Verify `WHERE` usage that may not match `userId`.
+  - Source: `strhandling.c:308`.
+  - Done: `cmeStrSqlUPDATEConstruct()` has no current call sites and builds its `WHERE` clause from the explicit `matchColumn`/`matchValue` arguments, with identifier validation and value sanitization from item `#32`; documented that it must not assume `userId`.
+
+- [ ] #34 Add response formatting support for HTML, CSV, and other requested output types.
+  - Source: `strhandling.c:376`, `webservice_interface.c:2444`, `webservice_interface.c:4113`, `webservice_interface.c:5343`.
+
+- [ ] #35 Add OAuth authentication or document the required external manager layer.
+  - Source: `webservice_interface.c:615`.
+
+- [ ] #36 Process storage `documentTypes` and `documents` resource tree requests.
+  - Source: `webservice_interface.c:1015`.
+  - Related roadmap item: `#15`.
+
+- [ ] #37 Move temporary POST attributes for `shuffle` and `protect` into API parameters.
+  - Source: `webservice_interface.c:6256`, `webservice_interface.c:9605`, `webservice_interface.c:10686`.
+
+- [ ] #38 Ensure CSV upload parameters come from the API instead of predefined test values.
+  - Source: `webservice_interface.c:6438`.
+
+- [ ] #39 Add handlers for additional file document types.
+  - Source: `webservice_interface.c:6546`.
+
+- [ ] #40 Add an optional multi-round secure overwrite scheme.
+  - Source: `webservice_interface.c:7307`, `filehandling.h:83`.
+
+- [ ] #41 Vacuum memory DBs before durable saves when requested.
+  - Source: `db.c:201`.
+
+- [ ] #42 Implement signing and protected signing for protected DB values.
+  - Source: `db.c:1253`, `db.c:1259`, `db.c:2225`, `db.c:2231`.
+
+- [ ] #43 Replace direct DB protect/unprotect call sites with wrapper functions.
+  - Source: `db.c:2355`, `db.c:2383`.
+
+- [ ] #44 Replace direct salt/protect and unprotect/unsalt call sites with wrapper functions.
+  - Source: `db.c:2420`, `db.c:2461`.
+
+- [ ] #45 Replace direct `malloc` calls with an audited allocation wrapper.
+  - Source: `common.h:50`.
+
+- [ ] #46 Read globals from a configuration file.
+  - Source: `common.h:51`.
+
+- [ ] #47 Standardize IDD usage and avoid direct use of numeric IDs and column names.
+  - Source: `common.h:132`.
+
+- [ ] #48 Research secure memory clearing and memory locking for sensitive data.
+  - Source: `engine_interface.c:310`, `engine_interface.c:1583`.
+
+- [ ] #49 Verify salt requirements and fail on invalid salts.
+  - Source: `engine_interface.c:1053`.
+
+- [ ] #50 Evaluate whether another random source is needed for systems without `/dev/random` or `/dev/urandom`.
+  - Source: `crypto.c:436`.

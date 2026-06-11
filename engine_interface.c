@@ -44,24 +44,6 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
-static int cmeIsSafeSQLIdentifier(const char *identifier)
-{
-    int cont;
-
-    if ((!identifier)||(!identifier[0]))
-    {
-        return(0);
-    }
-    for (cont=0; identifier[cont]; cont++)
-    {
-        if ((!isalnum((unsigned char)identifier[cont]))&&(identifier[cont]!='_'))
-        {
-            return(0);
-        }
-    }
-    return(1);
-}
-
 static int cmeIsResourcesDBDocumentLookupColumn (const char *columnName);
 static const char *cmeResourcesDBDocumentLookupColumnForMatch (const char *columnName);
 static int cmeBuildProtectedDBSelectQuery (sqlite3 *pDB, char **query, const char *tableName, const char **columnNames,
