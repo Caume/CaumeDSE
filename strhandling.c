@@ -428,7 +428,6 @@ int cmeConstructWebServiceTableResponse (const char **resultTable, const int tab
 
     if (tableCols) // If column names, print them.
     {
-        // TODO (OHR#2#): Check output type (HTML/CSV) and prepare response accordingly.
         if ((!cmeFindInArgPairList(argumentElements,"outputType",&pOutputType))&&(pOutputType))
         {
             if (!strcmp("csv",pOutputType)) // user request results in csv format.
@@ -482,6 +481,54 @@ int cmeConstructWebServiceTableResponse (const char **resultTable, const int tab
     }
     cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
     cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",tableRows);
+    return(0);
+}
+
+int cmeConstructWebServiceCountResponse (const char *resultName, const int resultCount,
+                                         const char **argumentElements, const char *method, const char *url,
+                                         char ***responseHeaders, char **resultStr, int *responseCode)
+{
+    const char *pOutputType=NULL;       //Ptr to outputType parameter within argumentElements. No need to free.
+
+    if ((!resultName)||(!responseHeaders)||(!(*responseHeaders))||(!resultStr)||(!responseCode))
+    {
+        return(1);
+    }
+    if ((argumentElements)&&(!cmeFindInArgPairList(argumentElements,"outputType",&pOutputType))&&(pOutputType))
+    {
+        if (!strcmp("csv",pOutputType))
+        {
+            cmeStrConstrAppend(resultStr,"\"%s\"\n\"%d\"\n",resultName,resultCount);
+            cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");  //Note: fields 0 & 1 are Engine-results.
+            cmeStrConstrAppend(&((*responseHeaders)[3]),"application/csv");
+        }
+        else if (!strcmp("html",pOutputType))
+        {
+            cmeStrConstrAppend(resultStr,"<p>%s: %d</p><br>",resultName,resultCount);
+            cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");  //Note: fields 0 & 1 are Engine-results.
+            cmeStrConstrAppend(&((*responseHeaders)[3]),"text/html; charset=utf-8");
+        }
+        else //Error, unknown outputType.
+        {
+            cmeStrConstrAppend(resultStr,"<b>501 ERROR Not implemented.</b><br>"
+                               "The requested functionality has not been implemented."
+                               "METHOD: '%s' URL: '%s'."
+                               "Latest IDD version: <code>%s</code>",method,url,
+                               cmeInternalDBDefinitionsVersion);
+#ifdef DEBUG
+            fprintf(stderr,"CaumeDSE Debug: cmeConstructWebServiceCountResponse(), Debug, support "
+                    "for outputType '%s' has not been implemented. Method: '%s', URL: '%s'!\n",pOutputType,method,url);
+#endif
+            *responseCode=501;
+            return(2);
+        }
+    }
+    else //No specific output type requested; use default HTML.
+    {
+        cmeStrConstrAppend(resultStr,"<p>%s: %d</p><br>",resultName,resultCount);
+    }
+    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",resultCount);
     return(0);
 }
 

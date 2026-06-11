@@ -2015,9 +2015,9 @@ int cmeWebServiceProcessUserResource (char **responseText, char **responseFilePa
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessUserResource(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessUserResourceFree();
                     return(0);
                 }
@@ -2460,9 +2460,9 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessUserClass(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"Deleted registers: %d <br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessUserClassFree();
                     return(0);
                 }
@@ -2478,7 +2478,6 @@ int cmeWebServiceProcessUserClass (char **responseText, char ***responseHeaders,
                     fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessUserClass(), DELETE error!, "
                             "cmeDeleteUnporotectDBRegisters error!\n");
 #endif
-                    //TODO (OHR#3#): Create a function to process results according to user requests (plaintext, html, etc.) move the above code (HTML) there.
                     cmeWebServiceProcessUserClassFree();
                     return(15);
                 }
@@ -3442,9 +3441,9 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRoleTableResource(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessRoleTableResourceFree();
                     return(0);
                 }
@@ -4146,10 +4145,9 @@ int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeader
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessOrgResource(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    //TODO (OHR#3#): Create a function to process results according to user requests (plaintext, html, etc.) move the above code (HTML) there.
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessOrgResourceFree();
                     return(0);
                 }
@@ -4585,9 +4583,9 @@ int cmeWebServiceProcessOrgClass (char **responseText, char **responseFilePath, 
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessOrgClass(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessOrgClassFree();
                     return(0);
                 }
@@ -5376,10 +5374,9 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessStorageResource(), DELETE successful, but resource not found.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    //TODO (OHR#3#): Create a function to process results according to user requests (plaintext, html, etc.) move tha above code (HTML) there.
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessStorageResourceFree();
                     return(0);
                 }
@@ -5840,9 +5837,9 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessStorageClass(), DELETE successful.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessStorageClassFree();
                     return(0);
                 }
@@ -7039,9 +7036,9 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessDocumentResource(), DELETE successful, but resource not found.\n");
 #endif
                     }
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessDocumentResourceFree();
                     return(0);
                 }
@@ -7862,9 +7859,9 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
                     }
                     cmeDBClose(pDB);
                     pDB=NULL;
-                    cmeStrConstrAppend(responseText,"<p>Deleted registers: %d</p><br>",numResultRegisters);
-                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+                    cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,
+                                                        argumentElements,method,url,
+                                                        responseHeaders,responseText,responseCode);
                     cmeWebServiceProcessDocumentClassFree();
                     return(0);
                 }
