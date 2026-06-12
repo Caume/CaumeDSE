@@ -29,9 +29,10 @@
   - Apply WAL/synchronous/cache settings only where they are useful and check PRAGMA errors.
   - Done: memory DB opens now bypass file-backed PRAGMAs, file create/open setup checks PRAGMA errors, and regular DB opens no longer reapply WAL mode.
 
-- [ ] #6 Cache logs table schema validation.
+- [x] #6 Cache logs table schema validation.
   - Validate/create the transactions table at startup or first use under a mutex.
   - Continue writing each log record immediately.
+  - Done: logs transaction table validation now runs once per process under a mutex, recreates the table when the expected schema is missing, and leaves each log write as an immediate durable insert.
 
 - [x] #7 Increase streaming and POST chunk sizes.
   - Raise POST processing buffer to reduce callback overhead.

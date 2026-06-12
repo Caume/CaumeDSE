@@ -692,6 +692,79 @@ static int cmeWebServiceBuildSecureDBAttributes(const char **argumentElements,
 // File-scope engine power status flag.  Access is serialised with cmePowerMutex so that
 // concurrent requests see a consistent value when the operator toggles the engine on/off.
 static int cmeEnginePowerStatus=1;
+static pthread_mutex_t cmeLogsSchemaMutex=PTHREAD_MUTEX_INITIALIZER;
+static int cmeLogsSchemaReady=0;
+
+static int cmeWebServiceEnsureLogsTransactionsTable(sqlite3 *pDB)
+{
+    int cont,result=0,found=0;
+    char *sqlCreate=NULL;
+    const char *tableName=cmeIDDLogsDBTransactionsTableName;
+    #define cmeWebServiceEnsureLogsTransactionsTableFree() \
+        do { \
+            cmeFree(sqlCreate); \
+            cmeResultMemTableClean(); \
+        } while (0); //Local free() macro.
+
+    pthread_mutex_lock(&cmeLogsSchemaMutex);
+    if (cmeLogsSchemaReady)
+    {
+        pthread_mutex_unlock(&cmeLogsSchemaMutex);
+        return(0);
+    }
+    result=cmeMemTableWithTableColumnNames(pDB,tableName);
+    if (!result)
+    {
+        for (cont=0; cont<cmeResultMemTableCols; cont++)
+        {
+            if (!strcmp(cmeResultMemTable[cont],cmeIDDLogsDBTransactions_requestMethod_name))
+            {
+                found=1;
+                break;
+            }
+        }
+        cmeResultMemTableClean();
+    }
+    if (result || !found)
+    {
+        cmeStrConstrAppend(&sqlCreate,
+                           "BEGIN TRANSACTION; DROP TABLE IF EXISTS \"%s\"; ",
+                           tableName);
+        cmeStrConstrAppend(&sqlCreate,
+                           "CREATE TABLE \"%s\" (" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, "
+                           cmeIDDanydb_userId_name " TEXT, " cmeIDDanydb_orgId_name " TEXT, "
+                           cmeIDDanydb_salt_name " TEXT, " cmeIDDLogsDBTransactions_requestMethod_name " TEXT, "
+                           cmeIDDLogsDBTransactions_requestUrl_name " TEXT, "
+                           cmeIDDLogsDBTransactions_requestHeaders_name " TEXT, "
+                           cmeIDDLogsDBTransactions_startTimestamp_name " TEXT, "
+                           cmeIDDLogsDBTransactions_endTimestamp_name " TEXT, "
+                           cmeIDDLogsDBTransactions_requestDataSize_name " TEXT, "
+                           cmeIDDLogsDBTransactions_responseDataSize_name " TEXT, "
+                           cmeIDDLogsDBTransactions_orgResourceId_name " TEXT, "
+                           cmeIDDLogsDBTransactions_requestIPAddress_name " TEXT, "
+                           cmeIDDLogsDBTransactions_responseCode_name " TEXT, "
+                           cmeIDDLogsDBTransactions_responseHeaders_name " TEXT, "
+                           cmeIDDLogsDBTransactions_authenticated_name " TEXT); "
+                           "CREATE INDEX \"idx_log_%s_uo\" ON \"%s\"("
+                           cmeIDDanydb_orgId_name "," cmeIDDanydb_userId_name "); COMMIT;",
+                           tableName,tableName,tableName);
+        result=cmeSQLRows(pDB,sqlCreate,NULL,NULL);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceEnsureLogsTransactionsTable(), can't create table %s!\n",
+                    tableName);
+#endif
+            cmeWebServiceEnsureLogsTransactionsTableFree();
+            pthread_mutex_unlock(&cmeLogsSchemaMutex);
+            return(1);
+        }
+    }
+    cmeLogsSchemaReady=1;
+    cmeWebServiceEnsureLogsTransactionsTableFree();
+    pthread_mutex_unlock(&cmeLogsSchemaMutex);
+    return(0);
+}
 
 int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
                                  const char *url, const char **urlElements, int numUrlElements,
@@ -12073,7 +12146,6 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
     char *columnValues[14]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
     sqlite3 *pDB=NULL;
     char *dbFilePath=NULL;
-    char *sqlCreate=NULL;
     sqlite3_stmt *insertStmt=NULL;
     #define cmeWebServiceLogRequestFree() \
         do { \
@@ -12082,7 +12154,6 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
             cmeFree(salt); \
             cmeFree(boundValue); \
             cmeFree(dbFilePath); \
-            cmeFree(sqlCreate); \
             if (insertStmt) \
             { \
                 sqlite3_finalize(insertStmt); \
@@ -12124,51 +12195,11 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
 #endif
                 return(1);
     }
-    // Verify that the transactions table has the expected columns
-    result=cmeMemTableWithTableColumnNames(pDB,tableName);
-    if (!result)
+    result=cmeWebServiceEnsureLogsTransactionsTable(pDB);
+    if (result)
     {
-        int found=0;
-        for (cont=0; cont<cmeResultMemTableCols; cont++)
-        {
-            if (!strcmp(cmeResultMemTable[cont],cmeIDDLogsDBTransactions_requestMethod_name))
-            {
-                found=1;
-                break;
-            }
-        }
-        cmeResultMemTableClean();
-        if (!found)
-        {
-            cmeStrConstrAppend(&sqlCreate,
-                                "BEGIN TRANSACTION; DROP TABLE IF EXISTS \"%s\"; ",
-                                tableName);
-            cmeStrConstrAppend(&sqlCreate,
-                                "CREATE TABLE \"%s\" (" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, "
-                                cmeIDDanydb_userId_name " TEXT, " cmeIDDanydb_orgId_name " TEXT, "
-                                cmeIDDanydb_salt_name " TEXT, " cmeIDDLogsDBTransactions_requestMethod_name " TEXT, "
-                                cmeIDDLogsDBTransactions_requestUrl_name " TEXT, "
-                                cmeIDDLogsDBTransactions_requestHeaders_name " TEXT, "
-                                cmeIDDLogsDBTransactions_startTimestamp_name " TEXT, "
-                                cmeIDDLogsDBTransactions_endTimestamp_name " TEXT, "
-                                cmeIDDLogsDBTransactions_requestDataSize_name " TEXT, "
-                                cmeIDDLogsDBTransactions_responseDataSize_name " TEXT, "
-                                cmeIDDLogsDBTransactions_orgResourceId_name " TEXT, "
-                                cmeIDDLogsDBTransactions_requestIPAddress_name " TEXT, "
-                                cmeIDDLogsDBTransactions_responseCode_name " TEXT, "
-                                cmeIDDLogsDBTransactions_responseHeaders_name " TEXT, "
-                                cmeIDDLogsDBTransactions_authenticated_name " TEXT); "
-                                "CREATE INDEX \"idx_log_%s_uo\" ON \"%s\"("
-                                cmeIDDanydb_orgId_name "," cmeIDDanydb_userId_name "); COMMIT;",
-                                tableName,tableName,tableName);
-            cmeSQLRows(pDB,sqlCreate,NULL,NULL);
-            cmeFree(sqlCreate);
-            sqlCreate=NULL;
-        }
-    }
-    else
-    {
-        cmeResultMemTableClean();
+        cmeWebServiceLogRequestFree();
+        return(2);
     }
     if (!strcmp(authenticated,"1")) //Connection was authenticated -> set flag to encrypt normally (otherwise store information unencrypted)
     {
