@@ -133,7 +133,15 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
                                                        //Note that there is NO default orgKey for EngineOrg... it will be generated randomly the first time the engine is run and won't be stored in clear {so take note!}.
 
 #define cmeInternalDBDefinitionsVersion "1.0.21_1 Jul 2012" //Version of internal DB definitions for engine
-// TODO (OHR#4#): Standardize the use of IDD in the project (i.e. avoid direct use of numbers and col. names).
+#define cmeIDDMatchName(columnName) "_" columnName           //URL match parameter name for a protected DB column.
+#define cmeIDDRequiredSaveName(columnName) "*" columnName    //URL save parameter name for a required protected DB column.
+#define cmeIDDColumnFileDataTableName "data"                 //Table name for ColumnFile data tables.
+#define cmeIDDColumnFileMetaTableName "meta"                 //Table name for ColumnFile meta tables.
+#define cmeIDDResourcesDBDocumentsTableName "documents"      //Table name for ResourceDB documents.
+#define cmeIDDResourcesDBUsersTableName "users"              //Table name for ResourceDB users.
+#define cmeIDDResourcesDBStorageTableName "storage"          //Table name for ResourceDB storage.
+#define cmeIDDResourcesDBOrganizationsTableName "organizations" //Table name for ResourceDB organizations.
+#define cmeIDDLogsDBTransactionsTableName "transactions"     //Table name for LogsDB transactions.
 #define cmeIDDanydb_id 0                        //Column index {0 based} for WSID column for most internal sqlite register id
 #define cmeIDDanydb_id_name "id"                //Column name for WSID column for most internal sqlite register id
 #define cmeIDDanydb_userId 1                    //Column index {0 based} for WSID column for most internal sqlite user id of creator

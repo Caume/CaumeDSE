@@ -638,7 +638,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
         for (cont=0;cont<(*numCols);cont++)
         {
             colNames[cont]=NULL;    //Set all ptrs. to NULL as required by cmeStrConstrAppend().
-            if(!strcmp(elements[cont],"id")) //Found column named "id"!
+            if(!strcmp(elements[cont],cmeIDDanydb_id_name)) //Found column named "id"!
             {
                 cmeStrConstrAppend(&(colNames[cont]),"_id"); //"id" name is reserved for internal databases; so we change it!
             }
@@ -686,11 +686,17 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                     cmeCSVFileToSecureDBFree();
                     return(7);
                 }
-                cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE data "
-                                    "(id INTEGER PRIMARY KEY, userId TEXT, orgId TEXT, salt TEXT,"
-                                    " value TEXT, rowOrder TEXT, MAC TEXT, sign TEXT, MACProtected TEXT,"
-                                    " signProtected TEXT, otphDkey TEXT);"
-                                    "CREATE INDEX idx_data_user_org ON data(userId,orgId,rowOrder);"
+                cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE " cmeIDDColumnFileDataTableName " "
+                                    "(" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, " cmeIDDanydb_userId_name " TEXT, "
+                                    cmeIDDanydb_orgId_name " TEXT, " cmeIDDanydb_salt_name " TEXT, "
+                                    cmeIDDColumnFileData_value_name " TEXT, " cmeIDDColumnFileData_rowOrder_name " TEXT, "
+                                    cmeIDDColumnFileData_MAC_name " TEXT, " cmeIDDColumnFileData_sign_name " TEXT, "
+                                    cmeIDDColumnFileData_MACProtected_name " TEXT, "
+                                    cmeIDDColumnFileData_signProtected_name " TEXT, "
+                                    cmeIDDColumnFileData_otphDKey_name " TEXT);"
+                                    "CREATE INDEX idx_data_user_org ON " cmeIDDColumnFileDataTableName
+                                    "(" cmeIDDanydb_userId_name "," cmeIDDanydb_orgId_name ","
+                                    cmeIDDColumnFileData_rowOrder_name ");"
                                     "COMMIT;");
                 if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'data'.
                 {
@@ -702,10 +708,13 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                     return(9);
                 }
                 cmeFree(sqlQuery);  //Free memory that was used for queries.
-                cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE meta "
-                                    "(id INTEGER PRIMARY KEY, userId TEXT, orgID TEXT, salt TEXT,"
-                                    " attribute TEXT, attributeData TEXT);"
-                                    "CREATE INDEX idx_meta_user_attr ON meta(userId,attribute);"
+                cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE " cmeIDDColumnFileMetaTableName " "
+                                    "(" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, " cmeIDDanydb_userId_name " TEXT, "
+                                    cmeIDDanydb_orgId_name " TEXT, " cmeIDDanydb_salt_name " TEXT, "
+                                    cmeIDDColumnFileMeta_attribute_name " TEXT, "
+                                    cmeIDDColumnFileMeta_attributeData_name " TEXT);"
+                                    "CREATE INDEX idx_meta_user_attr ON " cmeIDDColumnFileMetaTableName
+                                    "(" cmeIDDanydb_userId_name "," cmeIDDColumnFileMeta_attribute_name ");"
                                     "COMMIT;");
                 if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'meta'.
                 {
@@ -721,7 +730,11 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             for (cont=0;cont<numSQLDBfNames;cont++) //Insert data into meta table.
             {   //Insert 'name' attribute.
                 result=sqlite3_prepare_v2(ppDB[cont],
-                                          "INSERT INTO meta (id,userId,orgId,salt,attribute,attributeData) "
+                                          "INSERT INTO " cmeIDDColumnFileMetaTableName " "
+                                          "(" cmeIDDanydb_id_name "," cmeIDDanydb_userId_name ","
+                                          cmeIDDanydb_orgId_name "," cmeIDDanydb_salt_name ","
+                                          cmeIDDColumnFileMeta_attribute_name ","
+                                          cmeIDDColumnFileMeta_attributeData_name ") "
                                           "VALUES (NULL,?,?,?,?,?);",
                                           -1,&insertMetaStmt,NULL);
                 if (result!=SQLITE_OK)
@@ -746,7 +759,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                 result=sqlite3_bind_text(insertMetaStmt,1,userId,-1,SQLITE_TRANSIENT);
                 if (result==SQLITE_OK) result=sqlite3_bind_text(insertMetaStmt,2,orgId,-1,SQLITE_TRANSIENT);
                 if (result==SQLITE_OK) result=sqlite3_bind_null(insertMetaStmt,3);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertMetaStmt,4,"name",-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertMetaStmt,4,cmeIDDColumnFileMeta_attribute_0,-1,SQLITE_TRANSIENT);
                 if (result==SQLITE_OK) result=sqlite3_bind_text(insertMetaStmt,5,colNames[cont%(*numCols)],-1,SQLITE_TRANSIENT);
                 if (result==SQLITE_OK) result=sqlite3_step(insertMetaStmt);
                 if (result!=SQLITE_DONE)
@@ -811,8 +824,14 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                     rContLimit=(cycleProcessedRows>cmeMaxCSVRowsInPart)?cmeMaxCSVRowsInPart:cycleProcessedRows;
                 }
                 result=sqlite3_prepare_v2(ppDB[(*numCols)*cont+cont2],
-                                          "INSERT INTO data "
-                                          "(id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey) "
+                                          "INSERT INTO " cmeIDDColumnFileDataTableName " "
+                                          "(" cmeIDDanydb_id_name "," cmeIDDanydb_userId_name ","
+                                          cmeIDDanydb_orgId_name "," cmeIDDanydb_salt_name ","
+                                          cmeIDDColumnFileData_value_name "," cmeIDDColumnFileData_rowOrder_name ","
+                                          cmeIDDColumnFileData_MAC_name "," cmeIDDColumnFileData_sign_name ","
+                                          cmeIDDColumnFileData_MACProtected_name ","
+                                          cmeIDDColumnFileData_signProtected_name ","
+                                          cmeIDDColumnFileData_otphDKey_name ") "
                                           "VALUES (NULL,?,?,?,?,?,?,?,?,?,?);",
                                           -1,&insertDataStmt,NULL);
                 if (result!=SQLITE_OK)
@@ -1761,7 +1780,7 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
         cmeStrConstrAppend(&(colNames[cont]),"%s",memTable[cont]);
     }
     // TODO (OHR#6#): Create & call function to create DB files in memory for memTable column imports.
-    if (!strcmp(colNames[0],"id")) //id column exists; we need to skip it.
+    if (!strcmp(colNames[0],cmeIDDanydb_id_name)) //id column exists; we need to skip it.
     {
         skipIdColumn=1;
     }
@@ -1810,11 +1829,17 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
                 cmeMemTableToSecureDBFree();
                 return(6);
             }
-            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE data "
-                                "(id INTEGER PRIMARY KEY, userId TEXT, orgId TEXT, salt TEXT,"
-                                " value TEXT, rowOrder TEXT, MAC TEXT, sign TEXT, MACProtected TEXT,"
-                                " signProtected TEXT, otphDkey TEXT);"
-                                "CREATE INDEX idx_data_user_org ON data(userId,orgId,rowOrder);"
+            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE " cmeIDDColumnFileDataTableName " "
+                                "(" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, " cmeIDDanydb_userId_name " TEXT, "
+                                cmeIDDanydb_orgId_name " TEXT, " cmeIDDanydb_salt_name " TEXT, "
+                                cmeIDDColumnFileData_value_name " TEXT, " cmeIDDColumnFileData_rowOrder_name " TEXT, "
+                                cmeIDDColumnFileData_MAC_name " TEXT, " cmeIDDColumnFileData_sign_name " TEXT, "
+                                cmeIDDColumnFileData_MACProtected_name " TEXT, "
+                                cmeIDDColumnFileData_signProtected_name " TEXT, "
+                                cmeIDDColumnFileData_otphDKey_name " TEXT);"
+                                "CREATE INDEX idx_data_user_org ON " cmeIDDColumnFileDataTableName
+                                "(" cmeIDDanydb_userId_name "," cmeIDDanydb_orgId_name ","
+                                cmeIDDColumnFileData_rowOrder_name ");"
                                 "COMMIT;");
             if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'data'.
             {
@@ -1826,10 +1851,13 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
                 return(7);
             }
             cmeFree(sqlQuery);  //Free memory that was used for queries.
-            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE meta "
-                                "(id INTEGER PRIMARY KEY, userId TEXT, orgID TEXT, salt TEXT,"
-                                " attribute TEXT, attributeData TEXT);"
-                                "CREATE INDEX idx_meta_user_attr ON meta(userId,attribute);"
+            cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; CREATE TABLE " cmeIDDColumnFileMetaTableName " "
+                                "(" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, " cmeIDDanydb_userId_name " TEXT, "
+                                cmeIDDanydb_orgId_name " TEXT, " cmeIDDanydb_salt_name " TEXT, "
+                                cmeIDDColumnFileMeta_attribute_name " TEXT, "
+                                cmeIDDColumnFileMeta_attributeData_name " TEXT);"
+                                "CREATE INDEX idx_meta_user_attr ON " cmeIDDColumnFileMetaTableName
+                                "(" cmeIDDanydb_userId_name "," cmeIDDColumnFileMeta_attribute_name ");"
                                 "COMMIT;");
             if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Create a table 'meta'.
             {
@@ -1845,7 +1873,11 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
         for (cont=0;cont<numSQLDBfNames;cont++) //Insert data into meta table.
         {   //Insert 'name' attribute.
             result=sqlite3_prepare_v2(ppDB[cont],
-                                      "INSERT INTO meta (id,userId,orgId,salt,attribute,attributeData) "
+                                      "INSERT INTO " cmeIDDColumnFileMetaTableName " "
+                                      "(" cmeIDDanydb_id_name "," cmeIDDanydb_userId_name ","
+                                      cmeIDDanydb_orgId_name "," cmeIDDanydb_salt_name ","
+                                      cmeIDDColumnFileMeta_attribute_name ","
+                                      cmeIDDColumnFileMeta_attributeData_name ") "
                                       "VALUES (NULL,?,?,?,?,?);",
                                       -1,&insertMetaStmt,NULL);
             if (result!=SQLITE_OK)
@@ -1870,7 +1902,7 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
             result=sqlite3_bind_text(insertMetaStmt,1,userId,-1,SQLITE_TRANSIENT);
             if (result==SQLITE_OK) result=sqlite3_bind_text(insertMetaStmt,2,orgId,-1,SQLITE_TRANSIENT);
             if (result==SQLITE_OK) result=sqlite3_bind_null(insertMetaStmt,3);
-            if (result==SQLITE_OK) result=sqlite3_bind_text(insertMetaStmt,4,"name",-1,SQLITE_TRANSIENT);
+            if (result==SQLITE_OK) result=sqlite3_bind_text(insertMetaStmt,4,cmeIDDColumnFileMeta_attribute_0,-1,SQLITE_TRANSIENT);
             if (result==SQLITE_OK) result=sqlite3_bind_text(insertMetaStmt,5,colNames[(cont%(numCols-skipIdColumn))+skipIdColumn],-1,SQLITE_TRANSIENT);
             if (result==SQLITE_OK) result=sqlite3_step(insertMetaStmt);
             if (result!=SQLITE_DONE)
@@ -1935,8 +1967,14 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
                 rContLimit=(numRows>cmeMaxCSVRowsInPart)?cmeMaxCSVRowsInPart:numRows;
             }
             result=sqlite3_prepare_v2(ppDB[(numCols-skipIdColumn)*cont+cont2-skipIdColumn],
-                                      "INSERT INTO data "
-                                      "(id,userId,orgId,salt,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDkey) "
+                                      "INSERT INTO " cmeIDDColumnFileDataTableName " "
+                                      "(" cmeIDDanydb_id_name "," cmeIDDanydb_userId_name ","
+                                      cmeIDDanydb_orgId_name "," cmeIDDanydb_salt_name ","
+                                      cmeIDDColumnFileData_value_name "," cmeIDDColumnFileData_rowOrder_name ","
+                                      cmeIDDColumnFileData_MAC_name "," cmeIDDColumnFileData_sign_name ","
+                                      cmeIDDColumnFileData_MACProtected_name ","
+                                      cmeIDDColumnFileData_signProtected_name ","
+                                      cmeIDDColumnFileData_otphDKey_name ") "
                                       "VALUES (NULL,?,?,?,?,?,?,?,?,?,?);",
                                       -1,&insertDataStmt,NULL);
             if (result!=SQLITE_OK)

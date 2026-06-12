@@ -12046,9 +12046,20 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
     char *salt=NULL;
     char *boundValue=NULL;
     const int numColumns=cmeIDDLogsDBTransactionsNumCols-2;       //Constant: number of columns in table, ignoring id & salt
-    const char *tableName="transactions";
-    const char *columnNames[14]={"userId","orgId","requestMethod","requestUrl","requestHeaders","startTimestamp","endTimestamp","requestDataSize",
-                                 "responseDataSize","orgResourceId","requestIPAddress","responseCode","responseHeaders","authenticated"};
+    const char *tableName=cmeIDDLogsDBTransactionsTableName;
+    const char *columnNames[14]={cmeIDDanydb_userId_name,cmeIDDanydb_orgId_name,
+                                 cmeIDDLogsDBTransactions_requestMethod_name,
+                                 cmeIDDLogsDBTransactions_requestUrl_name,
+                                 cmeIDDLogsDBTransactions_requestHeaders_name,
+                                 cmeIDDLogsDBTransactions_startTimestamp_name,
+                                 cmeIDDLogsDBTransactions_endTimestamp_name,
+                                 cmeIDDLogsDBTransactions_requestDataSize_name,
+                                 cmeIDDLogsDBTransactions_responseDataSize_name,
+                                 cmeIDDLogsDBTransactions_orgResourceId_name,
+                                 cmeIDDLogsDBTransactions_requestIPAddress_name,
+                                 cmeIDDLogsDBTransactions_responseCode_name,
+                                 cmeIDDLogsDBTransactions_responseHeaders_name,
+                                 cmeIDDLogsDBTransactions_authenticated_name};
     char *columnValues[14]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
     sqlite3 *pDB=NULL;
     char *dbFilePath=NULL;
@@ -12110,7 +12121,7 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
         int found=0;
         for (cont=0; cont<cmeResultMemTableCols; cont++)
         {
-            if (!strcmp(cmeResultMemTable[cont],"requestMethod"))
+            if (!strcmp(cmeResultMemTable[cont],cmeIDDLogsDBTransactions_requestMethod_name))
             {
                 found=1;
                 break;
@@ -12123,12 +12134,22 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
                                 "BEGIN TRANSACTION; DROP TABLE IF EXISTS \"%s\"; ",
                                 tableName);
             cmeStrConstrAppend(&sqlCreate,
-                                "CREATE TABLE \"%s\" (id INTEGER PRIMARY KEY, "
-                                "userId TEXT, orgId TEXT, salt TEXT, requestMethod TEXT, requestUrl TEXT, "
-                                "requestHeaders TEXT, startTimestamp TEXT, endTimestamp TEXT, requestDataSize TEXT, "
-                                "responseDataSize TEXT, orgResourceId TEXT, requestIPAddress TEXT, responseCode TEXT, "
-                                "responseHeaders TEXT, authenticated TEXT); "
-                                "CREATE INDEX \"idx_log_%s_uo\" ON \"%s\"(orgId,userId); COMMIT;",
+                                "CREATE TABLE \"%s\" (" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, "
+                                cmeIDDanydb_userId_name " TEXT, " cmeIDDanydb_orgId_name " TEXT, "
+                                cmeIDDanydb_salt_name " TEXT, " cmeIDDLogsDBTransactions_requestMethod_name " TEXT, "
+                                cmeIDDLogsDBTransactions_requestUrl_name " TEXT, "
+                                cmeIDDLogsDBTransactions_requestHeaders_name " TEXT, "
+                                cmeIDDLogsDBTransactions_startTimestamp_name " TEXT, "
+                                cmeIDDLogsDBTransactions_endTimestamp_name " TEXT, "
+                                cmeIDDLogsDBTransactions_requestDataSize_name " TEXT, "
+                                cmeIDDLogsDBTransactions_responseDataSize_name " TEXT, "
+                                cmeIDDLogsDBTransactions_orgResourceId_name " TEXT, "
+                                cmeIDDLogsDBTransactions_requestIPAddress_name " TEXT, "
+                                cmeIDDLogsDBTransactions_responseCode_name " TEXT, "
+                                cmeIDDLogsDBTransactions_responseHeaders_name " TEXT, "
+                                cmeIDDLogsDBTransactions_authenticated_name " TEXT); "
+                                "CREATE INDEX \"idx_log_%s_uo\" ON \"%s\"("
+                                cmeIDDanydb_orgId_name "," cmeIDDanydb_userId_name "); COMMIT;",
                                 tableName,tableName,tableName);
             cmeSQLRows(pDB,sqlCreate,NULL,NULL);
             cmeFree(sqlCreate);
@@ -12160,10 +12181,21 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
         }
     }
     result=sqlite3_prepare_v2(pDB,
-                              "INSERT INTO transactions "
-                              "(id,userId,orgId,requestMethod,requestUrl,requestHeaders,startTimestamp,endTimestamp,"
-                              "requestDataSize,responseDataSize,orgResourceId,requestIPAddress,responseCode,responseHeaders,"
-                              "authenticated,salt) VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);",
+                              "INSERT INTO " cmeIDDLogsDBTransactionsTableName " "
+                              "(" cmeIDDanydb_id_name "," cmeIDDanydb_userId_name ","
+                              cmeIDDanydb_orgId_name "," cmeIDDLogsDBTransactions_requestMethod_name ","
+                              cmeIDDLogsDBTransactions_requestUrl_name ","
+                              cmeIDDLogsDBTransactions_requestHeaders_name ","
+                              cmeIDDLogsDBTransactions_startTimestamp_name ","
+                              cmeIDDLogsDBTransactions_endTimestamp_name ","
+                              cmeIDDLogsDBTransactions_requestDataSize_name ","
+                              cmeIDDLogsDBTransactions_responseDataSize_name ","
+                              cmeIDDLogsDBTransactions_orgResourceId_name ","
+                              cmeIDDLogsDBTransactions_requestIPAddress_name ","
+                              cmeIDDLogsDBTransactions_responseCode_name ","
+                              cmeIDDLogsDBTransactions_responseHeaders_name ","
+                              cmeIDDLogsDBTransactions_authenticated_name ","
+                              cmeIDDanydb_salt_name ") VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);",
                               -1,&insertStmt,NULL);
     if (result!=SQLITE_OK)
     {
@@ -12185,9 +12217,9 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
     }
     for (cont=0; cont<numColumns; cont++)
     {
-        if ((strcmp(columnNames[cont],"salt")!=0)&&(columnValues[cont]!=NULL)) //Skip salt, we will add it at the end.
+        if ((strcmp(columnNames[cont],cmeIDDanydb_salt_name)!=0)&&(columnValues[cont]!=NULL)) //Skip salt, we will add it at the end.
         {
-            if((!strcmp(columnNames[cont],"authenticated"))||(authenticationFlag==0)) //We don't encrypt the authentication flag, or any field if the authentication flag is 0.
+            if((!strcmp(columnNames[cont],cmeIDDLogsDBTransactions_authenticated_name))||(authenticationFlag==0)) //We don't encrypt the authentication flag, or any field if the authentication flag is 0.
             {
                 result=sqlite3_bind_text(insertStmt,cont+1,columnValues[cont],-1,SQLITE_TRANSIENT);
             }
@@ -12442,13 +12474,23 @@ int cmeWebServiceProcessTransactionClass (char **responseText, char ***responseH
     char **columnNamesToMatch=NULL;     //Names of columns for values to match a register (GET/PUT)
     char *dbFilePath=NULL;
     char **resultRegisterCols=NULL;
-    const char *tableName="transactions";
+    const char *tableName=cmeIDDLogsDBTransactionsTableName;
     const int numColumns=cmeIDDLogsDBTransactionsNumCols;
     const int numValidGETALLMatch=14;    //8 parameters + NONE from URL
-    const char *validGETALLMatchColumns[14]={"_userId","_orgId","_requestMethod","_requestUrl","_requestHeaders",
-                                            "_startTimestamp","_endTimestamp","_requestDataSize","_responseDataSize",
-                                            "_orgResourceId","_requestIPAddress","_responseCode","_responseHeaders",
-                                            "_authenticated"};
+    const char *validGETALLMatchColumns[14]={cmeIDDMatchName(cmeIDDanydb_userId_name),
+                                             cmeIDDMatchName(cmeIDDanydb_orgId_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_requestMethod_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_requestUrl_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_requestHeaders_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_startTimestamp_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_endTimestamp_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_requestDataSize_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_responseDataSize_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_orgResourceId_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_requestIPAddress_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_responseCode_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_responseHeaders_name),
+                                             cmeIDDMatchName(cmeIDDLogsDBTransactions_authenticated_name)};
     #define cmeWebServiceProcessTransactionClassFree() \
         do { \
             cmeFree(orgKey); \

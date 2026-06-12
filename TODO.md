@@ -225,8 +225,9 @@
   - Source: `common.h:51`.
   - Done: startup now loads runtime globals from `caumedse.conf` (or `CDSE_CONFIG_FILE`) and applies the existing `CDSE_DEFAULT_ENC_ALG` environment override after validating cipher names.
 
-- [ ] #47 Standardize IDD usage and avoid direct use of numeric IDs and column names.
+- [x] #47 Standardize IDD usage and avoid direct use of numeric IDs and column names.
   - Source: `common.h:132`.
+  - Done: added central IDD table-name and URL-parameter-name helpers, and replaced hard-coded internal DB column/table names in admin bootstrap, ColumnFile DB creation, and LogsDB transaction handling with IDD constants.
 
 - [ ] #48 Research secure memory clearing and memory locking for sensitive data.
   - Source: `engine_interface.c:310`, `engine_interface.c:1583`.
