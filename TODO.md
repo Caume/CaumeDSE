@@ -208,8 +208,9 @@
 - [ ] #42 Implement signing and protected signing for protected DB values.
   - Source: `db.c:1253`, `db.c:1259`, `db.c:2225`, `db.c:2231`.
 
-- [ ] #43 Replace direct DB protect/unprotect call sites with wrapper functions.
+- [x] #43 Replace direct DB protect/unprotect call sites with wrapper functions.
   - Source: `db.c:2355`, `db.c:2383`.
+  - Done: verified plain DB text protect/unprotect paths use `cmeProtectDBValue()` and `cmeUnprotectDBValue()` wrappers; removed the stale wrapper TODO markers. Salted protect/unprotect wrapper cleanup remains tracked separately in `#44`.
 
 - [ ] #44 Replace direct salt/protect and unprotect/unsalt call sites with wrapper functions.
   - Source: `db.c:2420`, `db.c:2461`.

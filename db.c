@@ -2368,7 +2368,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
 
 int cmeProtectDBValue (const char *value, char **protectedValue, const char *encAlg, char **salt,
                        const char *orgKey, int *protectedValueLen)
-{   //TODO (OHR#2#): Replace everywhere to protect a DB value with a call to this function.
+{
     int result;
     if (value==NULL) //Error: no value to encrypt
     {
@@ -2396,7 +2396,7 @@ int cmeProtectDBValue (const char *value, char **protectedValue, const char *enc
 
 int cmeUnprotectDBValue (const char *protectedValue, char **value, const char *encAlg, char **salt,
                          const char *orgKey, int *valueLen)
-{   //TODO (OHR#2#): Replace everywhere to unprotect a DB value with a call to this function.
+{
     int result;
 
     *value=NULL;
