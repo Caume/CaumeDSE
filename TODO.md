@@ -237,5 +237,6 @@
   - Source: `engine_interface.c:1053`.
   - Done: `cmePostProtectDBRegister()` now rejects caller-supplied protected DB salts unless they are exactly `evpSaltBufferSize * 2` hex characters; omitted salts still use the existing generated-salt path.
 
-- [ ] #50 Evaluate whether another random source is needed for systems without `/dev/random` or `/dev/urandom`.
+- [x] #50 Evaluate whether another random source is needed for systems without `/dev/random` or `/dev/urandom`.
   - Source: `crypto.c:436`.
+  - Done: `cmeSeedPrng()` now uses OpenSSL platform seeding via `RAND_poll()`/`RAND_status()` and treats `/dev/random` and `/dev/urandom` as optional extra entropy sources when present.
