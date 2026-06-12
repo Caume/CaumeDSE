@@ -6415,6 +6415,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
     int numCols=0;
     int numSecureDBAttributes=0;
     int replaceDB=0;
+    int vacuumDB=0;
     sqlite3 *pDB=NULL;
     char *orgKey=NULL;                  //requester orgKey.
     char *userId=NULL;                  //requester userId.
@@ -6511,6 +6512,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
     }
     numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
     replaceDB=cmeWebServiceGetBooleanParam(argumentElements,"replaceDB",0);
+    vacuumDB=cmeWebServiceGetBooleanParam(argumentElements,"vacuumDB",0);
     cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
     if(!strcmp(method,"POST")) //Method = POST is ok, process:
     {
@@ -6630,6 +6632,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         {
                             result=cmeCSVFileToSecureDB(postImportFile,1,&numCols,&processedRows,userId,orgId,newOrgKey,  //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
                                                         attributes, attributesData,numSecureDBAttributes,replaceDB,
+                                                        vacuumDB,
                                                         resourceInfoText,
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId
@@ -6640,6 +6643,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                         {
                             result=cmeCSVFileToSecureDB(postImportFile,1,&numCols,&processedRows,userId,orgId,orgKey,  //This will call cmeRegisterSecureDB(); no need to call cmePostProtectDBRegister here.
                                                         attributes, attributesData,numSecureDBAttributes,replaceDB,
+                                                        vacuumDB,
                                                         resourceInfoText,
                                                         urlElements[5], //document type
                                                         urlElements[7], //documentId
@@ -9719,6 +9723,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     int numSecureDBAttributes=0;
+    int vacuumDB=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -9837,6 +9842,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
         return(1);
     }
     numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
+    vacuumDB=cmeWebServiceGetBooleanParam(argumentElements,"vacuumDB",0);
     columnValues=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnNames=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnValuesToMatch=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, column values to match (GET/PUT).
@@ -10021,6 +10027,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             //Create new secureDB (delete old secureDB if it exists):
             result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
                                          attributes,attributesData,numSecureDBAttributes,1,
+                                         vacuumDB,
                                          resourceInfoText,
                                          urlElements[5], //document type
                                          urlElements[7], //documentId
@@ -10201,6 +10208,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             //Create new secureDB (delete old secureDB by using replace flag):
             result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
                                          attributes,attributesData,numSecureDBAttributes,1,
+                                         vacuumDB,
                                          resourceInfoText,
                                          urlElements[5], //document type
                                          urlElements[7], //documentId
@@ -10682,6 +10690,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
             //Create new secureDB (delete old secureDB by using replace flag):
             result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
                                          attributes,attributesData,numSecureDBAttributes,1,
+                                         vacuumDB,
                                          resourceInfoText,
                                          urlElements[5], //document type
                                          urlElements[7], //documentId
@@ -10803,6 +10812,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     int numResultRegisters=0;
     int requestedColNameIDX=0;
     int numSecureDBAttributes=0;
+    int vacuumDB=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -10919,6 +10929,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
         return(1);
     }
     numSecureDBAttributes=cmeWebServiceBuildSecureDBAttributes(argumentElements,attributes,attributesData,2);
+    vacuumDB=cmeWebServiceGetBooleanParam(argumentElements,"vacuumDB",0);
     result=cmeSanitizeStrForSQL(urlElements[9],&sanitizedSQLStr); //Sanitize contentColumn name so that it can be used in SQL queries.
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), Sanitized (i.e. doubled single quotes) of "
@@ -11048,6 +11059,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 //Create new secureDB:
                 result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
                                              attributes,attributesData,numSecureDBAttributes,1,
+                                             vacuumDB,
                                              resourceInfoText,
                                              urlElements[5], //document type
                                              urlElements[7], //documentId
@@ -11158,6 +11170,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 //Create new secureDB (delete old secureDB if it exists):
                 result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
                                              attributes,attributesData,numSecureDBAttributes,1,
+                                             vacuumDB,
                                              resourceInfoText,
                                              urlElements[5], //document type
                                              urlElements[7], //documentId
@@ -11915,6 +11928,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 //Create new secureDB (delete old secureDB if it exists):
                 result=cmeMemTableToSecureDB((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,userId,orgId,orgKey,
                                              attributes,attributesData,numSecureDBAttributes,1,
+                                             vacuumDB,
                                              resourceInfoText,
                                              urlElements[5], //document type
                                              urlElements[7], //documentId

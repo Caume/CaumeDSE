@@ -56,6 +56,7 @@ int cmeDBOpen (const char *filename, sqlite3 **ppDB);
 int cmeDBClose (sqlite3 *ppDB);
 // Wrapper function for sqlite3_backup_init(), sqlite3_backup_step() and sqlite3_backup_finish()
 int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave);
+int cmeMemDBLoadOrSaveVacuum(sqlite3 *pInMemory, const char *zFilename, int isSave, int vacuumBeforeSave);
 // Iteration function for cmeSQLRows that wrapps cmePerlParserScriptFunction()
 int cmeSQLIterate (const char *args,int numCols,char **pStrResults,char **pColNames);
 // Wrapper function for sqlite3_exec() and cmeSQLIterate ()

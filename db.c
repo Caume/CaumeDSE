@@ -172,7 +172,7 @@ int cmeDBClose (sqlite3 *ppDB)
 }
 
 //Based on code from: http://www.sqlite.org/backup.html
-int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave)
+int cmeMemDBLoadOrSaveVacuum(sqlite3 *pInMemory, const char *zFilename, int isSave, int vacuumBeforeSave)
 {
     int result=0;
     sqlite3 *pFile=NULL;
@@ -197,11 +197,23 @@ int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave)
         // If this is a 'load' operation (isSave==0), then data is copied
         // from the database file to database pInMemory.
         // Otherwise, data is copied from pInMemory to pFile.
-        // TODO (ANY#8#): if isSave, Vacuum mem first, then save!
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeDBMemLoadOrSave(), Opened DB file %s for "
-                "R/W successfuly. isSave: %d \n",zFilename, isSave);
+                "R/W successfuly. isSave: %d vacuumBeforeSave: %d \n",zFilename, isSave, vacuumBeforeSave);
 #endif
+        if ((isSave)&&(vacuumBeforeSave))
+        {
+            result=sqlite3_exec(pInMemory,"VACUUM;",NULL,NULL,NULL);
+            if (result)
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemDBLoadOrSaveVacuum(), sqlite3_exec() VACUUM error for memory DB before saving to '%s': %s\n",
+                        zFilename,sqlite3_errmsg(pInMemory));
+#endif
+                cmeDBClose(pFile);
+                return(2);
+            }
+        }
         pFrom = (isSave ? pInMemory : pFile);
         pTo   = (isSave ? pFile     : pInMemory);
         // Set up the backup procedure to copy from the "main" database of
@@ -216,6 +228,11 @@ int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave)
     }
     cmeDBClose(pFile); // Close the database connection opened on database file zFilename
     return (result);
+}
+
+int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave)
+{
+    return(cmeMemDBLoadOrSaveVacuum(pInMemory,zFilename,isSave,0));
 }
 
 int cmeSQLIterate (const char *args,int numCols,char **pStrResults,char **pColNames)

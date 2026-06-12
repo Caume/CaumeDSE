@@ -605,13 +605,13 @@ void testCSV ()
     }
     cmeCSVFileRowsToMemTableFinal (&elements, numCols, processedRows);
     result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
-                          "password1",attributes, attributesData,2,0,"Payroll Database; Confidential.",
+                          "password1",attributes, attributesData,2,0,0,"Payroll Database; Confidential.",
                           "file.csv", "AcmeIncPayroll.csv", "storage1",cmeDefaultFilePath);
     result=cmeCSVFileToSecureDB(fName2,1,&numCols,&processedRows,"User123","CaumeDSE",
-                          "password2",attributes, attributesData,2,1,"Payroll Database 2; Tests.",
+                          "password2",attributes, attributesData,2,1,0,"Payroll Database 2; Tests.",
                           "file.csv", "AcmeIncPayroll Tests.csv","storage2",cmeDefaultFilePath);
     result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
-                          "password1",attributes, attributesData,2,1,"Payroll Database; Confidential.",
+                          "password1",attributes, attributesData,2,1,0,"Payroll Database; Confidential.",
                           "file.csv", "AcmeIncPayroll.csv","storage1",cmeDefaultFilePath);
     if (cmeDBOpen(resourcesDBPath,&pResourcesDB)) //Error
     {
@@ -643,7 +643,7 @@ void testCSV ()
         return;
     }
     result=cmeMemTableToSecureDB((const char **)pQueryResult,numCols,numRows,"User123","CaumeDSE",
-                                 "password2",attributes, attributesData,2,1,"Payroll Database 2; Tests.",
+                                 "password2",attributes, attributesData,2,1,0,"Payroll Database 2; Tests.",
                                  "file.csv", "AcmeIncPayroll Tests.csv","storage2",cmeDefaultFilePath);
     cmeSecureDBToMemDB (&resultDB, pResourcesDB,"AcmeIncPayroll Tests.csv","password2",cmeDefaultFilePath);
     printf("--- Retrieved data from secure table (Memory Table to secure DB):\n");
@@ -680,7 +680,7 @@ void testCSV ()
     // and post-encryption MACProtected, then verify integrity on retrieval.
     printf("\n--- Testing MAC and MACProtected column attributes:\n");
     result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
-                                "password3",attributesMAC,attributesMACData,3,1,
+                                "password3",attributesMAC,attributesMACData,3,1,0,
                                 "Payroll Database MAC Test.",
                                 "file.csv","AcmeIncPayrollMAC.csv","storage3",cmeDefaultFilePath);
     if (result)

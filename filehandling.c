@@ -479,6 +479,7 @@ int cmeWriteStrToFile (char *pSrcStr, const char *filePath, int srcStrLen)
 int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCols,int *processedRows,
                           const char *userId,const char *orgId,const char *orgKey, const char **attribute,
                           const char **attributeData, const int numAttribute,const int replaceDB,
+                          const int vacuumDB,
                           const char *resourceInfo, const char *documentType, const char *documentId,
                           const char *storageId, const char *storagePath)
 {
@@ -900,21 +901,19 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
         if (numAttribute)  //If security attributes are defined, override corresponding defaults.
         {
             result=cmeMemSecureDBProtect(ppDB[cont],orgKey);
-            cmeStrConstrAppend(&sqlQuery,"VACUUM;"); //Reconstruct DB without slack space w/ unprotected data!
-            if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Vacuum DB col.
+            if (result)
             {
 #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeSQLRows() Error, can't "
-                        "VACUUM DB file %d: %s!\n",cont,SQLDBfNames[cont]);
+                fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeMemSecureDBProtect() Error, can't "
+                        "protect DB file %d: %s!\n",cont,SQLDBfNames[cont]);
 #endif
                 cmeCSVFileToSecureDBFree();
                 return(14);
             }
-            cmeFree(sqlQuery);  //Free memory that was used for queries.
         }
         cmeFree(bkpFName);
         cmeStrConstrAppend(&bkpFName,"%s%s",storagePath,SQLDBfNames[cont]);
-        result=cmeMemDBLoadOrSave(ppDB[cont],bkpFName,1);
+        result=cmeMemDBLoadOrSaveVacuum(ppDB[cont],bkpFName,1,((numAttribute)||(vacuumDB)));
         if (result)
         {
 #ifdef ERROR_LOG
@@ -1622,9 +1621,10 @@ void cmeContentReaderFreeCallback (void *cls)
         fprintf(stdout,"CaumeDSE Debug: cmeContentReaderFreeCallback(), file closed successfully; end of ContentReaderCallback.\n");
 #endif
 }
-int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int numRows,
+int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int numRows,
                            const char *userId,const char *orgId,const char *orgKey, const char **attribute,
                            const char **attributeData, const int numAttribute, const int replaceDB,
+                           const int vacuumDB,
                            const char *resourceInfo, const char *documentType, const char *documentId,
                            const char *storageId, const char *storagePath)
 {
@@ -2019,21 +2019,19 @@ void cmeContentReaderFreeCallback (void *cls)
         if (numAttribute)  //If security attributes are defined, override corresponding defaults.
         {
             result=cmeMemSecureDBProtect(ppDB[cont],orgKey);
-            cmeStrConstrAppend(&sqlQuery,"VACUUM;"); //Reconstruct DB without slack space w/ unprotected data!
-            if (cmeSQLRows((ppDB[cont]),sqlQuery,NULL,NULL)) //Vacuum DB col.
+            if (result)
             {
 #ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeSQLRows() Error, can't "
-                        "VACUUM DB file %d: %s!\n",cont,SQLDBfNames[cont]);
+                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeMemSecureDBProtect() Error, can't "
+                        "protect DB file %d: %s!\n",cont,SQLDBfNames[cont]);
 #endif
                 cmeMemTableToSecureDBFree();
                 return(11);
             }
-            cmeFree(sqlQuery);  //Free memory that was used for queries.
         }
         cmeFree(bkpFName);
         cmeStrConstrAppend(&bkpFName,"%s%s",storagePath,SQLDBfNames[cont]);
-        result=cmeMemDBLoadOrSave(ppDB[cont],bkpFName,1);
+        result=cmeMemDBLoadOrSaveVacuum(ppDB[cont],bkpFName,1,((numAttribute)||(vacuumDB)));
         if (result)
         {
 #ifdef ERROR_LOG

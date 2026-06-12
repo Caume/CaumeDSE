@@ -201,8 +201,9 @@
   - Source: `webservice_interface.c:7307`, `filehandling.h:83`.
   - Done: `cmeFileOverwriteAndDelete()` now supports compile-time multi-pass overwrites via `CDSE_SECURE_OVERWRITE_PASSES`, and POST temporary file cleanup uses that shared helper.
 
-- [ ] #41 Vacuum memory DBs before durable saves when requested.
+- [x] #41 Vacuum memory DBs before durable saves when requested.
   - Source: `db.c:201`.
+  - Done: memory database saves can now request a pre-save `VACUUM`; CSV upload and content row/column writes expose this through the `vacuumDB` request parameter while preserving mandatory vacuuming for protected imports.
 
 - [ ] #42 Implement signing and protected signing for protected DB values.
   - Source: `db.c:1253`, `db.c:1259`, `db.c:2225`, `db.c:2231`.

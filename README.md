@@ -1003,6 +1003,13 @@ replaceDB
     If omitted or set to 0, false, no, off or none, duplicate document
     resources are rejected.
 
+vacuumDB
+    Optional for file.csv uploads and content row/column writes.  If
+    set to 1, true, yes or on, each temporary memory database is
+    vacuumed before it is saved as a durable secure database file.
+    Secure imports with protection attributes still vacuum by default
+    to remove slack space that may contain unprotected data.
+
 #### 3.5 Optional Column index parameters for content rows (`file.csv`)
 
 
