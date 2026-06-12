@@ -213,8 +213,9 @@
   - Source: `db.c:2355`, `db.c:2383`.
   - Done: verified plain DB text protect/unprotect paths use `cmeProtectDBValue()` and `cmeUnprotectDBValue()` wrappers; removed the stale wrapper TODO markers. Salted protect/unprotect wrapper cleanup remains tracked separately in `#44`.
 
-- [ ] #44 Replace direct salt/protect and unprotect/unsalt call sites with wrapper functions.
+- [x] #44 Replace direct salt/protect and unprotect/unsalt call sites with wrapper functions.
   - Source: `db.c:2420`, `db.c:2461`.
+  - Done: `cmeProtectDBSaltedValue()` and `cmeUnprotectDBSaltedValue()` now delegate encryption/decryption to `cmeProtectDBValue()` and `cmeUnprotectDBValue()` after adding or before removing the value salt.
 
 - [ ] #45 Replace direct `malloc` calls with an audited allocation wrapper.
   - Source: `common.h:50`.

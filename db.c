@@ -2702,7 +2702,7 @@ int cmeUnprotectDBValue (const char *protectedValue, char **value, const char *e
 
 int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const char *encAlg, char **salt,
                              const char *orgKey, int *protectedValueLen)
-{   // TODO (OHR#5#): Replace everywhere to salt+protect a DB value with a call to this function. Also replace unsalted versions of this function!
+{
     int result;
     char *valueSalt=NULL;
     char *saltedValue=NULL;
@@ -2723,11 +2723,11 @@ int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const cha
     }
     cmeGetRndSaltAnySize(&valueSalt,cmeDefaultValueSaltLen);  //Get random valueSalt (16 chars, 8 byte hexstring).
     cmeStrConstrAppend(&saltedValue,"%s%s",valueSalt,value);  // Append unencrypted value to valueSalt.
-    result=cmeProtectByteString(saltedValue, protectedValue, encAlg, salt,orgKey, protectedValueLen, strlen(saltedValue));
+    result=cmeProtectDBValue(saltedValue, protectedValue, encAlg, salt, orgKey, protectedValueLen);
     if (result) //Error
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeProtectDBSaltedValue(), cmeProtectByteString() Error, can't "
+        fprintf(stderr,"CaumeDSE Error: cmeProtectDBSaltedValue(), cmeProtectDBValue() Error, can't "
                 "protect 'salted value' %s with algorithm %s!\n",saltedValue,encAlg);
 #endif
         cmeProtectDBSaltedValueFree();
@@ -2743,7 +2743,7 @@ int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const cha
 
 int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const char *encAlg, char **salt,
                                const char *orgKey, int *valueLen)
-{   // TODO (OHR#5#): Replace everywhere to unprotect+unsalt a DB value with a call to this function. Also replace unsalted versions of this function!
+{
     int result;
     char *saltedValue=NULL;
     #define cmeUnProtectDBSaltedValueFree() \
@@ -2763,13 +2763,13 @@ int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const c
         cmeUnProtectDBSaltedValueFree();
         return(0); //No error, just a warning.
     }
-    result=cmeUnprotectByteString(protectedValue, &saltedValue, encAlg, salt, orgKey, valueLen, strlen(protectedValue));
+    result=cmeUnprotectDBValue(protectedValue, &saltedValue, encAlg, salt, orgKey, valueLen);
     if (result) //Unprotect failed. Return empty string.
     {
         *valueLen=0;
         cmeStrConstrAppend(value,"");
 #ifdef DEBUG
-        fprintf(stderr,"CaumeDSE Debug: cmeUnprotectDBSaltedValue(), cmeUnprotectByteString() Warning, can't "
+        fprintf(stderr,"CaumeDSE Debug: cmeUnprotectDBSaltedValue(), cmeUnprotectDBValue() Warning, can't "
                 "unprotect 'protectedValue' %s with algorithm %s and the key %s!\n",protectedValue,encAlg,orgKey);
 #endif
     }
