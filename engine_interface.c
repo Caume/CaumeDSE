@@ -289,12 +289,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
             colSQLDBfSalts[dbNumCols]=NULL;
             memFilePartsMACs[dbNumCols]=NULL;
         }
-        //TODO (OHR#2#): EVERYWHERE - Research memset() replacement to ensure delete with volatile; assess mlock ().
-        if (currentDocumentId)
-        {
-            memset(currentDocumentId,0,strlen(currentDocumentId));   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
-        }
-        cmeFree(currentDocumentId);
+        cmeSecureFreeStr(currentDocumentId);
     }
     for (cont=0;cont<dbNumCols;cont++) //Load protected columns
     {
@@ -532,7 +527,7 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
                     colsSQLDBIds[dbNumCols]=atoi(queryResult[cont*numCols]+cmeIDDanydb_id);     //Store register ID; register will be deleted from resourcesDB index. Santized with atoi().
                     dbNumCols++;
                 }
-                memset(currentDocumentId,0,written);   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
+                cmeSecureMemClear(currentDocumentId,written);
                 cmeFree(currentDocumentId);
             }
             else //MAC is incorrect; skip decryption process.
@@ -1562,12 +1557,7 @@ int cmeExistsDocumentId (sqlite3 *pResourcesDB,const char *documentId, const cha
         {
             (*numEntries)++;
         }
-        //TODO (OHR#2#): EVERYWHERE - Research memset() replacement to ensure delete with volatile; assess mlock ().
-        if (currentDocumentId)
-        {
-            memset(currentDocumentId,0,strlen(currentDocumentId));   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
-        }
-        cmeFree(currentDocumentId);
+        cmeSecureFreeStr(currentDocumentId);
     }
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Warning: cmeExistsDocumentId(), Finished search for documentId '%s'; "

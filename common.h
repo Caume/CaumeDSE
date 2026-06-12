@@ -459,6 +459,12 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #if HAVE_SYS_SOCKET_H
 #include <sys/socket.h>     //for microhttpd
 #endif
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/mman.h>       //for mlock(), munlock()
+#define CME_HAVE_MLOCK 1
+#else
+#define CME_HAVE_MLOCK 0
+#endif
 #if HAVE_FCNTL_H
 #include <fcntl.h>          //for microhttpd
 #endif
@@ -474,6 +480,7 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #if HAVE_OPENSSL_ERR_H
 #include <openssl/err.h>      //Error functions
 #endif
+#include <openssl/crypto.h>   //OPENSSL_cleanse()
 #if HAVE_OPENSSL_RAND_H
 #include <openssl/rand.h>     //Pseudo Random generator functions
 #endif
@@ -516,6 +523,52 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #include <XSUB.h>   //for embedded perl interpreter (32 bit machines)
 #endif
 EXTERN_C void xs_init (pTHX); //for embedded perl interpreter (using dynamically generated: 'xs_init.c')
+
+static inline void cmeSecureMemClear(void *ptr, size_t size)
+{
+    if (ptr && size)
+    {
+        OPENSSL_cleanse(ptr,size);
+    }
+}
+
+static inline void cmeSecureStrClear(char *ptr)
+{
+    if (ptr)
+    {
+        cmeSecureMemClear(ptr,strlen(ptr));
+    }
+}
+
+#define cmeSecureFreeStr(a) {if(a){ cmeSecureStrClear(a); free(a); a=NULL;}}
+
+static inline int cmeSecureMemLock(void *ptr, size_t size)
+{
+#if CME_HAVE_MLOCK
+    if (ptr && size)
+    {
+        return(mlock(ptr,size));
+    }
+#else
+    (void)ptr;
+    (void)size;
+#endif
+    return(0);
+}
+
+static inline int cmeSecureMemUnlock(void *ptr, size_t size)
+{
+#if CME_HAVE_MLOCK
+    if (ptr && size)
+    {
+        cmeSecureMemClear(ptr,size);
+        return(munlock(ptr,size));
+    }
+#else
+    cmeSecureMemClear(ptr,size);
+#endif
+    return(0);
+}
 
 static inline void *cmeMalloc(size_t size, const char *file, int line)
 {

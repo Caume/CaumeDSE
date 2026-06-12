@@ -229,8 +229,9 @@
   - Source: `common.h:132`.
   - Done: added central IDD table-name and URL-parameter-name helpers, and replaced hard-coded internal DB column/table names in admin bootstrap, ColumnFile DB creation, and LogsDB transaction handling with IDD constants.
 
-- [ ] #48 Research secure memory clearing and memory locking for sensitive data.
+- [x] #48 Research secure memory clearing and memory locking for sensitive data.
   - Source: `engine_interface.c:310`, `engine_interface.c:1583`.
+  - Done: added `OPENSSL_cleanse()`-based secure memory clearing helpers plus best-effort `mlock()`/`munlock()` wrappers, then replaced optimizer-sensitive manual `memset()` wipes for decrypted document IDs.
 
 - [ ] #49 Verify salt requirements and fail on invalid salts.
   - Source: `engine_interface.c:1053`.
