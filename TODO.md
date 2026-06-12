@@ -233,8 +233,9 @@
   - Source: `engine_interface.c:310`, `engine_interface.c:1583`.
   - Done: added `OPENSSL_cleanse()`-based secure memory clearing helpers plus best-effort `mlock()`/`munlock()` wrappers, then replaced optimizer-sensitive manual `memset()` wipes for decrypted document IDs.
 
-- [ ] #49 Verify salt requirements and fail on invalid salts.
+- [x] #49 Verify salt requirements and fail on invalid salts.
   - Source: `engine_interface.c:1053`.
+  - Done: `cmePostProtectDBRegister()` now rejects caller-supplied protected DB salts unless they are exactly `evpSaltBufferSize * 2` hex characters; omitted salts still use the existing generated-salt path.
 
 - [ ] #50 Evaluate whether another random source is needed for systems without `/dev/random` or `/dev/urandom`.
   - Source: `crypto.c:436`.

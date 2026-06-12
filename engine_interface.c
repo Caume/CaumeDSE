@@ -49,6 +49,12 @@ static const char *cmeResourcesDBDocumentLookupColumnForMatch (const char *colum
 static int cmeBuildProtectedDBSelectQuery (sqlite3 *pDB, char **query, const char *tableName, const char **columnNames,
                                            const char **columnValues, const int numColumnValues,
                                            const char *orgKey);
+static int cmeIsValidProtectedDBSalt (const char *salt);
+
+static int cmeIsValidProtectedDBSalt (const char *salt)
+{
+    return(salt && strlen(salt)==(evpSaltBufferSize*2) && cmeIsHexString(salt));
+}
 
 int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *documentId,
                         const char *orgKey, const char *storagePath)
@@ -1023,11 +1029,19 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
             cmePostProtectDBRegisterFree();
             return(1);
         }
-        if (!strcmp(columnNames[cont],"salt")) //Salt provided? yes -> use it and append at the end.
+        if (!strcmp(columnNames[cont],cmeIDDanydb_salt_name)) //Salt provided? yes -> use it and append at the end.
         {
             if (columnValues[cont]) //user provided value; else use NULL
             {
-                //TODO (OHR#3#): verify salt requirements. If bad, ERROR!
+                if (!cmeIsValidProtectedDBSalt(columnValues[cont]))
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmePostProtectDBRegister(), invalid salt at columnValues[%d]; "
+                            "expected %d hex characters.\n",cont,evpSaltBufferSize*2);
+#endif
+                    cmePostProtectDBRegisterFree();
+                    return(1);
+                }
                 cmeStrConstrAppend(&salt,"%s",columnValues[cont]);
             }
         }
@@ -1036,10 +1050,10 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
             cmeStrConstrAppend(&sqlStatement,",\"%s\"",columnNames[cont]); //add column.
         }
     }
-    cmeStrConstrAppend (&sqlStatement,",salt) VALUES (NULL"); //Second part. id=NULL goes by default.
+    cmeStrConstrAppend (&sqlStatement,"," cmeIDDanydb_salt_name ") VALUES (NULL"); //Second part. id=NULL goes by default.
     for (cont=0; cont<numColumnValues; cont++)
     {
-        if (strcmp(columnNames[cont],"salt")!=0)
+        if (strcmp(columnNames[cont],cmeIDDanydb_salt_name)!=0)
         {
             cmeStrConstrAppend(&sqlStatement,",?");
         }
@@ -1066,7 +1080,7 @@ int cmePostProtectDBRegister (sqlite3 *pDB, const char *tableName, const char **
     }
     for (cont=0; cont<numColumnValues; cont++)
     {
-        if (strcmp(columnNames[cont],"salt")!=0) //Skip salt, we will add it at the end.
+        if (strcmp(columnNames[cont],cmeIDDanydb_salt_name)!=0) //Skip salt, we will add it at the end.
         {
             if (columnValues[cont]!=NULL)
             {
