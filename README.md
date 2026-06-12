@@ -1003,6 +1003,13 @@ replaceDB
     If omitted or set to 0, false, no, off or none, duplicate document
     resources are rejected.
 
+vacuumDB
+    Optional for file.csv uploads and content row/column writes.  If
+    set to 1, true, yes or on, each temporary memory database is
+    vacuumed before it is saved as a durable secure database file.
+    Secure imports with protection attributes still vacuum by default
+    to remove slack space that may contain unprotected data.
+
 #### 3.5 Optional Column index parameters for content rows (`file.csv`)
 
 
@@ -1978,6 +1985,12 @@ mode (which is slower), use the following parameter when running
     --enable-DEBUG
 Before running CaumeDSE in DEBUG mode, copy the contents of TEST/testfiles to /opt/cdse/testfiles and TEST/testDB_opt_cdse to /opt/cdse (or the directory specified by PATH_DATADIR) to provide data for the internal tests.
 
+Temporary-file deletion uses one zero-fill overwrite pass by default.  To
+compile with additional overwrite passes, define
+`CDSE_SECURE_OVERWRITE_PASSES` in `CFLAGS`, for example:
+
+    CFLAGS="-DCDSE_SECURE_OVERWRITE_PASSES=3" ./configure
+
 In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).
 
@@ -2007,9 +2020,14 @@ the whole keyspace to take into account the provided salt).  Using this kind
 of keys improves performance considerably.
 
 The default symmetric encryption algorithm used by CaumeDSE is `AES-256-GCM`.
-You may override this at runtime by setting the environment variable
-`CDSE_DEFAULT_ENC_ALG` to any cipher name recognized by OpenSSL, such as
-`aes-256-cbc` for AES in CBC mode.
+You may override this at runtime with a configuration file, or by setting the
+environment variable `CDSE_DEFAULT_ENC_ALG` to any cipher name recognized by
+OpenSSL, such as `aes-256-cbc` for AES in CBC mode.  By default CaumeDSE reads
+`caumedse.conf` from the configured data directory, and `CDSE_CONFIG_FILE` may
+point to an alternate configuration file.  The supported configuration keys for
+this setting are `defaultEncAlg`, `default_enc_alg`, and
+`CDSE_DEFAULT_ENC_ALG`; the environment variable takes precedence over the
+configuration file.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

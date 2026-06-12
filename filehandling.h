@@ -61,12 +61,14 @@ int cmeWriteStrToFile (char *pSrcStr, const char *filePath, int srcStrLen);
 int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCols,int *processedRows,
                           const char *userId,const char *orgId,const char *orgKey, const char **attribute,
                           const char **attributeData, const int numAttribute,const int replaceDB,
+                          const int vacuumDB,
                           const char *resourceInfo, const char *documentType, const char *documentId,
                           const char *storageId, const char *storagePath);
 // Function that imports a memory table into several, security preprocessed, SQLite Databases (e.g. after inserting/updating a contentRow).
 int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int numRows,
                            const char *userId,const char *orgId,const char *orgKey, const char **attribute,
                            const char **attributeData, const int numAttribute, const int replaceDB,
+                           const int vacuumDB,
                            const char *resourceInfo, const char *documentType, const char *documentId,
                            const char *storageId, const char *storagePath);
 // Function that slices and encrypts a raw file into several parts.
@@ -79,8 +81,8 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
 int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
                                const char *documentType, const char *documentPath, const char *orgId,
                                const char *storageId, const char *orgKey);
-// Function to overwrite and delete a file (meant for Temporal files in restricted/memory storage.
-// TODO (ANY#3#): Check and apply the appropriate kind of secure deletion mechanism.
+// Function to overwrite and delete a file (meant for temporal files in restricted/memory storage).
+// Define CDSE_SECURE_OVERWRITE_PASSES at compile time to use multiple overwrite passes.
 int cmeFileOverwriteAndDelete (const char *filePath);
 // Function to process callback iterations from MHD_create_response_from_callback (libmicrohttpd).
 ssize_t cmeContentReaderCallback (void *cls, uint64_t pos, char *buf, size_t max);

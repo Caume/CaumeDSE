@@ -172,7 +172,7 @@ int cmeDBClose (sqlite3 *ppDB)
 }
 
 //Based on code from: http://www.sqlite.org/backup.html
-int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave)
+int cmeMemDBLoadOrSaveVacuum(sqlite3 *pInMemory, const char *zFilename, int isSave, int vacuumBeforeSave)
 {
     int result=0;
     sqlite3 *pFile=NULL;
@@ -197,11 +197,23 @@ int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave)
         // If this is a 'load' operation (isSave==0), then data is copied
         // from the database file to database pInMemory.
         // Otherwise, data is copied from pInMemory to pFile.
-        // TODO (ANY#8#): if isSave, Vacuum mem first, then save!
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeDBMemLoadOrSave(), Opened DB file %s for "
-                "R/W successfuly. isSave: %d \n",zFilename, isSave);
+                "R/W successfuly. isSave: %d vacuumBeforeSave: %d \n",zFilename, isSave, vacuumBeforeSave);
 #endif
+        if ((isSave)&&(vacuumBeforeSave))
+        {
+            result=sqlite3_exec(pInMemory,"VACUUM;",NULL,NULL,NULL);
+            if (result)
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemDBLoadOrSaveVacuum(), sqlite3_exec() VACUUM error for memory DB before saving to '%s': %s\n",
+                        zFilename,sqlite3_errmsg(pInMemory));
+#endif
+                cmeDBClose(pFile);
+                return(2);
+            }
+        }
         pFrom = (isSave ? pInMemory : pFile);
         pTo   = (isSave ? pFile     : pInMemory);
         // Set up the backup procedure to copy from the "main" database of
@@ -216,6 +228,11 @@ int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave)
     }
     cmeDBClose(pFile); // Close the database connection opened on database file zFilename
     return (result);
+}
+
+int cmeMemDBLoadOrSave(sqlite3 *pInMemory, const char *zFilename, int isSave)
+{
+    return(cmeMemDBLoadOrSaveVacuum(pInMemory,zFilename,isSave,0));
 }
 
 int cmeSQLIterate (const char *args,int numCols,char **pStrResults,char **pColNames)
@@ -1249,13 +1266,189 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
                  cmeIDDColumnFileMeta_attribute_3, sizeof(cmeIDDColumnFileMeta_attribute_3)))
         {
-            //TODO (OHR#5#): sign; requires userId to get certificate/private key (check issues with private key)
+            //Compute a keyed signature of the plaintext value and store it in sign for each data row.
+            //memData snapshot always contains the original plaintext values taken before any protection.
+            result=sqlite3_prepare_v2(memSecureDB,"UPDATE data SET sign=? WHERE id=?;",-1,&updateDataMACStmt,NULL);
+            if (result!=SQLITE_OK)
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_prepare_v2() Error"
+                        " can't prepare sign update: %s !\n",sqlite3_errmsg(memSecureDB));
+#endif
+                cmeMemSecureDBProtectFree();
+                return(26);
+            }
+            for(cont2=1;cont2<=numRowsData;cont2++)
+            {
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
+                result=cmeHMACByteString(
+                    (const unsigned char*)memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                    (unsigned char**)&currentEncB64Data,
+                    strlen(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
+                    &written,cmeDefaultMACAlg,&(currentDataSalt[cont2-1]),orgKey);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeHMACByteString() Error, can't "
+                            "compute sign for 'value' in data row id %s with algorithm %s!\n",
+                            currentDataId,cmeDefaultMACAlg);
+#endif
+                    cmeMemSecureDBProtectFree();
+                    return(26);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), computed sign"
+                        " for 'value' in row id %s. Result: %s.\n",currentDataId,currentEncB64Data);
+#endif
+                if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
+                            "begin sign update transaction for data row id %s!\n",currentDataId);
+#endif
+                    cmeMemSecureDBProtectFree();
+                    return(27);
+                }
+                result=sqlite3_bind_text(updateDataMACStmt,1,currentEncB64Data,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK)
+                {
+                    result=sqlite3_bind_int(updateDataMACStmt,2,atoi(currentDataId));
+                }
+                cmeFree(currentEncB64Data);
+                if (result==SQLITE_OK)
+                {
+                    result=sqlite3_step(updateDataMACStmt);
+                }
+                if (result!=SQLITE_DONE) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_step() Error, can't "
+                            "store sign for data row id %s: %s!\n",currentDataId,sqlite3_errmsg(memSecureDB));
+#endif
+                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
+                    cmeMemSecureDBProtectFree();
+                    return(27);
+                }
+                sqlite3_reset(updateDataMACStmt);
+                sqlite3_clear_bindings(updateDataMACStmt);
+                if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
+                            "commit sign update transaction for data row id %s!\n",currentDataId);
+#endif
+                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
+                    cmeMemSecureDBProtectFree();
+                    return(27);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), stored sign for row id %s in table data.\n",
+                        currentDataId);
+#endif
+                cmeFree(currentDataId);
+            }
+            sqlite3_finalize(updateDataMACStmt);
+            updateDataMACStmt=NULL;
         }
         // Check if protection attribute = "signProtected".
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
                      cmeIDDColumnFileMeta_attribute_4, sizeof(cmeIDDColumnFileMeta_attribute_4)))
         {
-            //TODO (OHR#5#): signProtected; requires userId to get certificate/private key (check issues with private key)
+            //Compute a keyed signature of the encrypted value and store it in signProtected for each data row.
+            //Re-reads current (already-encrypted) values from DB since memData snapshot contains plaintext.
+            result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memDataEncrypted,&numRowsEncrypted,&numColsEncrypted);
+            if (result) //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeMemTable() Error, can't "
+                        "read 'data' table for signProtected computation!\n");
+#endif
+                cmeMemSecureDBProtectFree();
+                return(28);
+            }
+            result=sqlite3_prepare_v2(memSecureDB,"UPDATE data SET signProtected=? WHERE id=?;",-1,&updateDataMACProtectedStmt,NULL);
+            if (result!=SQLITE_OK)
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_prepare_v2() Error"
+                        " can't prepare signProtected update: %s !\n",sqlite3_errmsg(memSecureDB));
+#endif
+                cmeMemSecureDBProtectFree();
+                return(29);
+            }
+            for(cont2=1;cont2<=numRowsData;cont2++)
+            {
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
+                result=cmeHMACByteString(
+                    (const unsigned char*)memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                    (unsigned char**)&currentEncB64Data,
+                    strlen(memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
+                    &written,cmeDefaultMACAlg,&(currentDataSalt[cont2-1]),orgKey);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeHMACByteString() Error, can't "
+                            "compute signProtected for 'value' in data row id %s with algorithm %s!\n",
+                            currentDataId,cmeDefaultMACAlg);
+#endif
+                    cmeMemSecureDBProtectFree();
+                    return(29);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), computed signProtected"
+                        " for 'value' in row id %s. Result: %s.\n",currentDataId,currentEncB64Data);
+#endif
+                if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
+                            "begin signProtected update transaction for data row id %s!\n",currentDataId);
+#endif
+                    cmeMemSecureDBProtectFree();
+                    return(30);
+                }
+                result=sqlite3_bind_text(updateDataMACProtectedStmt,1,currentEncB64Data,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK)
+                {
+                    result=sqlite3_bind_int(updateDataMACProtectedStmt,2,atoi(currentDataId));
+                }
+                cmeFree(currentEncB64Data);
+                if (result==SQLITE_OK)
+                {
+                    result=sqlite3_step(updateDataMACProtectedStmt);
+                }
+                if (result!=SQLITE_DONE) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_step() Error, can't "
+                            "store signProtected for data row id %s: %s!\n",currentDataId,sqlite3_errmsg(memSecureDB));
+#endif
+                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
+                    cmeMemSecureDBProtectFree();
+                    return(30);
+                }
+                sqlite3_reset(updateDataMACProtectedStmt);
+                sqlite3_clear_bindings(updateDataMACProtectedStmt);
+                if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
+                            "commit signProtected update transaction for data row id %s!\n",currentDataId);
+#endif
+                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
+                    cmeMemSecureDBProtectFree();
+                    return(30);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), stored signProtected for row id %s in table data.\n",
+                        currentDataId);
+#endif
+                cmeFree(currentDataId);
+            }
+            sqlite3_finalize(updateDataMACProtectedStmt);
+            updateDataMACProtectedStmt=NULL;
+            cmeMemTableFinal(memDataEncrypted);
+            memDataEncrypted=NULL;
         }
         // Check if protection attribute = "MAC".
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
@@ -2221,13 +2414,106 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
         else if (!strncmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_3,
                           sizeof(cmeIDDColumnFileMeta_attribute_3)))
         {
-            //TODO (OHR#5#): sign; requires userId to get certificate/private key (check issues with private key)
+            //Verify keyed signature of decrypted value against stored sign column for each data row.
+            //Re-reads current (already-decrypted) values from DB; "protect" unprotect must run first
+            //(i.e., "protect" attribute must appear before "sign" in the meta table).
+            result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memDataDecrypted,&numRowsDecrypted,&numColsDecrypted);
+            if (result) //Error
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeMemTable() Error, can't "
+                        "read 'data' table for sign verification!\n");
+#endif
+                cmeMemSecureDBUnprotectFree();
+                return(26);
+            }
+            for(cont2=1;cont2<=numRowsData;cont2++)
+            {
+                cmeStrConstrAppend(&currentDataSalt,"%s",memData[cont2*cmeIDDColumnFileDataNumCols+cmeIDDanydb_salt]);
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memDataDecrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
+                result=cmeHMACByteString(
+                    (const unsigned char*)memDataDecrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                    (unsigned char**)&currentEncB64Data,
+                    strlen(memDataDecrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
+                    &written,cmeDefaultMACAlg,&currentDataSalt,orgKey);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeHMACByteString() Error, can't "
+                            "compute sign for 'value' in data row id %s with algorithm %s!\n",
+                            currentDataId,cmeDefaultMACAlg);
+#endif
+                    cmeMemSecureDBUnprotectFree();
+                    return(27);
+                }
+                if (strncmp(currentEncB64Data,
+                            memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_sign],
+                            written)) //Error: sign mismatch!
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), sign mismatch for row id %s "
+                            "in data table! Data integrity check failed.\n",currentDataId);
+#endif
+                    cmeFree(currentEncB64Data);
+                    cmeMemSecureDBUnprotectFree();
+                    return(28);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBUnprotect(), verified sign"
+                        " for 'value' in row id %s.\n",currentDataId);
+#endif
+                cmeFree(currentEncB64Data);
+                cmeFree(currentDataId);
+                cmeFree(currentDataSalt);
+            }
+            cmeMemTableFinal(memDataDecrypted);
+            memDataDecrypted=NULL;
         }
         // Check if protection attribute = "signProtected".
         else if (!strncmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_4,
                           sizeof(cmeIDDColumnFileMeta_attribute_4)))
         {
-            //TODO (OHR#5#): signProtected; requires userId to get certificate/private key (check issues with private key)
+            //Verify keyed signature of encrypted value against stored signProtected column for each data row.
+            //Uses memData snapshot which always contains the original encrypted values taken at function start.
+            for(cont2=1;cont2<=numRowsData;cont2++)
+            {
+                cmeStrConstrAppend(&currentDataSalt,"%s",memData[cont2*cmeIDDColumnFileDataNumCols+cmeIDDanydb_salt]);
+                cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
+                result=cmeHMACByteString(
+                    (const unsigned char*)memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
+                    (unsigned char**)&currentEncB64Data,
+                    strlen(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
+                    &written,cmeDefaultMACAlg,&currentDataSalt,orgKey);
+                if (result) //Error
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), cmeHMACByteString() Error, can't "
+                            "compute signProtected for 'value' in data row id %s with algorithm %s!\n",
+                            currentDataId,cmeDefaultMACAlg);
+#endif
+                    cmeMemSecureDBUnprotectFree();
+                    return(29);
+                }
+                if (strncmp(currentEncB64Data,
+                            memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_signProtected],
+                            written)) //Error: signProtected mismatch!
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), signProtected mismatch for row id %s "
+                            "in data table! Data integrity check failed.\n",currentDataId);
+#endif
+                    cmeFree(currentEncB64Data);
+                    cmeMemSecureDBUnprotectFree();
+                    return(30);
+                }
+#ifdef DEBUG
+                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBUnprotect(), verified signProtected"
+                        " for 'value' in row id %s.\n",currentDataId);
+#endif
+                cmeFree(currentEncB64Data);
+                cmeFree(currentDataId);
+                cmeFree(currentDataSalt);
+            }
         }
         // Check if protection attribute = "MAC".
         else if (!strncmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_5,
@@ -2351,7 +2637,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
 
 int cmeProtectDBValue (const char *value, char **protectedValue, const char *encAlg, char **salt,
                        const char *orgKey, int *protectedValueLen)
-{   //TODO (OHR#2#): Replace everywhere to protect a DB value with a call to this function.
+{
     int result;
     if (value==NULL) //Error: no value to encrypt
     {
@@ -2379,7 +2665,7 @@ int cmeProtectDBValue (const char *value, char **protectedValue, const char *enc
 
 int cmeUnprotectDBValue (const char *protectedValue, char **value, const char *encAlg, char **salt,
                          const char *orgKey, int *valueLen)
-{   //TODO (OHR#2#): Replace everywhere to unprotect a DB value with a call to this function.
+{
     int result;
 
     *value=NULL;
@@ -2416,7 +2702,7 @@ int cmeUnprotectDBValue (const char *protectedValue, char **value, const char *e
 
 int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const char *encAlg, char **salt,
                              const char *orgKey, int *protectedValueLen)
-{   // TODO (OHR#5#): Replace everywhere to salt+protect a DB value with a call to this function. Also replace unsalted versions of this function!
+{
     int result;
     char *valueSalt=NULL;
     char *saltedValue=NULL;
@@ -2437,11 +2723,11 @@ int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const cha
     }
     cmeGetRndSaltAnySize(&valueSalt,cmeDefaultValueSaltLen);  //Get random valueSalt (16 chars, 8 byte hexstring).
     cmeStrConstrAppend(&saltedValue,"%s%s",valueSalt,value);  // Append unencrypted value to valueSalt.
-    result=cmeProtectByteString(saltedValue, protectedValue, encAlg, salt,orgKey, protectedValueLen, strlen(saltedValue));
+    result=cmeProtectDBValue(saltedValue, protectedValue, encAlg, salt, orgKey, protectedValueLen);
     if (result) //Error
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeProtectDBSaltedValue(), cmeProtectByteString() Error, can't "
+        fprintf(stderr,"CaumeDSE Error: cmeProtectDBSaltedValue(), cmeProtectDBValue() Error, can't "
                 "protect 'salted value' %s with algorithm %s!\n",saltedValue,encAlg);
 #endif
         cmeProtectDBSaltedValueFree();
@@ -2457,7 +2743,7 @@ int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const cha
 
 int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const char *encAlg, char **salt,
                                const char *orgKey, int *valueLen)
-{   // TODO (OHR#5#): Replace everywhere to unprotect+unsalt a DB value with a call to this function. Also replace unsalted versions of this function!
+{
     int result;
     char *saltedValue=NULL;
     #define cmeUnProtectDBSaltedValueFree() \
@@ -2477,13 +2763,13 @@ int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const c
         cmeUnProtectDBSaltedValueFree();
         return(0); //No error, just a warning.
     }
-    result=cmeUnprotectByteString(protectedValue, &saltedValue, encAlg, salt, orgKey, valueLen, strlen(protectedValue));
+    result=cmeUnprotectDBValue(protectedValue, &saltedValue, encAlg, salt, orgKey, valueLen);
     if (result) //Unprotect failed. Return empty string.
     {
         *valueLen=0;
         cmeStrConstrAppend(value,"");
 #ifdef DEBUG
-        fprintf(stderr,"CaumeDSE Debug: cmeUnprotectDBSaltedValue(), cmeUnprotectByteString() Warning, can't "
+        fprintf(stderr,"CaumeDSE Debug: cmeUnprotectDBSaltedValue(), cmeUnprotectDBValue() Warning, can't "
                 "unprotect 'protectedValue' %s with algorithm %s and the key %s!\n",protectedValue,encAlg,orgKey);
 #endif
     }

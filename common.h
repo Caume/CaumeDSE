@@ -47,8 +47,6 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #include "config.h"
 #endif
 
-//TODO (OHR#8#): Replace calls to malloc with audited, simple, wrapper function.
-//TODO (OHR#9#): Define function to read Globals in main.c from config file
 #define prngSeedBytes 16
 #define evpMaxHashStrLen 2*64+1         //Max length for character representation of hex bytestr hash {RECOMMENDED: 2*64+1}. At 2 chars per byte, SHA-512 requires 64 bytes, + 1 ending null char.
 #define evpMaxHashBytesLen 64           //Max length for byte representation of hash {RECOMMENDED: 64}. SHA-512 requires 64 bytes.
@@ -73,6 +71,10 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeMaxCSVPartsPerColumn 10000   //Max {estimated} number of parts that a CSV table can hold {required by cmeSecureDBtoMemDB}.
 #define cmeMaxRAWDataInPart 4000        //Max number of bytes in a secure file slice {part}, estimated from smallest SQLITE secureDB column files. {RECOMMENDED: 5120}
 #define cmeDefaultContentReaderCallbackPageSize (1024*64)   //Default Page size for ContentReaderCallback functions.
+#ifndef CDSE_SECURE_OVERWRITE_PASSES
+#define CDSE_SECURE_OVERWRITE_PASSES 1  //Compile-time overwrite passes for temporary file deletion. Set >1 to enable multi-round overwrites.
+#endif
+#define cmeSecureOverwriteBufferSize 4096
 
 #ifdef PATH_DATADIR
 #define cmeDefaultFilePath PATH_DATADIR "/"                     //Default virtual root path for storing engine files {DBs}.
@@ -101,7 +103,9 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeDefaultLookupSalt "4361756d654453454c6f6f6b75703121"        //Fixed 16-byte hex salt for deterministic protected lookup HMAC derivation.
 #define cmeDefaultSqlBufferLen 8192         //Default size of Buffer for SQL queries. {8192}
 extern char cmeDefaultEncAlg[];             //Default algorithm for symmetric encryption in engine admin. databases.
-void cmeInitDefaultEncAlg();                //Initialize default algorithm from environment
+void cmeLoadConfiguration();                //Initialize runtime globals from configuration file and environment.
+void cmeInitDefaultEncAlg();                //Initialize default algorithm from environment.
+#define cmeDefaultConfigFile cmeDefaultFilePath "caumedse.conf" //Default runtime configuration file.
 #define cmeDefaultHshAlg "sha256"           //Default algorithm for bytestring hashing {digest}.
 #define cmeDefaultMACAlg "sha256"             //Default algorithm for bytestring HMAC MACs .
 #define cmeDefaultInsertSqlRows 512         //Default # of rows to be inserted into a sqlite3 db at a time {within a Begin - Commit block}.
@@ -129,7 +133,15 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
                                                        //Note that there is NO default orgKey for EngineOrg... it will be generated randomly the first time the engine is run and won't be stored in clear {so take note!}.
 
 #define cmeInternalDBDefinitionsVersion "1.0.21_1 Jul 2012" //Version of internal DB definitions for engine
-// TODO (OHR#4#): Standardize the use of IDD in the project (i.e. avoid direct use of numbers and col. names).
+#define cmeIDDMatchName(columnName) "_" columnName           //URL match parameter name for a protected DB column.
+#define cmeIDDRequiredSaveName(columnName) "*" columnName    //URL save parameter name for a required protected DB column.
+#define cmeIDDColumnFileDataTableName "data"                 //Table name for ColumnFile data tables.
+#define cmeIDDColumnFileMetaTableName "meta"                 //Table name for ColumnFile meta tables.
+#define cmeIDDResourcesDBDocumentsTableName "documents"      //Table name for ResourceDB documents.
+#define cmeIDDResourcesDBUsersTableName "users"              //Table name for ResourceDB users.
+#define cmeIDDResourcesDBStorageTableName "storage"          //Table name for ResourceDB storage.
+#define cmeIDDResourcesDBOrganizationsTableName "organizations" //Table name for ResourceDB organizations.
+#define cmeIDDLogsDBTransactionsTableName "transactions"     //Table name for LogsDB transactions.
 #define cmeIDDanydb_id 0                        //Column index {0 based} for WSID column for most internal sqlite register id
 #define cmeIDDanydb_id_name "id"                //Column name for WSID column for most internal sqlite register id
 #define cmeIDDanydb_userId 1                    //Column index {0 based} for WSID column for most internal sqlite user id of creator
@@ -447,6 +459,12 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #if HAVE_SYS_SOCKET_H
 #include <sys/socket.h>     //for microhttpd
 #endif
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/mman.h>       //for mlock(), munlock()
+#define CME_HAVE_MLOCK 1
+#else
+#define CME_HAVE_MLOCK 0
+#endif
 #if HAVE_FCNTL_H
 #include <fcntl.h>          //for microhttpd
 #endif
@@ -462,6 +480,7 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #if HAVE_OPENSSL_ERR_H
 #include <openssl/err.h>      //Error functions
 #endif
+#include <openssl/crypto.h>   //OPENSSL_cleanse()
 #if HAVE_OPENSSL_RAND_H
 #include <openssl/rand.h>     //Pseudo Random generator functions
 #endif
@@ -504,6 +523,83 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #include <XSUB.h>   //for embedded perl interpreter (32 bit machines)
 #endif
 EXTERN_C void xs_init (pTHX); //for embedded perl interpreter (using dynamically generated: 'xs_init.c')
+
+static inline void cmeSecureMemClear(void *ptr, size_t size)
+{
+    if (ptr && size)
+    {
+        OPENSSL_cleanse(ptr,size);
+    }
+}
+
+static inline void cmeSecureStrClear(char *ptr)
+{
+    if (ptr)
+    {
+        cmeSecureMemClear(ptr,strlen(ptr));
+    }
+}
+
+#define cmeSecureFreeStr(a) {if(a){ cmeSecureStrClear(a); free(a); a=NULL;}}
+
+static inline int cmeSecureMemLock(void *ptr, size_t size)
+{
+#if CME_HAVE_MLOCK
+    if (ptr && size)
+    {
+        return(mlock(ptr,size));
+    }
+#else
+    (void)ptr;
+    (void)size;
+#endif
+    return(0);
+}
+
+static inline int cmeSecureMemUnlock(void *ptr, size_t size)
+{
+#if CME_HAVE_MLOCK
+    if (ptr && size)
+    {
+        cmeSecureMemClear(ptr,size);
+        return(munlock(ptr,size));
+    }
+#else
+    cmeSecureMemClear(ptr,size);
+#endif
+    return(0);
+}
+
+static inline void *cmeMalloc(size_t size, const char *file, int line)
+{
+    void *ptr=malloc(size);
+
+    if ((size)&&(!ptr))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMalloc(), malloc(%lu) failed at %s:%d.\n",
+                (unsigned long)size,file,line);
+#endif
+    }
+    return(ptr);
+}
+
+static inline void *cmeRealloc(void *ptr, size_t size, const char *file, int line)
+{
+    void *newPtr=realloc(ptr,size);
+
+    if ((size)&&(!newPtr))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeRealloc(), realloc(%p,%lu) failed at %s:%d.\n",
+                ptr,(unsigned long)size,file,line);
+#endif
+    }
+    return(newPtr);
+}
+
+#define malloc(size) cmeMalloc((size),__FILE__,__LINE__)
+#define realloc(ptr,size) cmeRealloc((ptr),(size),__FILE__,__LINE__)
 
 // --- CaumeDSE includes
 #include "crypto.h"

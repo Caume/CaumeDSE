@@ -887,8 +887,12 @@ int cmeWebServiceInitAdminSetup (const char *orgKey)
                                 "contentRows","contentColumns","dbNames","dbTables","tableRows","tableColumns",
                                 "organizations","storage","documentTypes","engineCommands","transactions","meta",
                                 "filterWhitelist","filterBlacklist"}; //Note: also    const char *tableNames[]=...
-    const char *columnNamesToMatch[2]={"userResourceId","orgResourceId"};
-    const char *columnNames[10]={"_get","_post","_put","_delete","_head","_options","userResourceId","orgResourceId","userId","orgId"};
+    const char *columnNamesToMatch[2]={cmeIDDRolesDBAnyTable_userResourceId_name,cmeIDDRolesDBAnyTable_orgResourceId_name};
+    const char *columnNames[10]={cmeIDDRolesDBAnyTable__get_name,cmeIDDRolesDBAnyTable__post_name,
+                                 cmeIDDRolesDBAnyTable__put_name,cmeIDDRolesDBAnyTable__delete_name,
+                                 cmeIDDRolesDBAnyTable__head_name,cmeIDDRolesDBAnyTable__options_name,
+                                 cmeIDDRolesDBAnyTable_userResourceId_name,cmeIDDRolesDBAnyTable_orgResourceId_name,
+                                 cmeIDDanydb_userId_name,cmeIDDanydb_orgId_name};
     char *columnValues[10]={"1","1","1","1","1","1",NULL,NULL,NULL,NULL};
     char *columnValuesFWL[10]={".*",".*",".*",".*",".*",".*",NULL,NULL,NULL,NULL};
     char *columnValuesFBL[10]={"","","","","","",NULL,NULL,NULL,NULL};
@@ -1186,9 +1190,13 @@ int cmeWebServiceInitOrgSetup (const char *orgKey)
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     const int numColumns=cmeIDDResourcesDBOrganizationsNumCols-2;       //Constant: number of columns in table, ignoring id & salt
-    const char *tableName="organizations";
-    const char *columnNamesToMatch[1]={"orgResourceId"};
-    const char *columnNames[6]={"resourceInfo","certificate","publicKey","orgResourceId","userId","orgId"};
+    const char *tableName=cmeIDDResourcesDBOrganizationsTableName;
+    const char *columnNamesToMatch[1]={cmeIDDResourcesDBOrganizations_orgResourceId_name};
+    const char *columnNames[6]={cmeIDDResourcesDBOrganizations_resourceInfo_name,
+                                cmeIDDResourcesDBOrganizations_certificate_name,
+                                cmeIDDResourcesDBOrganizations_publicKey_name,
+                                cmeIDDResourcesDBOrganizations_orgResourceId_name,
+                                cmeIDDanydb_userId_name,cmeIDDanydb_orgId_name};
     char *columnValues[6]={NULL,NULL,NULL,NULL,NULL,NULL};
     char *columnValuesToMatch[1]={NULL};
     sqlite3 *pDB=NULL;
@@ -1276,9 +1284,13 @@ int cmeWebServiceInitStorageSetup (const char *orgKey)
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     const int numColumns=cmeIDDResourcesDBStorageNumCols-2;       //Constant: number of columns in table, ignoring id & salt
-    const char *tableName="storage";
-    const char *columnNamesToMatch[2]={"storageId","orgResourceId"};
-    const char *columnNames[10]={"resourceInfo","location","type","storageId","accessPath","accessUser","accessPassword","orgResourceId","userId","orgId"};
+    const char *tableName=cmeIDDResourcesDBStorageTableName;
+    const char *columnNamesToMatch[2]={cmeIDDResourcesDBStorage_storageId_name,cmeIDDResourcesDBStorage_orgResourceId_name};
+    const char *columnNames[10]={cmeIDDResourcesDBStorage_resourceInfo_name,cmeIDDResourcesDBStorage_location_name,
+                                 cmeIDDResourcesDBStorage_type_name,cmeIDDResourcesDBStorage_storageId_name,
+                                 cmeIDDResourcesDBStorage_accessPath_name,cmeIDDResourcesDBStorage_accessUser_name,
+                                 cmeIDDResourcesDBStorage_accessPassword_name,cmeIDDResourcesDBStorage_orgResourceId_name,
+                                 cmeIDDanydb_userId_name,cmeIDDanydb_orgId_name};
     char *columnValues[10]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
     char *columnValuesToMatch[2]={NULL,NULL};
     sqlite3 *pDB=NULL;
@@ -1371,9 +1383,13 @@ int cmeWebServiceInitAdminIdSetup (const char *orgKey)
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     const int numColumns=cmeIDDResourcesDBUsersNumCols-2;       //Constant: number of columns in table, ignoring id & salt
-    const char *tableName="users";
-    const char *columnNamesToMatch[2]={"userResourceId","orgResourceId"};
-    const char *columnNames[10]={"resourceInfo","certificate","publicKey","userResourceId","basicAuthPwdHash","oauthConsumerKey","oauthConsumerSecret","orgResourceId","userId","orgId"};
+    const char *tableName=cmeIDDResourcesDBUsersTableName;
+    const char *columnNamesToMatch[2]={cmeIDDResourcesDBUsers_userResourceId_name,cmeIDDResourcesDBUsers_orgResourceId_name};
+    const char *columnNames[10]={cmeIDDResourcesDBUsers_resourceInfo_name,cmeIDDResourcesDBUsers_certificate_name,
+                                 cmeIDDResourcesDBUsers_publicKey_name,cmeIDDResourcesDBUsers_userResourceId_name,
+                                 cmeIDDResourcesDBUsers_basicAuthPwdHash_name,cmeIDDResourcesDBUsers_oauthConsumerKey_name,
+                                 cmeIDDResourcesDBUsers_oauthConsumerSecret_name,cmeIDDResourcesDBUsers_orgResourceId_name,
+                                 cmeIDDanydb_userId_name,cmeIDDanydb_orgId_name};
     char *columnValues[10]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
     char *columnValuesToMatch[2]={NULL,NULL};
     sqlite3 *pDB=NULL;

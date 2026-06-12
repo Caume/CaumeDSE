@@ -197,35 +197,45 @@
   - Source: `webservice_interface.c:6546`.
   - Done: added raw-compatible handlers for `file.txt`, `file.json`, `file.xml`, `file.html`, `file.pdf`, `file.png`, `file.jpg`, `file.gif`, `file.zip` and `file.bin`, while keeping `file.csv` and `script.perl` special.
 
-- [ ] #40 Add an optional multi-round secure overwrite scheme.
+- [x] #40 Add an optional multi-round secure overwrite scheme.
   - Source: `webservice_interface.c:7307`, `filehandling.h:83`.
+  - Done: `cmeFileOverwriteAndDelete()` now supports compile-time multi-pass overwrites via `CDSE_SECURE_OVERWRITE_PASSES`, and POST temporary file cleanup uses that shared helper.
 
-- [ ] #41 Vacuum memory DBs before durable saves when requested.
+- [x] #41 Vacuum memory DBs before durable saves when requested.
   - Source: `db.c:201`.
+  - Done: memory database saves can now request a pre-save `VACUUM`; CSV upload and content row/column writes expose this through the `vacuumDB` request parameter while preserving mandatory vacuuming for protected imports.
 
-- [ ] #42 Implement signing and protected signing for protected DB values.
+- [x] #42 Implement signing and protected signing for protected DB values.
   - Source: `db.c:1253`, `db.c:1259`, `db.c:2225`, `db.c:2231`.
+  - Done: `sign` and `signProtected` now compute and verify keyed signatures for plaintext and protected data values, respectively, using the existing HMAC-backed integrity primitive. The CSV integrity component test now exercises both signing attributes together with `MAC` and `MACProtected`.
 
-- [ ] #43 Replace direct DB protect/unprotect call sites with wrapper functions.
+- [x] #43 Replace direct DB protect/unprotect call sites with wrapper functions.
   - Source: `db.c:2355`, `db.c:2383`.
+  - Done: verified plain DB text protect/unprotect paths use `cmeProtectDBValue()` and `cmeUnprotectDBValue()` wrappers; removed the stale wrapper TODO markers. Salted protect/unprotect wrapper cleanup remains tracked separately in `#44`.
 
-- [ ] #44 Replace direct salt/protect and unprotect/unsalt call sites with wrapper functions.
+- [x] #44 Replace direct salt/protect and unprotect/unsalt call sites with wrapper functions.
   - Source: `db.c:2420`, `db.c:2461`.
+  - Done: `cmeProtectDBSaltedValue()` and `cmeUnprotectDBSaltedValue()` now delegate encryption/decryption to `cmeProtectDBValue()` and `cmeUnprotectDBValue()` after adding or before removing the value salt.
 
-- [ ] #45 Replace direct `malloc` calls with an audited allocation wrapper.
+- [x] #45 Replace direct `malloc` calls with an audited allocation wrapper.
   - Source: `common.h:50`.
+  - Done: project allocation calls are now routed through `cmeMalloc()` and `cmeRealloc()` wrappers that log failed non-zero-size allocations with source file and line information.
 
-- [ ] #46 Read globals from a configuration file.
+- [x] #46 Read globals from a configuration file.
   - Source: `common.h:51`.
+  - Done: startup now loads runtime globals from `caumedse.conf` (or `CDSE_CONFIG_FILE`) and applies the existing `CDSE_DEFAULT_ENC_ALG` environment override after validating cipher names.
 
-- [ ] #47 Standardize IDD usage and avoid direct use of numeric IDs and column names.
+- [x] #47 Standardize IDD usage and avoid direct use of numeric IDs and column names.
   - Source: `common.h:132`.
+  - Done: added central IDD table-name and URL-parameter-name helpers, and replaced hard-coded internal DB column/table names in admin bootstrap, ColumnFile DB creation, and LogsDB transaction handling with IDD constants.
 
-- [ ] #48 Research secure memory clearing and memory locking for sensitive data.
+- [x] #48 Research secure memory clearing and memory locking for sensitive data.
   - Source: `engine_interface.c:310`, `engine_interface.c:1583`.
+  - Done: added `OPENSSL_cleanse()`-based secure memory clearing helpers plus best-effort `mlock()`/`munlock()` wrappers, then replaced optimizer-sensitive manual `memset()` wipes for decrypted document IDs.
 
-- [ ] #49 Verify salt requirements and fail on invalid salts.
+- [x] #49 Verify salt requirements and fail on invalid salts.
   - Source: `engine_interface.c:1053`.
+  - Done: `cmePostProtectDBRegister()` now rejects caller-supplied protected DB salts unless they are exactly `evpSaltBufferSize * 2` hex characters; omitted salts still use the existing generated-salt path.
 
 - [ ] #50 Evaluate whether another random source is needed for systems without `/dev/random` or `/dev/urandom`.
   - Source: `crypto.c:436`.
