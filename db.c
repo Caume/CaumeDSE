@@ -914,20 +914,20 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         cmeMemSecureDBProtectFree();
         return(3);
     }
+    if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
+                " can't begin salt update transaction!\n");
+#endif
+        cmeMemSecureDBProtectFree();
+        return(3);
+    }
     for (cont=1;cont<=numRowsData;cont++)
     {
         cmeGetRndSaltAnySize(&(currentDataSalt[cont-1]),cmeDefaultSecureDBSaltLen);
         //Update Salt info in data table.
         cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont+cmeIDDanydb_id])); //sanitize currentDataId with atoi()
-        if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
-        {
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
-                    " can't begin salt update transaction!\n");
-#endif
-            cmeMemSecureDBProtectFree();
-            return(3);
-        }
         result=sqlite3_bind_text(updateDataSaltStmt,1,currentDataSalt[cont-1],-1,SQLITE_TRANSIENT);
         if (result==SQLITE_OK)
         {
@@ -949,21 +949,21 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         }
         sqlite3_reset(updateDataSaltStmt);
         sqlite3_clear_bindings(updateDataSaltStmt);
-        if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
-        {
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
-                    " can't commit salt update transaction for data id %s!\n",currentDataId);
-#endif
-            cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-            cmeMemSecureDBProtectFree();
-            return(3);
-        }
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), updated 'salt' in data table "
                 " for id: %s.\n",currentDataId);
 #endif
         cmeFree(currentDataId);
+    }
+    if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
+                " can't commit salt update transaction!\n");
+#endif
+        cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
+        cmeMemSecureDBProtectFree();
+        return(3);
     }
     //Apply each protection mecanism to the table:
     result=sqlite3_prepare_v2(memSecureDB,

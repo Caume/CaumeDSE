@@ -38,10 +38,10 @@
   - Raise POST processing buffer to reduce callback overhead.
   - Raise response callback page size for large responses.
 
-- [ ] #8 Batch only in-memory transformations before immediate durable saves.
+- [x] #8 Batch only in-memory transformations before immediate durable saves.
   - Combine related temporary memory DB updates with prepared statements or a transaction.
   - Do not defer protected file/resources DB writes after a logical change.
-  - Done: duplicate-column reintegration now copies rows with a prepared statement inside one in-memory transaction.
+  - Done: secure DB protection now batches initial data salt updates in one in-memory transaction; duplicate-column reintegration already copies rows with a prepared statement inside one in-memory transaction.
 
 - [x] #9 Add an independent component verification script for DEBUG builds.
   - Create a script such as `TEST/run_debug_components.sh` that configures a DEBUG/TESTDATABASE install under `/tmp`, builds, installs, runs the engine non-interactively, and writes one log per component.
