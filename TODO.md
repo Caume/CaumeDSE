@@ -217,8 +217,9 @@
   - Source: `db.c:2420`, `db.c:2461`.
   - Done: `cmeProtectDBSaltedValue()` and `cmeUnprotectDBSaltedValue()` now delegate encryption/decryption to `cmeProtectDBValue()` and `cmeUnprotectDBValue()` after adding or before removing the value salt.
 
-- [ ] #45 Replace direct `malloc` calls with an audited allocation wrapper.
+- [x] #45 Replace direct `malloc` calls with an audited allocation wrapper.
   - Source: `common.h:50`.
+  - Done: project allocation calls are now routed through `cmeMalloc()` and `cmeRealloc()` wrappers that log failed non-zero-size allocations with source file and line information.
 
 - [ ] #46 Read globals from a configuration file.
   - Source: `common.h:51`.

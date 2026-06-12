@@ -47,7 +47,6 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #include "config.h"
 #endif
 
-//TODO (OHR#8#): Replace calls to malloc with audited, simple, wrapper function.
 //TODO (OHR#9#): Define function to read Globals in main.c from config file
 #define prngSeedBytes 16
 #define evpMaxHashStrLen 2*64+1         //Max length for character representation of hex bytestr hash {RECOMMENDED: 2*64+1}. At 2 chars per byte, SHA-512 requires 64 bytes, + 1 ending null char.
@@ -508,6 +507,37 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #include <XSUB.h>   //for embedded perl interpreter (32 bit machines)
 #endif
 EXTERN_C void xs_init (pTHX); //for embedded perl interpreter (using dynamically generated: 'xs_init.c')
+
+static inline void *cmeMalloc(size_t size, const char *file, int line)
+{
+    void *ptr=malloc(size);
+
+    if ((size)&&(!ptr))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMalloc(), malloc(%lu) failed at %s:%d.\n",
+                (unsigned long)size,file,line);
+#endif
+    }
+    return(ptr);
+}
+
+static inline void *cmeRealloc(void *ptr, size_t size, const char *file, int line)
+{
+    void *newPtr=realloc(ptr,size);
+
+    if ((size)&&(!newPtr))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeRealloc(), realloc(%p,%lu) failed at %s:%d.\n",
+                ptr,(unsigned long)size,file,line);
+#endif
+    }
+    return(newPtr);
+}
+
+#define malloc(size) cmeMalloc((size),__FILE__,__LINE__)
+#define realloc(ptr,size) cmeRealloc((ptr),(size),__FILE__,__LINE__)
 
 // --- CaumeDSE includes
 #include "crypto.h"
