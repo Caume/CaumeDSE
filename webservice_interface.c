@@ -8106,6 +8106,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     int numMatchArgs=0;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
+    int perlLocked=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -8190,11 +8191,12 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                 resultDB=NULL; \
             } \
             cmeResultMemTableClean(); \
-            pthread_mutex_unlock(&cmePerlMutex); \
+            if (perlLocked) \
+            { \
+                pthread_mutex_unlock(&cmePerlMutex); \
+                perlLocked=0; \
+            } \
         } while (0); //Local free() macro.
-
-    // Serialise access to the shared Perl interpreter for this entire function.
-    pthread_mutex_lock(&cmePerlMutex);
 
     columnValues=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnNames=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
@@ -8303,25 +8305,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     *responseCode=500;
                     return(2);
                 }
-                //initialize Parser and script's global variables:
-                ilist[0]="CaumeDSE";
-                ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
-                result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
-                if (result) //Error
-                {
-                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
-                                       "Internal server error number '%d'."
-                                       "METHOD: '%s' URL: '%s'."
-                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgParserScriptResourceOptions,
-                                        cmeInternalDBDefinitionsVersion);
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                            " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
-#endif
-                    cmeWebServiceProcessParserScriptResourceFree();
-                    *responseCode=500;
-                    return(3);
-                }
                 //Now, get the protected file.
                 if (!strncmp(urlElements[5],"file.csv",8)) //If type of documentId to be parsed is file.csv, then...
                 {
@@ -8343,8 +8326,31 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(4);
                     }
                     cmeResultMemTableClean();
+                    // Serialise only the shared Perl interpreter parse and callback execution.
+                    pthread_mutex_lock(&cmePerlMutex);
+                    perlLocked=1;
+                    ilist[0]="CaumeDSE";
+                    ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
+                    result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
+                    if (result) //Error
+                    {
+                        cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                           "Internal server error number '%d'."
+                                           "METHOD: '%s' URL: '%s'."
+                                            "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgParserScriptResourceOptions,
+                                            cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
+                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+#endif
+                        cmeWebServiceProcessParserScriptResourceFree();
+                        *responseCode=500;
+                        return(3);
+                    }
                     result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                                cmeDefaultPerlIterationFunction,cdsePerl); //Select
+                    pthread_mutex_unlock(&cmePerlMutex);
+                    perlLocked=0;
                     if (!result) //OK
                     {
                         //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -8512,20 +8518,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     *responseCode=500; //No responseText in HEAD!
                     return(11);
                 }
-                //initialize Parser and script's global variables:
-                ilist[0]="CaumeDSE";
-                ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
-                result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
-                if (result) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                            " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
-#endif
-                    cmeWebServiceProcessParserScriptResourceFree();
-                    *responseCode=500; //No responseText in HEAD!
-                    return(12);
-                }
                 //Now, get the protected file.
                 if (!strncmp(urlElements[5],"file.csv",8)) //If type of documentId to be parsed is file.csv, then...
                 {
@@ -8542,8 +8534,26 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(13);
                     }
                     cmeResultMemTableClean();
+                    // Serialise only the shared Perl interpreter parse and callback execution.
+                    pthread_mutex_lock(&cmePerlMutex);
+                    perlLocked=1;
+                    ilist[0]="CaumeDSE";
+                    ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
+                    result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
+                    if (result) //Error
+                    {
+#ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
+                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+#endif
+                        cmeWebServiceProcessParserScriptResourceFree();
+                        *responseCode=500; //No responseText in HEAD!
+                        return(12);
+                    }
                     result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                                       cmeDefaultPerlIterationFunction,cdsePerl); //Select
+                    pthread_mutex_unlock(&cmePerlMutex);
+                    perlLocked=0;
                     if (!result) //OK
                     {
                         if (cmeResultMemTableRows) // Found >0 rows.

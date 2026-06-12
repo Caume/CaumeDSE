@@ -19,9 +19,10 @@
   - Prefer libmicrohttpd request lifecycle handling or `pthread_cond_t` signaling.
   - Done: POST request status handoff now uses per-connection `pthread_cond_t` signaling instead of `sleep(0)` loops.
 
-- [ ] #4 Narrow the parser script Perl mutex.
+- [x] #4 Narrow the parser script Perl mutex.
   - Keep shared Perl interpreter calls serialized.
   - Move DB/file work, secure DB reconstruction, response construction, and cleanup outside the global Perl lock where possible.
+  - Done: parser-script GET/HEAD now perform DB/file work before the lock, serialize only shared Perl interpreter parse/callback execution, and release the lock before response construction and cleanup.
 
 - [x] #5 Avoid reapplying SQLite PRAGMAs on every DB open.
   - Split memory DB and file DB open setup.
