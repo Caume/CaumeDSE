@@ -205,8 +205,9 @@
   - Source: `db.c:201`.
   - Done: memory database saves can now request a pre-save `VACUUM`; CSV upload and content row/column writes expose this through the `vacuumDB` request parameter while preserving mandatory vacuuming for protected imports.
 
-- [ ] #42 Implement signing and protected signing for protected DB values.
+- [x] #42 Implement signing and protected signing for protected DB values.
   - Source: `db.c:1253`, `db.c:1259`, `db.c:2225`, `db.c:2231`.
+  - Done: `sign` and `signProtected` now compute and verify keyed signatures for plaintext and protected data values, respectively, using the existing HMAC-backed integrity primitive. The CSV integrity component test now exercises both signing attributes together with `MAC` and `MACProtected`.
 
 - [x] #43 Replace direct DB protect/unprotect call sites with wrapper functions.
   - Source: `db.c:2355`, `db.c:2383`.

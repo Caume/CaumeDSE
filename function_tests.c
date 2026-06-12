@@ -565,8 +565,8 @@ void testCSV ()
     char **pQueryResult2=NULL;
     const char *attributes[]={"shuffle","protect"};
     const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
-    const char *attributesMAC[]={"protect","MAC","MACProtected"};
-    const char *attributesMACData[]={cmeDefaultEncAlg,cmeDefaultMACAlg,cmeDefaultMACAlg};
+    const char *attributesMAC[]={"protect","sign","signProtected","MAC","MACProtected"};
+    const char *attributesMACData[]={cmeDefaultEncAlg,cmeDefaultMACAlg,cmeDefaultMACAlg,cmeDefaultMACAlg,cmeDefaultMACAlg};
     sqlite3 *resultDB=NULL;
     sqlite3 *pResourcesDB=NULL;
 
@@ -676,11 +676,11 @@ void testCSV ()
     resultDB=NULL;
     //result=cmeDeleteSecureDB(pResourcesDB,"AcmeIncPayroll Tests.csv", "password2",cmeDefaultFilePath);
 
-    // Test "protect","MAC","MACProtected" column attributes: protect data, compute plaintext MAC
-    // and post-encryption MACProtected, then verify integrity on retrieval.
+    // Test integrity attributes: protect data, compute plaintext and protected signatures/MACs,
+    // then verify integrity on retrieval.
     printf("\n--- Testing MAC and MACProtected column attributes:\n");
     result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
-                                "password3",attributesMAC,attributesMACData,3,1,0,
+                                "password3",attributesMAC,attributesMACData,5,1,0,
                                 "Payroll Database MAC Test.",
                                 "file.csv","AcmeIncPayrollMAC.csv","storage3",cmeDefaultFilePath);
     if (result)
