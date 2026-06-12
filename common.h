@@ -47,7 +47,6 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #include "config.h"
 #endif
 
-//TODO (OHR#9#): Define function to read Globals in main.c from config file
 #define prngSeedBytes 16
 #define evpMaxHashStrLen 2*64+1         //Max length for character representation of hex bytestr hash {RECOMMENDED: 2*64+1}. At 2 chars per byte, SHA-512 requires 64 bytes, + 1 ending null char.
 #define evpMaxHashBytesLen 64           //Max length for byte representation of hash {RECOMMENDED: 64}. SHA-512 requires 64 bytes.
@@ -104,7 +103,9 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeDefaultLookupSalt "4361756d654453454c6f6f6b75703121"        //Fixed 16-byte hex salt for deterministic protected lookup HMAC derivation.
 #define cmeDefaultSqlBufferLen 8192         //Default size of Buffer for SQL queries. {8192}
 extern char cmeDefaultEncAlg[];             //Default algorithm for symmetric encryption in engine admin. databases.
-void cmeInitDefaultEncAlg();                //Initialize default algorithm from environment
+void cmeLoadConfiguration();                //Initialize runtime globals from configuration file and environment.
+void cmeInitDefaultEncAlg();                //Initialize default algorithm from environment.
+#define cmeDefaultConfigFile cmeDefaultFilePath "caumedse.conf" //Default runtime configuration file.
 #define cmeDefaultHshAlg "sha256"           //Default algorithm for bytestring hashing {digest}.
 #define cmeDefaultMACAlg "sha256"             //Default algorithm for bytestring HMAC MACs .
 #define cmeDefaultInsertSqlRows 512         //Default # of rows to be inserted into a sqlite3 db at a time {within a Begin - Commit block}.

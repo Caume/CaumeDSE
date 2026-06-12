@@ -221,8 +221,9 @@
   - Source: `common.h:50`.
   - Done: project allocation calls are now routed through `cmeMalloc()` and `cmeRealloc()` wrappers that log failed non-zero-size allocations with source file and line information.
 
-- [ ] #46 Read globals from a configuration file.
+- [x] #46 Read globals from a configuration file.
   - Source: `common.h:51`.
+  - Done: startup now loads runtime globals from `caumedse.conf` (or `CDSE_CONFIG_FILE`) and applies the existing `CDSE_DEFAULT_ENC_ALG` environment override after validating cipher names.
 
 - [ ] #47 Standardize IDD usage and avoid direct use of numeric IDs and column names.
   - Source: `common.h:132`.

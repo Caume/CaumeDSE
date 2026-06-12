@@ -81,7 +81,7 @@ int setup(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl)
     OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG | OPENSSL_INIT_ADD_ALL_CIPHERS |
                         OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
 #endif
-    cmeInitDefaultEncAlg();
+    cmeLoadConfiguration();
     return(0);
 }
 

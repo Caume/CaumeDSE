@@ -2020,9 +2020,14 @@ the whole keyspace to take into account the provided salt).  Using this kind
 of keys improves performance considerably.
 
 The default symmetric encryption algorithm used by CaumeDSE is `AES-256-GCM`.
-You may override this at runtime by setting the environment variable
-`CDSE_DEFAULT_ENC_ALG` to any cipher name recognized by OpenSSL, such as
-`aes-256-cbc` for AES in CBC mode.
+You may override this at runtime with a configuration file, or by setting the
+environment variable `CDSE_DEFAULT_ENC_ALG` to any cipher name recognized by
+OpenSSL, such as `aes-256-cbc` for AES in CBC mode.  By default CaumeDSE reads
+`caumedse.conf` from the configured data directory, and `CDSE_CONFIG_FILE` may
+point to an alternate configuration file.  The supported configuration keys for
+this setting are `defaultEncAlg`, `default_enc_alg`, and
+`CDSE_DEFAULT_ENC_ALG`; the environment variable takes precedence over the
+configuration file.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit
