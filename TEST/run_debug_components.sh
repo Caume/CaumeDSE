@@ -238,6 +238,13 @@ check_component role_tables_resource 'Testing roleTables resource handlers|testR
     'TESTS: testRoleTables(), PASS: roleTables permission allow responseCode=200' \
     'TESTS: testRoleTables(), PASS: create/read/update/head/delete/options verified.'
 
+check_component filter_whitelist_resource 'Testing filterWhitelist resource handlers|testFilterWhitelist|filterWhitelist resource' "$FULL_LOG" \
+    '--- Testing filterWhitelist resource handlers:' \
+    'TESTS: testFilterWhitelist(), PASS: filterWhitelist resource POST responseCode=201' \
+    'TESTS: testFilterWhitelist(), PASS: allowlisted permission responseCode=200' \
+    'TESTS: testFilterWhitelist(), PASS: missing whitelist reject responseCode=403' \
+    'TESTS: testFilterWhitelist(), PASS: create/read/update/head/delete/options and enforcement verified.'
+
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
 

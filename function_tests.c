@@ -926,7 +926,7 @@ static int cmeTestRoleTablesRequest(const char *method, const char *url,
         result=cmeWebServiceProcessRoleTableResource(&responseText,&responseFilePath,&responseHeaders,&responseCode,
                                                      url,urlElements,argumentElements,method);
     }
-    if (result || ((expectedCode>=0)&&(responseCode!=expectedCode)))
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
     {
         fprintf(stderr,"CaumeDSE Error: testRoleTables(), %s failed: result=%d responseCode=%d expected=%d.\n",
                 marker,result,responseCode,expectedCode);
@@ -1034,12 +1034,161 @@ void testRoleTables ()
     }
 }
 
+static int cmeTestFilterWhitelistRequest(const char *method, const char *url,
+                                         const char **urlElements, int numUrlElements,
+                                         const char **argumentElements, int expectedCode,
+                                         const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char *responseFilePath=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterWhitelist(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    if (numUrlElements==5)
+    {
+        result=cmeWebServiceProcessFilterWhitelistClass(&responseText,&responseHeaders,&responseCode,
+                                                        url,urlElements,argumentElements,method);
+    }
+    else
+    {
+        result=cmeWebServiceProcessFilterWhitelistResource(&responseText,&responseFilePath,&responseHeaders,&responseCode,
+                                                           url,urlElements,argumentElements,method);
+    }
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterWhitelist(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeFree(responseFilePath);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testFilterWhitelist(), PASS: %s responseCode=%d",marker,responseCode);
+    if (responseHeaders[0]&&responseHeaders[1])
+    {
+        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+    }
+    printf("\n");
+    cmeFree(responseText);
+    cmeFree(responseFilePath);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testFilterWhitelist ()
+{
+    int errors=0;
+    char *responseText=NULL;
+    int responseCode=0;
+    const char *classUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist";
+    const char *resourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist/RoleTableTestUser";
+    const char *roleResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/roleTables/users";
+    const char *permissionAllowedUrl="/organizations/EngineOrg/users/RoleTableTestUser";
+    const char *permissionDeniedUrl="/organizations/EngineOrg/users/NoWhitelistUser";
+    const char *classElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist"};
+    const char *resourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist","RoleTableTestUser"};
+    const char *roleResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","roleTables","users"};
+    const char *permissionAllowedElements[]={"organizations","EngineOrg","users","RoleTableTestUser"};
+    const char *permissionDeniedElements[]={"organizations","EngineOrg","users","NoWhitelistUser"};
+    const char *adminArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        NULL
+    };
+    const char *postArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        "*_get","1",
+        "*_post","0",
+        "*_put","0",
+        "*_delete","0",
+        "*_head","1",
+        "*_options","1",
+        NULL
+    };
+    const char *putArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        "*_put","1",
+        NULL
+    };
+    const char *malformedArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        "*_get","1",
+        NULL
+    };
+    printf("--- Testing filterWhitelist resource handlers:\n");
+    errors+=cmeTestFilterWhitelistRequest("OPTIONS",classUrl,classElements,5,adminArgs,200,"filterWhitelist class OPTIONS");
+    errors+=cmeTestFilterWhitelistRequest("DELETE",resourceUrl,resourceElements,6,adminArgs,-1,"filterWhitelist resource cleanup");
+    errors+=cmeTestFilterWhitelistRequest("POST",resourceUrl,resourceElements,6,malformedArgs,409,"filterWhitelist malformed POST");
+    errors+=cmeTestFilterWhitelistRequest("POST",resourceUrl,resourceElements,6,postArgs,201,"filterWhitelist resource POST");
+    errors+=cmeTestFilterWhitelistRequest("GET",classUrl,classElements,5,adminArgs,200,"filterWhitelist class GET");
+    errors+=cmeTestFilterWhitelistRequest("GET",resourceUrl,resourceElements,6,adminArgs,200,"filterWhitelist resource GET");
+    errors+=cmeTestFilterWhitelistRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,200,"filterWhitelist resource HEAD");
+    errors+=cmeTestFilterWhitelistRequest("OPTIONS",resourceUrl,resourceElements,6,adminArgs,200,"filterWhitelist resource OPTIONS");
+    errors+=cmeTestRoleTablesRequest("DELETE",roleResourceUrl,roleResourceElements,6,adminArgs,-1,"filterWhitelist role cleanup");
+    errors+=cmeTestRoleTablesRequest("POST",roleResourceUrl,roleResourceElements,6,postArgs,201,"filterWhitelist role POST");
+    if (cmeWebServiceCheckPermissions("GET",permissionAllowedUrl,permissionAllowedElements,4,
+                                      &responseText,&responseCode,
+                                      "RoleTableTestUser","EngineOrg",
+                                      "0CDBB9AF76AF43BDB72E095989E612CC") || responseCode!=200)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterWhitelist(), allowlisted permission failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testFilterWhitelist(), PASS: allowlisted permission responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    responseText=NULL;
+    cmeWebServiceCheckPermissions("GET",permissionDeniedUrl,permissionDeniedElements,4,
+                                  &responseText,&responseCode,
+                                  "RoleTableTestUser","EngineOrg",
+                                  "0CDBB9AF76AF43BDB72E095989E612CC");
+    if (responseCode!=403)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterWhitelist(), missing whitelist rejection failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testFilterWhitelist(), PASS: missing whitelist reject responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    errors+=cmeTestFilterWhitelistRequest("PUT",resourceUrl,resourceElements,6,putArgs,200,"filterWhitelist resource PUT");
+    errors+=cmeTestFilterWhitelistRequest("DELETE",resourceUrl,resourceElements,6,adminArgs,200,"filterWhitelist resource DELETE");
+    errors+=cmeTestFilterWhitelistRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,404,"filterWhitelist resource HEAD after DELETE");
+    errors+=cmeTestRoleTablesRequest("DELETE",roleResourceUrl,roleResourceElements,6,adminArgs,200,"filterWhitelist role DELETE");
+    if (errors)
+    {
+        printf("TESTS: testFilterWhitelist(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testFilterWhitelist(), PASS: create/read/update/head/delete/options and enforcement verified.\n");
+    }
+}
+
 void testEngMgmnt ()
 {
     int result __attribute__((unused));
     result=cmeSetupEngineAdminDBs();
     testThreadSafety();
     testRoleTables();
+    testFilterWhitelist();
 }
 
 void testWebServices ()

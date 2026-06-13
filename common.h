@@ -327,6 +327,14 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/roleTables" \
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                     "OptionalParameters...]<br></code><br>" //RoleTable class resource options.
+#define cmeWSMsgFilterWhitelistOptions "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
+                                 "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterWhitelist/{filterUser}" \
+                                 "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                 "OptionalParameters...]<br></code><br>" //Filter whitelist resource options.
+#define cmeWSMsgFilterWhitelistClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
+                                    "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterWhitelist" \
+                                    "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                    "OptionalParameters...]<br></code><br>" //Filter whitelist class resource options.
 
 #define cmeWSMsgOrgOptions  "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                             "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}" \

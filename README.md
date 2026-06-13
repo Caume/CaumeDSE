@@ -328,7 +328,8 @@ https://{engine}
 |       |   `-- /{user}
 |       |       |-- /roleTables
 |       |       |   `-- /{roleTable}
-|       |       |-- /filterWhitelist [not implemented]
+|       |       |-- /filterWhitelist
+|       |       |   `-- /{filterUser}
 |       |       `-- /filterBlacklist [not implemented]
 |       `-- /storage
 |           `-- /{storage}
@@ -1289,6 +1290,46 @@ below).
             0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
             *_put=1&*_delete=0&*_head=1&*_options=1&newOrgKey=
             3132333440414243
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `filterWhitelist`
+
+    Supported HTTP methods: GET POST PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId __get __post __put __delete __head
+            __options
+        UPDATE:
+            *_get *_post *_put *_delete *_head *_options
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resource>
+
+    Filter whitelist records are stored in the encrypted ResourcesDB
+    filterWhitelist table. The `{filterUser}` URL element maps to
+    userResourceId, the parent `{organization}` maps to orgResourceId,
+    and the method columns (`_get`, `_post`, `_put`, `_delete`, `_head`,
+    `_options`) define which methods are allowlisted for that target.
+    Role-table authorization is still evaluated first. When whitelist
+    records exist for a method, user-resource requests for that method
+    must also match a whitelist record for the requested organization
+    and user.
+
+    Example 1) Allow EngineAdmin to perform GET, HEAD and OPTIONS
+            requests against RoleTableTestUser user resources.
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/users/
+            RoleTableTestUser/filterWhitelist/RoleTableTestUser?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
+            *_put=0&*_delete=0&*_head=1&*_options=1
         REQUEST HEADERS:
             <NONE>
         REQUEST BODY:

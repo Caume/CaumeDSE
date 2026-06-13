@@ -74,13 +74,14 @@
   - Update `README.md` to remove the `[not implemented]` marker once the behavior is verified.
   - Done: direct DEBUG coverage now verifies collection GET/OPTIONS plus resource POST/GET/PUT/HEAD/DELETE/OPTIONS, permission rejection/allowance, encrypted RolesDB access through the existing handlers, and README roleTables documentation.
 
-- [ ] #13 Implement `/organizations/{organization}/users/{user}/filterWhitelist` resources.
+- [x] #13 Implement `/organizations/{organization}/users/{user}/filterWhitelist` resources.
   - Define the whitelist data model on top of the existing ResourcesDB/AdminDB `filterWhitelist` tables, including filter attributes, allowed methods, and ownership fields.
   - Add request parsing and handlers for whitelist collection and item resources under the user resource hierarchy.
   - Enforce whitelist checks in request authorization or filtering paths before resource operations are executed.
   - Preserve encrypted internal database values, MAC verification, and existing role-table authorization semantics.
   - Add tests covering allowlisted filters, missing whitelist entries, malformed filters, and interaction with role-table permissions.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: added `filterWhitelist` collection/item routing, encrypted ResourcesDB CRUD handlers for method allow filters, opt-in whitelist enforcement after role-table authorization for user-resource requests, DEBUG component coverage, and README API documentation.
 
 - [ ] #14 Implement `/organizations/{organization}/users/{user}/filterBlacklist` resources.
   - Define the blacklist data model on top of the existing ResourcesDB/AdminDB `filterBlacklist` tables, mirroring whitelist ownership and filter attributes where appropriate.
