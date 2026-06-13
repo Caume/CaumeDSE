@@ -57,6 +57,7 @@ void testCSV ();
 void testEngMgmnt ();
 void testRoleTables ();
 void testFilterWhitelist ();
+void testFilterBlacklist ();
 void testThreadSafety ();
 void testWebServices ();
 

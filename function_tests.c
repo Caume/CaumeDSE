@@ -1182,6 +1182,157 @@ void testFilterWhitelist ()
     }
 }
 
+static int cmeTestFilterBlacklistRequest(const char *method, const char *url,
+                                         const char **urlElements, int numUrlElements,
+                                         const char **argumentElements, int expectedCode,
+                                         const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char *responseFilePath=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterBlacklist(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    if (numUrlElements==5)
+    {
+        result=cmeWebServiceProcessFilterBlacklistClass(&responseText,&responseHeaders,&responseCode,
+                                                        url,urlElements,argumentElements,method);
+    }
+    else
+    {
+        result=cmeWebServiceProcessFilterBlacklistResource(&responseText,&responseFilePath,&responseHeaders,&responseCode,
+                                                           url,urlElements,argumentElements,method);
+    }
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterBlacklist(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeFree(responseFilePath);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testFilterBlacklist(), PASS: %s responseCode=%d",marker,responseCode);
+    if (responseHeaders[0]&&responseHeaders[1])
+    {
+        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+    }
+    printf("\n");
+    cmeFree(responseText);
+    cmeFree(responseFilePath);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testFilterBlacklist ()
+{
+    int errors=0;
+    char *responseText=NULL;
+    int responseCode=0;
+    const char *classUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterBlacklist";
+    const char *resourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterBlacklist/RoleTableTestUser";
+    const char *whitelistUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist/RoleTableTestUser";
+    const char *roleResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/roleTables/users";
+    const char *permissionUrl="/organizations/EngineOrg/users/RoleTableTestUser";
+    const char *classElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterBlacklist"};
+    const char *resourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterBlacklist","RoleTableTestUser"};
+    const char *whitelistElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist","RoleTableTestUser"};
+    const char *roleResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","roleTables","users"};
+    const char *permissionElements[]={"organizations","EngineOrg","users","RoleTableTestUser"};
+    const char *adminArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        NULL
+    };
+    const char *postArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        "*_get","1",
+        "*_post","0",
+        "*_put","0",
+        "*_delete","0",
+        "*_head","1",
+        "*_options","1",
+        NULL
+    };
+    const char *putArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        "*_put","1",
+        NULL
+    };
+    const char *malformedArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        "*_get","1",
+        NULL
+    };
+    printf("--- Testing filterBlacklist resource handlers:\n");
+    errors+=cmeTestFilterBlacklistRequest("OPTIONS",classUrl,classElements,5,adminArgs,200,"filterBlacklist class OPTIONS");
+    errors+=cmeTestFilterBlacklistRequest("DELETE",resourceUrl,resourceElements,6,adminArgs,-1,"filterBlacklist resource cleanup");
+    errors+=cmeTestFilterWhitelistRequest("DELETE",whitelistUrl,whitelistElements,6,adminArgs,-1,"filterBlacklist whitelist cleanup");
+    errors+=cmeTestFilterBlacklistRequest("POST",resourceUrl,resourceElements,6,malformedArgs,409,"filterBlacklist malformed POST");
+    errors+=cmeTestFilterBlacklistRequest("POST",resourceUrl,resourceElements,6,postArgs,201,"filterBlacklist resource POST");
+    errors+=cmeTestFilterBlacklistRequest("GET",classUrl,classElements,5,adminArgs,200,"filterBlacklist class GET");
+    errors+=cmeTestFilterBlacklistRequest("GET",resourceUrl,resourceElements,6,adminArgs,200,"filterBlacklist resource GET");
+    errors+=cmeTestFilterBlacklistRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,200,"filterBlacklist resource HEAD");
+    errors+=cmeTestFilterBlacklistRequest("OPTIONS",resourceUrl,resourceElements,6,adminArgs,200,"filterBlacklist resource OPTIONS");
+    errors+=cmeTestRoleTablesRequest("DELETE",roleResourceUrl,roleResourceElements,6,adminArgs,-1,"filterBlacklist role cleanup");
+    errors+=cmeTestRoleTablesRequest("POST",roleResourceUrl,roleResourceElements,6,postArgs,201,"filterBlacklist role POST");
+    errors+=cmeTestFilterWhitelistRequest("POST",whitelistUrl,whitelistElements,6,postArgs,201,"filterBlacklist whitelist POST");
+    cmeWebServiceCheckPermissions("GET",permissionUrl,permissionElements,4,
+                                  &responseText,&responseCode,
+                                  "RoleTableTestUser","EngineOrg",
+                                  "0CDBB9AF76AF43BDB72E095989E612CC");
+    if (responseCode!=403)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterBlacklist(), blacklist conflict rejection failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testFilterBlacklist(), PASS: blacklist conflict reject responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    responseText=NULL;
+    errors+=cmeTestFilterBlacklistRequest("PUT",resourceUrl,resourceElements,6,putArgs,200,"filterBlacklist resource PUT");
+    errors+=cmeTestFilterBlacklistRequest("DELETE",resourceUrl,resourceElements,6,adminArgs,200,"filterBlacklist resource DELETE");
+    if (cmeWebServiceCheckPermissions("GET",permissionUrl,permissionElements,4,
+                                      &responseText,&responseCode,
+                                      "RoleTableTestUser","EngineOrg",
+                                      "0CDBB9AF76AF43BDB72E095989E612CC") || responseCode!=200)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterBlacklist(), whitelist allow after blacklist delete failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testFilterBlacklist(), PASS: whitelist allow after blacklist delete responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    errors+=cmeTestFilterBlacklistRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,404,"filterBlacklist resource HEAD after DELETE");
+    errors+=cmeTestFilterWhitelistRequest("DELETE",whitelistUrl,whitelistElements,6,adminArgs,200,"filterBlacklist whitelist DELETE");
+    errors+=cmeTestRoleTablesRequest("DELETE",roleResourceUrl,roleResourceElements,6,adminArgs,200,"filterBlacklist role DELETE");
+    if (errors)
+    {
+        printf("TESTS: testFilterBlacklist(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testFilterBlacklist(), PASS: create/read/update/head/delete/options and deny precedence verified.\n");
+    }
+}
+
 void testEngMgmnt ()
 {
     int result __attribute__((unused));
@@ -1189,6 +1340,7 @@ void testEngMgmnt ()
     testThreadSafety();
     testRoleTables();
     testFilterWhitelist();
+    testFilterBlacklist();
 }
 
 void testWebServices ()

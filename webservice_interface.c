@@ -1318,6 +1318,40 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                 return(0);
             }
         }
+        else if ((numUrlElements==5)&&(strcmp(urlElements[4],"filterBlacklist")==0))// filterBlacklist class resource
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
+                        "filterBlacklist class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+#endif
+            result=cmeWebServiceProcessFilterBlacklistClass(responseText, responseHeaders, responseCode,
+                                                     url, urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
+        }
+        else if ((numUrlElements==6)&&(strcmp(urlElements[4],"filterBlacklist")==0))// filterBlacklist resource
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
+                        "filterBlacklist resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+#endif
+            result=cmeWebServiceProcessFilterBlacklistResource(responseText, responseFilePath, responseHeaders, responseCode,
+                                                         url, urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
+        }
         //TODO (OHR#2#) process storage documentTypes and documents resource tree requests.
         else if ((numUrlElements==3)&&(strcmp(urlElements[2],"storage")==0)) //storage class resource
         {
@@ -2969,8 +3003,14 @@ int cmeWebServiceProcessRoleTableClass (char **responseText, char ***responseHea
     }
 }
 
-int cmeWebServiceProcessFilterWhitelistClass (char **responseText, char ***responseHeaders, int *responseCode,
-                                         const char *url, const char **urlElements, const char **argumentElements, const char *method)
+static int cmeWebServiceProcessFilterListResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method,
+                                           const char *filterTableName, const char *filterLabel, const char *resourceOptions);
+
+static int cmeWebServiceProcessFilterListClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements, const char *method,
+                                         const char *filterTableName, const char *filterLabel,
+                                         const char *classOptions, const char *resourceOptions)
 {
     int result;
     char *responseFilePath=NULL;
@@ -2984,15 +3024,16 @@ int cmeWebServiceProcessFilterWhitelistClass (char **responseText, char ***respo
         resourceElements[3]=urlElements[3];
         resourceElements[4]=urlElements[4];
         resourceElements[5]=urlElements[3];
-        result=cmeWebServiceProcessFilterWhitelistResource(responseText,&responseFilePath,responseHeaders,responseCode,
-                                                           url,resourceElements,argumentElements,method);
+        result=cmeWebServiceProcessFilterListResource(responseText,&responseFilePath,responseHeaders,responseCode,
+                                                      url,resourceElements,argumentElements,method,
+                                                      filterTableName,filterLabel,resourceOptions);
         cmeFree(responseFilePath);
         return(result);
     }
     else if(!strcmp(method,"OPTIONS"))
     {
-        cmeStrConstrAppend(responseText,"<b>200 OK - Options for filter whitelist class resources:</b><br>"
-                           "%sLatest IDD version: <code>%s</code>",cmeWSMsgFilterWhitelistClassOptions,
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for %s class resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",filterLabel,classOptions,
                            cmeInternalDBDefinitionsVersion);
         *responseCode=200;
         return(0);
@@ -3000,17 +3041,18 @@ int cmeWebServiceProcessFilterWhitelistClass (char **responseText, char ***respo
     else
     {
         cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
-                           "method is not allowed for this filterWhitelist class resource."
+                           "method is not allowed for this %s class resource."
                            "METHOD: '%s' URL: '%s'."
-                           "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgFilterWhitelistClassOptions,
+                           "%sLatest IDD version: <code>%s</code>",filterLabel,method,url,classOptions,
                            cmeInternalDBDefinitionsVersion);
         *responseCode=405;
         return(2);
     }
 }
 
-int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
-                                           const char *url, const char **urlElements, const char **argumentElements, const char *method)
+static int cmeWebServiceProcessFilterListResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method,
+                                           const char *filterTableName, const char *filterLabel, const char *resourceOptions)
 {
     int cont,result=0;
     int keyArg=0,orgArg=0,usrArg=0,newKeyArg=0;
@@ -3022,7 +3064,7 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
     char **columnValuesToMatch=NULL,**columnNamesToMatch=NULL;
     char *dbFilePath=NULL;
     char **resultRegisterCols=NULL;
-    const char *tableName="filterWhitelist";
+    const char *tableName=filterTableName;
     const int numColumns=cmeIDDRolesDBAnyTableNumCols;
     const int numDuplicateMatchColumns=2;
     const int numValidGETALLMatch=8;
@@ -3031,7 +3073,7 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
     const char *validGETALLMatchColumns[8]={"_userId","_orgId","__get","__post","__put","__delete","__head","__options"};
     const char *validPOSTSaveColumns[8]={"userId","orgId","*_get","*_post","*_put","*_delete","*_head","*_options"};
     const char *validPUTSaveColumns[8]={"userId","orgId","*_get","*_post","*_put","*_delete","*_head","*_options"};
-    #define cmeWebServiceProcessFilterWhitelistResourceFree() \
+    #define cmeWebServiceProcessFilterListResourceFree() \
         do { \
             cmeFree(orgKey); cmeFree(userId); cmeFree(orgId); cmeFree(newOrgKey); cmeFree(dbFilePath); \
             if (resultRegisterCols) { for (cont=0;cont<numResultRegisterCols*(numResultRegisters+1);cont++) cmeFree(resultRegisterCols[cont]); cmeFree(resultRegisterCols); } \
@@ -3049,7 +3091,7 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
     if ((!columnValues)||(!columnNames)||(!columnValuesToMatch)||(!columnNamesToMatch))
     {
         *responseCode=500;
-        cmeWebServiceProcessFilterWhitelistResourceFree();
+        cmeWebServiceProcessFilterListResourceFree();
         return(1);
     }
     for (cont=0;cont<numColumns;cont++)
@@ -3081,9 +3123,9 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
         {
             cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments.</b><br>"
                                "METHOD: '%s' URL: '%s'.%sLatest IDD version: <code>%s</code>",
-                               method,url,cmeWSMsgFilterWhitelistOptions,cmeInternalDBDefinitionsVersion);
+                               method,url,resourceOptions,cmeInternalDBDefinitionsVersion);
             *responseCode=409;
-            cmeWebServiceProcessFilterWhitelistResourceFree();
+            cmeWebServiceProcessFilterListResourceFree();
             return(2);
         }
         result=cmeDBOpen(dbFilePath,&pDB);
@@ -3096,14 +3138,14 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
         if (result)
         {
             *responseCode=500;
-            cmeWebServiceProcessFilterWhitelistResourceFree();
+            cmeWebServiceProcessFilterListResourceFree();
             return(3);
         }
         if(numResultRegisters>0)
         {
             *responseCode=403;
-            cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>Filter whitelist resource already exists!");
-            cmeWebServiceProcessFilterWhitelistResourceFree();
+            cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>%s resource already exists!",filterLabel);
+            cmeWebServiceProcessFilterListResourceFree();
             return(4);
         }
         result=cmePostProtectDBRegister(pDB,tableName,(const char **)columnNames,(const char **)columnValues,
@@ -3111,15 +3153,15 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
         if (result)
         {
             *responseCode=500;
-            cmeWebServiceProcessFilterWhitelistResourceFree();
+            cmeWebServiceProcessFilterListResourceFree();
             return(5);
         }
         *responseFilePath=NULL;
         *responseCode=201;
         cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
         cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
-        cmeStrConstrAppend(responseText,"Method '%s' created filterWhitelist resource for user '%s'.<br>",method,urlElements[5]);
-        cmeWebServiceProcessFilterWhitelistResourceFree();
+        cmeStrConstrAppend(responseText,"Method '%s' created %s resource for user '%s'.<br>",method,filterLabel,urlElements[5]);
+        cmeWebServiceProcessFilterListResourceFree();
         return(0);
     }
     else if(!strcmp(method,"PUT"))
@@ -3131,7 +3173,7 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
         if ((numSaveArgs<1)||(!keyArg)||(!usrArg)||(!orgArg))
         {
             *responseCode=409;
-            cmeWebServiceProcessFilterWhitelistResourceFree();
+            cmeWebServiceProcessFilterListResourceFree();
             return(6);
         }
         result=cmeDBOpen(dbFilePath,&pDB);
@@ -3144,23 +3186,23 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
         if (result)
         {
             *responseCode=500;
-            cmeWebServiceProcessFilterWhitelistResourceFree();
+            cmeWebServiceProcessFilterListResourceFree();
             return(7);
         }
         *responseCode=numResultRegisters?200:404;
         cmeConstructWebServiceCountResponse("Updated registers",numResultRegisters,argumentElements,method,url,
                                             responseHeaders,responseText,responseCode);
-        cmeWebServiceProcessFilterWhitelistResourceFree();
+        cmeWebServiceProcessFilterListResourceFree();
         return(0);
     }
     else if((!strcmp(method,"GET"))||(!strcmp(method,"HEAD"))||(!strcmp(method,"OPTIONS"))||(!strcmp(method,"DELETE")))
     {
         if(!strcmp(method,"OPTIONS"))
         {
-            cmeStrConstrAppend(responseText,"<b>200 OK - Options for filter whitelist resources:</b><br>"
-                               "%sLatest IDD version: <code>%s</code>",cmeWSMsgFilterWhitelistOptions,cmeInternalDBDefinitionsVersion);
+            cmeStrConstrAppend(responseText,"<b>200 OK - Options for %s resources:</b><br>"
+                               "%sLatest IDD version: <code>%s</code>",filterLabel,resourceOptions,cmeInternalDBDefinitionsVersion);
             *responseCode=200;
-            cmeWebServiceProcessFilterWhitelistResourceFree();
+            cmeWebServiceProcessFilterListResourceFree();
             return(0);
         }
         cmeProcessURLMatchSaveParameters(method,argumentElements,validGETALLMatchColumns,NULL,
@@ -3170,7 +3212,7 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
         if ((!keyArg)||(!usrArg)||(!orgArg))
         {
             *responseCode=409;
-            cmeWebServiceProcessFilterWhitelistResourceFree();
+            cmeWebServiceProcessFilterListResourceFree();
             return(8);
         }
         result=cmeDBOpen(dbFilePath,&pDB);
@@ -3190,7 +3232,7 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
         if (result)
         {
             *responseCode=500;
-            cmeWebServiceProcessFilterWhitelistResourceFree();
+            cmeWebServiceProcessFilterListResourceFree();
             return(9);
         }
         if(!strcmp(method,"HEAD"))
@@ -3210,15 +3252,47 @@ int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **res
             result=cmeConstructWebServiceTableResponse((const char **)resultRegisterCols,numResultRegisterCols,numResultRegisters,
                                                        argumentElements,method,url,NULL,responseHeaders,responseText,responseCode);
         }
-        cmeWebServiceProcessFilterWhitelistResourceFree();
+        cmeWebServiceProcessFilterListResourceFree();
         return(result);
     }
     cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br>"
                        "METHOD: '%s' URL: '%s'.%sLatest IDD version: <code>%s</code>",
-                       method,url,cmeWSMsgFilterWhitelistOptions,cmeInternalDBDefinitionsVersion);
+                       method,url,resourceOptions,cmeInternalDBDefinitionsVersion);
     *responseCode=405;
-    cmeWebServiceProcessFilterWhitelistResourceFree();
+    cmeWebServiceProcessFilterListResourceFree();
     return(10);
+}
+
+int cmeWebServiceProcessFilterWhitelistClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements, const char *method)
+{
+    return cmeWebServiceProcessFilterListClass(responseText,responseHeaders,responseCode,url,urlElements,argumentElements,method,
+                                               "filterWhitelist","filterWhitelist",cmeWSMsgFilterWhitelistClassOptions,
+                                               cmeWSMsgFilterWhitelistOptions);
+}
+
+int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method)
+{
+    return cmeWebServiceProcessFilterListResource(responseText,responseFilePath,responseHeaders,responseCode,url,urlElements,
+                                                  argumentElements,method,"filterWhitelist","filterWhitelist",
+                                                  cmeWSMsgFilterWhitelistOptions);
+}
+
+int cmeWebServiceProcessFilterBlacklistClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements, const char *method)
+{
+    return cmeWebServiceProcessFilterListClass(responseText,responseHeaders,responseCode,url,urlElements,argumentElements,method,
+                                               "filterBlacklist","filterBlacklist",cmeWSMsgFilterBlacklistClassOptions,
+                                               cmeWSMsgFilterBlacklistOptions);
+}
+
+int cmeWebServiceProcessFilterBlacklistResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method)
+{
+    return cmeWebServiceProcessFilterListResource(responseText,responseFilePath,responseHeaders,responseCode,url,urlElements,
+                                                  argumentElements,method,"filterBlacklist","filterBlacklist",
+                                                  cmeWSMsgFilterBlacklistOptions);
 }
 
 int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,

@@ -83,13 +83,14 @@
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
   - Done: added `filterWhitelist` collection/item routing, encrypted ResourcesDB CRUD handlers for method allow filters, opt-in whitelist enforcement after role-table authorization for user-resource requests, DEBUG component coverage, and README API documentation.
 
-- [ ] #14 Implement `/organizations/{organization}/users/{user}/filterBlacklist` resources.
+- [x] #14 Implement `/organizations/{organization}/users/{user}/filterBlacklist` resources.
   - Define the blacklist data model on top of the existing ResourcesDB/AdminDB `filterBlacklist` tables, mirroring whitelist ownership and filter attributes where appropriate.
   - Add request parsing and handlers for blacklist collection and item resources under the user resource hierarchy.
   - Enforce blacklist checks before resource operations, with deny behavior taking precedence over whitelist or role-table allows when both apply.
   - Preserve encrypted internal database values, MAC verification, and existing role-table authorization semantics.
   - Add tests covering denied filters, non-matching blacklist entries, whitelist/blacklist conflicts, malformed filters, and unauthorized updates.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: added `filterBlacklist` collection/item routing through the shared encrypted filter-list handler, deny-before-whitelist enforcement in permission checks, DEBUG component coverage for malformed entries and whitelist/blacklist conflicts, and README API documentation.
 
 - [ ] #15 Finish and verify `/organizations/{organization}/storage/{storage}/documentTypes` resources.
   - Review existing `documentTypes` routing and ResourcesDB table definitions to determine whether the README marker is stale or the feature is partial.

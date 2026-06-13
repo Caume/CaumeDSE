@@ -105,6 +105,12 @@ int cmeWebServiceProcessFilterWhitelistClass (char **responseText, char ***respo
 //Function to process filter whitelist resource requests
 int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
                                            const char *url, const char **urlElements, const char **argumentElements, const char *method);
+//Function to process filter blacklist class requests
+int cmeWebServiceProcessFilterBlacklistClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                  const char *url, const char **urlElements, const char **argumentElements, const char *method);
+//Function to process filter blacklist resource requests
+int cmeWebServiceProcessFilterBlacklistResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method);
 int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeaders, int *responseCode,
                                      const char *url, const char **urlElements, const char **argumentElements, const char *method);
 //Function to process organization class resource requests

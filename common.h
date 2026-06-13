@@ -335,6 +335,14 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterWhitelist" \
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                     "OptionalParameters...]<br></code><br>" //Filter whitelist class resource options.
+#define cmeWSMsgFilterBlacklistOptions "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
+                                 "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterBlacklist/{filterUser}" \
+                                 "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                 "OptionalParameters...]<br></code><br>" //Filter blacklist resource options.
+#define cmeWSMsgFilterBlacklistClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
+                                    "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterBlacklist" \
+                                    "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                    "OptionalParameters...]<br></code><br>" //Filter blacklist class resource options.
 
 #define cmeWSMsgOrgOptions  "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                             "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}" \

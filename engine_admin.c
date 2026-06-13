@@ -1012,6 +1012,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
     int numWhitelistColumns=5;
     int numWhitelistConfigured=0;
     int numWhitelistMatches=0;
+    int numBlacklistMatches=0;
     const int numValidRoleTables=20;     // # of roleTable names to be parsed.
     char *ptrStrChar=NULL;
     char *lcaseMethod=NULL;
@@ -1174,6 +1175,10 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                     }
                     cmeStrConstrAppend(&(whitelistColumnNames[0]),"_%s",lcaseMethod);
                     cmeStrConstrAppend(&(whitelistColumnValues[0]),"1");
+                    cmeStrConstrAppend(&(whitelistColumnNames[1]),"userResourceId");
+                    cmeStrConstrAppend(&(whitelistColumnValues[1]),"%s",urlElements[3]);
+                    cmeStrConstrAppend(&(whitelistColumnNames[2]),"orgResourceId");
+                    cmeStrConstrAppend(&(whitelistColumnValues[2]),"%s",urlElements[1]);
                     if (pDB)
                     {
                         cmeDBClose(pDB);
@@ -1183,6 +1188,37 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                     dbFilePath=NULL;
                     cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
                     result=cmeDBOpen(dbFilePath,&pDB);
+                    if (!result)
+                    {
+                        result=cmeGetUnprotectDBRegisters(pDB,"filterBlacklist",(const char **)whitelistColumnNames,
+                                                          (const char **)whitelistColumnValues,3,&resultRegisterCols,
+                                                          &numResultRegisterCols,&numBlacklistMatches,orgKey);
+                        numResultRegisters=numBlacklistMatches;
+                    }
+                    if (!result)
+                    {
+                        if (resultRegisterCols)
+                        {
+                            for (cont=0;cont<(numBlacklistMatches+1)*numResultRegisterCols;cont++)
+                            {
+                                cmeFree(resultRegisterCols[cont]);
+                            }
+                            cmeFree(resultRegisterCols);
+                            resultRegisterCols=NULL;
+                            numResultRegisterCols=0;
+                            numResultRegisters=0;
+                        }
+                        if (numBlacklistMatches)
+                        {
+                            cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN request matches filterBlacklist.</b><br>"
+                                               "METHOD: '%s' URL: '%s'."
+                                               " Latest IDD version: <code>%s</code>",method,url,
+                                               cmeInternalDBDefinitionsVersion);
+                            *responseCode=403;
+                            cmeWebServiceCheckPermissionsFree();
+                            return(6);
+                        }
+                    }
                     if (!result)
                     {
                         result=cmeGetUnprotectDBRegisters(pDB,"filterWhitelist",(const char **)whitelistColumnNames,
@@ -1203,10 +1239,6 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                         }
                         if (numWhitelistConfigured)
                         {
-                            cmeStrConstrAppend(&(whitelistColumnNames[1]),"userResourceId");
-                            cmeStrConstrAppend(&(whitelistColumnValues[1]),"%s",urlElements[3]);
-                            cmeStrConstrAppend(&(whitelistColumnNames[2]),"orgResourceId");
-                            cmeStrConstrAppend(&(whitelistColumnValues[2]),"%s",urlElements[1]);
                             result=cmeGetUnprotectDBRegisters(pDB,"filterWhitelist",(const char **)whitelistColumnNames,
                                                               (const char **)whitelistColumnValues,3,
                                                               &resultRegisterCols,&numResultRegisterCols,&numWhitelistMatches,orgKey);

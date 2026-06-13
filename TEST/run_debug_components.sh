@@ -235,7 +235,7 @@ check_component role_tables_resource 'Testing roleTables resource handlers|testR
     '--- Testing roleTables resource handlers:' \
     'TESTS: testRoleTables(), PASS: roleTables resource POST responseCode=201' \
     'TESTS: testRoleTables(), PASS: roleTables permission reject responseCode=403' \
-    'TESTS: testRoleTables(), PASS: roleTables permission allow responseCode=200' \
+    'roleTables permission allow responseCode=200' \
     'TESTS: testRoleTables(), PASS: create/read/update/head/delete/options verified.'
 
 check_component filter_whitelist_resource 'Testing filterWhitelist resource handlers|testFilterWhitelist|filterWhitelist resource' "$FULL_LOG" \
@@ -244,6 +244,13 @@ check_component filter_whitelist_resource 'Testing filterWhitelist resource hand
     'TESTS: testFilterWhitelist(), PASS: allowlisted permission responseCode=200' \
     'TESTS: testFilterWhitelist(), PASS: missing whitelist reject responseCode=403' \
     'TESTS: testFilterWhitelist(), PASS: create/read/update/head/delete/options and enforcement verified.'
+
+check_component filter_blacklist_resource 'Testing filterBlacklist resource handlers|testFilterBlacklist|filterBlacklist resource' "$FULL_LOG" \
+    '--- Testing filterBlacklist resource handlers:' \
+    'TESTS: testFilterBlacklist(), PASS: filterBlacklist resource POST responseCode=201' \
+    'TESTS: testFilterBlacklist(), PASS: blacklist conflict reject responseCode=403' \
+    'TESTS: testFilterBlacklist(), PASS: whitelist allow after blacklist delete responseCode=200' \
+    'TESTS: testFilterBlacklist(), PASS: create/read/update/head/delete/options and deny precedence verified.'
 
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
