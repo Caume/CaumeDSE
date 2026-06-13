@@ -231,6 +231,13 @@ check_component engine_admin_db 'cmeSetupEngineAdminDBs|ResourcesDB|RolesDB|Logs
     'RolesDB' \
     'LogsDB'
 
+check_component role_tables_resource 'Testing roleTables resource handlers|testRoleTables|roleTables resource' "$FULL_LOG" \
+    '--- Testing roleTables resource handlers:' \
+    'TESTS: testRoleTables(), PASS: roleTables resource POST responseCode=201' \
+    'TESTS: testRoleTables(), PASS: roleTables permission reject responseCode=403' \
+    'TESTS: testRoleTables(), PASS: roleTables permission allow responseCode=200' \
+    'TESTS: testRoleTables(), PASS: create/read/update/head/delete/options verified.'
+
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
 

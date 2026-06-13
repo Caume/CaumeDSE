@@ -375,6 +375,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
         do
         {
             numCols=-1; //Reset column counter for each SQL instruction.
+            sqlStatemnt=NULL;
             result = sqlite3_prepare_v2(db,pSqlInstruction,-1,&sqlStatemnt,&tail);
             if (result) // Error
             {
@@ -385,6 +386,10 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
     #endif
                 cmeSQLRowsFree();
                 return(2);
+            }
+            if (!sqlStatemnt)
+            {
+                break;
             }
             //2) Execute statement and get each result row:
             while (sqlite3_step(sqlStatemnt) == SQLITE_ROW)
@@ -464,6 +469,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
         do
         {
             numCols=-1; //Reset column counter for each SQL instruction.
+            sqlStatemnt=NULL;
             result = sqlite3_prepare_v2(db,pSqlInstruction,-1,&sqlStatemnt,&tail);
             if (result) // Error
             {
@@ -474,6 +480,10 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
     #endif
                 cmeSQLRowsFree();
                 return(2);
+            }
+            if (!sqlStatemnt)
+            {
+                break;
             }
             //2) Execute statement and get each result row:
             while (sqlite3_step(sqlStatemnt) == SQLITE_ROW)
@@ -2900,9 +2910,9 @@ int cmeEnsureResourcesDBDocumentLookups (sqlite3 *pDB)
         if (!hasColumn)
         {
             cmeStrConstrAppend(&query,"ALTER TABLE documents ADD COLUMN %s TEXT;",lookupColumns[cont]);
-            result=cmeSQLRows(pDB,query,NULL,NULL);
+            result=sqlite3_exec(pDB,query,NULL,NULL,NULL);
             cmeFree(query);
-            if (result)
+            if (result!=SQLITE_OK)
             {
                 cmeEnsureResourcesDBDocumentLookupsFree();
                 return(2);
@@ -2910,9 +2920,9 @@ int cmeEnsureResourcesDBDocumentLookups (sqlite3 *pDB)
         }
         cmeStrConstrAppend(&query,"CREATE INDEX IF NOT EXISTS %s ON documents(%s);",
                            lookupIndexes[cont],lookupColumns[cont]);
-        result=cmeSQLRows(pDB,query,NULL,NULL);
+        result=sqlite3_exec(pDB,query,NULL,NULL,NULL);
         cmeFree(query);
-        if (result)
+        if (result!=SQLITE_OK)
         {
             cmeEnsureResourcesDBDocumentLookupsFree();
             return(3);

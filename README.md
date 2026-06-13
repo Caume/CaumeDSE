@@ -326,7 +326,7 @@ https://{engine}
 |   `-- /{organization}
 |       |-- /users
 |       |   `-- /{user}
-|       |       |-- /roleTables [not implemented]
+|       |       |-- /roleTables
 |       |       |   `-- /{roleTable}
 |       |       |-- /filterWhitelist [not implemented]
 |       |       `-- /filterBlacklist [not implemented]
@@ -1249,8 +1249,10 @@ below).
             *_get *_post *_put *_delete *_head *_options
         TABLE NAMES:
             documents users roleTables parserScripts content
-            organizations storage documentTypes engineCommands
-            transactions
+            contentRows contentColumns dbNames dbTables tableRows
+            tableColumns organizations storage documentTypes
+            engineCommands transactions meta filterWhitelist
+            filterBlacklist
         RESPONSE HEADERS:
             Engine-results: <number of matching registers>
         RESPONSE BODY:

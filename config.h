@@ -4,7 +4,7 @@
 /* Enables (1) or disables (0) bypassing TLS authentication when it is
    required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)
    */
-#define BYPASS_TLS_IN_HTTP 1
+#define BYPASS_TLS_IN_HTTP 0
 
 /* Maximum number of concurrent HTTP/HTTPS worker threads */
 #define CDSE_MAX_THREADS 4
@@ -177,7 +177,7 @@
 #define PACKAGE_VERSION "1.0.7"
 
 /* Path for default data and system databases. */
-#define PATH_DATADIR "/opt/cdse"
+#define PATH_DATADIR "/tmp/cdse-verify/cdse"
 
 /* Enables (1) or disables (2) Use of old Password Based Key Derivation
    Function (PKCS5v1.5) */

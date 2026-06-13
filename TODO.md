@@ -66,12 +66,13 @@
   - Rename to `README.md` only after checking build, packaging, and distribution references that may still point to `README`.
   - Done: `README.md` is now the canonical Markdown README, `README` remains as a compatibility pointer, and distribution metadata includes the Markdown file.
 
-- [ ] #12 Finish and verify `/organizations/{organization}/users/{user}/roleTables` resources.
+- [x] #12 Finish and verify `/organizations/{organization}/users/{user}/roleTables` resources.
   - Review the existing `roleTables` URL routing and RolesDB table handling to identify whether the README marker is stale or the feature is only partially implemented.
   - Define the supported methods for the `roleTables` collection and `{roleTable}` resource, including exact-match filters, update parameters, and response formats.
   - Add or complete handlers for create, read, update, delete, head, and options behavior while preserving encrypted role-table storage and authorization checks.
   - Add DEBUG/component tests that create a role table, query it, update permissions, verify enforcement, and reject unauthorized access.
   - Update `README.md` to remove the `[not implemented]` marker once the behavior is verified.
+  - Done: direct DEBUG coverage now verifies collection GET/OPTIONS plus resource POST/GET/PUT/HEAD/DELETE/OPTIONS, permission rejection/allowance, encrypted RolesDB access through the existing handlers, and README roleTables documentation.
 
 - [ ] #13 Implement `/organizations/{organization}/users/{user}/filterWhitelist` resources.
   - Define the whitelist data model on top of the existing ResourcesDB/AdminDB `filterWhitelist` tables, including filter attributes, allowed methods, and ownership fields.

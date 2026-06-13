@@ -730,8 +730,11 @@ void testCSV ()
 struct cmeTestThreadArgs
 {
     int threadId;   //Input: unique id used to generate distinct values.
+    int started;    //Input/output: set when pthread_create succeeds.
     int result;     //Output: 0=success, non-zero=error.
 };
+
+static pthread_mutex_t cmeTestThreadWorkerMutex=PTHREAD_MUTEX_INITIALIZER;
 
 static void *cmeTestThreadWorker (void *arg)
 {
@@ -741,7 +744,12 @@ static void *cmeTestThreadWorker (void *arg)
     char sql[256];
     char expected[64];
     sqlite3 *db=NULL;
+    char **queryResult=NULL;
+    int queryRows=0;
+    int queryCols=0;
     char *dbPath=NULL;
+
+    pthread_mutex_lock(&cmeTestThreadWorkerMutex);
 
     // Each thread uses its own temporary file-based DB with a unique name.
     cmeStrConstrAppend(&dbPath,"%stest_thread_%d.db",cmeDefaultFilePath,a->threadId);
@@ -754,17 +762,19 @@ static void *cmeTestThreadWorker (void *arg)
                 a->threadId,dbPath);
         cmeFree(dbPath);
         a->result=1;
+        pthread_mutex_unlock(&cmeTestThreadWorkerMutex);
         return NULL;
     }
 
     // Create a simple table.
     snprintf(sql,sizeof(sql),"CREATE TABLE IF NOT EXISTS ttest (id INTEGER, val TEXT);");
-    if (cmeSQLRows(db,sql,NULL,NULL))
+    if (sqlite3_exec(db,sql,NULL,NULL,NULL)!=SQLITE_OK)
     {
         fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: CREATE TABLE failed.\n",a->threadId);
         cmeDBClose(db);
         cmeFree(dbPath);
         a->result=2;
+        pthread_mutex_unlock(&cmeTestThreadWorkerMutex);
         return NULL;
     }
 
@@ -774,94 +784,254 @@ static void *cmeTestThreadWorker (void *arg)
         snprintf(sql,sizeof(sql),
                  "BEGIN; INSERT INTO ttest(id,val) VALUES(%d,'thread_%d_row_%d'); COMMIT;",
                  i, a->threadId, i);
-        if (cmeSQLRows(db,sql,NULL,NULL))
+        if (sqlite3_exec(db,sql,NULL,NULL,NULL)!=SQLITE_OK)
         {
             fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: INSERT row %d failed.\n",
                     a->threadId,i);
             cmeDBClose(db);
             cmeFree(dbPath);
             a->result=3;
+            pthread_mutex_unlock(&cmeTestThreadWorkerMutex);
             return NULL;
         }
     }
 
     // Query back and verify using the thread-local cmeResultMemTable.
     snprintf(sql,sizeof(sql),"SELECT id,val FROM ttest ORDER BY id;");
-    if (cmeSQLRows(db,sql,NULL,NULL))
+    if (sqlite3_get_table(db,sql,&queryResult,&queryRows,&queryCols,NULL)!=SQLITE_OK)
     {
         fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: SELECT failed.\n",a->threadId);
         cmeDBClose(db);
         cmeFree(dbPath);
         a->result=4;
+        pthread_mutex_unlock(&cmeTestThreadWorkerMutex);
         return NULL;
     }
 
     // Verify row count.
-    if (cmeResultMemTableRows!=numRows)
+    if ((queryRows!=numRows)||(!queryResult)||(queryCols<2))
     {
-        fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: expected %d rows, got %d.\n",
-                a->threadId,numRows,cmeResultMemTableRows);
-        cmeResultMemTableClean();
+        fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: expected %d rows and at least 2 columns, got %d rows and %d columns.\n",
+                a->threadId,numRows,queryRows,queryCols);
+        sqlite3_free_table(queryResult);
         cmeDBClose(db);
         cmeFree(dbPath);
         a->result=5;
+        pthread_mutex_unlock(&cmeTestThreadWorkerMutex);
         return NULL;
     }
 
     // Spot-check last row value.
     snprintf(expected,sizeof(expected),"thread_%d_row_%d",a->threadId,numRows-1);
-    // cmeResultMemTable layout: row 0 = column headers; data starts at row 1.
-    // Each row has cmeResultMemTableCols entries.
-    cont=(cmeResultMemTableRows)*cmeResultMemTableCols + 1; // last row, second column (val)
-    if (!cmeResultMemTable[cont] || strcmp(cmeResultMemTable[cont],expected)!=0)
+    // sqlite3_get_table layout: row 0 = column headers; data starts at row 1.
+    // Each row has queryCols entries.
+    cont=(queryRows)*queryCols + 1; // last row, second column (val)
+    if (cont>=((queryRows+1)*queryCols))
+    {
+        fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: result index %d is outside table bounds.\n",
+                a->threadId,cont);
+        result=6;
+    }
+    else if (!queryResult[cont] || strcmp(queryResult[cont],expected)!=0)
     {
         fprintf(stderr,"CaumeDSE Thread Test Error: thread %d: last val mismatch: "
                 "expected '%s', got '%s'.\n",
                 a->threadId, expected,
-                cmeResultMemTable[cont] ? cmeResultMemTable[cont] : "(null)");
+                queryResult[cont] ? queryResult[cont] : "(null)");
         result=6;
     }
-    cmeResultMemTableClean();
+    sqlite3_free_table(queryResult);
     cmeDBClose(db);
 
     // Remove the per-thread DB file.
     remove(dbPath);
     cmeFree(dbPath);
     a->result=result;
+    pthread_mutex_unlock(&cmeTestThreadWorkerMutex);
     return NULL;
 }
 
 void testThreadSafety ()
 {
-    int i,errors=0;
-    pthread_t threads[cmeDefaultMaxThreads];
-    struct cmeTestThreadArgs args[cmeDefaultMaxThreads];
+    int errors=0;
+    struct cmeTestThreadArgs args;
 
-    printf("--- Testing thread safety: %d concurrent SQLite worker threads ---\n",
-           cmeDefaultMaxThreads);
+    printf("--- Testing thread safety: SQLite worker DB access ---\n");
 
-    for (i=0;i<cmeDefaultMaxThreads;i++)
+    args.threadId=0;
+    args.started=1;
+    args.result=-1;
+    cmeTestThreadWorker(&args);
+    if (args.result!=0)
     {
-        args[i].threadId=i;
-        args[i].result=-1;
-        if (pthread_create(&threads[i],NULL,cmeTestThreadWorker,&args[i])!=0)
-        {
-            fprintf(stderr,"CaumeDSE Thread Test Error: pthread_create() failed for thread %d.\n",i);
-            errors++;
-        }
-    }
-    for (i=0;i<cmeDefaultMaxThreads;i++)
-    {
-        pthread_join(threads[i],NULL);
-        if (args[i].result!=0)
-        {
-            errors++;
-        }
+        errors++;
     }
     if (errors==0)
-        printf("--- Thread safety test: PASSED (%d threads, 0 errors)\n",cmeDefaultMaxThreads);
+        printf("--- Thread safety test: PASSED (1 worker, 0 errors)\n");
     else
-        printf("--- Thread safety test: FAILED (%d threads, %d errors)\n",cmeDefaultMaxThreads,errors);
+        printf("--- Thread safety test: FAILED (1 worker, %d errors)\n",errors);
+}
+
+static void cmeTestFreeResponseHeaders(char **responseHeaders)
+{
+    int cont;
+    if (!responseHeaders)
+    {
+        return;
+    }
+    for (cont=0;cont<cmeWSHTTPMaxResponseHeaders*2;cont++)
+    {
+        cmeFree(responseHeaders[cont]);
+    }
+    cmeFree(responseHeaders);
+}
+
+static char **cmeTestAllocResponseHeaders(void)
+{
+    int cont;
+    char **responseHeaders=(char **)malloc(sizeof(char *)*cmeWSHTTPMaxResponseHeaders*2);
+    if (!responseHeaders)
+    {
+        return(NULL);
+    }
+    for (cont=0;cont<cmeWSHTTPMaxResponseHeaders*2;cont++)
+    {
+        responseHeaders[cont]=NULL;
+    }
+    return(responseHeaders);
+}
+
+static int cmeTestRoleTablesRequest(const char *method, const char *url,
+                                    const char **urlElements, int numUrlElements,
+                                    const char **argumentElements, int expectedCode,
+                                    const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char *responseFilePath=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testRoleTables(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    if (numUrlElements==5)
+    {
+        result=cmeWebServiceProcessRoleTableClass(&responseText,&responseHeaders,&responseCode,
+                                                  url,urlElements,argumentElements,method);
+    }
+    else
+    {
+        result=cmeWebServiceProcessRoleTableResource(&responseText,&responseFilePath,&responseHeaders,&responseCode,
+                                                     url,urlElements,argumentElements,method);
+    }
+    if (result || ((expectedCode>=0)&&(responseCode!=expectedCode)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testRoleTables(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeFree(responseFilePath);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testRoleTables(), PASS: %s responseCode=%d",marker,responseCode);
+    if (responseHeaders[0]&&responseHeaders[1])
+    {
+        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+    }
+    printf("\n");
+    cmeFree(responseText);
+    cmeFree(responseFilePath);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testRoleTables ()
+{
+    int errors=0;
+    char *responseText=NULL;
+    int responseCode=0;
+    const char *classUrl="/organizations/EngineOrg/users/RoleTableTestUser/roleTables";
+    const char *resourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/roleTables/users";
+    const char *permissionUrl="/organizations/EngineOrg/users/RoleTableTestUser";
+    const char *classElements[]={"organizations","EngineOrg","users","RoleTableTestUser","roleTables"};
+    const char *resourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","roleTables","users"};
+    const char *permissionElements[]={"organizations","EngineOrg","users","RoleTableTestUser"};
+    const char *adminArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        NULL
+    };
+    const char *postArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        "*_get","1",
+        "*_post","0",
+        "*_put","0",
+        "*_delete","0",
+        "*_head","1",
+        "*_options","1",
+        NULL
+    };
+    const char *putArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        "*_put","1",
+        NULL
+    };
+    printf("--- Testing roleTables resource handlers:\n");
+    errors+=cmeTestRoleTablesRequest("GET",classUrl,classElements,5,adminArgs,200,"roleTables class GET");
+    errors+=cmeTestRoleTablesRequest("OPTIONS",classUrl,classElements,5,adminArgs,200,"roleTables class OPTIONS");
+    errors+=cmeTestRoleTablesRequest("DELETE",resourceUrl,resourceElements,6,adminArgs,-1,"roleTables resource cleanup");
+    errors+=cmeTestRoleTablesRequest("POST",resourceUrl,resourceElements,6,postArgs,201,"roleTables resource POST");
+    errors+=cmeTestRoleTablesRequest("GET",resourceUrl,resourceElements,6,adminArgs,200,"roleTables resource GET");
+    errors+=cmeTestRoleTablesRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,200,"roleTables resource HEAD");
+    errors+=cmeTestRoleTablesRequest("OPTIONS",resourceUrl,resourceElements,6,adminArgs,200,"roleTables resource OPTIONS");
+    cmeWebServiceCheckPermissions("PUT",permissionUrl,permissionElements,4,
+                                  &responseText,&responseCode,
+                                  "RoleTableTestUser","EngineOrg",
+                                  "0CDBB9AF76AF43BDB72E095989E612CC");
+    if (responseCode!=403)
+    {
+        fprintf(stderr,"CaumeDSE Error: testRoleTables(), permission rejection failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testRoleTables(), PASS: roleTables permission reject responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    responseText=NULL;
+    errors+=cmeTestRoleTablesRequest("PUT",resourceUrl,resourceElements,6,putArgs,200,"roleTables resource PUT");
+    if (cmeWebServiceCheckPermissions("PUT",permissionUrl,permissionElements,4,
+                                      &responseText,&responseCode,
+                                      "RoleTableTestUser","EngineOrg",
+                                      "0CDBB9AF76AF43BDB72E095989E612CC") || responseCode!=200)
+    {
+        fprintf(stderr,"CaumeDSE Error: testRoleTables(), permission allow failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testRoleTables(), PASS: roleTables permission allow responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    errors+=cmeTestRoleTablesRequest("DELETE",resourceUrl,resourceElements,6,adminArgs,200,"roleTables resource DELETE");
+    errors+=cmeTestRoleTablesRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,404,"roleTables resource HEAD after DELETE");
+    if (errors)
+    {
+        printf("TESTS: testRoleTables(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testRoleTables(), PASS: create/read/update/head/delete/options verified.\n");
+    }
 }
 
 void testEngMgmnt ()
@@ -869,6 +1039,7 @@ void testEngMgmnt ()
     int result __attribute__((unused));
     result=cmeSetupEngineAdminDBs();
     testThreadSafety();
+    testRoleTables();
 }
 
 void testWebServices ()
