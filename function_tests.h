@@ -58,6 +58,7 @@ void testEngMgmnt ();
 void testRoleTables ();
 void testFilterWhitelist ();
 void testFilterBlacklist ();
+void testDocumentTypes ();
 void testThreadSafety ();
 void testWebServices ();
 

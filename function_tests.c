@@ -1333,6 +1333,76 @@ void testFilterBlacklist ()
     }
 }
 
+static int cmeTestDocumentTypesRequest(const char *method, const char *url,
+                                       const char **urlElements, int numUrlElements,
+                                       const char **argumentElements, int expectedCode,
+                                       const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char *responseFilePath=NULL;
+
+    if (numUrlElements==5)
+    {
+        result=cmeWebServiceProcessDocumentTypeClass(&responseText,&responseCode,
+                                                     url,urlElements,argumentElements,method);
+    }
+    else
+    {
+        result=cmeWebServiceProcessDocumentTypeResource(&responseText,&responseFilePath,&responseCode,
+                                                        url,urlElements,argumentElements,method);
+    }
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testDocumentTypes(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeFree(responseFilePath);
+        return(1);
+    }
+    printf("TESTS: testDocumentTypes(), PASS: %s responseCode=%d\n",marker,responseCode);
+    cmeFree(responseText);
+    cmeFree(responseFilePath);
+    return(0);
+}
+
+void testDocumentTypes ()
+{
+    int errors=0;
+    const char *classUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes";
+    const char *csvUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/file.csv";
+    const char *rawUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/file.raw";
+    const char *perlUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/script.perl";
+    const char *badUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/file.exe";
+    const char *classElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes"};
+    const char *csvElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","file.csv"};
+    const char *rawElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","file.raw"};
+    const char *perlElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","script.perl"};
+    const char *badElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","file.exe"};
+    const char *adminArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        NULL
+    };
+
+    printf("--- Testing documentTypes resource handlers:\n");
+    errors+=cmeTestDocumentTypesRequest("GET",classUrl,classElements,5,adminArgs,200,"documentTypes class GET");
+    errors+=cmeTestDocumentTypesRequest("OPTIONS",classUrl,classElements,5,adminArgs,200,"documentTypes class OPTIONS");
+    errors+=cmeTestDocumentTypesRequest("GET",csvUrl,csvElements,6,adminArgs,200,"documentTypes file.csv GET");
+    errors+=cmeTestDocumentTypesRequest("HEAD",rawUrl,rawElements,6,adminArgs,200,"documentTypes file.raw HEAD");
+    errors+=cmeTestDocumentTypesRequest("OPTIONS",perlUrl,perlElements,6,adminArgs,200,"documentTypes script.perl OPTIONS");
+    errors+=cmeTestDocumentTypesRequest("GET",badUrl,badElements,6,adminArgs,404,"documentTypes unsupported GET");
+    if (errors)
+    {
+        printf("TESTS: testDocumentTypes(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testDocumentTypes(), PASS: class listing and resource validation verified.\n");
+    }
+}
+
 void testEngMgmnt ()
 {
     int result __attribute__((unused));
@@ -1341,6 +1411,7 @@ void testEngMgmnt ()
     testRoleTables();
     testFilterWhitelist();
     testFilterBlacklist();
+    testDocumentTypes();
 }
 
 void testWebServices ()

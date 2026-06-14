@@ -252,6 +252,13 @@ check_component filter_blacklist_resource 'Testing filterBlacklist resource hand
     'TESTS: testFilterBlacklist(), PASS: whitelist allow after blacklist delete responseCode=200' \
     'TESTS: testFilterBlacklist(), PASS: create/read/update/head/delete/options and deny precedence verified.'
 
+check_component document_types_resource 'Testing documentTypes resource handlers|testDocumentTypes|documentTypes' "$FULL_LOG" \
+    '--- Testing documentTypes resource handlers:' \
+    'TESTS: testDocumentTypes(), PASS: documentTypes class GET responseCode=200' \
+    'TESTS: testDocumentTypes(), PASS: documentTypes file.csv GET responseCode=200' \
+    'TESTS: testDocumentTypes(), PASS: documentTypes unsupported GET responseCode=404' \
+    'TESTS: testDocumentTypes(), PASS: class listing and resource validation verified.'
+
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
 

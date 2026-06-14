@@ -92,12 +92,13 @@
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
   - Done: added `filterBlacklist` collection/item routing through the shared encrypted filter-list handler, deny-before-whitelist enforcement in permission checks, DEBUG component coverage for malformed entries and whitelist/blacklist conflicts, and README API documentation.
 
-- [ ] #15 Finish and verify `/organizations/{organization}/storage/{storage}/documentTypes` resources.
+- [x] #15 Finish and verify `/organizations/{organization}/storage/{storage}/documentTypes` resources.
   - Review existing `documentTypes` routing and ResourcesDB table definitions to determine whether the README marker is stale or the feature is partial.
   - Define supported document type names, allowed methods, options responses, and validation rules for `{documentType}`.
   - Complete handlers so document type discovery and validation behave consistently for `file.raw`, `file.csv`, and `script.perl`.
   - Add tests for listing supported types, requesting a valid type, rejecting unsupported types, and preserving existing document upload/query behavior.
   - Update `README.md` to remove the `[not implemented]` marker once verified.
+  - Done: verified documentTypes routing, documented class/resource behavior, added GET/HEAD/OPTIONS support for documentType resources, and added DEBUG/component coverage for supported and unsupported type validation.
 
 - [ ] #16 Finish and verify `/documents/{document}/parserScripts` resources.
   - Review existing `parserScripts` routing and script execution paths to determine whether the README marker is stale or the feature is partial.

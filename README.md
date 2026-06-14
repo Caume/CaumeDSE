@@ -334,7 +334,7 @@ https://{engine}
 |       |           `-- /{filterUser}
 |       `-- /storage
 |           `-- /{storage}
-|               |-- /documentTypes [not implemented]
+|               |-- /documentTypes
 |               |   `-- /{documentType}
 |               |       `-- /documents
 |               |           `-- /{document}
@@ -1461,7 +1461,7 @@ below).
 
 ### `{documentType}`
 
-    Supported HTTP methods: OPTIONS
+    Supported HTTP methods: GET HEAD OPTIONS
 
     Supported ATTRIBUTE PARAMETERS:
         MATCH:
@@ -1475,7 +1475,15 @@ below).
         RESPONSE HEADERS:
             <NONE>
         RESPONSE BODY:
-            <OPTIONS>
+            <Document type support status for GET and OPTIONS; HEAD
+            returns status only>
+
+    The documentTypes collection lists the supported document type
+    identifiers. Individual documentType resources validate whether the
+    requested type is supported before document collection and document
+    resource handlers run. Supported types are file.csv, file.raw,
+    file.txt, file.json, file.xml, file.html, file.pdf, file.png,
+    file.jpg, file.gif, file.zip, file.bin and script.perl.
 
 ### `documents`
 

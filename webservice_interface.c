@@ -6755,7 +6755,7 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
        columnNames[cont]=NULL;
     }
     cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName); //Set DB full path.
-    if(!strcmp(method,"OPTIONS")) //Method = OPTIONS is ok, process:
+    if((!strcmp(method,"GET"))||(!strcmp(method,"HEAD"))||(!strcmp(method,"OPTIONS")))
     {
         cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We ignore the argument "userResourceId" and use the resource defined within the URL!
         cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId"); //We will match against this value for the search.
@@ -6775,10 +6775,13 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
         {
             if (cmeWebServiceIsSupportedDocumentType(urlElements[5])) //OK - Supported type.
             {
-                cmeStrConstrAppend(responseText,"<b>200 OK - document type %s is supported. Options for document type resources:</b><br>"
-                   "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
+                if (strcmp(method,"HEAD"))
+                {
+                    cmeStrConstrAppend(responseText,"<b>200 OK - document type %s is supported.</b><br>"
+                       "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
+                }
 #ifdef DEBUG
-                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessDocumentTypeResource(), OPTIONS successful for documentType resource."
+                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessDocumentTypeResource(), successful for documentType resource."
                         " Method: '%s', URL: '%s'!\n",method,url);
 #endif
                 cmeWebServiceProcessDocumentTypeResourceFree();
@@ -6787,10 +6790,13 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
             }
             else //Error - Unsupported type
             {
-                cmeStrConstrAppend(responseText,"<b>404 ERROR - Unsupported document type %s! Options for document type resources:</b><br>"
-                   "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
+                if (strcmp(method,"HEAD"))
+                {
+                    cmeStrConstrAppend(responseText,"<b>404 ERROR - Unsupported document type %s!</b><br>"
+                       "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
+                }
 #ifdef DEBUG
-                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessDocumentTypeResource(), OPTIONS successful for documentType resource."
+                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessDocumentTypeResource(), unsupported documentType resource."
                         " Method: '%s', URL: '%s'!\n",method,url);
 #endif
                 cmeWebServiceProcessDocumentTypeResourceFree();
