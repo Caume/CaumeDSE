@@ -158,8 +158,9 @@
   - Source: `filehandling.c:960`, `filehandling.c:2053`.
   - Done: factored duplicated CSV and memory-table secure DB `data` row insertion loops into `cmeInsertSecureDBDataRows()`, preserving caller-specific source column offsets, row-order bases, and existing public error codes.
 
-- [ ] #25 Implement MAC and protected MAC calculation during secure DB import.
-  - Source: `filehandling.c:350`.
+- [x] #25 Implement MAC and protected MAC calculation during secure DB import.
+  - Source: `filehandling.c:350`, `db.c:809`.
+  - Done: secure DB protection now uses shared `cmeMemSecureDBStoreValueHMAC()` logic to compute and store plaintext and protected value HMACs for `MAC`, `MACProtected`, `sign`, and `signProtected` attributes, preserving the existing import and verification behavior.
 
 - [ ] #26 Verify locale settings for `printf`, including UTF-8 behavior.
   - Source: `main.c:66`.

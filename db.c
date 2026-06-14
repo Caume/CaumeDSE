@@ -806,6 +806,109 @@ int cmeMemTableOrder(char **sqlTable, const int numRows, const int numCols, cons
     return (0);
 }
 
+static int cmeMemSecureDBStoreValueHMAC(sqlite3 *memSecureDB, char **memData,
+                                        int numRowsData, char **currentDataSalt,
+                                        const char *orgKey, const char *targetColumn,
+                                        const char *attributeName, int computeError,
+                                        int updateError)
+{
+    int cont,result,written;
+    char *currentDataId=NULL;
+    char *currentDataMAC=NULL;
+    char *sqlQuery=NULL;
+    sqlite3_stmt *updateDataStmt=NULL;
+    #define cmeMemSecureDBStoreValueHMACFree() \
+        do { \
+            if (updateDataStmt) { sqlite3_finalize(updateDataStmt); updateDataStmt=NULL; } \
+            cmeFree(currentDataId); \
+            cmeFree(currentDataMAC); \
+            cmeFree(sqlQuery); \
+        } while (0)
+
+    cmeStrConstrAppend(&sqlQuery,"UPDATE data SET %s=? WHERE id=?;",targetColumn);
+    result=sqlite3_prepare_v2(memSecureDB,sqlQuery,-1,&updateDataStmt,NULL);
+    if (result!=SQLITE_OK)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_prepare_v2() Error"
+                " can't prepare %s update: %s !\n",attributeName,sqlite3_errmsg(memSecureDB));
+#endif
+        cmeMemSecureDBStoreValueHMACFree();
+        return(computeError);
+    }
+    for(cont=1;cont<=numRowsData;cont++)
+    {
+        cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont+cmeIDDanydb_id]));
+        result=cmeHMACByteString(
+            (const unsigned char*)memData[cmeIDDColumnFileDataNumCols*cont+cmeIDDColumnFileData_value],
+            (unsigned char**)&currentDataMAC,
+            strlen(memData[cmeIDDColumnFileDataNumCols*cont+cmeIDDColumnFileData_value]),
+            &written,cmeDefaultMACAlg,&(currentDataSalt[cont-1]),orgKey);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeHMACByteString() Error, can't "
+                    "compute %s for 'value' in data row id %s with algorithm %s!\n",
+                    attributeName,currentDataId,cmeDefaultMACAlg);
+#endif
+            cmeMemSecureDBStoreValueHMACFree();
+            return(computeError);
+        }
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), computed %s"
+                " for 'value' in row id %s. Result: %s.\n",attributeName,currentDataId,currentDataMAC);
+#endif
+        if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
+                    "begin %s update transaction for data row id %s!\n",attributeName,currentDataId);
+#endif
+            cmeMemSecureDBStoreValueHMACFree();
+            return(updateError);
+        }
+        result=sqlite3_bind_text(updateDataStmt,1,currentDataMAC,-1,SQLITE_TRANSIENT);
+        if (result==SQLITE_OK)
+        {
+            result=sqlite3_bind_int(updateDataStmt,2,atoi(currentDataId));
+        }
+        cmeFree(currentDataMAC);
+        if (result==SQLITE_OK)
+        {
+            result=sqlite3_step(updateDataStmt);
+        }
+        if (result!=SQLITE_DONE)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_step() Error, can't "
+                    "store %s for data row id %s: %s!\n",attributeName,currentDataId,sqlite3_errmsg(memSecureDB));
+#endif
+            cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
+            cmeMemSecureDBStoreValueHMACFree();
+            return(updateError);
+        }
+        sqlite3_reset(updateDataStmt);
+        sqlite3_clear_bindings(updateDataStmt);
+        if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
+                    "commit %s update transaction for data row id %s!\n",attributeName,currentDataId);
+#endif
+            cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
+            cmeMemSecureDBStoreValueHMACFree();
+            return(updateError);
+        }
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), stored %s for row id %s in table data.\n",
+                attributeName,currentDataId);
+#endif
+        cmeFree(currentDataId);
+    }
+    cmeMemSecureDBStoreValueHMACFree();
+    return(0);
+}
+
 int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
 {
     int cont,result,written;
@@ -836,16 +939,12 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     sqlite3_stmt *updateDataSaltStmt=NULL;
     sqlite3_stmt *updateDataFullStmt=NULL;
     sqlite3_stmt *updateDataProtectStmt=NULL;
-    sqlite3_stmt *updateDataMACStmt=NULL;
-    sqlite3_stmt *updateDataMACProtectedStmt=NULL;
     sqlite3_stmt *updateMetaProtectStmt=NULL;
     #define cmeMemSecureDBProtectFree() \
         do { \
             if (updateDataSaltStmt) { sqlite3_finalize(updateDataSaltStmt); updateDataSaltStmt=NULL; } \
             if (updateDataFullStmt) { sqlite3_finalize(updateDataFullStmt); updateDataFullStmt=NULL; } \
             if (updateDataProtectStmt) { sqlite3_finalize(updateDataProtectStmt); updateDataProtectStmt=NULL; } \
-            if (updateDataMACStmt) { sqlite3_finalize(updateDataMACStmt); updateDataMACStmt=NULL; } \
-            if (updateDataMACProtectedStmt) { sqlite3_finalize(updateDataMACProtectedStmt); updateDataMACProtectedStmt=NULL; } \
             if (updateMetaProtectStmt) { sqlite3_finalize(updateMetaProtectStmt); updateMetaProtectStmt=NULL; } \
             cmeFree(currentEncB64Data); \
             cmeFree(currentMetaAttribute); \
@@ -1278,87 +1377,14 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         {
             //Compute a keyed signature of the plaintext value and store it in sign for each data row.
             //memData snapshot always contains the original plaintext values taken before any protection.
-            result=sqlite3_prepare_v2(memSecureDB,"UPDATE data SET sign=? WHERE id=?;",-1,&updateDataMACStmt,NULL);
-            if (result!=SQLITE_OK)
+            result=cmeMemSecureDBStoreValueHMAC(memSecureDB,memData,numRowsData,currentDataSalt,
+                                                orgKey,cmeIDDColumnFileData_sign_name,
+                                                cmeIDDColumnFileMeta_attribute_3,26,27);
+            if (result)
             {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_prepare_v2() Error"
-                        " can't prepare sign update: %s !\n",sqlite3_errmsg(memSecureDB));
-#endif
                 cmeMemSecureDBProtectFree();
-                return(26);
+                return(result);
             }
-            for(cont2=1;cont2<=numRowsData;cont2++)
-            {
-                cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
-                result=cmeHMACByteString(
-                    (const unsigned char*)memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
-                    (unsigned char**)&currentEncB64Data,
-                    strlen(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
-                    &written,cmeDefaultMACAlg,&(currentDataSalt[cont2-1]),orgKey);
-                if (result) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeHMACByteString() Error, can't "
-                            "compute sign for 'value' in data row id %s with algorithm %s!\n",
-                            currentDataId,cmeDefaultMACAlg);
-#endif
-                    cmeMemSecureDBProtectFree();
-                    return(26);
-                }
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), computed sign"
-                        " for 'value' in row id %s. Result: %s.\n",currentDataId,currentEncB64Data);
-#endif
-                if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
-                            "begin sign update transaction for data row id %s!\n",currentDataId);
-#endif
-                    cmeMemSecureDBProtectFree();
-                    return(27);
-                }
-                result=sqlite3_bind_text(updateDataMACStmt,1,currentEncB64Data,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK)
-                {
-                    result=sqlite3_bind_int(updateDataMACStmt,2,atoi(currentDataId));
-                }
-                cmeFree(currentEncB64Data);
-                if (result==SQLITE_OK)
-                {
-                    result=sqlite3_step(updateDataMACStmt);
-                }
-                if (result!=SQLITE_DONE) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_step() Error, can't "
-                            "store sign for data row id %s: %s!\n",currentDataId,sqlite3_errmsg(memSecureDB));
-#endif
-                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-                    cmeMemSecureDBProtectFree();
-                    return(27);
-                }
-                sqlite3_reset(updateDataMACStmt);
-                sqlite3_clear_bindings(updateDataMACStmt);
-                if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
-                            "commit sign update transaction for data row id %s!\n",currentDataId);
-#endif
-                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-                    cmeMemSecureDBProtectFree();
-                    return(27);
-                }
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), stored sign for row id %s in table data.\n",
-                        currentDataId);
-#endif
-                cmeFree(currentDataId);
-            }
-            sqlite3_finalize(updateDataMACStmt);
-            updateDataMACStmt=NULL;
         }
         // Check if protection attribute = "signProtected".
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
@@ -1376,87 +1402,14 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                 cmeMemSecureDBProtectFree();
                 return(28);
             }
-            result=sqlite3_prepare_v2(memSecureDB,"UPDATE data SET signProtected=? WHERE id=?;",-1,&updateDataMACProtectedStmt,NULL);
-            if (result!=SQLITE_OK)
+            result=cmeMemSecureDBStoreValueHMAC(memSecureDB,memDataEncrypted,numRowsData,currentDataSalt,
+                                                orgKey,cmeIDDColumnFileData_signProtected_name,
+                                                cmeIDDColumnFileMeta_attribute_4,29,30);
+            if (result)
             {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_prepare_v2() Error"
-                        " can't prepare signProtected update: %s !\n",sqlite3_errmsg(memSecureDB));
-#endif
                 cmeMemSecureDBProtectFree();
-                return(29);
+                return(result);
             }
-            for(cont2=1;cont2<=numRowsData;cont2++)
-            {
-                cmeStrConstrAppend(&currentDataId,"%d",atoi(memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
-                result=cmeHMACByteString(
-                    (const unsigned char*)memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
-                    (unsigned char**)&currentEncB64Data,
-                    strlen(memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
-                    &written,cmeDefaultMACAlg,&(currentDataSalt[cont2-1]),orgKey);
-                if (result) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeHMACByteString() Error, can't "
-                            "compute signProtected for 'value' in data row id %s with algorithm %s!\n",
-                            currentDataId,cmeDefaultMACAlg);
-#endif
-                    cmeMemSecureDBProtectFree();
-                    return(29);
-                }
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), computed signProtected"
-                        " for 'value' in row id %s. Result: %s.\n",currentDataId,currentEncB64Data);
-#endif
-                if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
-                            "begin signProtected update transaction for data row id %s!\n",currentDataId);
-#endif
-                    cmeMemSecureDBProtectFree();
-                    return(30);
-                }
-                result=sqlite3_bind_text(updateDataMACProtectedStmt,1,currentEncB64Data,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK)
-                {
-                    result=sqlite3_bind_int(updateDataMACProtectedStmt,2,atoi(currentDataId));
-                }
-                cmeFree(currentEncB64Data);
-                if (result==SQLITE_OK)
-                {
-                    result=sqlite3_step(updateDataMACProtectedStmt);
-                }
-                if (result!=SQLITE_DONE) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_step() Error, can't "
-                            "store signProtected for data row id %s: %s!\n",currentDataId,sqlite3_errmsg(memSecureDB));
-#endif
-                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-                    cmeMemSecureDBProtectFree();
-                    return(30);
-                }
-                sqlite3_reset(updateDataMACProtectedStmt);
-                sqlite3_clear_bindings(updateDataMACProtectedStmt);
-                if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
-                            "commit signProtected update transaction for data row id %s!\n",currentDataId);
-#endif
-                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-                    cmeMemSecureDBProtectFree();
-                    return(30);
-                }
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), stored signProtected for row id %s in table data.\n",
-                        currentDataId);
-#endif
-                cmeFree(currentDataId);
-            }
-            sqlite3_finalize(updateDataMACProtectedStmt);
-            updateDataMACProtectedStmt=NULL;
             cmeMemTableFinal(memDataEncrypted);
             memDataEncrypted=NULL;
         }
@@ -1466,87 +1419,14 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         {
             //Compute HMAC of plaintext value and store in MAC column for each data row.
             //memData snapshot always contains the original plaintext values taken before any protection.
-            result=sqlite3_prepare_v2(memSecureDB,"UPDATE data SET MAC=? WHERE id=?;",-1,&updateDataMACStmt,NULL);
-            if (result!=SQLITE_OK)
+            result=cmeMemSecureDBStoreValueHMAC(memSecureDB,memData,numRowsData,currentDataSalt,
+                                                orgKey,cmeIDDColumnFileData_MAC_name,
+                                                cmeIDDColumnFileMeta_attribute_5,21,22);
+            if (result)
             {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_prepare_v2() Error"
-                        " can't prepare MAC update: %s !\n",sqlite3_errmsg(memSecureDB));
-#endif
                 cmeMemSecureDBProtectFree();
-                return(21);
+                return(result);
             }
-            for(cont2=1;cont2<=numRowsData;cont2++)
-            {
-                cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
-                result=cmeHMACByteString(
-                    (const unsigned char*)memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
-                    (unsigned char**)&currentEncB64Data,
-                    strlen(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
-                    &written,cmeDefaultMACAlg,&(currentDataSalt[cont2-1]),orgKey);
-                if (result) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeHMACByteString() Error, can't "
-                            "compute MAC for 'value' in data row id %s with algorithm %s!\n",
-                            currentDataId,cmeDefaultMACAlg);
-#endif
-                    cmeMemSecureDBProtectFree();
-                    return(21);
-                }
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), computed MAC"
-                        " for 'value' in row id %s. Result: %s.\n",currentDataId,currentEncB64Data);
-#endif
-                if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
-                            "begin MAC update transaction for data row id %s!\n",currentDataId);
-#endif
-                    cmeMemSecureDBProtectFree();
-                    return(22);
-                }
-                result=sqlite3_bind_text(updateDataMACStmt,1,currentEncB64Data,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK)
-                {
-                    result=sqlite3_bind_int(updateDataMACStmt,2,atoi(currentDataId));
-                }
-                cmeFree(currentEncB64Data);
-                if (result==SQLITE_OK)
-                {
-                    result=sqlite3_step(updateDataMACStmt);
-                }
-                if (result!=SQLITE_DONE) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_step() Error, can't "
-                            "store MAC for data row id %s: %s!\n",currentDataId,sqlite3_errmsg(memSecureDB));
-#endif
-                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-                    cmeMemSecureDBProtectFree();
-                    return(22);
-                }
-                sqlite3_reset(updateDataMACStmt);
-                sqlite3_clear_bindings(updateDataMACStmt);
-                if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
-                            "commit MAC update transaction for data row id %s!\n",currentDataId);
-#endif
-                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-                    cmeMemSecureDBProtectFree();
-                    return(22);
-                }
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), stored MAC for row id %s in table data.\n",
-                        currentDataId);
-#endif
-                cmeFree(currentDataId);
-            }
-            sqlite3_finalize(updateDataMACStmt);
-            updateDataMACStmt=NULL;
         }
         // Check if protection attribute = "MACProtected".
         else if (!strncmp(memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+cmeIDDColumnFileMeta_attribute],
@@ -1564,87 +1444,14 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
                 cmeMemSecureDBProtectFree();
                 return(23);
             }
-            result=sqlite3_prepare_v2(memSecureDB,"UPDATE data SET MACProtected=? WHERE id=?;",-1,&updateDataMACProtectedStmt,NULL);
-            if (result!=SQLITE_OK)
+            result=cmeMemSecureDBStoreValueHMAC(memSecureDB,memDataEncrypted,numRowsData,currentDataSalt,
+                                                orgKey,cmeIDDColumnFileData_MACProtected_name,
+                                                cmeIDDColumnFileMeta_attribute_6,24,25);
+            if (result)
             {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_prepare_v2() Error"
-                        " can't prepare MACProtected update: %s !\n",sqlite3_errmsg(memSecureDB));
-#endif
                 cmeMemSecureDBProtectFree();
-                return(24);
+                return(result);
             }
-            for(cont2=1;cont2<=numRowsData;cont2++)
-            {
-                cmeStrConstrAppend(&currentDataId,"%d",atoi(memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id]));
-                result=cmeHMACByteString(
-                    (const unsigned char*)memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value],
-                    (unsigned char**)&currentEncB64Data,
-                    strlen(memDataEncrypted[cmeIDDColumnFileDataNumCols*cont2+cmeIDDColumnFileData_value]),
-                    &written,cmeDefaultMACAlg,&(currentDataSalt[cont2-1]),orgKey);
-                if (result) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeHMACByteString() Error, can't "
-                            "compute MACProtected for 'value' in data row id %s with algorithm %s!\n",
-                            currentDataId,cmeDefaultMACAlg);
-#endif
-                    cmeMemSecureDBProtectFree();
-                    return(24);
-                }
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), computed MACProtected"
-                        " for 'value' in row id %s. Result: %s.\n",currentDataId,currentEncB64Data);
-#endif
-                if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
-                            "begin MACProtected update transaction for data row id %s!\n",currentDataId);
-#endif
-                    cmeMemSecureDBProtectFree();
-                    return(25);
-                }
-                result=sqlite3_bind_text(updateDataMACProtectedStmt,1,currentEncB64Data,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK)
-                {
-                    result=sqlite3_bind_int(updateDataMACProtectedStmt,2,atoi(currentDataId));
-                }
-                cmeFree(currentEncB64Data);
-                if (result==SQLITE_OK)
-                {
-                    result=sqlite3_step(updateDataMACProtectedStmt);
-                }
-                if (result!=SQLITE_DONE) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), sqlite3_step() Error, can't "
-                            "store MACProtected for data row id %s: %s!\n",currentDataId,sqlite3_errmsg(memSecureDB));
-#endif
-                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-                    cmeMemSecureDBProtectFree();
-                    return(25);
-                }
-                sqlite3_reset(updateDataMACProtectedStmt);
-                sqlite3_clear_bindings(updateDataMACProtectedStmt);
-                if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error, can't "
-                            "commit MACProtected update transaction for data row id %s!\n",currentDataId);
-#endif
-                    cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-                    cmeMemSecureDBProtectFree();
-                    return(25);
-                }
-#ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), stored MACProtected for row id %s in table data.\n",
-                        currentDataId);
-#endif
-                cmeFree(currentDataId);
-            }
-            sqlite3_finalize(updateDataMACProtectedStmt);
-            updateDataMACProtectedStmt=NULL;
             cmeMemTableFinal(memDataEncrypted);
             memDataEncrypted=NULL;
         }

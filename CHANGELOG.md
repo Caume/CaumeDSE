@@ -4,6 +4,12 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `db.c`: Consolidate secure DB `MAC`, `MACProtected`, `sign`,
+  and `signProtected` HMAC calculation and storage into a shared helper
+  while preserving existing import-time integrity behavior and error codes.
+
+- `TODO.md`: Mark TODO item #25 complete.
+
 - `filehandling.c`: Factor duplicated CSV and memory-table secure DB
   `data` table row insertion logic into a shared helper while
   preserving row-order and column-offset behavior.
