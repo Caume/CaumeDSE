@@ -162,6 +162,11 @@ int cmeWebServiceProcessContentColumnClass (char **responseText, char ***respons
 int cmeWebServiceProcessContentColumnResource (char **responseText, char ***responseHeaders, int *responseCode,
                                                const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                                const char *storagePath);
+//Function to process direct secure DB browsing requests.
+int cmeWebServiceProcessDBBrowseResource (char **responseText, char ***responseHeaders, int *responseCode,
+                                          const char *url, const char **urlElements, int numUrlElements,
+                                          const char **argumentElements, const char *method,
+                                          const char *storagePath);
 //IN-CALLBACK function to iterate message chunks of POST requests.
 int cmeWebServicePOSTIteration (void *coninfo_cls, enum MHD_ValueKind kind, const char *key,
                                        const char *filename, const char *content_type,

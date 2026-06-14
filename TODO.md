@@ -127,13 +127,14 @@
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
   - Done: enabled contentColumns collection OPTIONS routing, corrected column HEAD and DELETE semantics, verified column get/create/delete, duplicate rejection, empty-document creation, last-column deletion, missing documents, non-CSV rejection, and missing-key rejection, and added DEBUG/component coverage.
 
-- [ ] #19 Implement direct encrypted DB browsing resources under `/dbNames`.
+- [x] #19 Implement direct encrypted DB browsing resources under `/dbNames`.
   - Define the scope and security model for `/dbNames`, `{dbName}`, `/dbTables`, `{dbTable}`, `/tableRows`, `{tableRow}`, `/tableColumns`, and `{tableColumn}`.
   - Decide whether this hierarchy exposes only internal/admin databases, user data databases, or a restricted diagnostics view, and document the decision.
   - Add route parsing and handlers that never expose decrypted protected values unless the caller is authorized and supplies the required organization key.
   - Use prepared statements and strict identifier validation for database/table/row/column selectors.
   - Add tests for listing databases, listing tables, reading rows/columns, rejecting invalid identifiers, authorization failures, and SQL injection attempts.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: implemented a read-only diagnostics scope for registered `file.csv` secure document databases under organization storage, with table names restricted to `data` and `meta`, positive-integer row selectors, in-memory column selection, normal secure-DB verification before reads, DEBUG/component coverage, and README documentation.
 
 ## Source Code TODO/FIXME Markers
 

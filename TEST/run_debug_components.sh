@@ -282,6 +282,13 @@ check_component content_columns_resource 'Testing contentColumns resource handle
     'TESTS: testContentColumns(), PASS: contentColumns last column DELETE responseCode=200' \
     'TESTS: testContentColumns(), PASS: column get/create/delete/options and edge cases verified.'
 
+check_component db_browsing_resource 'Testing dbNames secure DB browsing resource handlers|testDBBrowsing|dbNames|dbTables|tableRows|tableColumns' "$FULL_LOG" \
+    '--- Testing dbNames secure DB browsing resource handlers:' \
+    'TESTS: testDBBrowsing(), PASS: dbNames class GET responseCode=200' \
+    'TESTS: testDBBrowsing(), PASS: dbTables class GET responseCode=200' \
+    'TESTS: testDBBrowsing(), PASS: tableRow resource GET responseCode=200' \
+    'TESTS: testDBBrowsing(), PASS: dbNames/dbTables/tableRows/tableColumns browsing verified.'
+
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
 

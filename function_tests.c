@@ -46,6 +46,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 void testContentRows(void);
 void testContentColumns(void);
+void testDBBrowsing(void);
 
 static int cmeDebugTestsNonInteractiveEnabled(void)
 {
@@ -719,6 +720,7 @@ void testCSV ()
     cmeDBClose(pResourcesDB);
     testContentRows();
     testContentColumns();
+    testDBBrowsing();
     cmeFree(fName);
     cmeFree(fName2);
     cmeFree(resourcesDBPath);
@@ -1679,6 +1681,104 @@ void testContentColumns ()
     else
     {
         printf("TESTS: testContentColumns(), PASS: column get/create/delete/options and edge cases verified.\n");
+    }
+}
+
+static int cmeTestDBBrowsingRequest(const char *method, const char *url,
+                                    const char **urlElements, int numUrlElements,
+                                    const char **argumentElements, int expectedCode,
+                                    const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testDBBrowsing(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    result=cmeWebServiceProcessDBBrowseResource(&responseText,&responseHeaders,&responseCode,
+                                                url,urlElements,numUrlElements,argumentElements,
+                                                method,cmeDefaultFilePath);
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testDBBrowsing(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testDBBrowsing(), PASS: %s responseCode=%d",marker,responseCode);
+    if (responseHeaders[0]&&responseHeaders[1])
+    {
+        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+    }
+    printf("\n");
+    cmeFree(responseText);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testDBBrowsing ()
+{
+    int errors=0;
+    int numCols=2;
+    int numRows=1;
+    int result __attribute__((unused));
+    const char *browseTable[]={"id","name","1","Ada"};
+    const char *attributes[]={"shuffle","protect"};
+    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    const char *dbNamesUrl="/organizations/CaumeDSE/storage/storage1/dbNames";
+    const char *dbTablesUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables";
+    const char *badTableUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables/sqlite_master";
+    const char *tableRowUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables/data/tableRows/1";
+    const char *badRowUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables/data/tableRows/0";
+    const char *tableColumnUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables/data/tableColumns/name";
+    const char *dbNamesElements[]={"organizations","CaumeDSE","storage","storage1","dbNames"};
+    const char *dbTablesElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables"};
+    const char *badTableElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables","sqlite_master"};
+    const char *tableRowElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables","data","tableRows","1"};
+    const char *badRowElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables","data","tableRows","0"};
+    const char *tableColumnElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables","data","tableColumns","name"};
+    const char *authArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        "orgKey","password1",
+        NULL
+    };
+    const char *missingKeyArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        NULL
+    };
+
+    printf("--- Testing dbNames secure DB browsing resource handlers:\n");
+    result=cmeMemTableToSecureDB(browseTable,numCols,numRows,"User123","CaumeDSE",
+                                 "password1",attributes,attributesData,2,1,0,
+                                 "DB browsing test.","file.csv","BrowseTest","storage1",
+                                 cmeDefaultFilePath);
+    if (result)
+    {
+        printf("TESTS: testDBBrowsing(), FAIL: setup failed result=%d.\n",result);
+        return;
+    }
+    errors+=cmeTestDBBrowsingRequest("OPTIONS",dbNamesUrl,dbNamesElements,5,authArgs,200,"dbNames class OPTIONS");
+    errors+=cmeTestDBBrowsingRequest("GET",dbNamesUrl,dbNamesElements,5,authArgs,200,"dbNames class GET");
+    errors+=cmeTestDBBrowsingRequest("GET",dbTablesUrl,dbTablesElements,7,authArgs,200,"dbTables class GET");
+    errors+=cmeTestDBBrowsingRequest("GET",badTableUrl,badTableElements,8,authArgs,404,"dbTable invalid selector rejected");
+    errors+=cmeTestDBBrowsingRequest("GET",tableRowUrl,tableRowElements,10,authArgs,200,"tableRow resource GET");
+    errors+=cmeTestDBBrowsingRequest("GET",badRowUrl,badRowElements,10,authArgs,403,"tableRow invalid selector rejected");
+    errors+=cmeTestDBBrowsingRequest("GET",tableColumnUrl,tableColumnElements,10,authArgs,200,"tableColumn resource GET");
+    errors+=cmeTestDBBrowsingRequest("GET",dbNamesUrl,dbNamesElements,5,missingKeyArgs,409,"dbNames missing key rejected");
+    errors+=cmeTestDBBrowsingRequest("POST",dbNamesUrl,dbNamesElements,5,authArgs,405,"dbNames POST not allowed");
+    if (errors)
+    {
+        printf("TESTS: testDBBrowsing(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testDBBrowsing(), PASS: dbNames/dbTables/tableRows/tableColumns browsing verified.\n");
     }
 }
 

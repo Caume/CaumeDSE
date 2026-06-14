@@ -345,7 +345,7 @@ https://{engine}
 |               |               |   `-- /{contentRow}
 |               |               `-- /contentColumns
 |               |                   `-- /{contentColumn}
-|               `-- /dbNames [not implemented]
+|               `-- /dbNames
 |                   `-- /{dbName}
 |                       `-- /dbTables
 |                           `-- /{dbTable}
@@ -1965,6 +1965,55 @@ sub cmePERLProcessColumnNames       #Get (and optionally modify) column names
             <NONE>
         REQUEST BODY:
             <EMPTY>
+
+### `dbNames`, `dbTables`, `tableRows`, `tableColumns`
+
+    Supported HTTP methods: GET HEAD OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            <NONE>
+        UPDATE:
+            <NONE>
+        SECURITY SCOPE:
+            These resources expose a read-only diagnostics view over
+            registered secure document databases for file.csv
+            documents in the selected organization storage.  They do
+            not browse arbitrary database files and do not expose
+            decrypted internal ResourcesDB, RolesDB, or LogsDB
+            records.  Requests must be authorized through the
+            corresponding role table and must provide userId, orgId,
+            and orgKey.  The secure document is loaded through the
+            normal verification path before data is returned.
+        SELECTORS:
+            /dbNames lists registered file.csv document database names.
+            /dbNames/{dbName}/dbTables lists exposed tables.
+            /dbTables/{dbTable} returns table rows for data or meta.
+            /tableRows/{tableRow} returns one 1-based row.
+            /tableColumns lists column names.
+            /tableColumns/{tableColumn} returns one column, with id.
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Matching diagnostic table>
+
+    Example 1)    List secure CSV document databases in storage
+            EngineStorage.
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/dbNames?userId=EngineAdmin&orgId=
+            EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+
+    Example 2)    Read row 1 from the data table of document.csv.
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/dbNames/document.csv/dbTables/data/
+            tableRows/1?userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
 
 ### `transactions`
 

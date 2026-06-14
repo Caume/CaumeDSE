@@ -4,6 +4,18 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `webservice_interface.h`, `webservice_interface.c`: Implement
+  read-only `/dbNames` secure document database browsing for registered
+  `file.csv` documents, including `/dbTables`, `/tableRows`, and
+  `/tableColumns` under organization storage.
+
+- `function_tests.c`, `TEST/run_debug_components.sh`: Add DEBUG
+  coverage for DB browsing class/resource reads, invalid selectors,
+  missing databases, missing keys, and disallowed methods.
+
+- `README.md`, `TODO.md`: Document the restricted DB browsing security
+  scope and mark TODO item #19 complete.
+
 - `webservice_interface.h`, `webservice_interface.c`: Enable
   `contentColumns` collection OPTIONS routing and align column HEAD and
   DELETE behavior with resource semantics.
