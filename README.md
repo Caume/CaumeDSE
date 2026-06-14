@@ -326,20 +326,22 @@ https://{engine}
 |   `-- /{organization}
 |       |-- /users
 |       |   `-- /{user}
-|       |       |-- /roleTables [not implemented]
+|       |       |-- /roleTables
 |       |       |   `-- /{roleTable}
-|       |       |-- /filterWhitelist [not implemented]
-|       |       `-- /filterBlacklist [not implemented]
+|       |       |-- /filterWhitelist
+|       |       |   `-- /{filterUser}
+|       |       `-- /filterBlacklist
+|       |           `-- /{filterUser}
 |       `-- /storage
 |           `-- /{storage}
-|               |-- /documentTypes [not implemented]
+|               |-- /documentTypes
 |               |   `-- /{documentType}
 |               |       `-- /documents
 |               |           `-- /{document}
-|               |               |-- /parserScripts [not implemented]
+|               |               |-- /parserScripts
 |               |               |   `-- /{parserScript}
 |               |               |-- /content
-|               |               |-- /contentRows [not implemented]
+|               |               |-- /contentRows
 |               |               |   `-- /{contentRow}
 |               |               `-- /contentColumns [not implemented]
 |               |                   `-- /{contentColumn}
@@ -1249,8 +1251,10 @@ below).
             *_get *_post *_put *_delete *_head *_options
         TABLE NAMES:
             documents users roleTables parserScripts content
-            organizations storage documentTypes engineCommands
-            transactions
+            contentRows contentColumns dbNames dbTables tableRows
+            tableColumns organizations storage documentTypes
+            engineCommands transactions meta filterWhitelist
+            filterBlacklist
         RESPONSE HEADERS:
             Engine-results: <number of matching registers>
         RESPONSE BODY:
@@ -1287,6 +1291,85 @@ below).
             0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
             *_put=1&*_delete=0&*_head=1&*_options=1&newOrgKey=
             3132333440414243
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `filterWhitelist`
+
+    Supported HTTP methods: GET POST PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId __get __post __put __delete __head
+            __options
+        UPDATE:
+            *_get *_post *_put *_delete *_head *_options
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resource>
+
+    Filter whitelist records are stored in the encrypted ResourcesDB
+    filterWhitelist table. The `{filterUser}` URL element maps to
+    userResourceId, the parent `{organization}` maps to orgResourceId,
+    and the method columns (`_get`, `_post`, `_put`, `_delete`, `_head`,
+    `_options`) define which methods are allowlisted for that target.
+    Role-table authorization is still evaluated first. When whitelist
+    records exist for a method, user-resource requests for that method
+    must also match a whitelist record for the requested organization
+    and user.
+
+    Example 1) Allow EngineAdmin to perform GET, HEAD and OPTIONS
+            requests against RoleTableTestUser user resources.
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/users/
+            RoleTableTestUser/filterWhitelist/RoleTableTestUser?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
+            *_put=0&*_delete=0&*_head=1&*_options=1
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+### `filterBlacklist`
+
+    Supported HTTP methods: GET POST PUT HEAD DELETE OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            _userId _orgId __get __post __put __delete __head
+            __options
+        UPDATE:
+            *_get *_post *_put *_delete *_head *_options
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Attribute table for matching resource>
+
+    Filter blacklist records are stored in the encrypted ResourcesDB
+    filterBlacklist table. The `{filterUser}` URL element maps to
+    userResourceId, the parent `{organization}` maps to orgResourceId,
+    and the method columns (`_get`, `_post`, `_put`, `_delete`, `_head`,
+    `_options`) define which methods are denied for that target.
+    Role-table authorization is evaluated first; matching blacklist
+    records then deny the request before whitelist allow records are
+    considered.
+
+    Example 1) Deny RoleTableTestUser GET, HEAD and OPTIONS requests
+            against RoleTableTestUser user resources.
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/users/
+            RoleTableTestUser/filterBlacklist/RoleTableTestUser?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
+            *_put=0&*_delete=0&*_head=1&*_options=1
         REQUEST HEADERS:
             <NONE>
         REQUEST BODY:
@@ -1378,7 +1461,7 @@ below).
 
 ### `{documentType}`
 
-    Supported HTTP methods: OPTIONS
+    Supported HTTP methods: GET HEAD OPTIONS
 
     Supported ATTRIBUTE PARAMETERS:
         MATCH:
@@ -1392,7 +1475,15 @@ below).
         RESPONSE HEADERS:
             <NONE>
         RESPONSE BODY:
-            <OPTIONS>
+            <Document type support status for GET and OPTIONS; HEAD
+            returns status only>
+
+    The documentTypes collection lists the supported document type
+    identifiers. Individual documentType resources validate whether the
+    requested type is supported before document collection and document
+    resource handlers run. Supported types are file.csv, file.raw,
+    file.txt, file.json, file.xml, file.html, file.pdf, file.png,
+    file.jpg, file.gif, file.zip, file.bin and script.perl.
 
 ### `documents`
 
@@ -1580,6 +1671,12 @@ This is a raw file
             Engine-results: <number of matching registers>
         RESPONSE BODY:
             <Contents of parsed file.csv with perl script>
+
+    The parserScripts collection supports OPTIONS. Individual
+    parserScript resources load the named script.perl document,
+    reconstruct it through the secure-file path, and run it against
+    file.csv document content with the embedded Perl interpreter after
+    normal authorization succeeds.
 
     Example 1)     Get parsed contents of payroll.csv file (of type
             file.csv) using script myscript.pl (of type

@@ -1009,6 +1009,10 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     int numColumnValues=0;
+    int numWhitelistColumns=5;
+    int numWhitelistConfigured=0;
+    int numWhitelistMatches=0;
+    int numBlacklistMatches=0;
     const int numValidRoleTables=20;     // # of roleTable names to be parsed.
     char *ptrStrChar=NULL;
     char *lcaseMethod=NULL;
@@ -1018,6 +1022,8 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
     char **columnValues=NULL;
     char *currentTableName=NULL;
     char **resultRegisterCols=NULL;
+    char **whitelistColumnNames=NULL;
+    char **whitelistColumnValues=NULL;
     const char *validRoleTableNames[20]={"documents","users","roleTables","parserScripts","outputDocuments","content",
                                          "contentRows","contentColumns","dbNames","dbTables","tableRows","tableColumns",
                                          "organizations","storage","documentTypes","engineCommands","transactions","meta",
@@ -1049,6 +1055,16 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                     cmeFree(resultRegisterCols[cont]); \
                 } \
                 cmeFree(resultRegisterCols); \
+            } \
+            if (whitelistColumnNames) \
+            { \
+                for (cont=0;cont<numWhitelistColumns;cont++) \
+                { \
+                    cmeFree(whitelistColumnNames[cont]); \
+                    cmeFree(whitelistColumnValues[cont]); \
+                } \
+                cmeFree(whitelistColumnNames); \
+                cmeFree(whitelistColumnValues); \
             } \
         } //Local free() macro.
 
@@ -1127,7 +1143,130 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
         {
             if (numResultRegisters) // Found >0
             {
-                // TODO (OHR#6#): Process White and Black regex filter lists in corresponding tables within ResourcesDB
+                if ((numUrlElements>=4)&&(!strcmp(urlElements[0],"organizations"))&&(!strcmp(urlElements[2],"users")))
+                {
+                    if (resultRegisterCols)
+                    {
+                        for (cont=0;cont<(numResultRegisters+1)*numResultRegisterCols;cont++)
+                        {
+                            cmeFree(resultRegisterCols[cont]);
+                        }
+                        cmeFree(resultRegisterCols);
+                        resultRegisterCols=NULL;
+                        numResultRegisterCols=0;
+                        numResultRegisters=0;
+                    }
+                    whitelistColumnNames=(char **)malloc(sizeof(char *)*numWhitelistColumns);
+                    whitelistColumnValues=(char **)malloc(sizeof(char *)*numWhitelistColumns);
+                    if ((!whitelistColumnNames)||(!whitelistColumnValues))
+                    {
+                        cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                           "METHOD: '%s' URL: '%s'."
+                                           " Latest IDD version: <code>%s</code>",method,url,
+                                           cmeInternalDBDefinitionsVersion);
+                        *responseCode=500;
+                        cmeWebServiceCheckPermissionsFree();
+                        return(3);
+                    }
+                    for (cont=0;cont<numWhitelistColumns;cont++)
+                    {
+                        whitelistColumnNames[cont]=NULL;
+                        whitelistColumnValues[cont]=NULL;
+                    }
+                    cmeStrConstrAppend(&(whitelistColumnNames[0]),"_%s",lcaseMethod);
+                    cmeStrConstrAppend(&(whitelistColumnValues[0]),"1");
+                    cmeStrConstrAppend(&(whitelistColumnNames[1]),"userResourceId");
+                    cmeStrConstrAppend(&(whitelistColumnValues[1]),"%s",urlElements[3]);
+                    cmeStrConstrAppend(&(whitelistColumnNames[2]),"orgResourceId");
+                    cmeStrConstrAppend(&(whitelistColumnValues[2]),"%s",urlElements[1]);
+                    if (pDB)
+                    {
+                        cmeDBClose(pDB);
+                        pDB=NULL;
+                    }
+                    cmeFree(dbFilePath);
+                    dbFilePath=NULL;
+                    cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
+                    result=cmeDBOpen(dbFilePath,&pDB);
+                    if (!result)
+                    {
+                        result=cmeGetUnprotectDBRegisters(pDB,"filterBlacklist",(const char **)whitelistColumnNames,
+                                                          (const char **)whitelistColumnValues,3,&resultRegisterCols,
+                                                          &numResultRegisterCols,&numBlacklistMatches,orgKey);
+                        numResultRegisters=numBlacklistMatches;
+                    }
+                    if (!result)
+                    {
+                        if (resultRegisterCols)
+                        {
+                            for (cont=0;cont<(numBlacklistMatches+1)*numResultRegisterCols;cont++)
+                            {
+                                cmeFree(resultRegisterCols[cont]);
+                            }
+                            cmeFree(resultRegisterCols);
+                            resultRegisterCols=NULL;
+                            numResultRegisterCols=0;
+                            numResultRegisters=0;
+                        }
+                        if (numBlacklistMatches)
+                        {
+                            cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN request matches filterBlacklist.</b><br>"
+                                               "METHOD: '%s' URL: '%s'."
+                                               " Latest IDD version: <code>%s</code>",method,url,
+                                               cmeInternalDBDefinitionsVersion);
+                            *responseCode=403;
+                            cmeWebServiceCheckPermissionsFree();
+                            return(6);
+                        }
+                    }
+                    if (!result)
+                    {
+                        result=cmeGetUnprotectDBRegisters(pDB,"filterWhitelist",(const char **)whitelistColumnNames,
+                                                          (const char **)whitelistColumnValues,1,&resultRegisterCols,
+                                                          &numResultRegisterCols,&numWhitelistConfigured,orgKey);
+                    }
+                    if (!result)
+                    {
+                        if (resultRegisterCols)
+                        {
+                            for (cont=0;cont<(numWhitelistConfigured+1)*numResultRegisterCols;cont++)
+                            {
+                                cmeFree(resultRegisterCols[cont]);
+                            }
+                            cmeFree(resultRegisterCols);
+                            resultRegisterCols=NULL;
+                            numResultRegisterCols=0;
+                        }
+                        if (numWhitelistConfigured)
+                        {
+                            result=cmeGetUnprotectDBRegisters(pDB,"filterWhitelist",(const char **)whitelistColumnNames,
+                                                              (const char **)whitelistColumnValues,3,
+                                                              &resultRegisterCols,&numResultRegisterCols,&numWhitelistMatches,orgKey);
+                            numResultRegisters=numWhitelistMatches;
+                        }
+                    }
+                    if (result)
+                    {
+                        cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                           "Internal server error number '%d'."
+                                           "METHOD: '%s' URL: '%s'."
+                                           " Latest IDD version: <code>%s</code>",result,method,url,
+                                           cmeInternalDBDefinitionsVersion);
+                        *responseCode=500;
+                        cmeWebServiceCheckPermissionsFree();
+                        return(4);
+                    }
+                    if ((numWhitelistConfigured)&&(!numWhitelistMatches))
+                    {
+                        cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN request does not match filterWhitelist.</b><br>"
+                                           "METHOD: '%s' URL: '%s'."
+                                           " Latest IDD version: <code>%s</code>",method,url,
+                                           cmeInternalDBDefinitionsVersion);
+                        *responseCode=403;
+                        cmeWebServiceCheckPermissionsFree();
+                        return(5);
+                    }
+                }
                 *responseCode=200;
 #ifdef DEBUG
                 fprintf(stdout,"CaumeDSE Debug: cmeWebServiceCheckPermissions(), Permissions validated successfully!");

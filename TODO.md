@@ -19,27 +19,29 @@
   - Prefer libmicrohttpd request lifecycle handling or `pthread_cond_t` signaling.
   - Done: POST request status handoff now uses per-connection `pthread_cond_t` signaling instead of `sleep(0)` loops.
 
-- [ ] #4 Narrow the parser script Perl mutex.
+- [x] #4 Narrow the parser script Perl mutex.
   - Keep shared Perl interpreter calls serialized.
   - Move DB/file work, secure DB reconstruction, response construction, and cleanup outside the global Perl lock where possible.
+  - Done: parser-script GET/HEAD now perform DB/file work before the lock, serialize only shared Perl interpreter parse/callback execution, and release the lock before response construction and cleanup.
 
 - [x] #5 Avoid reapplying SQLite PRAGMAs on every DB open.
   - Split memory DB and file DB open setup.
   - Apply WAL/synchronous/cache settings only where they are useful and check PRAGMA errors.
   - Done: memory DB opens now bypass file-backed PRAGMAs, file create/open setup checks PRAGMA errors, and regular DB opens no longer reapply WAL mode.
 
-- [ ] #6 Cache logs table schema validation.
+- [x] #6 Cache logs table schema validation.
   - Validate/create the transactions table at startup or first use under a mutex.
   - Continue writing each log record immediately.
+  - Done: logs transaction table validation now runs once per process under a mutex, recreates the table when the expected schema is missing, and leaves each log write as an immediate durable insert.
 
 - [x] #7 Increase streaming and POST chunk sizes.
   - Raise POST processing buffer to reduce callback overhead.
   - Raise response callback page size for large responses.
 
-- [ ] #8 Batch only in-memory transformations before immediate durable saves.
+- [x] #8 Batch only in-memory transformations before immediate durable saves.
   - Combine related temporary memory DB updates with prepared statements or a transaction.
   - Do not defer protected file/resources DB writes after a logical change.
-  - Done: duplicate-column reintegration now copies rows with a prepared statement inside one in-memory transaction.
+  - Done: secure DB protection now batches initial data salt updates in one in-memory transaction; duplicate-column reintegration already copies rows with a prepared statement inside one in-memory transaction.
 
 - [x] #9 Add an independent component verification script for DEBUG builds.
   - Create a script such as `TEST/run_debug_components.sh` that configures a DEBUG/TESTDATABASE install under `/tmp`, builds, installs, runs the engine non-interactively, and writes one log per component.
@@ -64,51 +66,57 @@
   - Rename to `README.md` only after checking build, packaging, and distribution references that may still point to `README`.
   - Done: `README.md` is now the canonical Markdown README, `README` remains as a compatibility pointer, and distribution metadata includes the Markdown file.
 
-- [ ] #12 Finish and verify `/organizations/{organization}/users/{user}/roleTables` resources.
+- [x] #12 Finish and verify `/organizations/{organization}/users/{user}/roleTables` resources.
   - Review the existing `roleTables` URL routing and RolesDB table handling to identify whether the README marker is stale or the feature is only partially implemented.
   - Define the supported methods for the `roleTables` collection and `{roleTable}` resource, including exact-match filters, update parameters, and response formats.
   - Add or complete handlers for create, read, update, delete, head, and options behavior while preserving encrypted role-table storage and authorization checks.
   - Add DEBUG/component tests that create a role table, query it, update permissions, verify enforcement, and reject unauthorized access.
   - Update `README.md` to remove the `[not implemented]` marker once the behavior is verified.
+  - Done: direct DEBUG coverage now verifies collection GET/OPTIONS plus resource POST/GET/PUT/HEAD/DELETE/OPTIONS, permission rejection/allowance, encrypted RolesDB access through the existing handlers, and README roleTables documentation.
 
-- [ ] #13 Implement `/organizations/{organization}/users/{user}/filterWhitelist` resources.
+- [x] #13 Implement `/organizations/{organization}/users/{user}/filterWhitelist` resources.
   - Define the whitelist data model on top of the existing ResourcesDB/AdminDB `filterWhitelist` tables, including filter attributes, allowed methods, and ownership fields.
   - Add request parsing and handlers for whitelist collection and item resources under the user resource hierarchy.
   - Enforce whitelist checks in request authorization or filtering paths before resource operations are executed.
   - Preserve encrypted internal database values, MAC verification, and existing role-table authorization semantics.
   - Add tests covering allowlisted filters, missing whitelist entries, malformed filters, and interaction with role-table permissions.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: added `filterWhitelist` collection/item routing, encrypted ResourcesDB CRUD handlers for method allow filters, opt-in whitelist enforcement after role-table authorization for user-resource requests, DEBUG component coverage, and README API documentation.
 
-- [ ] #14 Implement `/organizations/{organization}/users/{user}/filterBlacklist` resources.
+- [x] #14 Implement `/organizations/{organization}/users/{user}/filterBlacklist` resources.
   - Define the blacklist data model on top of the existing ResourcesDB/AdminDB `filterBlacklist` tables, mirroring whitelist ownership and filter attributes where appropriate.
   - Add request parsing and handlers for blacklist collection and item resources under the user resource hierarchy.
   - Enforce blacklist checks before resource operations, with deny behavior taking precedence over whitelist or role-table allows when both apply.
   - Preserve encrypted internal database values, MAC verification, and existing role-table authorization semantics.
   - Add tests covering denied filters, non-matching blacklist entries, whitelist/blacklist conflicts, malformed filters, and unauthorized updates.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: added `filterBlacklist` collection/item routing through the shared encrypted filter-list handler, deny-before-whitelist enforcement in permission checks, DEBUG component coverage for malformed entries and whitelist/blacklist conflicts, and README API documentation.
 
-- [ ] #15 Finish and verify `/organizations/{organization}/storage/{storage}/documentTypes` resources.
+- [x] #15 Finish and verify `/organizations/{organization}/storage/{storage}/documentTypes` resources.
   - Review existing `documentTypes` routing and ResourcesDB table definitions to determine whether the README marker is stale or the feature is partial.
   - Define supported document type names, allowed methods, options responses, and validation rules for `{documentType}`.
   - Complete handlers so document type discovery and validation behave consistently for `file.raw`, `file.csv`, and `script.perl`.
   - Add tests for listing supported types, requesting a valid type, rejecting unsupported types, and preserving existing document upload/query behavior.
   - Update `README.md` to remove the `[not implemented]` marker once verified.
+  - Done: verified documentTypes routing, documented class/resource behavior, added GET/HEAD/OPTIONS support for documentType resources, and added DEBUG/component coverage for supported and unsupported type validation.
 
-- [ ] #16 Finish and verify `/documents/{document}/parserScripts` resources.
+- [x] #16 Finish and verify `/documents/{document}/parserScripts` resources.
   - Review existing `parserScripts` routing and script execution paths to determine whether the README marker is stale or the feature is partial.
   - Define the supported methods for parser script collections and `{parserScript}` resources, including script type restrictions and output formats.
   - Ensure script resources are loaded, decrypted, MAC-verified, and executed only after authorization succeeds.
   - Keep embedded Perl interpreter access serialized while moving file/DB work outside the Perl mutex where possible.
   - Add tests for valid script execution, missing scripts, unsupported script types, parser errors, and unauthorized access.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: enabled parserScripts collection OPTIONS routing, verified resource OPTIONS plus missing-script GET/HEAD behavior, documented existing secure script loading and serialized Perl execution path, and added DEBUG/component coverage.
 
-- [ ] #17 Finish and verify `/documents/{document}/contentRows` resources for `file.csv`.
+- [x] #17 Finish and verify `/documents/{document}/contentRows` resources for `file.csv`.
   - Review existing `contentRows` routing and CSV row manipulation paths to determine whether the README marker is stale or the feature is partial.
   - Define row numbering, append behavior, update semantics, delete behavior, and error codes for out-of-range rows.
   - Implement or complete handlers using in-memory transformations followed by immediate durable secure-DB/file saves.
   - Preserve CSV column integrity, encrypted part MAC verification, and column-shuffling security behavior.
   - Add tests for get, append, update, delete, invalid row indexes, missing documents, non-CSV documents, and unauthorized access.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: enabled contentRows collection OPTIONS routing, verified row GET/HEAD, append-only POST, in-range PUT, DELETE persistence, invalid rows, missing documents, and non-CSV rejection, and added DEBUG/component coverage.
 
 - [ ] #18 Finish and verify `/documents/{document}/contentColumns` resources for `file.csv`.
   - Review existing `contentColumns` routing and CSV column manipulation paths to determine whether the README marker is stale or the feature is partial.
@@ -237,5 +245,6 @@
   - Source: `engine_interface.c:1053`.
   - Done: `cmePostProtectDBRegister()` now rejects caller-supplied protected DB salts unless they are exactly `evpSaltBufferSize * 2` hex characters; omitted salts still use the existing generated-salt path.
 
-- [ ] #50 Evaluate whether another random source is needed for systems without `/dev/random` or `/dev/urandom`.
+- [x] #50 Evaluate whether another random source is needed for systems without `/dev/random` or `/dev/urandom`.
   - Source: `crypto.c:436`.
+  - Done: `cmeSeedPrng()` now uses OpenSSL platform seeding via `RAND_poll()`/`RAND_status()` and treats `/dev/random` and `/dev/urandom` as optional extra entropy sources when present.

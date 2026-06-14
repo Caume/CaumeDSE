@@ -231,6 +231,49 @@ check_component engine_admin_db 'cmeSetupEngineAdminDBs|ResourcesDB|RolesDB|Logs
     'RolesDB' \
     'LogsDB'
 
+check_component role_tables_resource 'Testing roleTables resource handlers|testRoleTables|roleTables resource' "$FULL_LOG" \
+    '--- Testing roleTables resource handlers:' \
+    'TESTS: testRoleTables(), PASS: roleTables resource POST responseCode=201' \
+    'TESTS: testRoleTables(), PASS: roleTables permission reject responseCode=403' \
+    'roleTables permission allow responseCode=200' \
+    'TESTS: testRoleTables(), PASS: create/read/update/head/delete/options verified.'
+
+check_component filter_whitelist_resource 'Testing filterWhitelist resource handlers|testFilterWhitelist|filterWhitelist resource' "$FULL_LOG" \
+    '--- Testing filterWhitelist resource handlers:' \
+    'TESTS: testFilterWhitelist(), PASS: filterWhitelist resource POST responseCode=201' \
+    'TESTS: testFilterWhitelist(), PASS: allowlisted permission responseCode=200' \
+    'TESTS: testFilterWhitelist(), PASS: missing whitelist reject responseCode=403' \
+    'TESTS: testFilterWhitelist(), PASS: create/read/update/head/delete/options and enforcement verified.'
+
+check_component filter_blacklist_resource 'Testing filterBlacklist resource handlers|testFilterBlacklist|filterBlacklist resource' "$FULL_LOG" \
+    '--- Testing filterBlacklist resource handlers:' \
+    'TESTS: testFilterBlacklist(), PASS: filterBlacklist resource POST responseCode=201' \
+    'TESTS: testFilterBlacklist(), PASS: blacklist conflict reject responseCode=403' \
+    'TESTS: testFilterBlacklist(), PASS: whitelist allow after blacklist delete responseCode=200' \
+    'TESTS: testFilterBlacklist(), PASS: create/read/update/head/delete/options and deny precedence verified.'
+
+check_component document_types_resource 'Testing documentTypes resource handlers|testDocumentTypes|documentTypes' "$FULL_LOG" \
+    '--- Testing documentTypes resource handlers:' \
+    'TESTS: testDocumentTypes(), PASS: documentTypes class GET responseCode=200' \
+    'TESTS: testDocumentTypes(), PASS: documentTypes file.csv GET responseCode=200' \
+    'TESTS: testDocumentTypes(), PASS: documentTypes unsupported GET responseCode=404' \
+    'TESTS: testDocumentTypes(), PASS: class listing and resource validation verified.'
+
+check_component parser_scripts_resource 'Testing parserScripts resource handlers|testParserScripts|parserScripts' "$FULL_LOG" \
+    '--- Testing parserScripts resource handlers:' \
+    'TESTS: testParserScripts(), PASS: parserScripts class OPTIONS responseCode=200' \
+    'TESTS: testParserScripts(), PASS: parserScripts resource OPTIONS responseCode=200' \
+    'TESTS: testParserScripts(), PASS: parserScripts missing script HEAD responseCode=404' \
+    'TESTS: testParserScripts(), PASS: class options and missing script handling verified.'
+
+check_component content_rows_resource 'Testing contentRows resource handlers|testContentRows|contentRows' "$FULL_LOG" \
+    '--- Testing contentRows resource handlers:' \
+    'TESTS: testContentRows(), PASS: contentRows class OPTIONS responseCode=200' \
+    'TESTS: testContentRows(), PASS: contentRows row GET responseCode=200' \
+    'TESTS: testContentRows(), PASS: contentRows append POST responseCode=201' \
+    'TESTS: testContentRows(), PASS: contentRows appended DELETE responseCode=200' \
+    'TESTS: testContentRows(), PASS: row get/append/update/delete/options verified.'
+
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
 

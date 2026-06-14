@@ -692,6 +692,79 @@ static int cmeWebServiceBuildSecureDBAttributes(const char **argumentElements,
 // File-scope engine power status flag.  Access is serialised with cmePowerMutex so that
 // concurrent requests see a consistent value when the operator toggles the engine on/off.
 static int cmeEnginePowerStatus=1;
+static pthread_mutex_t cmeLogsSchemaMutex=PTHREAD_MUTEX_INITIALIZER;
+static int cmeLogsSchemaReady=0;
+
+static int cmeWebServiceEnsureLogsTransactionsTable(sqlite3 *pDB)
+{
+    int cont,result=0,found=0;
+    char *sqlCreate=NULL;
+    const char *tableName=cmeIDDLogsDBTransactionsTableName;
+    #define cmeWebServiceEnsureLogsTransactionsTableFree() \
+        do { \
+            cmeFree(sqlCreate); \
+            cmeResultMemTableClean(); \
+        } while (0); //Local free() macro.
+
+    pthread_mutex_lock(&cmeLogsSchemaMutex);
+    if (cmeLogsSchemaReady)
+    {
+        pthread_mutex_unlock(&cmeLogsSchemaMutex);
+        return(0);
+    }
+    result=cmeMemTableWithTableColumnNames(pDB,tableName);
+    if (!result)
+    {
+        for (cont=0; cont<cmeResultMemTableCols; cont++)
+        {
+            if (!strcmp(cmeResultMemTable[cont],cmeIDDLogsDBTransactions_requestMethod_name))
+            {
+                found=1;
+                break;
+            }
+        }
+        cmeResultMemTableClean();
+    }
+    if (result || !found)
+    {
+        cmeStrConstrAppend(&sqlCreate,
+                           "BEGIN TRANSACTION; DROP TABLE IF EXISTS \"%s\"; ",
+                           tableName);
+        cmeStrConstrAppend(&sqlCreate,
+                           "CREATE TABLE \"%s\" (" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, "
+                           cmeIDDanydb_userId_name " TEXT, " cmeIDDanydb_orgId_name " TEXT, "
+                           cmeIDDanydb_salt_name " TEXT, " cmeIDDLogsDBTransactions_requestMethod_name " TEXT, "
+                           cmeIDDLogsDBTransactions_requestUrl_name " TEXT, "
+                           cmeIDDLogsDBTransactions_requestHeaders_name " TEXT, "
+                           cmeIDDLogsDBTransactions_startTimestamp_name " TEXT, "
+                           cmeIDDLogsDBTransactions_endTimestamp_name " TEXT, "
+                           cmeIDDLogsDBTransactions_requestDataSize_name " TEXT, "
+                           cmeIDDLogsDBTransactions_responseDataSize_name " TEXT, "
+                           cmeIDDLogsDBTransactions_orgResourceId_name " TEXT, "
+                           cmeIDDLogsDBTransactions_requestIPAddress_name " TEXT, "
+                           cmeIDDLogsDBTransactions_responseCode_name " TEXT, "
+                           cmeIDDLogsDBTransactions_responseHeaders_name " TEXT, "
+                           cmeIDDLogsDBTransactions_authenticated_name " TEXT); "
+                           "CREATE INDEX \"idx_log_%s_uo\" ON \"%s\"("
+                           cmeIDDanydb_orgId_name "," cmeIDDanydb_userId_name "); COMMIT;",
+                           tableName,tableName,tableName);
+        result=cmeSQLRows(pDB,sqlCreate,NULL,NULL);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceEnsureLogsTransactionsTable(), can't create table %s!\n",
+                    tableName);
+#endif
+            cmeWebServiceEnsureLogsTransactionsTableFree();
+            pthread_mutex_unlock(&cmeLogsSchemaMutex);
+            return(1);
+        }
+    }
+    cmeLogsSchemaReady=1;
+    cmeWebServiceEnsureLogsTransactionsTableFree();
+    pthread_mutex_unlock(&cmeLogsSchemaMutex);
+    return(0);
+}
 
 int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
                                  const char *url, const char **urlElements, int numUrlElements,
@@ -1211,6 +1284,74 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                 return(0);
             }
         }
+        else if ((numUrlElements==5)&&(strcmp(urlElements[4],"filterWhitelist")==0))// filterWhitelist class resource
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
+                        "filterWhitelist class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+#endif
+            result=cmeWebServiceProcessFilterWhitelistClass(responseText, responseHeaders, responseCode,
+                                                     url, urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
+        }
+        else if ((numUrlElements==6)&&(strcmp(urlElements[4],"filterWhitelist")==0))// filterWhitelist resource
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
+                        "filterWhitelist resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+#endif
+            result=cmeWebServiceProcessFilterWhitelistResource(responseText, responseFilePath, responseHeaders, responseCode,
+                                                         url, urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
+        }
+        else if ((numUrlElements==5)&&(strcmp(urlElements[4],"filterBlacklist")==0))// filterBlacklist class resource
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
+                        "filterBlacklist class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+#endif
+            result=cmeWebServiceProcessFilterBlacklistClass(responseText, responseHeaders, responseCode,
+                                                     url, urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
+        }
+        else if ((numUrlElements==6)&&(strcmp(urlElements[4],"filterBlacklist")==0))// filterBlacklist resource
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
+                        "filterBlacklist resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+#endif
+            result=cmeWebServiceProcessFilterBlacklistResource(responseText, responseFilePath, responseHeaders, responseCode,
+                                                         url, urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
+        }
         //TODO (OHR#2#) process storage documentTypes and documents resource tree requests.
         else if ((numUrlElements==3)&&(strcmp(urlElements[2],"storage")==0)) //storage class resource
         {
@@ -1320,15 +1461,16 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
                         "parserScript class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-            cmeStrConstrAppend(responseText,"<b>403 ERROR No methods are currently available for this resource type.</b><br><br>"
-               "Resource: '%s'. method: '%s', url: '%s'",urlElements[numUrlElements-1],method,url);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, no methods are currently available for this resource type."
-                    "Unknown resource: '%s'. Method: '%s', url: '%s'\n",urlElements[numUrlElements-1],method,url);
-#endif
-            cmeWebServiceProcessRequestFree();
-            *responseCode=403; //Response: Error 404 (resource not found).
-            return (17);
+            result=cmeWebServiceProcessParserScriptClass(responseText, responseHeaders, responseCode,
+                                                         url, urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
         }
         else if ((numUrlElements==10)&&(strcmp(urlElements[8],"parserScripts")==0))// parserScripts resource
         {
@@ -1370,15 +1512,16 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
                         "contentRows class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-            cmeStrConstrAppend(responseText,"<b>403 ERROR No methods are currently available for this resource type.</b><br><br>"
-               "Resource: '%s'. method: '%s', url: '%s'",urlElements[numUrlElements-1],method,url);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, no methods are currently available for this resource type."
-                    "Unknown resource: '%s'. Method: '%s', url: '%s'\n",urlElements[numUrlElements-1],method,url);
-#endif
-            cmeWebServiceProcessRequestFree();
-            *responseCode=403; //Response: Error 404 (resource not found).
-            return (18);
+            result=cmeWebServiceProcessContentRowClass (responseText, responseHeaders, responseCode, url,
+                                                        urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
         }
         else if ((numUrlElements==10)&&(strcmp(urlElements[8],"contentRows")==0))// contentRow resource
         {
@@ -2860,6 +3003,298 @@ int cmeWebServiceProcessRoleTableClass (char **responseText, char ***responseHea
         *responseCode=405;
         return(2);
     }
+}
+
+static int cmeWebServiceProcessFilterListResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method,
+                                           const char *filterTableName, const char *filterLabel, const char *resourceOptions);
+
+static int cmeWebServiceProcessFilterListClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements, const char *method,
+                                         const char *filterTableName, const char *filterLabel,
+                                         const char *classOptions, const char *resourceOptions)
+{
+    int result;
+    char *responseFilePath=NULL;
+    const char *resourceElements[6];
+
+    if(!strcmp(method,"GET"))
+    {
+        resourceElements[0]=urlElements[0];
+        resourceElements[1]=urlElements[1];
+        resourceElements[2]=urlElements[2];
+        resourceElements[3]=urlElements[3];
+        resourceElements[4]=urlElements[4];
+        resourceElements[5]=urlElements[3];
+        result=cmeWebServiceProcessFilterListResource(responseText,&responseFilePath,responseHeaders,responseCode,
+                                                      url,resourceElements,argumentElements,method,
+                                                      filterTableName,filterLabel,resourceOptions);
+        cmeFree(responseFilePath);
+        return(result);
+    }
+    else if(!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for %s class resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",filterLabel,classOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=200;
+        return(0);
+    }
+    else
+    {
+        cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                           "method is not allowed for this %s class resource."
+                           "METHOD: '%s' URL: '%s'."
+                           "%sLatest IDD version: <code>%s</code>",filterLabel,method,url,classOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=405;
+        return(2);
+    }
+}
+
+static int cmeWebServiceProcessFilterListResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method,
+                                           const char *filterTableName, const char *filterLabel, const char *resourceOptions)
+{
+    int cont,result=0;
+    int keyArg=0,orgArg=0,usrArg=0,newKeyArg=0;
+    int numSaveArgs=0,numMatchArgs=0;
+    int numResultRegisterCols=0,numResultRegisters=0;
+    sqlite3 *pDB=NULL;
+    char *orgKey=NULL,*userId=NULL,*orgId=NULL,*newOrgKey=NULL;
+    char **columnValues=NULL,**columnNames=NULL;
+    char **columnValuesToMatch=NULL,**columnNamesToMatch=NULL;
+    char *dbFilePath=NULL;
+    char **resultRegisterCols=NULL;
+    const char *tableName=filterTableName;
+    const int numColumns=cmeIDDRolesDBAnyTableNumCols;
+    const int numDuplicateMatchColumns=2;
+    const int numValidGETALLMatch=8;
+    const int numValidPOSTSave=8;
+    const int numValidPUTSave=8;
+    const char *validGETALLMatchColumns[8]={"_userId","_orgId","__get","__post","__put","__delete","__head","__options"};
+    const char *validPOSTSaveColumns[8]={"userId","orgId","*_get","*_post","*_put","*_delete","*_head","*_options"};
+    const char *validPUTSaveColumns[8]={"userId","orgId","*_get","*_post","*_put","*_delete","*_head","*_options"};
+    #define cmeWebServiceProcessFilterListResourceFree() \
+        do { \
+            cmeFree(orgKey); cmeFree(userId); cmeFree(orgId); cmeFree(newOrgKey); cmeFree(dbFilePath); \
+            if (resultRegisterCols) { for (cont=0;cont<numResultRegisterCols*(numResultRegisters+1);cont++) cmeFree(resultRegisterCols[cont]); cmeFree(resultRegisterCols); } \
+            if (columnValues) { for (cont=0;cont<numColumns;cont++) cmeFree(columnValues[cont]); cmeFree(columnValues); } \
+            if (columnNames) { for (cont=0;cont<numColumns;cont++) cmeFree(columnNames[cont]); cmeFree(columnNames); } \
+            if (columnValuesToMatch) { for (cont=0;cont<numColumns;cont++) cmeFree(columnValuesToMatch[cont]); cmeFree(columnValuesToMatch); } \
+            if (columnNamesToMatch) { for (cont=0;cont<numColumns;cont++) cmeFree(columnNamesToMatch[cont]); cmeFree(columnNamesToMatch); } \
+            if (pDB) { cmeDBClose(pDB); pDB=NULL; } \
+        } while (0)
+
+    columnValues=(char **)malloc(sizeof(char *)*numColumns);
+    columnNames=(char **)malloc(sizeof(char *)*numColumns);
+    columnValuesToMatch=(char **)malloc(sizeof(char *)*numColumns);
+    columnNamesToMatch=(char **)malloc(sizeof(char *)*numColumns);
+    if ((!columnValues)||(!columnNames)||(!columnValuesToMatch)||(!columnNamesToMatch))
+    {
+        *responseCode=500;
+        cmeWebServiceProcessFilterListResourceFree();
+        return(1);
+    }
+    for (cont=0;cont<numColumns;cont++)
+    {
+        columnValues[cont]=NULL;
+        columnNames[cont]=NULL;
+        columnValuesToMatch[cont]=NULL;
+        columnNamesToMatch[cont]=NULL;
+    }
+    cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
+
+    cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);
+    cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId");
+    cmeStrConstrAppend(&(columnValuesToMatch[1]),"%s",urlElements[5]);
+    cmeStrConstrAppend(&(columnNamesToMatch[1]),"userResourceId");
+    numMatchArgs=2;
+    if(!strcmp(method,"POST"))
+    {
+        cmeStrConstrAppend(&(columnValues[0]),"%s",urlElements[1]);
+        cmeStrConstrAppend(&(columnNames[0]),"orgResourceId");
+        cmeStrConstrAppend(&(columnValues[1]),"%s",urlElements[5]);
+        cmeStrConstrAppend(&(columnNames[1]),"userResourceId");
+        numSaveArgs=2;
+        cmeProcessURLMatchSaveParameters(method,argumentElements,validGETALLMatchColumns,validPOSTSaveColumns,
+                                         numValidGETALLMatch,numValidPOSTSave,columnValuesToMatch,columnNamesToMatch,
+                                         columnValues,columnNames,&numMatchArgs,&numSaveArgs,&userId,&orgId,&orgKey,
+                                         &newOrgKey,&usrArg,&orgArg,&keyArg,&newKeyArg);
+        if ((numSaveArgs!=10)||(!keyArg)||(!usrArg)||(!orgArg))
+        {
+            cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments.</b><br>"
+                               "METHOD: '%s' URL: '%s'.%sLatest IDD version: <code>%s</code>",
+                               method,url,resourceOptions,cmeInternalDBDefinitionsVersion);
+            *responseCode=409;
+            cmeWebServiceProcessFilterListResourceFree();
+            return(2);
+        }
+        result=cmeDBOpen(dbFilePath,&pDB);
+        if (!result)
+        {
+            result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                              numDuplicateMatchColumns,&resultRegisterCols,&numResultRegisterCols,
+                                              &numResultRegisters,newOrgKey?newOrgKey:orgKey);
+        }
+        if (result)
+        {
+            *responseCode=500;
+            cmeWebServiceProcessFilterListResourceFree();
+            return(3);
+        }
+        if(numResultRegisters>0)
+        {
+            *responseCode=403;
+            cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>%s resource already exists!",filterLabel);
+            cmeWebServiceProcessFilterListResourceFree();
+            return(4);
+        }
+        result=cmePostProtectDBRegister(pDB,tableName,(const char **)columnNames,(const char **)columnValues,
+                                        numSaveArgs,newOrgKey?newOrgKey:orgKey);
+        if (result)
+        {
+            *responseCode=500;
+            cmeWebServiceProcessFilterListResourceFree();
+            return(5);
+        }
+        *responseFilePath=NULL;
+        *responseCode=201;
+        cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
+        cmeStrConstrAppend(responseText,"Method '%s' created %s resource for user '%s'.<br>",method,filterLabel,urlElements[5]);
+        cmeWebServiceProcessFilterListResourceFree();
+        return(0);
+    }
+    else if(!strcmp(method,"PUT"))
+    {
+        cmeProcessURLMatchSaveParameters(method,argumentElements,validGETALLMatchColumns,validPUTSaveColumns,
+                                         numValidGETALLMatch,numValidPUTSave,columnValuesToMatch,columnNamesToMatch,
+                                         columnValues,columnNames,&numMatchArgs,&numSaveArgs,&userId,&orgId,&orgKey,
+                                         &newOrgKey,&usrArg,&orgArg,&keyArg,&newKeyArg);
+        if ((numSaveArgs<1)||(!keyArg)||(!usrArg)||(!orgArg))
+        {
+            *responseCode=409;
+            cmeWebServiceProcessFilterListResourceFree();
+            return(6);
+        }
+        result=cmeDBOpen(dbFilePath,&pDB);
+        if (!result)
+        {
+            result=cmePutProtectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                            numMatchArgs,(const char **)columnNames,(const char **)columnValues,
+                                            numSaveArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+        }
+        if (result)
+        {
+            *responseCode=500;
+            cmeWebServiceProcessFilterListResourceFree();
+            return(7);
+        }
+        *responseCode=numResultRegisters?200:404;
+        cmeConstructWebServiceCountResponse("Updated registers",numResultRegisters,argumentElements,method,url,
+                                            responseHeaders,responseText,responseCode);
+        cmeWebServiceProcessFilterListResourceFree();
+        return(0);
+    }
+    else if((!strcmp(method,"GET"))||(!strcmp(method,"HEAD"))||(!strcmp(method,"OPTIONS"))||(!strcmp(method,"DELETE")))
+    {
+        if(!strcmp(method,"OPTIONS"))
+        {
+            cmeStrConstrAppend(responseText,"<b>200 OK - Options for %s resources:</b><br>"
+                               "%sLatest IDD version: <code>%s</code>",filterLabel,resourceOptions,cmeInternalDBDefinitionsVersion);
+            *responseCode=200;
+            cmeWebServiceProcessFilterListResourceFree();
+            return(0);
+        }
+        cmeProcessURLMatchSaveParameters(method,argumentElements,validGETALLMatchColumns,NULL,
+                                         numValidGETALLMatch,0,columnValuesToMatch,columnNamesToMatch,
+                                         columnValues,columnNames,&numMatchArgs,&numSaveArgs,&userId,&orgId,&orgKey,
+                                         &newOrgKey,&usrArg,&orgArg,&keyArg,&newKeyArg);
+        if ((!keyArg)||(!usrArg)||(!orgArg))
+        {
+            *responseCode=409;
+            cmeWebServiceProcessFilterListResourceFree();
+            return(8);
+        }
+        result=cmeDBOpen(dbFilePath,&pDB);
+        if (!result)
+        {
+            if(!strcmp(method,"DELETE"))
+            {
+                result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                                     numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+            }
+            else
+            {
+                result=cmeGetUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
+                                                  numMatchArgs,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+            }
+        }
+        if (result)
+        {
+            *responseCode=500;
+            cmeWebServiceProcessFilterListResourceFree();
+            return(9);
+        }
+        if(!strcmp(method,"HEAD"))
+        {
+            *responseCode=numResultRegisters?200:404;
+            cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+            cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
+        }
+        else if(!strcmp(method,"DELETE"))
+        {
+            *responseCode=numResultRegisters?200:404;
+            cmeConstructWebServiceCountResponse("Deleted registers",numResultRegisters,argumentElements,method,url,
+                                                responseHeaders,responseText,responseCode);
+        }
+        else
+        {
+            result=cmeConstructWebServiceTableResponse((const char **)resultRegisterCols,numResultRegisterCols,numResultRegisters,
+                                                       argumentElements,method,url,NULL,responseHeaders,responseText,responseCode);
+        }
+        cmeWebServiceProcessFilterListResourceFree();
+        return(result);
+    }
+    cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br>"
+                       "METHOD: '%s' URL: '%s'.%sLatest IDD version: <code>%s</code>",
+                       method,url,resourceOptions,cmeInternalDBDefinitionsVersion);
+    *responseCode=405;
+    cmeWebServiceProcessFilterListResourceFree();
+    return(10);
+}
+
+int cmeWebServiceProcessFilterWhitelistClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements, const char *method)
+{
+    return cmeWebServiceProcessFilterListClass(responseText,responseHeaders,responseCode,url,urlElements,argumentElements,method,
+                                               "filterWhitelist","filterWhitelist",cmeWSMsgFilterWhitelistClassOptions,
+                                               cmeWSMsgFilterWhitelistOptions);
+}
+
+int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method)
+{
+    return cmeWebServiceProcessFilterListResource(responseText,responseFilePath,responseHeaders,responseCode,url,urlElements,
+                                                  argumentElements,method,"filterWhitelist","filterWhitelist",
+                                                  cmeWSMsgFilterWhitelistOptions);
+}
+
+int cmeWebServiceProcessFilterBlacklistClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements, const char *method)
+{
+    return cmeWebServiceProcessFilterListClass(responseText,responseHeaders,responseCode,url,urlElements,argumentElements,method,
+                                               "filterBlacklist","filterBlacklist",cmeWSMsgFilterBlacklistClassOptions,
+                                               cmeWSMsgFilterBlacklistOptions);
+}
+
+int cmeWebServiceProcessFilterBlacklistResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method)
+{
+    return cmeWebServiceProcessFilterListResource(responseText,responseFilePath,responseHeaders,responseCode,url,urlElements,
+                                                  argumentElements,method,"filterBlacklist","filterBlacklist",
+                                                  cmeWSMsgFilterBlacklistOptions);
 }
 
 int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
@@ -6322,7 +6757,7 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
        columnNames[cont]=NULL;
     }
     cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName); //Set DB full path.
-    if(!strcmp(method,"OPTIONS")) //Method = OPTIONS is ok, process:
+    if((!strcmp(method,"GET"))||(!strcmp(method,"HEAD"))||(!strcmp(method,"OPTIONS")))
     {
         cmeStrConstrAppend(&(columnValuesToMatch[0]),"%s",urlElements[1]);  //We ignore the argument "userResourceId" and use the resource defined within the URL!
         cmeStrConstrAppend(&(columnNamesToMatch[0]),"orgResourceId"); //We will match against this value for the search.
@@ -6342,10 +6777,13 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
         {
             if (cmeWebServiceIsSupportedDocumentType(urlElements[5])) //OK - Supported type.
             {
-                cmeStrConstrAppend(responseText,"<b>200 OK - document type %s is supported. Options for document type resources:</b><br>"
-                   "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
+                if (strcmp(method,"HEAD"))
+                {
+                    cmeStrConstrAppend(responseText,"<b>200 OK - document type %s is supported.</b><br>"
+                       "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
+                }
 #ifdef DEBUG
-                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessDocumentTypeResource(), OPTIONS successful for documentType resource."
+                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessDocumentTypeResource(), successful for documentType resource."
                         " Method: '%s', URL: '%s'!\n",method,url);
 #endif
                 cmeWebServiceProcessDocumentTypeResourceFree();
@@ -6354,10 +6792,13 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
             }
             else //Error - Unsupported type
             {
-                cmeStrConstrAppend(responseText,"<b>404 ERROR - Unsupported document type %s! Options for document type resources:</b><br>"
-                   "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
+                if (strcmp(method,"HEAD"))
+                {
+                    cmeStrConstrAppend(responseText,"<b>404 ERROR - Unsupported document type %s!</b><br>"
+                       "%sLatest IDD version: <code>%s</code>",urlElements[5],cmeWSMsgDocumentTypeOptions,cmeInternalDBDefinitionsVersion);
+                }
 #ifdef DEBUG
-                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessDocumentTypeResource(), OPTIONS successful for documentType resource."
+                fprintf(stderr,"CaumeDSE Debug: cmeWebServiceProcessDocumentTypeResource(), unsupported documentType resource."
                         " Method: '%s', URL: '%s'!\n",method,url);
 #endif
                 cmeWebServiceProcessDocumentTypeResourceFree();
@@ -8093,6 +8534,27 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
     }
 }
 
+int cmeWebServiceProcessParserScriptClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements,
+                                           const char *method)
+{
+    if(!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for parser script class resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",cmeWSMsgParserScriptClassOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=200;
+        return(0);
+    }
+    cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                       "method is not allowed for this parserScripts class resource."
+                       "METHOD: '%s' URL: '%s'."
+                       "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgParserScriptClassOptions,
+                       cmeInternalDBDefinitionsVersion);
+    *responseCode=405;
+    return(1);
+}
+
 int cmeWebServiceProcessParserScriptResource (char **responseText, char ***responseHeaders, int *responseCode,
                                               const char *url, const char **urlElements, const char **argumentElements,
                                               const char *method, const char *storagePath)
@@ -8106,6 +8568,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     int numMatchArgs=0;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
+    int perlLocked=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -8190,11 +8653,12 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                 resultDB=NULL; \
             } \
             cmeResultMemTableClean(); \
-            pthread_mutex_unlock(&cmePerlMutex); \
+            if (perlLocked) \
+            { \
+                pthread_mutex_unlock(&cmePerlMutex); \
+                perlLocked=0; \
+            } \
         } while (0); //Local free() macro.
-
-    // Serialise access to the shared Perl interpreter for this entire function.
-    pthread_mutex_lock(&cmePerlMutex);
 
     columnValues=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
     columnNames=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
@@ -8303,25 +8767,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     *responseCode=500;
                     return(2);
                 }
-                //initialize Parser and script's global variables:
-                ilist[0]="CaumeDSE";
-                ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
-                result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
-                if (result) //Error
-                {
-                    cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
-                                       "Internal server error number '%d'."
-                                       "METHOD: '%s' URL: '%s'."
-                                        "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgParserScriptResourceOptions,
-                                        cmeInternalDBDefinitionsVersion);
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                            " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
-#endif
-                    cmeWebServiceProcessParserScriptResourceFree();
-                    *responseCode=500;
-                    return(3);
-                }
                 //Now, get the protected file.
                 if (!strncmp(urlElements[5],"file.csv",8)) //If type of documentId to be parsed is file.csv, then...
                 {
@@ -8343,8 +8788,31 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(4);
                     }
                     cmeResultMemTableClean();
+                    // Serialise only the shared Perl interpreter parse and callback execution.
+                    pthread_mutex_lock(&cmePerlMutex);
+                    perlLocked=1;
+                    ilist[0]="CaumeDSE";
+                    ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
+                    result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
+                    if (result) //Error
+                    {
+                        cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                           "Internal server error number '%d'."
+                                           "METHOD: '%s' URL: '%s'."
+                                            "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgParserScriptResourceOptions,
+                                            cmeInternalDBDefinitionsVersion);
+#ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
+                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+#endif
+                        cmeWebServiceProcessParserScriptResourceFree();
+                        *responseCode=500;
+                        return(3);
+                    }
                     result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                                cmeDefaultPerlIterationFunction,cdsePerl); //Select
+                    pthread_mutex_unlock(&cmePerlMutex);
+                    perlLocked=0;
                     if (!result) //OK
                     {
                         //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -8512,20 +8980,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     *responseCode=500; //No responseText in HEAD!
                     return(11);
                 }
-                //initialize Parser and script's global variables:
-                ilist[0]="CaumeDSE";
-                ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
-                result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
-                if (result) //Error
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                            " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
-#endif
-                    cmeWebServiceProcessParserScriptResourceFree();
-                    *responseCode=500; //No responseText in HEAD!
-                    return(12);
-                }
                 //Now, get the protected file.
                 if (!strncmp(urlElements[5],"file.csv",8)) //If type of documentId to be parsed is file.csv, then...
                 {
@@ -8542,8 +8996,26 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         return(13);
                     }
                     cmeResultMemTableClean();
+                    // Serialise only the shared Perl interpreter parse and callback execution.
+                    pthread_mutex_lock(&cmePerlMutex);
+                    perlLocked=1;
+                    ilist[0]="CaumeDSE";
+                    ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
+                    result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
+                    if (result) //Error
+                    {
+#ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
+                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+#endif
+                        cmeWebServiceProcessParserScriptResourceFree();
+                        *responseCode=500; //No responseText in HEAD!
+                        return(12);
+                    }
                     result=cmeSQLRows(resultDB,"SELECT * FROM data;",
                                       cmeDefaultPerlIterationFunction,cdsePerl); //Select
+                    pthread_mutex_unlock(&cmePerlMutex);
+                    perlLocked=0;
                     if (!result) //OK
                     {
                         if (cmeResultMemTableRows) // Found >0 rows.
@@ -9708,6 +10180,30 @@ int cmeWebServiceClientCertAuth (const char *userId, const char *orgId, struct M
 }
 
 
+int cmeWebServiceProcessContentRowClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements,
+                                         const char *method)
+{
+    (void)responseHeaders;
+    (void)urlElements;
+    (void)argumentElements;
+    if(!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for contentRows class resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",cmeWSMsgContenRowOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=200;
+        return(0);
+    }
+    cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                       "method is not allowed for this contentRows class resource."
+                       "METHOD: '%s' URL: '%s'."
+                       "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContenRowOptions,
+                       cmeInternalDBDefinitionsVersion);
+    *responseCode=405;
+    return(1);
+}
+
 int cmeWebServiceProcessContentRowResource (char **responseText, char ***responseHeaders, int *responseCode,
                                             const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                             const char *storagePath)
@@ -9935,7 +10431,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(3);
             }
@@ -9971,7 +10467,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(4);
             }
@@ -9989,7 +10485,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(5);
             }
@@ -10120,7 +10616,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(9);
             }
@@ -10156,7 +10652,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(10);
             }
@@ -10174,7 +10670,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(11);
             }
@@ -10300,7 +10796,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(15);
             }
@@ -10334,7 +10830,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(16);
             }
@@ -10352,7 +10848,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(17);
             }
@@ -10458,7 +10954,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(20);
             }
@@ -10492,7 +10988,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(21);
             }
@@ -10510,7 +11006,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(22);
             }
@@ -10609,7 +11105,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(25);
             }
@@ -10645,7 +11141,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(26);
             }
@@ -10683,7 +11179,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(28);
             }
@@ -12063,7 +12559,6 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
     char *columnValues[14]={NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL};
     sqlite3 *pDB=NULL;
     char *dbFilePath=NULL;
-    char *sqlCreate=NULL;
     sqlite3_stmt *insertStmt=NULL;
     #define cmeWebServiceLogRequestFree() \
         do { \
@@ -12072,7 +12567,6 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
             cmeFree(salt); \
             cmeFree(boundValue); \
             cmeFree(dbFilePath); \
-            cmeFree(sqlCreate); \
             if (insertStmt) \
             { \
                 sqlite3_finalize(insertStmt); \
@@ -12114,51 +12608,11 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
 #endif
                 return(1);
     }
-    // Verify that the transactions table has the expected columns
-    result=cmeMemTableWithTableColumnNames(pDB,tableName);
-    if (!result)
+    result=cmeWebServiceEnsureLogsTransactionsTable(pDB);
+    if (result)
     {
-        int found=0;
-        for (cont=0; cont<cmeResultMemTableCols; cont++)
-        {
-            if (!strcmp(cmeResultMemTable[cont],cmeIDDLogsDBTransactions_requestMethod_name))
-            {
-                found=1;
-                break;
-            }
-        }
-        cmeResultMemTableClean();
-        if (!found)
-        {
-            cmeStrConstrAppend(&sqlCreate,
-                                "BEGIN TRANSACTION; DROP TABLE IF EXISTS \"%s\"; ",
-                                tableName);
-            cmeStrConstrAppend(&sqlCreate,
-                                "CREATE TABLE \"%s\" (" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, "
-                                cmeIDDanydb_userId_name " TEXT, " cmeIDDanydb_orgId_name " TEXT, "
-                                cmeIDDanydb_salt_name " TEXT, " cmeIDDLogsDBTransactions_requestMethod_name " TEXT, "
-                                cmeIDDLogsDBTransactions_requestUrl_name " TEXT, "
-                                cmeIDDLogsDBTransactions_requestHeaders_name " TEXT, "
-                                cmeIDDLogsDBTransactions_startTimestamp_name " TEXT, "
-                                cmeIDDLogsDBTransactions_endTimestamp_name " TEXT, "
-                                cmeIDDLogsDBTransactions_requestDataSize_name " TEXT, "
-                                cmeIDDLogsDBTransactions_responseDataSize_name " TEXT, "
-                                cmeIDDLogsDBTransactions_orgResourceId_name " TEXT, "
-                                cmeIDDLogsDBTransactions_requestIPAddress_name " TEXT, "
-                                cmeIDDLogsDBTransactions_responseCode_name " TEXT, "
-                                cmeIDDLogsDBTransactions_responseHeaders_name " TEXT, "
-                                cmeIDDLogsDBTransactions_authenticated_name " TEXT); "
-                                "CREATE INDEX \"idx_log_%s_uo\" ON \"%s\"("
-                                cmeIDDanydb_orgId_name "," cmeIDDanydb_userId_name "); COMMIT;",
-                                tableName,tableName,tableName);
-            cmeSQLRows(pDB,sqlCreate,NULL,NULL);
-            cmeFree(sqlCreate);
-            sqlCreate=NULL;
-        }
-    }
-    else
-    {
-        cmeResultMemTableClean();
+        cmeWebServiceLogRequestFree();
+        return(2);
     }
     if (!strcmp(authenticated,"1")) //Connection was authenticated -> set flag to encrypt normally (otherwise store information unencrypted)
     {

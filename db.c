@@ -375,6 +375,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
         do
         {
             numCols=-1; //Reset column counter for each SQL instruction.
+            sqlStatemnt=NULL;
             result = sqlite3_prepare_v2(db,pSqlInstruction,-1,&sqlStatemnt,&tail);
             if (result) // Error
             {
@@ -385,6 +386,10 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
     #endif
                 cmeSQLRowsFree();
                 return(2);
+            }
+            if (!sqlStatemnt)
+            {
+                break;
             }
             //2) Execute statement and get each result row:
             while (sqlite3_step(sqlStatemnt) == SQLITE_ROW)
@@ -464,6 +469,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
         do
         {
             numCols=-1; //Reset column counter for each SQL instruction.
+            sqlStatemnt=NULL;
             result = sqlite3_prepare_v2(db,pSqlInstruction,-1,&sqlStatemnt,&tail);
             if (result) // Error
             {
@@ -474,6 +480,10 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
     #endif
                 cmeSQLRowsFree();
                 return(2);
+            }
+            if (!sqlStatemnt)
+            {
+                break;
             }
             //2) Execute statement and get each result row:
             while (sqlite3_step(sqlStatemnt) == SQLITE_ROW)
@@ -914,20 +924,20 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         cmeMemSecureDBProtectFree();
         return(3);
     }
+    if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
+                " can't begin salt update transaction!\n");
+#endif
+        cmeMemSecureDBProtectFree();
+        return(3);
+    }
     for (cont=1;cont<=numRowsData;cont++)
     {
         cmeGetRndSaltAnySize(&(currentDataSalt[cont-1]),cmeDefaultSecureDBSaltLen);
         //Update Salt info in data table.
         cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont+cmeIDDanydb_id])); //sanitize currentDataId with atoi()
-        if (cmeSQLRows(memSecureDB,"BEGIN;",NULL,NULL))
-        {
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
-                    " can't begin salt update transaction!\n");
-#endif
-            cmeMemSecureDBProtectFree();
-            return(3);
-        }
         result=sqlite3_bind_text(updateDataSaltStmt,1,currentDataSalt[cont-1],-1,SQLITE_TRANSIENT);
         if (result==SQLITE_OK)
         {
@@ -949,21 +959,21 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
         }
         sqlite3_reset(updateDataSaltStmt);
         sqlite3_clear_bindings(updateDataSaltStmt);
-        if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
-        {
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
-                    " can't commit salt update transaction for data id %s!\n",currentDataId);
-#endif
-            cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
-            cmeMemSecureDBProtectFree();
-            return(3);
-        }
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeMemSecureDBProtect(), updated 'salt' in data table "
                 " for id: %s.\n",currentDataId);
 #endif
         cmeFree(currentDataId);
+    }
+    if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBProtect(), cmeSQLRows() Error"
+                " can't commit salt update transaction!\n");
+#endif
+        cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
+        cmeMemSecureDBProtectFree();
+        return(3);
     }
     //Apply each protection mecanism to the table:
     result=sqlite3_prepare_v2(memSecureDB,
@@ -2900,9 +2910,9 @@ int cmeEnsureResourcesDBDocumentLookups (sqlite3 *pDB)
         if (!hasColumn)
         {
             cmeStrConstrAppend(&query,"ALTER TABLE documents ADD COLUMN %s TEXT;",lookupColumns[cont]);
-            result=cmeSQLRows(pDB,query,NULL,NULL);
+            result=sqlite3_exec(pDB,query,NULL,NULL,NULL);
             cmeFree(query);
-            if (result)
+            if (result!=SQLITE_OK)
             {
                 cmeEnsureResourcesDBDocumentLookupsFree();
                 return(2);
@@ -2910,9 +2920,9 @@ int cmeEnsureResourcesDBDocumentLookups (sqlite3 *pDB)
         }
         cmeStrConstrAppend(&query,"CREATE INDEX IF NOT EXISTS %s ON documents(%s);",
                            lookupIndexes[cont],lookupColumns[cont]);
-        result=cmeSQLRows(pDB,query,NULL,NULL);
+        result=sqlite3_exec(pDB,query,NULL,NULL,NULL);
         cmeFree(query);
-        if (result)
+        if (result!=SQLITE_OK)
         {
             cmeEnsureResourcesDBDocumentLookupsFree();
             return(3);

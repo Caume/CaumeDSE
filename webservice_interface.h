@@ -99,6 +99,18 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
 //Function to process organization resource requests
 int cmeWebServiceProcessRoleTableClass (char **responseText, char ***responseHeaders, int *responseCode,
                                   const char *url, const char **urlElements, const char **argumentElements, const char *method);
+//Function to process filter whitelist class requests
+int cmeWebServiceProcessFilterWhitelistClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                  const char *url, const char **urlElements, const char **argumentElements, const char *method);
+//Function to process filter whitelist resource requests
+int cmeWebServiceProcessFilterWhitelistResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method);
+//Function to process filter blacklist class requests
+int cmeWebServiceProcessFilterBlacklistClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                  const char *url, const char **urlElements, const char **argumentElements, const char *method);
+//Function to process filter blacklist resource requests
+int cmeWebServiceProcessFilterBlacklistResource (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements, const char *method);
 int cmeWebServiceProcessOrgResource (char **responseText, char ***responseHeaders, int *responseCode,
                                      const char *url, const char **urlElements, const char **argumentElements, const char *method);
 //Function to process organization class resource requests
@@ -126,6 +138,9 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
                                        const char *url, const char **urlElements, const char **argumentElements,
                                        const char *method, const char *storagePath);
 //Function to process parserScripts resource requests for handling document content
+int cmeWebServiceProcessParserScriptClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements,
+                                           const char *method);
 int cmeWebServiceProcessParserScriptResource (char **responseText, char ***responseHeaders, int *responseCode,
                                               const char *url, const char **urlElements, const char **argumentElements,
                                               const char *method, const char *storagePath);
@@ -134,6 +149,9 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                                       const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                       const char *storagePath);
 //Function to process contentRow requests and parameters.
+int cmeWebServiceProcessContentRowClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements,
+                                         const char *method);
 int cmeWebServiceProcessContentRowResource (char **responseText, char ***responseHeaders, int *responseCode,
                                             const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                             const char *storagePath);

@@ -266,15 +266,15 @@ distuninstallcheck_listfiles = find . -type f -print
 am__distuninstallcheck_listfiles = $(distuninstallcheck_listfiles) \
   | sed 's|^\./|$(prefix)/|' | grep -v '$(infodir)/dir$$'
 distcleancheck_listfiles = find . -type f -print
-ACLOCAL = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' aclocal-1.16
+ACLOCAL = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' aclocal-1.16
 ADDITIONAL_CFLAGS = -g -DDEBUG
 AMTAR = $${TAR-tar}
 AM_DEFAULT_VERBOSITY = 1
-AUTOCONF = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' autoconf
-AUTOHEADER = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' autoheader
-AUTOMAKE = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' automake-1.16
+AUTOCONF = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' autoconf
+AUTOHEADER = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' autoheader
+AUTOMAKE = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' automake-1.16
 AWK = gawk
-BINDIR = /opt/cdse/bin
+BINDIR = /tmp/cdse-verify/cdse/bin
 CC = gcc
 CCDEPMODE = depmode=gcc3
 CFLAGS = -g -O2
@@ -286,7 +286,7 @@ CXX = g++
 CXXDEPMODE = depmode=gcc3
 CXXFLAGS = -g -O2
 CYGPATH_W = echo
-DATADIR = /opt/cdse
+DATADIR = /tmp/cdse-verify/cdse
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
 ECHO_C = 
@@ -294,7 +294,7 @@ ECHO_N = -n
 ECHO_T = 
 ETAGS = etags
 EXEEXT = 
-GENERAL_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE 
+GENERAL_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.40/CORE 
 HARDEN_CFLAGS =  -fwrapv -fno-strict-overflow -fno-strict-aliasing -D_FORTIFY_SOURCE=2 -fstack-protector-all -Wstack-protector --param ssp-buffer-size=1 -fPIE
 HARDEN_LDFLAGS =  -pie -Wl,-z,relro -Wl,-z,now
 INSTALL = /usr/bin/install -c
@@ -307,7 +307,7 @@ LIBOBJS =
 LIBS = -lsqlite3 -lgnutls -lutil -lpthread -lperl -lnsl -lmicrohttpd -lm -ldl -lcrypto -lcrypt -lc 
 LN_S = ln -s
 LTLIBOBJS = 
-MAKEINFO = ${SHELL} '/home/orangepi/Projects/CaumeDSE/missing' makeinfo
+MAKEINFO = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' makeinfo
 MKDIR_P = /usr/bin/mkdir -p
 OBJEXT = o
 PACKAGE = caumedse
@@ -319,21 +319,21 @@ PACKAGE_URL =
 PACKAGE_VERSION = 1.0.7
 PATH_SEPARATOR = :
 PERL = /usr/bin/perl
-PERL_CCOPTS =  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE 
-PERL_LDOPTS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/aarch64-linux-gnu/perl/5.38/CORE -lperl -ldl -lm -lpthread -lc -lcrypt
-PREFIX = /opt
+PERL_CCOPTS =  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.40/CORE 
+PERL_LDOPTS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/aarch64-linux-gnu/perl/5.40/CORE -lperl -ldl -lm -lpthread -lc -lcrypt
+PREFIX = /tmp/cdse-verify
 RANLIB = ranlib
-SECUREDIR = /opt/cdse/secureTmp
+SECUREDIR = /tmp/cdse-verify/cdse/secureTmp
 SET_MAKE = 
 SHELL = /bin/bash
 STRIP = 
-TESTDB = /opt/cdse
-TESTFILES = /opt/cdse/testfiles
+TESTDB = /tmp/cdse-verify/cdse
+TESTFILES = /tmp/cdse-verify/cdse/testfiles
 VERSION = 1.0.7
-abs_builddir = /home/orangepi/Projects/CaumeDSE
-abs_srcdir = /home/orangepi/Projects/CaumeDSE
-abs_top_builddir = /home/orangepi/Projects/CaumeDSE
-abs_top_srcdir = /home/orangepi/Projects/CaumeDSE
+abs_builddir = /home/oherrera/Projects/CaumeDSE
+abs_srcdir = /home/oherrera/Projects/CaumeDSE
+abs_top_builddir = /home/oherrera/Projects/CaumeDSE
+abs_top_srcdir = /home/oherrera/Projects/CaumeDSE
 ac_ct_CC = gcc
 ac_ct_CXX = g++
 am__include = include
@@ -361,7 +361,7 @@ host_vendor = unknown
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /home/orangepi/Projects/CaumeDSE/install-sh
+install_sh = ${SHELL} /home/oherrera/Projects/CaumeDSE/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
@@ -370,7 +370,7 @@ mandir = ${datarootdir}/man
 mkdir_p = $(MKDIR_P)
 oldincludedir = /usr/include
 pdfdir = ${docdir}
-prefix = /usr/local
+prefix = /tmp/cdse-verify
 program_transform_name = s,x,x,
 psdir = ${docdir}
 runstatedir = ${localstatedir}/run
@@ -383,19 +383,19 @@ top_build_prefix =
 top_builddir = .
 top_srcdir = .
 SUBDIRS = .
-AM_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.38/CORE  -g -DDEBUG  -fwrapv -fno-strict-overflow -fno-strict-aliasing -D_FORTIFY_SOURCE=2 -fstack-protector-all -Wstack-protector --param ssp-buffer-size=1 -fPIE
-AM_LDFLAGS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/aarch64-linux-gnu/perl/5.38/CORE -lperl -ldl -lm -lpthread -lc -lcrypt  -pie -Wl,-z,relro -Wl,-z,now
+AM_CFLAGS = -DERROR_LOG -DPURIFY -DSQLITE_SECURE_DELETE -Wall  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.40/CORE  -g -DDEBUG  -fwrapv -fno-strict-overflow -fno-strict-aliasing -D_FORTIFY_SOURCE=2 -fstack-protector-all -Wstack-protector --param ssp-buffer-size=1 -fPIE
+AM_LDFLAGS = -Wl,-E  -fstack-protector-strong -L/usr/local/lib  -L/usr/lib/aarch64-linux-gnu/perl/5.40/CORE -lperl -ldl -lm -lpthread -lc -lcrypt  -pie -Wl,-z,relro -Wl,-z,now
 ACLOCAL_AMFLAGS = -I m4 -I m4.local
 AUTOMAKE_OPTIONS = subdir-objects
-spath = /opt/cdse/secureTmp
-tdbpath = /opt/cdse
-tpath = /opt/cdse/testfiles
-ipath = /opt
-ipathbindir = /opt/cdse/bin
-ipathdatadir = /opt/cdse
+spath = /tmp/cdse-verify/cdse/secureTmp
+tdbpath = /tmp/cdse-verify/cdse
+tpath = /tmp/cdse-verify/cdse/testfiles
+ipath = /tmp/cdse-verify
+ipathbindir = /tmp/cdse-verify/cdse/bin
+ipathdatadir = /tmp/cdse-verify/cdse
 CaumeDSE_SOURCES = main.c common.h config.c crypto.c crypto.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
-EXTRA_DIST = TEST README-alpha
+EXTRA_DIST = TEST README-alpha CHANGELOG.md README.md
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
 

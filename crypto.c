@@ -433,29 +433,76 @@ int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
     }
 }
 
-int cmeSeedPrng (){   // TODO (OHR#5#): Check if another random source is needed, especially for OSes that do not have /dev/random and /dev/urandom.
-    if(!RAND_load_file("/dev/random",prngSeedBytes)) //Get information from best entropy source. But note that implementation varies from OS to OS! (http://en.wikipedia.org/wiki//dev/random)
+int cmeSeedPrng ()
+{
+    int loadedBytes=0;
+
+    if (!RAND_poll())
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeSeedPrng(), Error seeding PRNG with RAND_load_file()"
-                " and /dev/random!\n");
+        fprintf(stderr,"CaumeDSE Error: cmeSeedPrng(), RAND_poll() failed to seed OpenSSL PRNG!\n");
+#endif
+        if (RAND_status()!=1)
+        {
+            return(1);
+        }
+    }
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: cmeSeedPrng(), RAND_poll() completed.\n");
+#endif
+    if (access("/dev/random",R_OK)==0)
+    {
+        loadedBytes=RAND_load_file("/dev/random",prngSeedBytes);
+        if (loadedBytes!=prngSeedBytes)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSeedPrng(), RAND_load_file() loaded %d bytes from /dev/random; expected %d.\n",
+                    loadedBytes,prngSeedBytes);
+#endif
+        }
+#ifdef DEBUG
+        else
+        {
+            fprintf(stdout,"CaumeDSE Debug: cmeSeedPrng(), PRNG seeded - random.\n");
+        }
+#endif
+    }
+#ifdef DEBUG
+    else
+    {
+        fprintf(stdout,"CaumeDSE Debug: cmeSeedPrng(), /dev/random not available; using OpenSSL platform seeding.\n");
+    }
+#endif
+    if (access("/dev/urandom",R_OK)==0)
+    {
+        loadedBytes=RAND_load_file("/dev/urandom",prngSeedBytes*32);
+        if (loadedBytes!=(prngSeedBytes*32))
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSeedPrng(), RAND_load_file() loaded %d bytes from /dev/urandom; expected %d.\n",
+                    loadedBytes,prngSeedBytes*32);
+#endif
+        }
+#ifdef DEBUG
+        else
+        {
+            fprintf(stdout,"CaumeDSE Debug: cmeSeedPrng(), PRNG seeded - urandom.\n");
+        }
+#endif
+    }
+#ifdef DEBUG
+    else
+    {
+        fprintf(stdout,"CaumeDSE Debug: cmeSeedPrng(), /dev/urandom not available; using OpenSSL platform seeding.\n");
+    }
+#endif
+    if (RAND_status()!=1)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeSeedPrng(), OpenSSL PRNG is not sufficiently seeded!\n");
 #endif
         return(1);
     }
-#ifdef DEBUG
-    fprintf(stdout,"CaumeDSE Debug: cmeSeedPrng(), PRNG seeded - random.\n");
-#endif
-    if(!RAND_load_file("/dev/urandom",prngSeedBytes*32)) //Get information from second best entropy source
-    {
-#ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeSeedPrng(), Error seeding PRNG with RAND_load_file()"
-                " and /dev/urandom!\n");
-#endif
-        return(1);
-    }
-#ifdef DEBUG
-    fprintf(stdout,"CaumeDSE Debug: cmeSeedPrng(), PRNG seeded - urandom.\n");
-#endif
     return(0);
 }
 
@@ -465,6 +512,17 @@ int cmePrngGetBytes (unsigned char **buffer, int num)
     *buffer=(unsigned char *)malloc(sizeof(unsigned char)*num);    //Note: caller must free memory after use !!
     if (*buffer)
     {
+        if (RAND_status()!=1)
+        {
+            if (cmeSeedPrng())
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmePrngGetBytes(), PRNG is not sufficiently seeded!\n");
+#endif
+                cmeFree(*buffer);
+                return(1);
+            }
+        }
         result=RAND_bytes(*buffer,num);
         if(!result) //Error
         {

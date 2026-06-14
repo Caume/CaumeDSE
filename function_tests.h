@@ -55,6 +55,12 @@ void testPerl (PerlInterpreter *myPerl);
 void testDB (PerlInterpreter* myPerl);
 void testCSV ();
 void testEngMgmnt ();
+void testRoleTables ();
+void testFilterWhitelist ();
+void testFilterBlacklist ();
+void testDocumentTypes ();
+void testParserScripts ();
+void testContentRows ();
 void testThreadSafety ();
 void testWebServices ();
 

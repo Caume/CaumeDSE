@@ -327,6 +327,22 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/roleTables" \
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                     "OptionalParameters...]<br></code><br>" //RoleTable class resource options.
+#define cmeWSMsgFilterWhitelistOptions "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
+                                 "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterWhitelist/{filterUser}" \
+                                 "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                 "OptionalParameters...]<br></code><br>" //Filter whitelist resource options.
+#define cmeWSMsgFilterWhitelistClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
+                                    "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterWhitelist" \
+                                    "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                    "OptionalParameters...]<br></code><br>" //Filter whitelist class resource options.
+#define cmeWSMsgFilterBlacklistOptions "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
+                                 "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterBlacklist/{filterUser}" \
+                                 "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                 "OptionalParameters...]<br></code><br>" //Filter blacklist resource options.
+#define cmeWSMsgFilterBlacklistClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
+                                    "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterBlacklist" \
+                                    "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                    "OptionalParameters...]<br></code><br>" //Filter blacklist class resource options.
 
 #define cmeWSMsgOrgOptions  "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                             "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}" \
@@ -348,13 +364,13 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                     "OptionalParameters...]<br></code><br>"   //Storage class resource options.
 
-#define cmeWSMsgDocumentTypeOptions  "Allowed Methods: <code>OPTIONS</code><br>" \
+#define cmeWSMsgDocumentTypeOptions  "Allowed Methods: <code>GET,HEAD,OPTIONS</code><br>" \
                                      "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/{documentType}" \
                                      "/&lt;file.csv|file.raw|file.txt|file.json|file.xml|file.html|file.pdf|file.png|file.jpg|file.gif|file.zip|file.bin|script.perl&gt;" \
                                      "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                      "OptionalParameters...]<br></code><br>" //Document Type resource options.
 
-#define cmeWSMsgDocumentTypeClassOptions "Allowed Methods: <code>OPTIONS</code><br>" \
+#define cmeWSMsgDocumentTypeClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
                                          "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes" \
                                          "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                          "OptionalParameters...]<br></code><br>"   //DocumentType class resource options.
@@ -376,6 +392,11 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
                                               "/documents/{document}/parserScripts/{parserScript}" \
                                               "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                               "OptionalParameters...]<br></code><br>" //Parser Script resource options.
+#define cmeWSMsgParserScriptClassOptions  "Allowed Methods: <code>OPTIONS</code><br>" \
+                                          "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/{documentType}" \
+                                          "/documents/{document}/parserScripts" \
+                                          "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                          "OptionalParameters...]<br></code><br>" //Parser Script class options.
 
 #define cmeWSMsgContentClassOptions "Allowed Methods: <code>GET,HEAD,OPTIONS</code><br>" \
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/{documentType}" \
@@ -385,7 +406,7 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 
 #define cmeWSMsgContenRowOptions  "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                                  "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/file.csv" \
-                                 "/documents/{document}/content/contentRows/{contentRow}" \
+                                 "/documents/{document}/contentRows/{contentRow}" \
                                  "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                  "OptionalParameters...]<br></code><br>" //contentRow resource options.
 
