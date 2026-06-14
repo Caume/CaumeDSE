@@ -259,6 +259,13 @@ check_component document_types_resource 'Testing documentTypes resource handlers
     'TESTS: testDocumentTypes(), PASS: documentTypes unsupported GET responseCode=404' \
     'TESTS: testDocumentTypes(), PASS: class listing and resource validation verified.'
 
+check_component parser_scripts_resource 'Testing parserScripts resource handlers|testParserScripts|parserScripts' "$FULL_LOG" \
+    '--- Testing parserScripts resource handlers:' \
+    'TESTS: testParserScripts(), PASS: parserScripts class OPTIONS responseCode=200' \
+    'TESTS: testParserScripts(), PASS: parserScripts resource OPTIONS responseCode=200' \
+    'TESTS: testParserScripts(), PASS: parserScripts missing script HEAD responseCode=404' \
+    'TESTS: testParserScripts(), PASS: class options and missing script handling verified.'
+
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
 

@@ -59,6 +59,7 @@ void testRoleTables ();
 void testFilterWhitelist ();
 void testFilterBlacklist ();
 void testDocumentTypes ();
+void testParserScripts ();
 void testThreadSafety ();
 void testWebServices ();
 

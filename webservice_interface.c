@@ -1461,15 +1461,16 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
                         "parserScript class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-            cmeStrConstrAppend(responseText,"<b>403 ERROR No methods are currently available for this resource type.</b><br><br>"
-               "Resource: '%s'. method: '%s', url: '%s'",urlElements[numUrlElements-1],method,url);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, no methods are currently available for this resource type."
-                    "Unknown resource: '%s'. Method: '%s', url: '%s'\n",urlElements[numUrlElements-1],method,url);
-#endif
-            cmeWebServiceProcessRequestFree();
-            *responseCode=403; //Response: Error 404 (resource not found).
-            return (17);
+            result=cmeWebServiceProcessParserScriptClass(responseText, responseHeaders, responseCode,
+                                                         url, urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
         }
         else if ((numUrlElements==10)&&(strcmp(urlElements[8],"parserScripts")==0))// parserScripts resource
         {
@@ -8530,6 +8531,27 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
         *responseCode=405;
         return(15);
     }
+}
+
+int cmeWebServiceProcessParserScriptClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements,
+                                           const char *method)
+{
+    if(!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for parser script class resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",cmeWSMsgParserScriptClassOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=200;
+        return(0);
+    }
+    cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                       "method is not allowed for this parserScripts class resource."
+                       "METHOD: '%s' URL: '%s'."
+                       "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgParserScriptClassOptions,
+                       cmeInternalDBDefinitionsVersion);
+    *responseCode=405;
+    return(1);
 }
 
 int cmeWebServiceProcessParserScriptResource (char **responseText, char ***responseHeaders, int *responseCode,

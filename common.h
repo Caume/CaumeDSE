@@ -392,6 +392,11 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
                                               "/documents/{document}/parserScripts/{parserScript}" \
                                               "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                               "OptionalParameters...]<br></code><br>" //Parser Script resource options.
+#define cmeWSMsgParserScriptClassOptions  "Allowed Methods: <code>OPTIONS</code><br>" \
+                                          "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/{documentType}" \
+                                          "/documents/{document}/parserScripts" \
+                                          "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
+                                          "OptionalParameters...]<br></code><br>" //Parser Script class options.
 
 #define cmeWSMsgContentClassOptions "Allowed Methods: <code>GET,HEAD,OPTIONS</code><br>" \
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/{documentType}" \

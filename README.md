@@ -338,7 +338,7 @@ https://{engine}
 |               |   `-- /{documentType}
 |               |       `-- /documents
 |               |           `-- /{document}
-|               |               |-- /parserScripts [not implemented]
+|               |               |-- /parserScripts
 |               |               |   `-- /{parserScript}
 |               |               |-- /content
 |               |               |-- /contentRows [not implemented]
@@ -1671,6 +1671,12 @@ This is a raw file
             Engine-results: <number of matching registers>
         RESPONSE BODY:
             <Contents of parsed file.csv with perl script>
+
+    The parserScripts collection supports OPTIONS. Individual
+    parserScript resources load the named script.perl document,
+    reconstruct it through the secure-file path, and run it against
+    file.csv document content with the embedded Perl interpreter after
+    normal authorization succeeds.
 
     Example 1)     Get parsed contents of payroll.csv file (of type
             file.csv) using script myscript.pl (of type

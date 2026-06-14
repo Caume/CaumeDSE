@@ -138,6 +138,9 @@ int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHead
                                        const char *url, const char **urlElements, const char **argumentElements,
                                        const char *method, const char *storagePath);
 //Function to process parserScripts resource requests for handling document content
+int cmeWebServiceProcessParserScriptClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                           const char *url, const char **urlElements, const char **argumentElements,
+                                           const char *method);
 int cmeWebServiceProcessParserScriptResource (char **responseText, char ***responseHeaders, int *responseCode,
                                               const char *url, const char **urlElements, const char **argumentElements,
                                               const char *method, const char *storagePath);

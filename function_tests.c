@@ -1403,6 +1403,79 @@ void testDocumentTypes ()
     }
 }
 
+static int cmeTestParserScriptsRequest(const char *method, const char *url,
+                                       const char **urlElements, int numUrlElements,
+                                       const char **argumentElements, int expectedCode,
+                                       const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testParserScripts(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    if (numUrlElements==9)
+    {
+        result=cmeWebServiceProcessParserScriptClass(&responseText,&responseHeaders,&responseCode,
+                                                     url,urlElements,argumentElements,method);
+    }
+    else
+    {
+        result=cmeWebServiceProcessParserScriptResource(&responseText,&responseHeaders,&responseCode,
+                                                        url,urlElements,argumentElements,method,cmeDefaultFilePath);
+    }
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testParserScripts(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testParserScripts(), PASS: %s responseCode=%d",marker,responseCode);
+    if (responseHeaders[0]&&responseHeaders[1])
+    {
+        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+    }
+    printf("\n");
+    cmeFree(responseText);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testParserScripts ()
+{
+    int errors=0;
+    const char *classUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/file.csv/documents/payroll.csv/parserScripts";
+    const char *resourceUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/file.csv/documents/payroll.csv/parserScripts/missing.pl";
+    const char *classElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","file.csv","documents","payroll.csv","parserScripts"};
+    const char *resourceElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","file.csv","documents","payroll.csv","parserScripts","missing.pl"};
+    const char *adminArgs[]={
+        "userId","EngineAdmin",
+        "orgId","EngineOrg",
+        "orgKey","0CDBB9AF76AF43BDB72E095989E612CC",
+        NULL
+    };
+
+    printf("--- Testing parserScripts resource handlers:\n");
+    errors+=cmeTestParserScriptsRequest("OPTIONS",classUrl,classElements,9,adminArgs,200,"parserScripts class OPTIONS");
+    errors+=cmeTestParserScriptsRequest("GET",classUrl,classElements,9,adminArgs,405,"parserScripts class GET not allowed");
+    errors+=cmeTestParserScriptsRequest("OPTIONS",resourceUrl,resourceElements,10,adminArgs,200,"parserScripts resource OPTIONS");
+    errors+=cmeTestParserScriptsRequest("HEAD",resourceUrl,resourceElements,10,adminArgs,404,"parserScripts missing script HEAD");
+    errors+=cmeTestParserScriptsRequest("GET",resourceUrl,resourceElements,10,adminArgs,404,"parserScripts missing script GET");
+    if (errors)
+    {
+        printf("TESTS: testParserScripts(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testParserScripts(), PASS: class options and missing script handling verified.\n");
+    }
+}
+
 void testEngMgmnt ()
 {
     int result __attribute__((unused));
@@ -1412,6 +1485,7 @@ void testEngMgmnt ()
     testFilterWhitelist();
     testFilterBlacklist();
     testDocumentTypes();
+    testParserScripts();
 }
 
 void testWebServices ()

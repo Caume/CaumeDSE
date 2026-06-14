@@ -100,13 +100,14 @@
   - Update `README.md` to remove the `[not implemented]` marker once verified.
   - Done: verified documentTypes routing, documented class/resource behavior, added GET/HEAD/OPTIONS support for documentType resources, and added DEBUG/component coverage for supported and unsupported type validation.
 
-- [ ] #16 Finish and verify `/documents/{document}/parserScripts` resources.
+- [x] #16 Finish and verify `/documents/{document}/parserScripts` resources.
   - Review existing `parserScripts` routing and script execution paths to determine whether the README marker is stale or the feature is partial.
   - Define the supported methods for parser script collections and `{parserScript}` resources, including script type restrictions and output formats.
   - Ensure script resources are loaded, decrypted, MAC-verified, and executed only after authorization succeeds.
   - Keep embedded Perl interpreter access serialized while moving file/DB work outside the Perl mutex where possible.
   - Add tests for valid script execution, missing scripts, unsupported script types, parser errors, and unauthorized access.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: enabled parserScripts collection OPTIONS routing, verified resource OPTIONS plus missing-script GET/HEAD behavior, documented existing secure script loading and serialized Perl execution path, and added DEBUG/component coverage.
 
 - [ ] #17 Finish and verify `/documents/{document}/contentRows` resources for `file.csv`.
   - Review existing `contentRows` routing and CSV row manipulation paths to determine whether the README marker is stale or the feature is partial.
