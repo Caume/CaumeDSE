@@ -146,11 +146,12 @@
   - Source: `filehandling.c:53`.
   - Done: added storage-provider wrappers for directory checks, file open/close, and file removal. Local filesystem behavior is preserved for provider `0`, non-local providers now fail explicitly until provider clients are implemented, and the default provider macro can be overridden at compile time.
 
-- [ ] #22 Factor common in-memory DB creation for CSV and memory-table imports.
+- [x] #22 Factor common in-memory DB creation for CSV and memory-table imports.
   - Source: `filehandling.c:649`, `filehandling.c:1687`.
+  - Done: factored the shared ColumnFile memory DB allocation, random filename/salt initialization, and `data`/`meta` table creation into `cmeCreateSecureDBMemColumnFiles()`, preserving the existing CSV and memory-table import return codes.
 
 - [ ] #23 Add SQL DB filename collision handling.
-  - Source: `filehandling.c:678`, `filehandling.c:1727`.
+  - Source: `filehandling.c:148`.
 
 - [ ] #24 Factor secure DB import insertion logic into a shared helper.
   - Source: `filehandling.c:799`, `filehandling.c:1848`.

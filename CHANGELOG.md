@@ -4,6 +4,12 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `filehandling.c`: Factor the duplicated in-memory ColumnFile DB
+  allocation and schema creation used by CSV and memory-table secure DB
+  imports into a shared helper.
+
+- `TODO.md`: Mark TODO item #22 complete.
+
 - `common.h`, `filehandling.h`, `filehandling.c`: Add storage-provider
   wrappers for directory checks and file open, close, and removal
   operations. The local filesystem remains provider `0`, while
