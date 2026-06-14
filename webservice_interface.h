@@ -156,6 +156,9 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                                             const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                             const char *storagePath);
 //Function to process contentColumn requests.
+int cmeWebServiceProcessContentColumnClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                            const char *url, const char **urlElements, const char **argumentElements,
+                                            const char *method);
 int cmeWebServiceProcessContentColumnResource (char **responseText, char ***responseHeaders, int *responseCode,
                                                const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                                const char *storagePath);

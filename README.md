@@ -343,7 +343,7 @@ https://{engine}
 |               |               |-- /content
 |               |               |-- /contentRows
 |               |               |   `-- /{contentRow}
-|               |               `-- /contentColumns [not implemented]
+|               |               `-- /contentColumns
 |               |                   `-- /{contentColumn}
 |               `-- /dbNames [not implemented]
 |                   `-- /{dbName}

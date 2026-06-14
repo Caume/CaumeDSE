@@ -118,13 +118,14 @@
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
   - Done: enabled contentRows collection OPTIONS routing, verified row GET/HEAD, append-only POST, in-range PUT, DELETE persistence, invalid rows, missing documents, and non-CSV rejection, and added DEBUG/component coverage.
 
-- [ ] #18 Finish and verify `/documents/{document}/contentColumns` resources for `file.csv`.
+- [x] #18 Finish and verify `/documents/{document}/contentColumns` resources for `file.csv`.
   - Review existing `contentColumns` routing and CSV column manipulation paths to determine whether the README marker is stale or the feature is partial.
   - Define column creation, retrieval, deletion, empty-document creation, duplicate-column handling, and error behavior for missing columns.
   - Implement or complete handlers using in-memory transformations followed by immediate durable secure-DB/file saves.
   - Preserve encrypted part MAC verification and the security goal of column shuffling, including safe behavior when duplicate column names exist.
   - Add tests for get, create, delete, duplicate names, last-column deletion, missing documents, non-CSV documents, and unauthorized access.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: enabled contentColumns collection OPTIONS routing, corrected column HEAD and DELETE semantics, verified column get/create/delete, duplicate rejection, empty-document creation, last-column deletion, missing documents, non-CSV rejection, and missing-key rejection, and added DEBUG/component coverage.
 
 - [ ] #19 Implement direct encrypted DB browsing resources under `/dbNames`.
   - Define the scope and security model for `/dbNames`, `{dbName}`, `/dbTables`, `{dbTable}`, `/tableRows`, `{tableRow}`, `/tableColumns`, and `{tableColumn}`.

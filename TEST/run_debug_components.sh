@@ -274,6 +274,14 @@ check_component content_rows_resource 'Testing contentRows resource handlers|tes
     'TESTS: testContentRows(), PASS: contentRows appended DELETE responseCode=200' \
     'TESTS: testContentRows(), PASS: row get/append/update/delete/options verified.'
 
+check_component content_columns_resource 'Testing contentColumns resource handlers|testContentColumns|contentColumns' "$FULL_LOG" \
+    '--- Testing contentColumns resource handlers:' \
+    'TESTS: testContentColumns(), PASS: contentColumns class OPTIONS responseCode=200' \
+    'TESTS: testContentColumns(), PASS: contentColumns existing column GET responseCode=200' \
+    'TESTS: testContentColumns(), PASS: contentColumns empty document POST responseCode=201' \
+    'TESTS: testContentColumns(), PASS: contentColumns last column DELETE responseCode=200' \
+    'TESTS: testContentColumns(), PASS: column get/create/delete/options and edge cases verified.'
+
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
 

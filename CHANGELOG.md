@@ -4,6 +4,18 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `webservice_interface.h`, `webservice_interface.c`: Enable
+  `contentColumns` collection OPTIONS routing and align column HEAD and
+  DELETE behavior with resource semantics.
+
+- `function_tests.c`, `TEST/run_debug_components.sh`: Add DEBUG
+  coverage for CSV `contentColumns` get/create/delete, duplicate
+  rejection, empty-document creation, last-column deletion, missing
+  resources, non-CSV rejection, and missing-key rejection.
+
+- `README.md`, `TODO.md`: Remove the `contentColumns` not-implemented
+  marker and mark TODO item #18 complete.
+
 - `ChangeLog`, `CHANGELOG.md`: Migrate the historical changelog to GitHub-compatible Markdown while preserving the legacy file as a compatibility pointer.
 
 - `Makefile.am`, `Makefile.in`: Include `CHANGELOG.md` in distribution files so release archives carry the canonical Markdown changelog.

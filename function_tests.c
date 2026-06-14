@@ -44,6 +44,9 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
+void testContentRows(void);
+void testContentColumns(void);
+
 static int cmeDebugTestsNonInteractiveEnabled(void)
 {
     const char *env = getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
@@ -715,6 +718,7 @@ void testCSV ()
 
     cmeDBClose(pResourcesDB);
     testContentRows();
+    testContentColumns();
     cmeFree(fName);
     cmeFree(fName2);
     cmeFree(resourcesDBPath);
@@ -1578,6 +1582,103 @@ void testContentRows ()
     else
     {
         printf("TESTS: testContentRows(), PASS: row get/append/update/delete/options verified.\n");
+    }
+}
+
+static int cmeTestContentColumnsRequest(const char *method, const char *url,
+                                        const char **urlElements, int numUrlElements,
+                                        const char **argumentElements, int expectedCode,
+                                        const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testContentColumns(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    if (numUrlElements==9)
+    {
+        result=cmeWebServiceProcessContentColumnClass(&responseText,&responseHeaders,&responseCode,
+                                                      url,urlElements,argumentElements,method);
+    }
+    else
+    {
+        result=cmeWebServiceProcessContentColumnResource(&responseText,&responseHeaders,&responseCode,
+                                                         url,urlElements,argumentElements,method,cmeDefaultFilePath);
+    }
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testContentColumns(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testContentColumns(), PASS: %s responseCode=%d",marker,responseCode);
+    if (responseHeaders[0]&&responseHeaders[1])
+    {
+        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+    }
+    printf("\n");
+    cmeFree(responseText);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testContentColumns ()
+{
+    int errors=0;
+    const char *classUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentColumns";
+    const char *nameUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentColumns/nombre ";
+    const char *emptyDocColumnUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/ContentColumnEmpty.csv/contentColumns/OnlyCol";
+    const char *emptyDocMissingColumnUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/ContentColumnEmpty.csv/contentColumns/MissingCol";
+    const char *reservedIdUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentColumns/id";
+    const char *missingDocUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/MissingPayroll.csv/contentColumns/nombre ";
+    const char *nonCsvUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.raw/documents/AcmeIncPayroll.csv/contentColumns/nombre ";
+    const char *classElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentColumns"};
+    const char *nameElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentColumns","nombre "};
+    const char *emptyDocColumnElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","ContentColumnEmpty.csv","contentColumns","OnlyCol"};
+    const char *emptyDocMissingColumnElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","ContentColumnEmpty.csv","contentColumns","MissingCol"};
+    const char *reservedIdElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentColumns","id"};
+    const char *missingDocElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","MissingPayroll.csv","contentColumns","nombre "};
+    const char *nonCsvElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.raw","documents","AcmeIncPayroll.csv","contentColumns","nombre "};
+    const char *authArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        "orgKey","password1",
+        NULL
+    };
+    const char *missingKeyArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        NULL
+    };
+
+    printf("--- Testing contentColumns resource handlers:\n");
+    errors+=cmeTestContentColumnsRequest("OPTIONS",classUrl,classElements,9,authArgs,200,"contentColumns class OPTIONS");
+    errors+=cmeTestContentColumnsRequest("GET",classUrl,classElements,9,authArgs,405,"contentColumns class GET not allowed");
+    errors+=cmeTestContentColumnsRequest("GET",nameUrl,nameElements,10,authArgs,200,"contentColumns existing column GET");
+    errors+=cmeTestContentColumnsRequest("POST",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,201,"contentColumns empty document POST");
+    errors+=cmeTestContentColumnsRequest("POST",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,403,"contentColumns duplicate POST rejected");
+    errors+=cmeTestContentColumnsRequest("GET",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,200,"contentColumns created column GET");
+    errors+=cmeTestContentColumnsRequest("HEAD",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,200,"contentColumns empty document HEAD");
+    errors+=cmeTestContentColumnsRequest("HEAD",emptyDocMissingColumnUrl,emptyDocMissingColumnElements,10,authArgs,404,"contentColumns missing column HEAD");
+    errors+=cmeTestContentColumnsRequest("DELETE",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,200,"contentColumns last column DELETE");
+    errors+=cmeTestContentColumnsRequest("HEAD",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,404,"contentColumns deleted document HEAD");
+    errors+=cmeTestContentColumnsRequest("POST",reservedIdUrl,reservedIdElements,10,authArgs,403,"contentColumns reserved id POST rejected");
+    errors+=cmeTestContentColumnsRequest("GET",missingDocUrl,missingDocElements,10,authArgs,404,"contentColumns missing document GET");
+    errors+=cmeTestContentColumnsRequest("GET",nonCsvUrl,nonCsvElements,10,authArgs,403,"contentColumns non-CSV GET");
+    errors+=cmeTestContentColumnsRequest("GET",nameUrl,nameElements,10,missingKeyArgs,409,"contentColumns missing key rejected");
+    if (errors)
+    {
+        printf("TESTS: testContentColumns(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testContentColumns(), PASS: column get/create/delete/options and edge cases verified.\n");
     }
 }
 

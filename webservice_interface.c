@@ -1544,17 +1544,18 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         {
 #ifdef DEBUG
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
-                        "outputDocument resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+                        "contentColumns class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-            cmeStrConstrAppend(responseText,"<b>403 ERROR No methods are currently available for this resource type.</b><br><br>"
-               "Resource: '%s'. method: '%s', url: '%s'",urlElements[numUrlElements-1],method,url);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, no methods are currently available for this resource type."
-                    "Unknown resource: '%s'. Method: '%s', url: '%s'\n",urlElements[numUrlElements-1],method,url);
-#endif
-            cmeWebServiceProcessRequestFree();
-            *responseCode=403; //Response: Error 404 (resource not found).
-            return (20);
+            result=cmeWebServiceProcessContentColumnClass (responseText, responseHeaders, responseCode, url,
+                                                           urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
         }
         else if ((numUrlElements==10)&&(strcmp(urlElements[8],"contentColumns")==0))// contentColumn resource
         {
@@ -11291,6 +11292,30 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
     }
 }
 
+int cmeWebServiceProcessContentColumnClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                            const char *url, const char **urlElements, const char **argumentElements,
+                                            const char *method)
+{
+    (void)responseHeaders;
+    (void)urlElements;
+    (void)argumentElements;
+    if(!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for contentColumns class resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",cmeWSMsgContentColumnOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=200;
+        return(0);
+    }
+    cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                       "method is not allowed for this contentColumns class resource."
+                       "METHOD: '%s' URL: '%s'."
+                       "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContentColumnOptions,
+                       cmeInternalDBDefinitionsVersion);
+    *responseCode=405;
+    return(1);
+}
+
 int cmeWebServiceProcessContentColumnResource (char **responseText, char ***responseHeaders, int *responseCode,
                                                const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                                const char *storagePath)
@@ -12039,8 +12064,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 return(17);
             }
             cmeResultMemTableClean();
-            cmeStrConstrAppend(&sqlQuery,"SELECT * FROM data;");
-            result=cmeSQLRows(resultDB,(const char *)sqlQuery,NULL,NULL); //Select the requested row only; no parser script.
+            result=cmeMemTableWithTableColumnNames(resultDB,"data");
             if (result) //Error
             {
                 cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -12052,15 +12076,24 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentColumnResourceFree();
                 *responseCode=500;
                 return(18);
             }
+            columnExists=0;
+            for (cont=0;cont<cmeResultMemTableCols;cont++)
+            {
+                if (!strcmp(cmeResultMemTable[cont],urlElements[9]))
+                {
+                    columnExists=1;
+                    break;
+                }
+            }
             //Construct response:
-            if(!cmeResultMemTableRows)//No register was found.
+            if(!columnExists)//No column was found.
             {
 #ifdef DEBUG
-            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD successful but row was not found.\n");
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD successful but column was not found.\n");
 #endif
                 cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
                 *responseCode=404;
@@ -12070,7 +12103,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
 #ifdef DEBUG
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), HEAD successful.\n");
 #endif
-                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",cmeResultMemTableRows);
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
                 *responseCode=200;
             }
             cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
@@ -12437,7 +12470,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
 #ifdef DEBUG
                 fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful.\n");
 #endif
-                *responseCode=201;
+                *responseCode=200;
                 cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
                 cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
                 cmeWebServiceProcessContentColumnResourceFree();
