@@ -109,13 +109,14 @@
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
   - Done: enabled parserScripts collection OPTIONS routing, verified resource OPTIONS plus missing-script GET/HEAD behavior, documented existing secure script loading and serialized Perl execution path, and added DEBUG/component coverage.
 
-- [ ] #17 Finish and verify `/documents/{document}/contentRows` resources for `file.csv`.
+- [x] #17 Finish and verify `/documents/{document}/contentRows` resources for `file.csv`.
   - Review existing `contentRows` routing and CSV row manipulation paths to determine whether the README marker is stale or the feature is partial.
   - Define row numbering, append behavior, update semantics, delete behavior, and error codes for out-of-range rows.
   - Implement or complete handlers using in-memory transformations followed by immediate durable secure-DB/file saves.
   - Preserve CSV column integrity, encrypted part MAC verification, and column-shuffling security behavior.
   - Add tests for get, append, update, delete, invalid row indexes, missing documents, non-CSV documents, and unauthorized access.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: enabled contentRows collection OPTIONS routing, verified row GET/HEAD, append-only POST, in-range PUT, DELETE persistence, invalid rows, missing documents, and non-CSV rejection, and added DEBUG/component coverage.
 
 - [ ] #18 Finish and verify `/documents/{document}/contentColumns` resources for `file.csv`.
   - Review existing `contentColumns` routing and CSV column manipulation paths to determine whether the README marker is stale or the feature is partial.

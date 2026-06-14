@@ -341,7 +341,7 @@ https://{engine}
 |               |               |-- /parserScripts
 |               |               |   `-- /{parserScript}
 |               |               |-- /content
-|               |               |-- /contentRows [not implemented]
+|               |               |-- /contentRows
 |               |               |   `-- /{contentRow}
 |               |               `-- /contentColumns [not implemented]
 |               |                   `-- /{contentColumn}

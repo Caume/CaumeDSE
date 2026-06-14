@@ -266,6 +266,14 @@ check_component parser_scripts_resource 'Testing parserScripts resource handlers
     'TESTS: testParserScripts(), PASS: parserScripts missing script HEAD responseCode=404' \
     'TESTS: testParserScripts(), PASS: class options and missing script handling verified.'
 
+check_component content_rows_resource 'Testing contentRows resource handlers|testContentRows|contentRows' "$FULL_LOG" \
+    '--- Testing contentRows resource handlers:' \
+    'TESTS: testContentRows(), PASS: contentRows class OPTIONS responseCode=200' \
+    'TESTS: testContentRows(), PASS: contentRows row GET responseCode=200' \
+    'TESTS: testContentRows(), PASS: contentRows append POST responseCode=201' \
+    'TESTS: testContentRows(), PASS: contentRows appended DELETE responseCode=200' \
+    'TESTS: testContentRows(), PASS: row get/append/update/delete/options verified.'
+
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
 

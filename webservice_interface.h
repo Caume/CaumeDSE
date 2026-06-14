@@ -149,6 +149,9 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                                       const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                       const char *storagePath);
 //Function to process contentRow requests and parameters.
+int cmeWebServiceProcessContentRowClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements,
+                                         const char *method);
 int cmeWebServiceProcessContentRowResource (char **responseText, char ***responseHeaders, int *responseCode,
                                             const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                             const char *storagePath);

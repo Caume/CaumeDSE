@@ -1512,15 +1512,16 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
                         "contentRows class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-            cmeStrConstrAppend(responseText,"<b>403 ERROR No methods are currently available for this resource type.</b><br><br>"
-               "Resource: '%s'. method: '%s', url: '%s'",urlElements[numUrlElements-1],method,url);
-#ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessRequest(). Error, no methods are currently available for this resource type."
-                    "Unknown resource: '%s'. Method: '%s', url: '%s'\n",urlElements[numUrlElements-1],method,url);
-#endif
-            cmeWebServiceProcessRequestFree();
-            *responseCode=403; //Response: Error 404 (resource not found).
-            return (18);
+            result=cmeWebServiceProcessContentRowClass (responseText, responseHeaders, responseCode, url,
+                                                        urlElements, argumentElements, method);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
         }
         else if ((numUrlElements==10)&&(strcmp(urlElements[8],"contentRows")==0))// contentRow resource
         {
@@ -10179,6 +10180,30 @@ int cmeWebServiceClientCertAuth (const char *userId, const char *orgId, struct M
 }
 
 
+int cmeWebServiceProcessContentRowClass (char **responseText, char ***responseHeaders, int *responseCode,
+                                         const char *url, const char **urlElements, const char **argumentElements,
+                                         const char *method)
+{
+    (void)responseHeaders;
+    (void)urlElements;
+    (void)argumentElements;
+    if(!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for contentRows class resources:</b><br>"
+                           "%sLatest IDD version: <code>%s</code>",cmeWSMsgContenRowOptions,
+                           cmeInternalDBDefinitionsVersion);
+        *responseCode=200;
+        return(0);
+    }
+    cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br><br>The selected "
+                       "method is not allowed for this contentRows class resource."
+                       "METHOD: '%s' URL: '%s'."
+                       "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgContenRowOptions,
+                       cmeInternalDBDefinitionsVersion);
+    *responseCode=405;
+    return(1);
+}
+
 int cmeWebServiceProcessContentRowResource (char **responseText, char ***responseHeaders, int *responseCode,
                                             const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                             const char *storagePath)
@@ -10406,7 +10431,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(3);
             }
@@ -10442,7 +10467,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(4);
             }
@@ -10460,7 +10485,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(5);
             }
@@ -10591,7 +10616,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(9);
             }
@@ -10627,7 +10652,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(10);
             }
@@ -10645,7 +10670,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(11);
             }
@@ -10771,7 +10796,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(15);
             }
@@ -10805,7 +10830,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(16);
             }
@@ -10823,7 +10848,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(17);
             }
@@ -10929,7 +10954,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(20);
             }
@@ -10963,7 +10988,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(21);
             }
@@ -10981,7 +11006,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(22);
             }
@@ -11080,7 +11105,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(25);
             }
@@ -11116,7 +11141,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(26);
             }
@@ -11154,7 +11179,7 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentRowResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentRowResourceFree();
                 *responseCode=500;
                 return(28);
             }

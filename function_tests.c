@@ -714,6 +714,7 @@ void testCSV ()
     }
 
     cmeDBClose(pResourcesDB);
+    testContentRows();
     cmeFree(fName);
     cmeFree(fName2);
     cmeFree(resourcesDBPath);
@@ -1473,6 +1474,110 @@ void testParserScripts ()
     else
     {
         printf("TESTS: testParserScripts(), PASS: class options and missing script handling verified.\n");
+    }
+}
+
+static int cmeTestContentRowsRequest(const char *method, const char *url,
+                                     const char **urlElements, int numUrlElements,
+                                     const char **argumentElements, int expectedCode,
+                                     const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testContentRows(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    if (numUrlElements==9)
+    {
+        result=cmeWebServiceProcessContentRowClass(&responseText,&responseHeaders,&responseCode,
+                                                   url,urlElements,argumentElements,method);
+    }
+    else
+    {
+        result=cmeWebServiceProcessContentRowResource(&responseText,&responseHeaders,&responseCode,
+                                                      url,urlElements,argumentElements,method,cmeDefaultFilePath);
+    }
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testContentRows(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testContentRows(), PASS: %s responseCode=%d",marker,responseCode);
+    if (responseHeaders[0]&&responseHeaders[1])
+    {
+        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+    }
+    printf("\n");
+    cmeFree(responseText);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testContentRows ()
+{
+    int errors=0;
+    const char *classUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentRows";
+    const char *row1Url="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentRows/1";
+    const char *appendUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentRows/11";
+    const char *row0Url="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentRows/0";
+    const char *missingUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/MissingPayroll.csv/contentRows/1";
+    const char *nonCsvUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.raw/documents/AcmeIncPayroll.csv/contentRows/1";
+    const char *classElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentRows"};
+    const char *row1Elements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentRows","1"};
+    const char *appendElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentRows","11"};
+    const char *row0Elements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentRows","0"};
+    const char *missingElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","MissingPayroll.csv","contentRows","1"};
+    const char *nonCsvElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.raw","documents","AcmeIncPayroll.csv","contentRows","1"};
+    const char *authArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        "orgKey","password1",
+        NULL
+    };
+    const char *postArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        "orgKey","password1",
+        "[nombre ]","Rosa",
+        "[apellido]","Garcia",
+        "[sueldo]","12345",
+        NULL
+    };
+    const char *putArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        "orgKey","password1",
+        "[sueldo]","54321",
+        NULL
+    };
+
+    printf("--- Testing contentRows resource handlers:\n");
+    errors+=cmeTestContentRowsRequest("OPTIONS",classUrl,classElements,9,authArgs,200,"contentRows class OPTIONS");
+    errors+=cmeTestContentRowsRequest("GET",classUrl,classElements,9,authArgs,405,"contentRows class GET not allowed");
+    errors+=cmeTestContentRowsRequest("GET",row1Url,row1Elements,10,authArgs,200,"contentRows row GET");
+    errors+=cmeTestContentRowsRequest("HEAD",row1Url,row1Elements,10,authArgs,200,"contentRows row HEAD");
+    errors+=cmeTestContentRowsRequest("POST",appendUrl,appendElements,10,postArgs,201,"contentRows append POST");
+    errors+=cmeTestContentRowsRequest("GET",appendUrl,appendElements,10,authArgs,200,"contentRows appended GET");
+    errors+=cmeTestContentRowsRequest("PUT",appendUrl,appendElements,10,putArgs,200,"contentRows appended PUT");
+    errors+=cmeTestContentRowsRequest("DELETE",appendUrl,appendElements,10,authArgs,200,"contentRows appended DELETE");
+    errors+=cmeTestContentRowsRequest("HEAD",appendUrl,appendElements,10,authArgs,404,"contentRows deleted HEAD");
+    errors+=cmeTestContentRowsRequest("DELETE",row0Url,row0Elements,10,authArgs,403,"contentRows invalid row DELETE");
+    errors+=cmeTestContentRowsRequest("GET",missingUrl,missingElements,10,authArgs,404,"contentRows missing document GET");
+    errors+=cmeTestContentRowsRequest("GET",nonCsvUrl,nonCsvElements,10,authArgs,403,"contentRows non-CSV GET");
+    if (errors)
+    {
+        printf("TESTS: testContentRows(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testContentRows(), PASS: row get/append/update/delete/options verified.\n");
     }
 }
 

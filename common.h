@@ -406,7 +406,7 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 
 #define cmeWSMsgContenRowOptions  "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                                  "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/file.csv" \
-                                 "/documents/{document}/content/contentRows/{contentRow}" \
+                                 "/documents/{document}/contentRows/{contentRow}" \
                                  "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                  "OptionalParameters...]<br></code><br>" //contentRow resource options.
 

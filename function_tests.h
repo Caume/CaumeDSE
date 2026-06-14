@@ -60,6 +60,7 @@ void testFilterWhitelist ();
 void testFilterBlacklist ();
 void testDocumentTypes ();
 void testParserScripts ();
+void testContentRows ();
 void testThreadSafety ();
 void testWebServices ();
 
