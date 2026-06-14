@@ -142,8 +142,9 @@
   - Source: `configure.ac:42`, `configure.ac:44`, `configure.ac:46`, `configure.ac:48`, `configure.ac:50`, `configure.ac:52`, `configure.ac:54`, `configure.ac:56`, `configure.ac:58`, `configure.ac:60`, `configure.ac:62`, `configure.ac:64`.
   - Done: replaced placeholder `main` checks with representative symbols for libc, libcrypt, libcrypto, libdl, libm, libmicrohttpd, libnsl, libperl, pthread, libutil, GnuTLS, and SQLite; regenerated `configure` and verified `./configure` resolves all probes.
 
-- [ ] #21 Add cloud storage wrappers for file handling.
+- [x] #21 Add cloud storage wrappers for file handling.
   - Source: `filehandling.c:53`.
+  - Done: added storage-provider wrappers for directory checks, file open/close, and file removal. Local filesystem behavior is preserved for provider `0`, non-local providers now fail explicitly until provider clients are implemented, and the default provider macro can be overridden at compile time.
 
 - [ ] #22 Factor common in-memory DB creation for CSV and memory-table imports.
   - Source: `filehandling.c:649`, `filehandling.c:1687`.

@@ -4,6 +4,13 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `common.h`, `filehandling.h`, `filehandling.c`: Add storage-provider
+  wrappers for directory checks and file open, close, and removal
+  operations. The local filesystem remains provider `0`, while
+  unsupported non-local providers now return explicit errors.
+
+- `TODO.md`: Mark TODO item #21 complete.
+
 - `configure.ac`, `configure`: Replace placeholder Autoconf library
   checks for `main` with representative function probes for libc,
   libcrypt, libcrypto, libdl, libm, libmicrohttpd, libnsl, libperl,

@@ -45,8 +45,16 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #ifndef FILEHANDLING_H_INCLUDED
 #define FILEHANDLING_H_INCLUDED
 
+#include <stdio.h>
+
 // Function wrapper for Cloud storage services or standard filesystem that checks if a Directory exists.
 int cmeDirectoryExists (const char *dirPath);
+// Function wrapper for Cloud storage services or standard filesystem that opens a file.
+FILE *cmeStorageFileOpen (const char *filePath, const char *mode);
+// Function wrapper for Cloud storage services or standard filesystem that closes a file.
+int cmeStorageFileClose (FILE *fp);
+// Function wrapper for Cloud storage services or standard filesystem that removes a file.
+int cmeStorageFileRemove (const char *filePath);
 // Import to memory rows from a CVS file
 int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                          int *processedRows, int hasColNames, int rowStart, int rowEnd);

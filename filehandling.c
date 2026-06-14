@@ -49,22 +49,67 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 int cmeDirectoryExists (const char *dirPath)
 {
-    DIR *dp;
-    /**TODO (ANY#6#): Add wrappers for corresponding Cloud Storage.
-       0=local filesystem, 1=GoGrid, 2=RackSpace, 3=AmazonS3,...
-    **/
-    if (cmeStorageProvider==0)  //Handle common
+    DIR *dp=NULL;
+
+    switch (cmeStorageProvider)
     {
+    case 0:
         if ((dp = opendir(dirPath)) == NULL)
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeDirectoryExists(), Error, directory %s doesn't exist,"
-                    "used %d cloud storage definition!\n",dirPath,cmeStorageProvider);
+                    " used %d storage provider definition!\n",dirPath,cmeStorageProvider);
 #endif
             return(1);
         }
+        closedir(dp);
+        return(0);
+    default:
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeDirectoryExists(), storage provider %d is not supported for directory '%s'!\n",
+                cmeStorageProvider,dirPath);
+#endif
+        return(2);
     }
-    return(0);
+}
+
+FILE *cmeStorageFileOpen (const char *filePath, const char *mode)
+{
+    switch (cmeStorageProvider)
+    {
+    case 0:
+        return(fopen(filePath,mode));
+    default:
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeStorageFileOpen(), storage provider %d is not supported for file '%s'!\n",
+                cmeStorageProvider,filePath);
+#endif
+        return(NULL);
+    }
+}
+
+int cmeStorageFileClose (FILE *fp)
+{
+    if (!fp)
+    {
+        return(1);
+    }
+    return(fclose(fp));
+}
+
+int cmeStorageFileRemove (const char *filePath)
+{
+    switch (cmeStorageProvider)
+    {
+    case 0:
+        return(remove(filePath));
+    default:
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeStorageFileRemove(), storage provider %d is not supported for file '%s'!\n",
+                cmeStorageProvider,filePath);
+#endif
+        return(2);
+    }
 }
 
 int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
@@ -93,7 +138,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
 #endif
         return(1);
     }
-    fp=fopen(fName,"r");
+    fp=cmeStorageFileOpen(fName,"r");
     if(!fp)
     {
 #ifdef ERROR_LOG
@@ -130,7 +175,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
             fprintf(stderr,"CaumeDSE Error: cmeCSVFileRowsToMem(), Error, quoted "
                     "element not closed at first row, in CSV file: %s !\n",fName);
 #endif
-                    fclose(fp);
+                    cmeStorageFileClose(fp);
                     return (3);
                 }
             }
@@ -154,7 +199,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
         fprintf(stderr,"CaumeDSE Error: cmeCSVFileRowsToMem(), fgets() Error, can't "
                 "read CSV file: %s!\n",fName);
 #endif
-                fclose(fp);
+                cmeStorageFileClose(fp);
                 return (4);
             }
             else    //EOF
@@ -163,7 +208,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
         fprintf(stderr,"CaumeDSE Error: cmeCSVFileRowsToMem(), fgets() Error, reached "
                 "EOF prematurely (before getting # of columns), in CSV file: %s!\n",fName);
 #endif
-                fclose(fp);
+                cmeStorageFileClose(fp);
                 return(5);
             }
         }
@@ -192,7 +237,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                                 "element not closed at first row (column names), in CSV file: "
                                 " %s !\n",fName);
 #endif
-                        fclose(fp);
+                        cmeStorageFileClose(fp);
                         return(6);
                     }
                     else
@@ -259,7 +304,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
             fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), fgets() Error, reached "
                     "EOF prematurely (before getting to starting row), in CSV file: %s!\n",fName);
 #endif
-            fclose(fp);
+            cmeStorageFileClose(fp);
             return(7);
         }
     }
@@ -293,7 +338,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                 fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), fgets() Error, can't "
                         "read CSV file: %s!\n",fName);
 #endif
-                fclose(fp);
+                cmeStorageFileClose(fp);
                 return (8);
             }
             else    //EOF
@@ -327,7 +372,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                                 "element not closed at processed row %d, in CSV file: "
                                 "%s !\n",*processedRows,fName);
 #endif
-                        fclose(fp);
+                        cmeStorageFileClose(fp);
                         return(9);
                     }
                     else
@@ -375,7 +420,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
         fprintf(stdout,"CaumeDSE Debug: cmeCSVFileToMem(), processed %d rows "
                 "(not counting header row, if required), from CSV file: %s!\n",*processedRows,fName);
 #endif
-    fclose(fp);
+    cmeStorageFileClose(fp);
     cmeFree(curRow);
     return (0);
 }
@@ -399,7 +444,7 @@ int cmeLoadStrFromFile (char **pDstStr, const char *filePath, int *dstStrLen)
     int fileLen,readBytes;
     FILE *fp=NULL;
 
-    fp=fopen(filePath,"r");
+    fp=cmeStorageFileOpen(filePath,"r");
     if(!fp) //Error
     {
 #ifdef ERROR_LOG
@@ -417,11 +462,11 @@ int cmeLoadStrFromFile (char **pDstStr, const char *filePath, int *dstStrLen)
         fprintf(stdout,"CaumeDSE Error: cmeLoadStrFromFile(), can't malloc() memory to read file %s, of length %d !\n",
                 filePath,fileLen);
 #endif
-        fclose(fp);
+        cmeStorageFileClose(fp);
         return(2);
     }
     readBytes=fread(*pDstStr,1,fileLen,fp);
-    fclose(fp);
+    cmeStorageFileClose(fp);
     *dstStrLen=readBytes;
     if (fileLen!=readBytes) //Error
     {
@@ -443,7 +488,7 @@ int cmeWriteStrToFile (char *pSrcStr, const char *filePath, int srcStrLen)
     int written;
     FILE *fp=NULL;
 
-    fp=fopen(filePath,"w");
+    fp=cmeStorageFileOpen(filePath,"w");
     if(!fp) //Error
     {
 #ifdef ERROR_LOG
@@ -456,11 +501,11 @@ int cmeWriteStrToFile (char *pSrcStr, const char *filePath, int srcStrLen)
 #ifdef ERROR_LOG
         fprintf(stdout,"CaumeDSE Error: cmeWriteStrToFile(), pointer to src string is NULL!\n");
 #endif
-        fclose(fp);
+        cmeStorageFileClose(fp);
         return(2);
     }
     written=fwrite (pSrcStr,1,srcStrLen,fp);
-    fclose(fp);
+    cmeStorageFileClose(fp);
     if (srcStrLen!=written) //Error
     {
 #ifdef ERROR_LOG
@@ -1150,7 +1195,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
             cmeFree(memFilePartsMACs); \
             if (fpTmpRAWFile) \
             { \
-                fclose(fpTmpRAWFile); \
+                cmeStorageFileClose(fpTmpRAWFile); \
                 fpTmpRAWFile=NULL; \
             } \
         } while (0); //Local free() macro.
@@ -1453,7 +1498,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
         cmeStrConstrAppend(&bkpFName,"%s%s",cmeDefaultSecureTmpFilePath,*tmpRAWFile); //Set full path for temporal, unencrypted RAWFile.
         cmeFree(*tmpRAWFile);
         cmeStrConstrAppend(tmpRAWFile,"%s",bkpFName); //Set tmpRAWFile to the full path of the file.
-        fpTmpRAWFile=fopen(bkpFName,"wb");
+        fpTmpRAWFile=cmeStorageFileOpen(bkpFName,"wb");
         memset(bkpFName,0,strlen(bkpFName));   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
         cmeFree(bkpFName);  //Free bkpFName for next cycle.
         if (!fpTmpRAWFile)  //Error
@@ -1476,7 +1521,7 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
                     }
                 }
         }
-        fclose(fpTmpRAWFile);
+        cmeStorageFileClose(fpTmpRAWFile);
         fpTmpRAWFile=NULL;
         cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
         return(0);
@@ -1554,7 +1599,7 @@ int cmeFileOverwriteAndDelete (const char *filePath)
     {
         numPasses=1;
     }
-    fp=fopen(filePath,"r+b");
+    fp=cmeStorageFileOpen(filePath,"r+b");
     if(!fp) //Error
     {
 #ifdef DEBUG
@@ -1568,7 +1613,7 @@ int cmeFileOverwriteAndDelete (const char *filePath)
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeFileOverwriteAndDelete(), fseek() Error!\n");
 #endif
-        fclose(fp);
+        cmeStorageFileClose(fp);
         return(2);
     }
     fileLen=ftell(fp);
@@ -1577,7 +1622,7 @@ int cmeFileOverwriteAndDelete (const char *filePath)
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeFileOverwriteAndDelete(), ftell() Error!\n");
 #endif
-        fclose(fp);
+        cmeStorageFileClose(fp);
         return(4);
     }
     for (pass=0;pass<numPasses;pass++)
@@ -1589,12 +1634,12 @@ int cmeFileOverwriteAndDelete (const char *filePath)
             fprintf(stderr,"CaumeDSE Error: cmeFileOverwriteAndDelete(), overwrite pass %d error %d for file '%s'!\n",
                     pass,result,filePath);
 #endif
-            fclose(fp);
+            cmeStorageFileClose(fp);
             return(5);
         }
     }
-    fclose(fp);
-    result=remove(filePath);
+    cmeStorageFileClose(fp);
+    result=cmeStorageFileRemove(filePath);
     if (result) //Error
     {
 #ifdef ERROR_LOG
@@ -1634,7 +1679,7 @@ void cmeContentReaderFreeCallback (void *cls)
         cmeFileOverwriteAndDelete(fileName);
     }
     cmeFree(fileName);
-    fclose(file);
+    cmeStorageFileClose(file);
     cmeFree(cls);
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeContentReaderFreeCallback(), file closed successfully; end of ContentReaderCallback.\n");
