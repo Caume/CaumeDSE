@@ -166,9 +166,10 @@
   - Source: `main.c:66`, `TEST/run_debug_components.sh:193`.
   - Done: startup now fails early when `LC_CTYPE` cannot be selected or is not multibyte-capable, logs the selected locale and `MB_CUR_MAX` in DEBUG builds, and the debug component script verifies that marker.
 
-- [ ] #27 Move DEBUG tests into a dedicated executable or test harness.
-  - Source: `main.c:136`.
+- [x] #27 Move DEBUG tests into a dedicated executable or test harness.
+  - Source: `debug_tests.c:11`, `Makefile.am:15`, `TEST/run_debug_components.sh:180`.
   - Related roadmap item: `#9`.
+  - Done: added the `CaumeDSE-debug-tests` harness, moved DEBUG component execution out of `main()`, shared runtime setup/cleanup through `runtime.c`, and updated the debug component script to execute the harness.
 
 - [ ] #28 Improve administrator key screen cleanup or use a sensitive terminal I/O library.
   - Source: `engine_admin.c:424`.

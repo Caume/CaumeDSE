@@ -183,12 +183,12 @@ note "RUN  debug_engine"
         env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
             CDSE_DEBUG_TEST_HTTP_PORT="$HTTP_PORT" \
             CDSE_DEBUG_TEST_HTTPS_PORT="$HTTPS_PORT" \
-            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE"
+            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
     else
         env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
             CDSE_DEBUG_TEST_HTTP_PORT=0 \
             CDSE_DEBUG_TEST_HTTPS_PORT=0 \
-            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE"
+            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
     fi
 ) > "$FULL_LOG" 2>&1
 ENGINE_RC=$?

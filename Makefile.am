@@ -11,8 +11,10 @@ ipath = @PREFIX@
 ipathbindir = @BINDIR@
 ipathdatadir = @DATADIR@
 
-ipathbin_PROGRAMS = CaumeDSE
-CaumeDSE_SOURCES = main.c common.h config.c crypto.c crypto.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+ipathbin_PROGRAMS = CaumeDSE CaumeDSE-debug-tests
+caume_common_sources = common.h config.c crypto.c crypto.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+CaumeDSE_SOURCES = main.c $(caume_common_sources)
+CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = TEST README-alpha CHANGELOG.md README.md
 

@@ -43,81 +43,12 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 ***/
 #include "common.h"
-
-// --- Necessary globals
-PerlInterpreter *cdsePerl=NULL;
-pthread_mutex_t cmePerlMutex=PTHREAD_MUTEX_INITIALIZER;   //Protects cdsePerl (shared Perl interpreter).
-pthread_mutex_t cmePowerMutex=PTHREAD_MUTEX_INITIALIZER;  //Protects cmeEnginePowerStatus flag.
-__thread char **cmeResultMemTable=NULL;    //Thread-local SQL result table; each worker thread owns its copy.
-__thread int cmeResultMemTableRows=0;      //Thread-local row count.
-__thread int cmeResultMemTableCols=0;      //Thread-local column count.
+#include "runtime.h"
 
 // --- Function prototypes
-int setup(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl); //Setup program variables and crypto
-int end(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl);   //Release memory and stuff before exiting
 int main(int argc, char *argv[], char *env[]);   //'main' function
 
 // --- Function definitions
-int setup(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl)
-{
-    char *localeName=NULL;
-
-    *bIn=(unsigned char *)malloc(evpBufferSize);   //allocate buffers for cryptographic operations
-    *bOut=(unsigned char *)malloc(evpBufferSize+128);
-
-    localeName=setlocale(LC_CTYPE,"");
-    if(!localeName)
-    {
-#ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: setup(), Error in setlocale(), can't set"
-                " the specified locale; check LANG, LC_CTYPE, LC_ALL!\n");
-#endif
-        return(1);
-    }
-    if (MB_CUR_MAX<2)
-    {
-#ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: setup(), Error, locale '%s' is not"
-                " multibyte-capable; configure a UTF-8 locale for printf output.\n",
-                localeName);
-#endif
-        return(1);
-    }
-#ifdef DEBUG
-    fprintf(stdout,"CaumeDSE Debug: setup(), locale '%s' supports multibyte printf output (MB_CUR_MAX=%d).\n",
-            localeName,(int)MB_CUR_MAX);
-#endif
-    *myPerl = perl_alloc();     //Prepare Perl interpreter.
-    perl_construct(*myPerl);
-    cmeSeedPrng();
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-    OpenSSL_add_all_algorithms();                   //Get all available ciphers and digests.
-#else
-    OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG | OPENSSL_INIT_ADD_ALL_CIPHERS |
-                        OPENSSL_INIT_ADD_ALL_DIGESTS, NULL);
-#endif
-    cmeLoadConfiguration();
-    return(0);
-}
-
-int end(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl)
-{
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-    ERR_free_strings(); //OPENSSL Release all strings.
-    EVP_cleanup(); //OPENSSL Release all available ciphers.
-    CRYPTO_cleanup_all_ex_data(); //OPENSSL Release all crypto data.
-#else
-    OPENSSL_cleanup();
-#endif
-
-    perl_destruct(*myPerl);
-    perl_free(*myPerl);
-    cmeFree(*bIn);
-    cmeFree(*bOut);
-
-    return (0);
-}
-
 int main(int argc, char *argv[], char *env[])
 {
     unsigned char *bufIn=NULL;
@@ -128,12 +59,16 @@ int main(int argc, char *argv[], char *env[])
     #define mainFree() \
         do { \
             cmeFree(title); \
-            end(&bufIn,&bufOut,&cdsePerl); \
+            cmeEndRuntime(&bufIn,&bufOut,&cdsePerl); \
             PERL_SYS_TERM(); \
         } while (0); //Local free() macro
 
     PERL_SYS_INIT3(&argc,&argv,&env);
-    setup(&bufIn,&bufOut,&cdsePerl);  //Setup/allocate general stuff.
+    if (cmeSetupRuntime(&bufIn,&bufOut,&cdsePerl))  //Setup/allocate general stuff.
+    {
+        PERL_SYS_TERM();
+        return(1);
+    }
     cmeStrConstrAppend(&title,"Caume Data Security Engine, ver. %s - %s.\n",cmeEngineVersion,cmeCopyright);
     printf("%s",title);
     if (cmeGetCipher(&cipher,algorithm))
@@ -145,20 +80,9 @@ int main(int argc, char *argv[], char *env[])
         mainFree();
         return(1);
     }
-    testCryptoSymmetricGCM();
-    testCryptoSymmetricGCM_ByteString();
-    testEngMgmnt();
-#ifdef DEBUG    // TODO (OHR#2#): Move tests to their own executable and add test checking to the configure script.
-    testCryptoSymmetric(bufIn,bufOut);
-    testCryptoDigest_Str(bufIn);
-    testCryptoHMAC();
-    testPerl(cdsePerl);
-    testDB(cdsePerl);
-    testCSV();
-#endif
 #ifdef RELEASE
     cmeWebServiceStart();
-#else
+#elif !defined(DEBUG)
     testWebServices();
 #endif
     mainFree();

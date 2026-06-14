@@ -4,6 +4,13 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `debug_tests.c`, `runtime.c`, `runtime.h`, `main.c`,
+  `Makefile.am`, `Makefile.in`, `TEST/run_debug_components.sh`: Add
+  a dedicated `CaumeDSE-debug-tests` executable for DEBUG component
+  checks and move shared runtime setup/cleanup out of `main.c`.
+
+- `TODO.md`: Mark TODO item #27 complete.
+
 - `main.c`, `TEST/run_debug_components.sh`: Validate that startup
   selects a multibyte-capable locale for UTF-8 `printf` output and add
   a debug component check for the locale marker.
