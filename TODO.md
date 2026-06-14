@@ -150,11 +150,12 @@
   - Source: `filehandling.c:649`, `filehandling.c:1687`.
   - Done: factored the shared ColumnFile memory DB allocation, random filename/salt initialization, and `data`/`meta` table creation into `cmeCreateSecureDBMemColumnFiles()`, preserving the existing CSV and memory-table import return codes.
 
-- [ ] #23 Add SQL DB filename collision handling.
+- [x] #23 Add SQL DB filename collision handling.
   - Source: `filehandling.c:148`.
+  - Done: ColumnFile SQL DB filenames are regenerated with a bounded retry loop when they collide with names already generated in the current batch or with existing files in the target storage path.
 
 - [ ] #24 Factor secure DB import insertion logic into a shared helper.
-  - Source: `filehandling.c:799`, `filehandling.c:1848`.
+  - Source: `filehandling.c:960`, `filehandling.c:2053`.
 
 - [ ] #25 Implement MAC and protected MAC calculation during secure DB import.
   - Source: `filehandling.c:840`, `filehandling.c:1889`.

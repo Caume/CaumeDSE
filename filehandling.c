@@ -114,10 +114,16 @@ int cmeStorageFileRemove (const char *filePath)
 
 static int cmeCreateSecureDBMemColumnFiles(sqlite3 ***pppDB, char ***pSQLDBfNames,
                                            char ***pSQLDBfMACs, char ***pSQLDBfSalts,
-                                           int numSQLDBfNames, const char *caller)
+                                           int numSQLDBfNames, const char *storagePath,
+                                           const char *caller)
 {
     int cont;
+    int cont2;
+    int collision;
+    int retry;
     char *sqlQuery=NULL;
+    char *candidatePath=NULL;
+    FILE *candidateFile=NULL;
     sqlite3 **ppDB=NULL;
     char **SQLDBfNames=NULL;
     char **SQLDBfMACs=NULL;
@@ -145,8 +151,49 @@ static int cmeCreateSecureDBMemColumnFiles(sqlite3 ***pppDB, char ***pSQLDBfName
     }
     for (cont=0;cont<numSQLDBfNames;cont++)
     {
-        cmeGetRndSalt(&(SQLDBfNames[cont]));
-        //TODO (OHR#8#): Create SQLDBfNames collision handling routine. Just in case.
+        for (retry=0;retry<cmeMaxSQLDBFileNameCollisionRetries;retry++)
+        {
+            collision=0;
+            cmeFree(SQLDBfNames[cont]);
+            cmeGetRndSalt(&(SQLDBfNames[cont]));
+            for (cont2=0;cont2<cont;cont2++)
+            {
+                if (!strcmp(SQLDBfNames[cont],SQLDBfNames[cont2]))
+                {
+                    collision=1;
+                    break;
+                }
+            }
+            if ((!collision)&&(storagePath))
+            {
+                cmeFree(candidatePath);
+                cmeStrConstrAppend(&candidatePath,"%s%s",storagePath,SQLDBfNames[cont]);
+                candidateFile=cmeStorageFileOpen(candidatePath,"rb");
+                if (candidateFile)
+                {
+                    cmeStorageFileClose(candidateFile);
+                    candidateFile=NULL;
+                    collision=1;
+                }
+            }
+            if (!collision)
+            {
+                break;
+            }
+        }
+        cmeFree(candidatePath);
+        if (retry==cmeMaxSQLDBFileNameCollisionRetries)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: %s(), can't create a unique ColumnFile name after %d attempts!\n",
+                    caller,cmeMaxSQLDBFileNameCollisionRetries);
+#endif
+            *pppDB=ppDB;
+            *pSQLDBfNames=SQLDBfNames;
+            *pSQLDBfMACs=SQLDBfMACs;
+            *pSQLDBfSalts=SQLDBfSalts;
+            return(6);
+        }
         if (cmeMemDBCreateOpen(&(ppDB[cont])))
         {
 #ifdef ERROR_LOG
@@ -209,6 +256,7 @@ static int cmeCreateSecureDBMemColumnFiles(sqlite3 ***pppDB, char ***pSQLDBfName
         }
         cmeFree(sqlQuery);
     }
+    cmeFree(candidatePath);
     *pppDB=ppDB;
     *pSQLDBfNames=SQLDBfNames;
     *pSQLDBfMACs=SQLDBfMACs;
@@ -800,7 +848,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             numSQLDBfNames=(*numCols)*totalParts;
             result=cmeCreateSecureDBMemColumnFiles(&ppDB,&SQLDBfNames,&SQLDBfMACs,
                                                    &SQLDBfSalts,numSQLDBfNames,
-                                                   "cmeCVSFileToSecureSQL");
+                                                   storagePath,"cmeCVSFileToSecureSQL");
             if (result)
             {
                 cmeCSVFileToSecureDBFree();
@@ -813,6 +861,10 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                     return(6);
                 }
                 if (result==3)
+                {
+                    return(7);
+                }
+                if (result==6)
                 {
                     return(7);
                 }
@@ -1889,7 +1941,7 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
         numSQLDBfNames=(numCols-skipIdColumn)*totalParts;
         result=cmeCreateSecureDBMemColumnFiles(&ppDB,&SQLDBfNames,&SQLDBfMACs,
                                                &SQLDBfSalts,numSQLDBfNames,
-                                               "cmeMemTableToSecureDB");
+                                               storagePath,"cmeMemTableToSecureDB");
         if (result)
         {
             cmeMemTableToSecureDBFree();
@@ -1902,6 +1954,10 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
                 return(5);
             }
             if (result==3)
+            {
+                return(6);
+            }
+            if (result==6)
             {
                 return(6);
             }

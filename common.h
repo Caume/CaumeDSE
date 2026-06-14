@@ -70,6 +70,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeMaxCSVColumns 256            //Max # of column parts in a CSV file
 #define cmeMaxCSVPartsPerColumn 10000   //Max {estimated} number of parts that a CSV table can hold {required by cmeSecureDBtoMemDB}.
 #define cmeMaxRAWDataInPart 4000        //Max number of bytes in a secure file slice {part}, estimated from smallest SQLITE secureDB column files. {RECOMMENDED: 5120}
+#define cmeMaxSQLDBFileNameCollisionRetries 64 //Max attempts to regenerate a random ColumnFile name after detecting a collision.
 #define cmeDefaultContentReaderCallbackPageSize (1024*64)   //Default Page size for ContentReaderCallback functions.
 #ifndef CDSE_SECURE_OVERWRITE_PASSES
 #define CDSE_SECURE_OVERWRITE_PASSES 1  //Compile-time overwrite passes for temporary file deletion. Set >1 to enable multi-round overwrites.

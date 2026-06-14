@@ -4,6 +4,12 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `common.h`, `filehandling.c`: Add bounded collision handling for
+  randomly generated ColumnFile SQL DB filenames, checking both the
+  current generated batch and existing files in the target storage path.
+
+- `TODO.md`: Mark TODO item #23 complete.
+
 - `filehandling.c`: Factor the duplicated in-memory ColumnFile DB
   allocation and schema creation used by CSV and memory-table secure DB
   imports into a shared helper.
