@@ -4,6 +4,12 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `main.c`, `TEST/run_debug_components.sh`: Validate that startup
+  selects a multibyte-capable locale for UTF-8 `printf` output and add
+  a debug component check for the locale marker.
+
+- `TODO.md`: Mark TODO item #26 complete.
+
 - `db.c`: Consolidate secure DB `MAC`, `MACProtected`, `sign`,
   and `signProtected` HMAC calculation and storage into a shared helper
   while preserving existing import-time integrity behavior and error codes.

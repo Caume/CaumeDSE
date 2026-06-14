@@ -162,8 +162,9 @@
   - Source: `filehandling.c:350`, `db.c:809`.
   - Done: secure DB protection now uses shared `cmeMemSecureDBStoreValueHMAC()` logic to compute and store plaintext and protected value HMACs for `MAC`, `MACProtected`, `sign`, and `signProtected` attributes, preserving the existing import and verification behavior.
 
-- [ ] #26 Verify locale settings for `printf`, including UTF-8 behavior.
-  - Source: `main.c:66`.
+- [x] #26 Verify locale settings for `printf`, including UTF-8 behavior.
+  - Source: `main.c:66`, `TEST/run_debug_components.sh:193`.
+  - Done: startup now fails early when `LC_CTYPE` cannot be selected or is not multibyte-capable, logs the selected locale and `MB_CUR_MAX` in DEBUG builds, and the debug component script verifies that marker.
 
 - [ ] #27 Move DEBUG tests into a dedicated executable or test harness.
   - Source: `main.c:136`.

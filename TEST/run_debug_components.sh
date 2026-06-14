@@ -205,6 +205,9 @@ else
     record_pass forbidden_markers
 fi
 
+check_component locale_printf 'locale .*printf|MB_CUR_MAX' "$FULL_LOG" \
+    "supports multibyte printf output"
+
 check_component crypto_gcm_direct 'GCM ciphertext size|GCM B64|GCM decrypted text' "$FULL_LOG" \
     'GCM decrypted text: This is cleartext for GCM.'
 

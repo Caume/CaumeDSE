@@ -60,18 +60,33 @@ int main(int argc, char *argv[], char *env[]);   //'main' function
 // --- Function definitions
 int setup(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl)
 {
+    char *localeName=NULL;
+
     *bIn=(unsigned char *)malloc(evpBufferSize);   //allocate buffers for cryptographic operations
     *bOut=(unsigned char *)malloc(evpBufferSize+128);
 
-//TODO (OHR#9#): Verify locale settings for printf (e.g. UTF8).
-    if(!setlocale(LC_CTYPE,""))
+    localeName=setlocale(LC_CTYPE,"");
+    if(!localeName)
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: setup(), Error in setlocale(), can't set"
-                " the sepcified locale; check LANG, LC_TYPE, LC_ALL!\n");
+                " the specified locale; check LANG, LC_CTYPE, LC_ALL!\n");
 #endif
         return(1);
     }
+    if (MB_CUR_MAX<2)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: setup(), Error, locale '%s' is not"
+                " multibyte-capable; configure a UTF-8 locale for printf output.\n",
+                localeName);
+#endif
+        return(1);
+    }
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: setup(), locale '%s' supports multibyte printf output (MB_CUR_MAX=%d).\n",
+            localeName,(int)MB_CUR_MAX);
+#endif
     *myPerl = perl_alloc();     //Prepare Perl interpreter.
     perl_construct(*myPerl);
     cmeSeedPrng();
