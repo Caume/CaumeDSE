@@ -154,11 +154,12 @@
   - Source: `filehandling.c:148`.
   - Done: ColumnFile SQL DB filenames are regenerated with a bounded retry loop when they collide with names already generated in the current batch or with existing files in the target storage path.
 
-- [ ] #24 Factor secure DB import insertion logic into a shared helper.
+- [x] #24 Factor secure DB import insertion logic into a shared helper.
   - Source: `filehandling.c:960`, `filehandling.c:2053`.
+  - Done: factored duplicated CSV and memory-table secure DB `data` row insertion loops into `cmeInsertSecureDBDataRows()`, preserving caller-specific source column offsets, row-order bases, and existing public error codes.
 
 - [ ] #25 Implement MAC and protected MAC calculation during secure DB import.
-  - Source: `filehandling.c:840`, `filehandling.c:1889`.
+  - Source: `filehandling.c:350`.
 
 - [ ] #26 Verify locale settings for `printf`, including UTF-8 behavior.
   - Source: `main.c:66`.

@@ -264,6 +264,144 @@ static int cmeCreateSecureDBMemColumnFiles(sqlite3 ***pppDB, char ***pSQLDBfName
     return(0);
 }
 
+static int cmeInsertSecureDBDataRows(sqlite3 **ppDB, char **SQLDBfNames,
+                                     const char **sourceRows, int totalParts,
+                                     int firstSourceCol, int numSourceCols,
+                                     int numDataRows, int rowOrderBase,
+                                     const char *userId, const char *orgId,
+                                     const char *caller)
+{
+    int cont,cont2,cont3;
+    int result;
+    int rContLimit;
+    int dbIndex;
+    char *securedRowOrder=NULL;
+    char *MAC=NULL;
+    char *salt=NULL;
+    char *MACProtected=NULL;
+    char *sign=NULL;
+    char *signProtected=NULL;
+    char *otphDkey=NULL;
+    const char *nullParam="";
+    const char *value=NULL;
+    sqlite3_stmt *insertDataStmt=NULL;
+    #define cmeInsertSecureDBDataRowsFree() \
+        do { \
+            cmeFree(securedRowOrder); \
+            cmeFree(MAC); \
+            cmeFree(salt); \
+            cmeFree(MACProtected); \
+            cmeFree(sign); \
+            cmeFree(signProtected); \
+            cmeFree(otphDkey); \
+            if (insertDataStmt) \
+            { \
+                sqlite3_finalize(insertDataStmt); \
+                insertDataStmt=NULL; \
+            } \
+        } while (0)
+
+    for (cont=0;cont<totalParts;cont++)
+    {
+        if ((cont+1)*cmeMaxCSVRowsInPart>numDataRows)
+        {
+            rContLimit=numDataRows-(cont*cmeMaxCSVRowsInPart);
+        }
+        else
+        {
+            rContLimit=(numDataRows>cmeMaxCSVRowsInPart)?cmeMaxCSVRowsInPart:numDataRows;
+        }
+        for (cont2=firstSourceCol;cont2<numSourceCols;cont2++)
+        {
+            dbIndex=(numSourceCols-firstSourceCol)*cont+cont2-firstSourceCol;
+            result=sqlite3_prepare_v2(ppDB[dbIndex],
+                                      "INSERT INTO " cmeIDDColumnFileDataTableName " "
+                                      "(" cmeIDDanydb_id_name "," cmeIDDanydb_userId_name ","
+                                      cmeIDDanydb_orgId_name "," cmeIDDanydb_salt_name ","
+                                      cmeIDDColumnFileData_value_name "," cmeIDDColumnFileData_rowOrder_name ","
+                                      cmeIDDColumnFileData_MAC_name "," cmeIDDColumnFileData_sign_name ","
+                                      cmeIDDColumnFileData_MACProtected_name ","
+                                      cmeIDDColumnFileData_signProtected_name ","
+                                      cmeIDDColumnFileData_otphDKey_name ") "
+                                      "VALUES (NULL,?,?,?,?,?,?,?,?,?,?);",
+                                      -1,&insertDataStmt,NULL);
+            if (result!=SQLITE_OK)
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: %s(), sqlite3_prepare_v2() Error, can't "
+                        "prepare data insert in DB file %d: %s!\n",caller,cont,SQLDBfNames[dbIndex]);
+#endif
+                cmeInsertSecureDBDataRowsFree();
+                return(1);
+            }
+            if (cmeSQLRows(ppDB[dbIndex],"BEGIN TRANSACTION;",NULL,NULL))
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: %s(), cmeSQLRows() Error, can't "
+                        "begin data insert transaction in DB file %d: %s!\n",caller,cont,SQLDBfNames[dbIndex]);
+#endif
+                cmeInsertSecureDBDataRowsFree();
+                return(1);
+            }
+            for(cont3=1;cont3<=rContLimit;cont3++)
+            {
+                value=sourceRows[cont2+(numSourceCols*(cont3+cont*cmeMaxCSVRowsInPart))];
+                cmeStrConstrAppend(&securedRowOrder,"%d",cont3+rowOrderBase+cont*cmeMaxCSVRowsInPart);
+                cmeStrConstrAppend(&MAC,"%s",nullParam); // TODO (OHR#2#): Calculate MAC, MAC protected and stuff. Probably outside this function.
+                cmeStrConstrAppend(&MACProtected,"%s",nullParam);
+                cmeStrConstrAppend(&sign,"%s",nullParam);
+                cmeStrConstrAppend(&signProtected,"%s",nullParam);
+                cmeStrConstrAppend(&otphDkey,"%s",nullParam);
+                cmeStrConstrAppend(&salt,"%s",nullParam);
+                result=sqlite3_bind_text(insertDataStmt,1,userId,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,2,orgId,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,3,salt,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,4,value,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,5,securedRowOrder,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,6,MAC,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,7,sign,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,8,MACProtected,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,9,signProtected,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,10,otphDkey,-1,SQLITE_TRANSIENT);
+                if (result==SQLITE_OK) result=sqlite3_step(insertDataStmt);
+                cmeFree(salt);
+                cmeFree(otphDkey);
+                cmeFree(signProtected);
+                cmeFree(sign);
+                cmeFree(MACProtected);
+                cmeFree(MAC);
+                cmeFree(securedRowOrder);
+                if (result!=SQLITE_DONE)
+                {
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: %s(), sqlite3_step() Error, can't "
+                            "insert row in DB file %d: %s!\n",caller,cont,SQLDBfNames[dbIndex]);
+#endif
+                    cmeSQLRows(ppDB[dbIndex],"ROLLBACK;",NULL,NULL);
+                    cmeInsertSecureDBDataRowsFree();
+                    return(1);
+                }
+                sqlite3_reset(insertDataStmt);
+                sqlite3_clear_bindings(insertDataStmt);
+            }
+            if (cmeSQLRows(ppDB[dbIndex],"COMMIT;",NULL,NULL))
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: %s(), cmeSQLRows() Error, can't "
+                        "commit data inserts in DB file %d: %s!\n",caller,cont,SQLDBfNames[dbIndex]);
+#endif
+                cmeSQLRows(ppDB[dbIndex],"ROLLBACK;",NULL,NULL);
+                cmeInsertSecureDBDataRowsFree();
+                return(1);
+            }
+            sqlite3_finalize(insertDataStmt);
+            insertDataStmt=NULL;
+        }
+    }
+    cmeInsertSecureDBDataRowsFree();
+    return(0);
+}
+
 int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                               int *processedRows, int hasColNames, int rowStart, int rowEnd)
 {
@@ -680,7 +818,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                           const char *resourceInfo, const char *documentType, const char *documentId,
                           const char *storageId, const char *storagePath)
 {
-    int cont,cont2,cont3,rContLimit,result,readBytes,written;
+    int cont,cont2,result,readBytes,written;
     int numEntries=0;
     int totalParts=0;
     int rowStart=0;
@@ -696,9 +834,7 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
     char **colNames=NULL;
     char *currentRawFileContent=NULL;   //Will hold the binary contents of each created file part during the hashing process.
     char *resourcesDBName=NULL;
-    char *value=NULL;                   //Just a pointer to elements within elements[]. No need to free.
     char *bkpFName=NULL;
-    char *securedRowOrder=NULL;
     char *securedValue=NULL;
     char *MAC=NULL;                    //'data' table values depending on attributes selected.
     char *salt=NULL;
@@ -709,12 +845,10 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
     const char *nullParam="";
     const char resourcesDBFName[]="ResourcesDB";
     sqlite3_stmt *insertMetaStmt=NULL;
-    sqlite3_stmt *insertDataStmt=NULL;
     #define cmeCSVFileToSecureDBFree() \
         do { \
             cmeFree(resourcesDBName); \
             cmeFree(bkpFName); \
-            cmeFree(securedRowOrder); \
             cmeFree(securedValue); \
             cmeFree(MAC); \
             cmeFree(salt); \
@@ -727,11 +861,6 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
             { \
                 sqlite3_finalize(insertMetaStmt); \
                 insertMetaStmt=NULL; \
-            } \
-            if (insertDataStmt) \
-            { \
-                sqlite3_finalize(insertDataStmt); \
-                insertDataStmt=NULL; \
             } \
             if (resourcesDB) \
             { \
@@ -957,104 +1086,13 @@ int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCol
                 insertMetaStmt=NULL;
             }
         }
-        //TODO (OHR#6#): Create and call function to insert data into tables (move code there).
-        for (cont=0;cont<totalParts;cont++) //Process each column part.
+        result=cmeInsertSecureDBDataRows(ppDB,SQLDBfNames,(const char **)elements,
+                                         totalParts,0,*numCols,cycleProcessedRows,
+                                         rowStart,userId,orgId,"cmeCVSFileToSecureSQL");
+        if (result)
         {
-            for (cont2=0;cont2<(*numCols);cont2++) //Process each column.
-            {
-                if ((cont+1)*cmeMaxCSVRowsInPart>cycleProcessedRows) // Last part? yes-> then set rContLimit to the remaining rows.
-                {
-                    rContLimit=cycleProcessedRows-(cont*cmeMaxCSVRowsInPart);
-                }
-                else
-                {
-                    rContLimit=(cycleProcessedRows>cmeMaxCSVRowsInPart)?cmeMaxCSVRowsInPart:cycleProcessedRows;
-                }
-                result=sqlite3_prepare_v2(ppDB[(*numCols)*cont+cont2],
-                                          "INSERT INTO " cmeIDDColumnFileDataTableName " "
-                                          "(" cmeIDDanydb_id_name "," cmeIDDanydb_userId_name ","
-                                          cmeIDDanydb_orgId_name "," cmeIDDanydb_salt_name ","
-                                          cmeIDDColumnFileData_value_name "," cmeIDDColumnFileData_rowOrder_name ","
-                                          cmeIDDColumnFileData_MAC_name "," cmeIDDColumnFileData_sign_name ","
-                                          cmeIDDColumnFileData_MACProtected_name ","
-                                          cmeIDDColumnFileData_signProtected_name ","
-                                          cmeIDDColumnFileData_otphDKey_name ") "
-                                          "VALUES (NULL,?,?,?,?,?,?,?,?,?,?);",
-                                          -1,&insertDataStmt,NULL);
-                if (result!=SQLITE_OK)
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), sqlite3_prepare_v2() Error, can't "
-                            "prepare data insert in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
-#endif
-                    cmeCSVFileToSecureDBFree();
-                    return(13);
-                }
-                if (cmeSQLRows(ppDB[(*numCols)*cont+cont2],"BEGIN TRANSACTION;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeSQLRows() Error, can't "
-                            "begin data insert transaction in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
-#endif
-                    cmeCSVFileToSecureDBFree();
-                    return(13);
-                }
-                for(cont3=1;cont3<=rContLimit;cont3++) //Skip header row in elements[]; process each row.
-                {
-                    value=elements[cont2+((*numCols)*(cont3+cont*cmeMaxCSVRowsInPart))];
-                    //Setup attribute defaults.
-                    cmeStrConstrAppend(&securedRowOrder,"%d",cont3+rowStart+cont*cmeMaxCSVRowsInPart);
-                    cmeStrConstrAppend(&MAC,"%s",nullParam); // TODO (OHR#2#): Calculate MAC, MAC protected and stuff. Probably outside this function.
-                    cmeStrConstrAppend(&MACProtected,"%s",nullParam);
-                    cmeStrConstrAppend(&sign,"%s",nullParam);
-                    cmeStrConstrAppend(&signProtected,"%s",nullParam);
-                    cmeStrConstrAppend(&otphDkey,"%s",nullParam);
-                    cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect().
-                    result=sqlite3_bind_text(insertDataStmt,1,userId,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,2,orgId,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,3,salt,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,4,value,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,5,securedRowOrder,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,6,MAC,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,7,sign,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,8,MACProtected,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,9,signProtected,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,10,otphDkey,-1,SQLITE_TRANSIENT);
-                    if (result==SQLITE_OK) result=sqlite3_step(insertDataStmt);
-                    //Free stuff;
-                    cmeFree(salt);
-                    cmeFree(otphDkey);
-                    cmeFree(signProtected);
-                    cmeFree(sign);
-                    cmeFree(MACProtected);
-                    cmeFree(MAC);
-                    cmeFree(securedRowOrder);
-                    if (result!=SQLITE_DONE) //Insert row.
-                    {
-#ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), sqlite3_step() Error, can't "
-                                "insert row in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
-#endif
-                        cmeSQLRows(ppDB[(*numCols)*cont+cont2],"ROLLBACK;",NULL,NULL);
-                        cmeCSVFileToSecureDBFree();
-                        return(13);
-                    }
-                    sqlite3_reset(insertDataStmt);
-                    sqlite3_clear_bindings(insertDataStmt);
-                }
-                if (cmeSQLRows(ppDB[(*numCols)*cont+cont2],"COMMIT;",NULL,NULL))
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeCVSFileToSecureSQL(), cmeSQLRows() Error, can't "
-                            "commit data inserts in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
-#endif
-                    cmeSQLRows(ppDB[(*numCols)*cont+cont2],"ROLLBACK;",NULL,NULL);
-                    cmeCSVFileToSecureDBFree();
-                    return(13);
-                }
-                sqlite3_finalize(insertDataStmt);
-                insertDataStmt=NULL;
-            }
+            cmeCSVFileToSecureDBFree();
+            return(13);
         }
         rowStart+=cmeCSVRowBuffer; //Process next block of rows.
         rowEnd+=cmeCSVRowBuffer;
@@ -1794,7 +1832,7 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
                            const char *resourceInfo, const char *documentType, const char *documentId,
                            const char *storageId, const char *storagePath)
 {
-    int cont,cont2,cont3,rContLimit,result,readBytes,written;
+    int cont,cont2,result,readBytes,written;
     int numEntries=0;
     int skipIdColumn=0;
     int totalParts=0;
@@ -1807,9 +1845,7 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
     char **colNames=NULL;
     char *currentRawFileContent=NULL;   //Will hold the binary contents of each created file part during the hashing process.
     char *resourcesDBName=NULL;
-    char *value=NULL;                  //just a pointer to data in memTable; no need to free.
     char *bkpFName=NULL;
-    char *securedRowOrder=NULL;
     char *securedValue=NULL;
     char *MAC=NULL;                    //'data' table values depending on attributes selected.
     char *salt=NULL;
@@ -1820,12 +1856,10 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
     const char *nullParam="";
     const char resourcesDBFName[]="ResourcesDB";
     sqlite3_stmt *insertMetaStmt=NULL;
-    sqlite3_stmt *insertDataStmt=NULL;
     #define cmeMemTableToSecureDBFree() \
         do { \
             cmeFree(resourcesDBName); \
             cmeFree(bkpFName); \
-            cmeFree(securedRowOrder); \
             cmeFree(securedValue); \
             cmeFree(MAC); \
             cmeFree(salt); \
@@ -1838,11 +1872,6 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
             { \
                 sqlite3_finalize(insertMetaStmt); \
                 insertMetaStmt=NULL; \
-            } \
-            if (insertDataStmt) \
-            { \
-                sqlite3_finalize(insertDataStmt); \
-                insertDataStmt=NULL; \
             } \
             if (resourcesDB) \
             { \
@@ -2050,104 +2079,13 @@ int cmeMemTableToSecureDB (const char **memTable, const int numCols,const int nu
             insertMetaStmt=NULL;
         }
     }
-    //TODO (OHR#6#): Create and call function to insert data into tables (move code there).
-    for (cont=0;cont<totalParts;cont++) //Process each column part.
+    result=cmeInsertSecureDBDataRows(ppDB,SQLDBfNames,memTable,totalParts,
+                                     skipIdColumn,numCols,numRows,0,userId,orgId,
+                                     "cmeMemTableToSecureDB");
+    if (result)
     {
-        for (cont2=0+skipIdColumn;cont2<numCols;cont2++) //Process each column (we skip the first column if it is "id").
-        {
-            if ((cont+1)*cmeMaxCSVRowsInPart>numRows) // Last part? yes-> then set rContLimit to the remaining rows.
-            {
-                rContLimit=numRows-(cont*cmeMaxCSVRowsInPart);
-            }
-            else
-            {
-                rContLimit=(numRows>cmeMaxCSVRowsInPart)?cmeMaxCSVRowsInPart:numRows;
-            }
-            result=sqlite3_prepare_v2(ppDB[(numCols-skipIdColumn)*cont+cont2-skipIdColumn],
-                                      "INSERT INTO " cmeIDDColumnFileDataTableName " "
-                                      "(" cmeIDDanydb_id_name "," cmeIDDanydb_userId_name ","
-                                      cmeIDDanydb_orgId_name "," cmeIDDanydb_salt_name ","
-                                      cmeIDDColumnFileData_value_name "," cmeIDDColumnFileData_rowOrder_name ","
-                                      cmeIDDColumnFileData_MAC_name "," cmeIDDColumnFileData_sign_name ","
-                                      cmeIDDColumnFileData_MACProtected_name ","
-                                      cmeIDDColumnFileData_signProtected_name ","
-                                      cmeIDDColumnFileData_otphDKey_name ") "
-                                      "VALUES (NULL,?,?,?,?,?,?,?,?,?,?);",
-                                      -1,&insertDataStmt,NULL);
-            if (result!=SQLITE_OK)
-            {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), sqlite3_prepare_v2() Error, can't "
-                        "prepare data insert in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
-#endif
-                cmeMemTableToSecureDBFree();
-                return(10);
-            }
-            if (cmeSQLRows(ppDB[(numCols-skipIdColumn)*cont+cont2-skipIdColumn],"BEGIN TRANSACTION;",NULL,NULL))
-            {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeSQLRows() Error, can't "
-                        "begin data insert transaction in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
-#endif
-                cmeMemTableToSecureDBFree();
-                return(10);
-            }
-            for(cont3=1;cont3<=rContLimit;cont3++) //Skip header row in memTable[]; process each row.
-            {
-                value=(char *)memTable[cont2+((numCols)*(cont3+cont*cmeMaxCSVRowsInPart))];
-                //Setup attributes defaults:
-                cmeStrConstrAppend(&securedRowOrder,"%d",cont3+cont*cmeMaxCSVRowsInPart);
-                cmeStrConstrAppend(&MAC,"%s",nullParam); // TODO (OHR#2#): Calculate MAC, MAC protected and stuff. Probably outside this function.
-                cmeStrConstrAppend(&MACProtected,"%s",nullParam);
-                cmeStrConstrAppend(&sign,"%s",nullParam);
-                cmeStrConstrAppend(&signProtected,"%s",nullParam);
-                cmeStrConstrAppend(&otphDkey,"%s",nullParam);
-                cmeStrConstrAppend(&salt,"%s",nullParam);   //Salt wil be included in cmeMemSecureDBProtect().
-                result=sqlite3_bind_text(insertDataStmt,1,userId,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,2,orgId,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,3,salt,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,4,value,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,5,securedRowOrder,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,6,MAC,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,7,sign,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,8,MACProtected,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,9,signProtected,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_bind_text(insertDataStmt,10,otphDkey,-1,SQLITE_TRANSIENT);
-                if (result==SQLITE_OK) result=sqlite3_step(insertDataStmt);
-                //Free stuff:
-                cmeFree(salt);
-                cmeFree(otphDkey);
-                cmeFree(signProtected);
-                cmeFree(sign);
-                cmeFree(MACProtected);
-                cmeFree(MAC);
-                cmeFree(securedRowOrder);
-                if (result!=SQLITE_DONE) //Insert row.
-                {
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), sqlite3_step() Error, can't "
-                            "insert row in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
-#endif
-                    cmeSQLRows(ppDB[(numCols-skipIdColumn)*cont+cont2-skipIdColumn],"ROLLBACK;",NULL,NULL);
-                    cmeMemTableToSecureDBFree();
-                    return(10);
-                }
-                sqlite3_reset(insertDataStmt);
-                sqlite3_clear_bindings(insertDataStmt);
-            }
-            if (cmeSQLRows(ppDB[(numCols-skipIdColumn)*cont+cont2-skipIdColumn],"COMMIT;",NULL,NULL))
-            {
-#ifdef ERROR_LOG
-                fprintf(stderr,"CaumeDSE Error: cmeMemTableToSecureDB(), cmeSQLRows() Error, can't "
-                        "commit data inserts in DB file %d: %s!\n",cont,SQLDBfNames[cont]);
-#endif
-                cmeSQLRows(ppDB[(numCols-skipIdColumn)*cont+cont2-skipIdColumn],"ROLLBACK;",NULL,NULL);
-                cmeMemTableToSecureDBFree();
-                return(10);
-            }
-            sqlite3_finalize(insertDataStmt);
-            insertDataStmt=NULL;
-        }
+        cmeMemTableToSecureDBFree();
+        return(10);
     }
     for (cont=0;cont<numSQLDBfNames; cont++)  //Create backup DB files; copy Memory DBs there.
     {
