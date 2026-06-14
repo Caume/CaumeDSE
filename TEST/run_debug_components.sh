@@ -152,11 +152,13 @@ note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT"
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
     run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE || exit 1
+    run_step make_clean make clean || exit 1
     run_step make make || exit 1
     run_step make_check make check || exit 1
     run_step make_install make install || exit 1
 else
     record_skip configure "requested --skip-build"
+    record_skip make_clean "requested --skip-build"
     record_skip make "requested --skip-build"
     record_skip make_check "requested --skip-build"
     record_skip make_install "requested --skip-build"

@@ -171,8 +171,9 @@
   - Related roadmap item: `#9`.
   - Done: added the `CaumeDSE-debug-tests` harness, moved DEBUG component execution out of `main()`, shared runtime setup/cleanup through `runtime.c`, and updated the debug component script to execute the harness.
 
-- [ ] #28 Improve administrator key screen cleanup or use a sensitive terminal I/O library.
-  - Source: `engine_admin.c:424`.
+- [x] #28 Improve administrator key screen cleanup or use a sensitive terminal I/O library.
+  - Source: `engine_admin.c:46`, `engine_admin.c:437`.
+  - Done: after the first-run administrator organization key is acknowledged, interactive terminals now receive ANSI clear-screen, clear-scrollback, and cursor-home controls; redirected output gets an explicit warning because it cannot be cleared.
 
 - [ ] #29 Add basic error handling for certificate file loading.
   - Source: `engine_admin.c:803`.

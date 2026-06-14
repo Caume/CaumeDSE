@@ -4,6 +4,12 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `engine_admin.c`: Clear the interactive terminal display and
+  scrollback after the one-time default administrator organization key is
+  acknowledged, and warn when redirected output cannot be cleared.
+
+- `TODO.md`: Mark TODO item #28 complete.
+
 - `debug_tests.c`, `runtime.c`, `runtime.h`, `main.c`,
   `Makefile.am`, `Makefile.in`, `TEST/run_debug_components.sh`: Add
   a dedicated `CaumeDSE-debug-tests` executable for DEBUG component

@@ -44,6 +44,22 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
+static void cmeClearAdminKeyDisplay(void)
+{
+    if (isatty(fileno(stdout)))
+    {
+        printf("\033[2J\033[3J\033[H");
+        fflush(stdout);
+    }
+    else
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Warning: cmeSetupEngineAdminDBs(), stdout is not a terminal; "
+                "the displayed default administrator organization key cannot be cleared from redirected output.\n");
+#endif
+    }
+}
+
 int cmeSetupEngineAdminDBs ()
 {   //IDD ver. 1.0.21
     int result;
@@ -421,7 +437,7 @@ int cmeSetupEngineAdminDBs ()
         {
             readChar=getchar();
         } while (readChar != '\n');
-        // TODO (OHR#2#): Implement, if possible, screen deletion of the administrator key (e.g. by printing control characters). Alternatively consider printing sensitive info. with a special library that allows this (curses?).
+        cmeClearAdminKeyDisplay();
         memset(rndAdminOrgPwd,0,strlen(rndAdminOrgPwd)); //Overwrite default admin. key in memory.
     }
     cmeSetupEngineAdminDBsFree();
