@@ -4,6 +4,13 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `configure.ac`, `configure`: Replace placeholder Autoconf library
+  checks for `main` with representative function probes for libc,
+  libcrypt, libcrypto, libdl, libm, libmicrohttpd, libnsl, libperl,
+  pthread, libutil, GnuTLS, and SQLite.
+
+- `TODO.md`: Mark TODO item #20 complete.
+
 - `webservice_interface.h`, `webservice_interface.c`: Implement
   read-only `/dbNames` secure document database browsing for registered
   `file.csv` documents, including `/dbTables`, `/tableRows`, and

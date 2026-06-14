@@ -138,8 +138,9 @@
 
 ## Source Code TODO/FIXME Markers
 
-- [ ] #20 Replace `main` placeholders in Autoconf library checks with real function probes.
+- [x] #20 Replace `main` placeholders in Autoconf library checks with real function probes.
   - Source: `configure.ac:42`, `configure.ac:44`, `configure.ac:46`, `configure.ac:48`, `configure.ac:50`, `configure.ac:52`, `configure.ac:54`, `configure.ac:56`, `configure.ac:58`, `configure.ac:60`, `configure.ac:62`, `configure.ac:64`.
+  - Done: replaced placeholder `main` checks with representative symbols for libc, libcrypt, libcrypto, libdl, libm, libmicrohttpd, libnsl, libperl, pthread, libutil, GnuTLS, and SQLite; regenerated `configure` and verified `./configure` resolves all probes.
 
 - [ ] #21 Add cloud storage wrappers for file handling.
   - Source: `filehandling.c:53`.
