@@ -268,3 +268,8 @@
 - [ ] #51 Add full webservice startup HTTP(S) component coverage without `--skip-web`.
   - Source: `TEST/run_debug_components.sh:20`, `TEST/run_debug_components.sh:164`, `TEST/run_debug_components.sh:322`.
   - Goal: make the default `TEST/run_debug_components.sh` path reliable for routine full HTTP and HTTPS startup verification, including port availability, generated certificate/key loading, webservice startup markers, bounded noninteractive shutdown, and failure diagnostics when either protocol cannot start.
+
+- [x] #52 Verify and document the test database default password.
+  - Source: `TEST/testDB_opt_cdse/ResourcesDB`, `README.md`, `function_tests.c`.
+  - Goal: use repository history and HTTPS fixture checks to identify the actual default password/key for the committed test databases, update documentation and tests that still reference stale values, and explain why `password1` is not accepted when it is not the fixture key.
+  - Done: documented that the current committed fixture uses `0CDBB9AF76AF43BDB72E095989E612CC` for `EngineAdmin` / `EngineOrg`, that older history used `6DA74D788E0A33A0272252796EF0748A`, and that `password1` is only a generated document/resource fixture key. Verified current component coverage with `TEST/run_debug_components.sh --skip-build --skip-web` and `CDSE_DEBUG_TEST_TIMEOUT=120s`.

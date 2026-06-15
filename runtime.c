@@ -16,6 +16,9 @@ pthread_mutex_t cmePowerMutex=PTHREAD_MUTEX_INITIALIZER;  //Protects cmeEnginePo
 __thread char **cmeResultMemTable=NULL;    //Thread-local SQL result table; each worker thread owns its copy.
 __thread int cmeResultMemTableRows=0;      //Thread-local row count.
 __thread int cmeResultMemTableCols=0;      //Thread-local column count.
+const char *cmeAdminOrgKeyOverride=NULL;
+int cmeAdminKeyAutoConfirm=0;
+unsigned short cmeWebServiceHttpsPort=cmeDefaultWebServiceSSLPort;
 
 int cmeSetupRuntime(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl)
 {

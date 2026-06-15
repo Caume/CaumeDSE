@@ -1215,6 +1215,14 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
         cmeRAWFileToSecureFileFree();
         return(1);
     }
+    if (tmpMemDataLen<=0)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeRAWFileToSecureFile(), raw file is empty: %s !\n",rawFileName);
+#endif
+        cmeRAWFileToSecureFileFree();
+        return(3);
+    }
 
     numParts=tmpMemDataLen/cmeMaxRAWDataInPart;
     lastPartSize=tmpMemDataLen%cmeMaxRAWDataInPart;

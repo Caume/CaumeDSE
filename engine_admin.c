@@ -601,7 +601,14 @@ int cmeSetupEngineAdminDBs ()
     }
     if (createAdmin) //ResourcesDB and/or RolesDB did not exist; we need a new default admin's user, roles, organization and storage.
     {
-        cmeGetRndSaltAnySize(&rndAdminOrgPwd,keyLen); //Generate a random key of keyLen bytes as HexStr.
+        if ((cmeAdminOrgKeyOverride)&&(cmeAdminOrgKeyOverride[0]))
+        {
+            cmeStrConstrAppend(&rndAdminOrgPwd,"%s",cmeAdminOrgKeyOverride);
+        }
+        else
+        {
+            cmeGetRndSaltAnySize(&rndAdminOrgPwd,keyLen); //Generate a random key of keyLen bytes as HexStr.
+        }
         result=cmeWebServiceInitAdminIdSetup(rndAdminOrgPwd); //Create User.
         if (result) //Error.
         {
@@ -655,16 +662,19 @@ int cmeSetupEngineAdminDBs ()
                "Default Admin storagePath : %s \n"
                "Default Admin orgKey      : %s \n",cmeAdminDefaultUserId,cmeAdminDefaultOrgId,cmeAdminDefaultStorageId,cmeAdminDefaultStoragePath,
                rndAdminOrgPwd);
-        do
+        if (!cmeAdminKeyAutoConfirm)
         {
-            readChar=getchar();
-        } while (readChar != 'Y');
-        putchar (readChar);
-        do
-        {
-            readChar=getchar();
-        } while (readChar != '\n');
-        cmeClearAdminKeyDisplay();
+            do
+            {
+                readChar=getchar();
+            } while (readChar != 'Y');
+            putchar (readChar);
+            do
+            {
+                readChar=getchar();
+            } while (readChar != '\n');
+            cmeClearAdminKeyDisplay();
+        }
         memset(rndAdminOrgPwd,0,strlen(rndAdminOrgPwd)); //Overwrite default admin. key in memory.
     }
     cmeSetupEngineAdminDBsFree();
@@ -697,6 +707,8 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
     char **sqlTable=NULL;
     unsigned char **currentMACProtectedSaltedData=NULL;
     unsigned char *hexStrSalt=NULL;
+    const char *resourcesDBFilterColumns[]={"userId","orgId","salt","_get","_post","_put","_delete",
+                                            "_head","_options","userResourceId","orgResourceId"};
     #define cmeRegisterSecureDBFree() \
         { \
             cmeFree(currentDBName); \
@@ -997,7 +1009,14 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
         cmeRegisterSecureDBFree();
         return(8);
     }
-    result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"filterWhitelist");
+    if (numColumns)
+    {
+        result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"filterWhitelist");
+    }
+    else
+    {
+        result=cmeMemTableToMemDB(saveDB,resourcesDBFilterColumns,0,11,"filterWhitelist");
+    }
     cmeMemTableFinal(sqlTable);
     sqlTable=NULL;
     //Process (copy) table filterBlacklist:
@@ -1013,7 +1032,14 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
         cmeRegisterSecureDBFree();
         return(9);
     }
-    result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"filterBlacklist");
+    if (numColumns)
+    {
+        result=cmeMemTableToMemDB(saveDB,(const char **)sqlTable,numRows,numColumns,"filterBlacklist");
+    }
+    else
+    {
+        result=cmeMemTableToMemDB(saveDB,resourcesDBFilterColumns,0,11,"filterBlacklist");
+    }
     cmeMemTableFinal(sqlTable);
     sqlTable=NULL;
     //Save new ResourcesDB file and end:
@@ -1785,9 +1811,16 @@ int cmeWebServiceInitAdminIdSetup (const char *orgKey)
 
 void cmeWebServiceStart ()
 {
-    printf("--- Running Web server HTTPS, port %d\n",cmeDefaultWebServiceSSLPort);
+    if (cmeSetupEngineAdminDBs())
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceStart(), can't initialize EngineAdmin databases.\n");
+#endif
+        return;
+    }
+    printf("--- Running Web server HTTPS, port %d\n",cmeWebServiceHttpsPort);
     while (1)
     {
-        cmeWebServiceSetup(cmeDefaultWebServiceSSLPort,1,cmeDefaultHTTPSKeyFile,cmeDefaultHTTPSCertFile,cmeDefaultCACertFile,0);
+        cmeWebServiceSetup(cmeWebServiceHttpsPort,1,cmeDefaultHTTPSKeyFile,cmeDefaultHTTPSCertFile,cmeDefaultCACertFile,0);
     }
 }

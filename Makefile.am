@@ -29,7 +29,7 @@ install-data-local:
 		$(MKDIR_P) "$(tpath)" && cp -R TEST/testfiles/* "$(tpath)" ; \
 	fi
 	if [ ! -z "$(spath)" ] ; then \
-		$(MKDIR_P) "$(spath)" && chmod 600 "$(spath)" ; \
+		$(MKDIR_P) "$(spath)" && chmod 700 "$(spath)" ; \
 	fi
 	if [ ! -z "$(tdbpath)" ] ; then \
 		cp -R TEST/testDB_opt_cdse/* "$(tdbpath)" ; \

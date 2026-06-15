@@ -2187,6 +2187,29 @@ Omit `--skip-web` when validating full HTTP and HTTPS startup behavior.  The
 full mode uses `CDSE_DEBUG_TEST_HTTP_PORT` and `CDSE_DEBUG_TEST_HTTPS_PORT`
 when set, or ports 18080 and 18443 by default.
 
+The committed test database under `TEST/testDB_opt_cdse` uses
+`0CDBB9AF76AF43BDB72E095989E612CC` as the `EngineAdmin` / `EngineOrg`
+organization key in the DEBUG resource component tests and API examples.
+Older history shows the previous fixture key
+`6DA74D788E0A33A0272252796EF0748A` in `TEST/testDB_opt_cdse/secureTmp/EngineOrg.key.txt`
+and older README examples; it is not valid for the current committed fixture.
+The `password1` value used by several component tests is a document/resource
+fixture key for generated CSV and DB-browsing resources, not the default
+`EngineAdmin` organization key.
+
+For automated first-run release verification, the `CaumeDSE` binary accepts
+optional startup parameters:
+
+    --admin-org-key KEY
+    --admin-key-confirmed
+    --https-port PORT
+
+`--admin-org-key` sets the initial `EngineAdmin` organization key when the
+system databases do not exist yet.  `--admin-key-confirmed` skips the
+interactive prompt that normally waits for the operator to confirm that the
+generated key has been written down.  `--https-port` runs HTTPS on a specific
+port instead of the default 8443.
+
 Temporary-file deletion uses one zero-fill overwrite pass by default.  To
 compile with additional overwrite passes, define
 `CDSE_SECURE_OVERWRITE_PASSES` in `CFLAGS`, for example:

@@ -646,6 +646,9 @@ extern pthread_mutex_t cmePowerMutex;          //Mutex protecting the engine pow
 extern __thread char **cmeResultMemTable;      //Thread-local SQL result table; one instance per worker thread.
 extern __thread int cmeResultMemTableRows;     //Thread-local row count for cmeResultMemTable.
 extern __thread int cmeResultMemTableCols;     //Thread-local column count for cmeResultMemTable.
+extern const char *cmeAdminOrgKeyOverride;     //Optional first-run EngineAdmin orgKey override from CLI.
+extern int cmeAdminKeyAutoConfirm;             //Optional first-run admin key prompt acknowledgement from CLI.
+extern unsigned short cmeWebServiceHttpsPort;  //Runtime HTTPS port, defaults to cmeDefaultWebServiceSSLPort.
 
 
 #endif // COMMON_H_INCLUDED
