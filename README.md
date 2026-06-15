@@ -237,6 +237,12 @@ The architecture of CaumeDSE is composed of several layers:
 2. Authentication - Authentication of users and applications is
        handled at the web server level.  Right now, client
        authentication with digital certificates with TLS is supported.
+       OAuth authentication is not performed inside CaumeDSE.  OAuth
+       deployments must place an external engine manager in front of the
+       engine; that manager validates OAuth credentials, creates and
+       later removes delegated CaumeDSE organization/user/role/resource
+       scopes, and forwards requests to the engine with the delegated
+       `userId`, `orgId`, and `orgKey`.
 
 3. Authorization - Authorization is handled internally by CaumeDSE
        with role tables for each user.  Each role table maps each
@@ -546,9 +552,9 @@ resource type refer to section V (REST (Resource) API reference).
 
     Prefixes: match (_) and update (*).
 
-    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
-    Consumer Secret for user authentication via OAUTH authentication
-    protocol in the future.
+    OAuth is delegated to an external engine manager.  This attribute is
+    available for manager-owned metadata but is not used by CaumeDSE for
+    internal OAuth token validation.
 
 #### `oauthConsumerSecret`
 
@@ -556,9 +562,9 @@ resource type refer to section V (REST (Resource) API reference).
 
     Prefixes: match (_) and update (*).
 
-    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
-    Consumer Secret for user authentication via OAUTH authentication
-    protocol in the future.
+    OAuth is delegated to an external engine manager.  This attribute is
+    available for manager-owned metadata but is not used by CaumeDSE for
+    internal OAuth token validation.
 
 #### `columnFile`
 
@@ -2172,6 +2178,24 @@ compile with additional overwrite passes, define
 `CDSE_SECURE_OVERWRITE_PASSES` in `CFLAGS`, for example:
 
     CFLAGS="-DCDSE_SECURE_OVERWRITE_PASSES=3" ./configure
+
+### OAuth deployments
+
+CaumeDSE does not validate OAuth signatures, bearer tokens, refresh
+tokens, scopes, expiry, or revocation internally.  OAuth deployments must
+use an external engine manager or reverse-proxy layer that owns those
+protocol duties.  After validating an OAuth grant, that layer should
+create a delegated CaumeDSE scope, for example an organization named
+`<orgId>_OAUTH`, with a manager-held organization key.  It should then
+create the delegated user, role-table entries, filter-list entries, and
+resource copies or references that represent the OAuth grant.
+
+Requests forwarded to CaumeDSE must use the delegated `userId`, `orgId`,
+and `orgKey` parameters.  When the OAuth grant expires or is revoked, the
+manager must delete the delegated organization and associated resources.
+CaumeDSE intentionally does not store organization keys or OAuth tokens,
+so the manager must keep its own mapping from OAuth grants to delegated
+CaumeDSE scopes.
 
 In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).

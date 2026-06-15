@@ -200,8 +200,9 @@
   - Source: `strhandling.c:376`, `webservice_interface.c:2444`, `webservice_interface.c:4113`, `webservice_interface.c:5343`.
   - Done: added a shared count response formatter for DELETE results that honors `outputType=csv` and the default/explicit HTML format, and routed existing DELETE count responses through it.
 
-- [ ] #35 Add OAuth authentication or document the required external manager layer.
-  - Source: `webservice_interface.c:615`.
+- [x] #35 Add OAuth authentication or document the required external manager layer.
+  - Source: `webservice_interface.c:885`, `README.md:2182`, `common.h:64`.
+  - Done: documented OAuth as an external engine-manager responsibility, clarified that CaumeDSE does not validate OAuth tokens internally, described the delegated organization/user/role/resource lifecycle, and updated source comments and OAuth field comments to match that boundary.
 
 - [ ] #36 Process storage `documentTypes` and `documents` resource tree requests.
   - Source: `webservice_interface.c:1015`.

@@ -61,7 +61,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeBypassTLSAuthenticationInHTTP 1 //Allows bypassing TLS authentication with non TLS sessions {e.g. when testing HTTP connections with TLS auth. enabled, where TLS authentication would allways fail obvoiusly}.
 #endif /*BYPASS_TLS_IN_HTTP*/
 #define cmeUseTLSAuthentication 1       //TLS user authentication module {1=ON, 0=OFF}.
-#define cmeUseOAUTHAuthentication 0     //OAUTH user authentication module {1=ON, 0=OFF}. NOTE: NOT YET IMPLEMENTED
+#define cmeUseOAUTHAuthentication 0     //OAuth is delegated to an external engine manager; no internal OAuth module is enabled.
 #define cmeCSVRowBuffer 5000            //Buffer for processing CSV files - reads at most this # of rows at a time {RECOMMENDED: 5000} and processes them before reading more.
 #define cmeMaxCSVRowsInPart 500         //Max number of rows in a column slice {part} {RECOMMENDED: 1000}
 #define cmeMaxCSVRowSize 10240          //Max row size in a CSV file. {10240}
@@ -220,10 +220,10 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeIDDResourcesDBUsers_userResourceId_name "userResourceId"     //Column name for WSID column user resource id
 #define cmeIDDResourcesDBUsers_basicAuthPwdHash 8                       //Column index {0 based} for WSID column user 'basic authentication' password hash
 #define cmeIDDResourcesDBUsers_basicAuthPwdHash_name "basicAuthPwdHash" //Column name for WSID column user 'basic authentication' password hash
-#define cmeIDDResourcesDBUsers_oauthConsumerKey 9                       //Column index {0 based} for WSID column user OAUTH consumer key
-#define cmeIDDResourcesDBUsers_oauthConsumerKey_name "oauthConsumerKey" //Column name for WSID column user OAUTH consumer key
-#define cmeIDDResourcesDBUsers_oauthConsumerSecret 10                   //Column index {0 based} for WSID column user OAUTH consumer secret
-#define cmeIDDResourcesDBUsers_oauthConsumerSecret_name "oauthConsumerSecret"   //Column index {0 based} for WSID column user OAUTH consumer secret
+#define cmeIDDResourcesDBUsers_oauthConsumerKey 9                       //Column index {0 based} for manager-owned OAuth metadata
+#define cmeIDDResourcesDBUsers_oauthConsumerKey_name "oauthConsumerKey" //Column name for manager-owned OAuth metadata
+#define cmeIDDResourcesDBUsers_oauthConsumerSecret 10                   //Column index {0 based} for manager-owned OAuth metadata
+#define cmeIDDResourcesDBUsers_oauthConsumerSecret_name "oauthConsumerSecret"   //Column name for manager-owned OAuth metadata
 #define cmeIDDResourcesDBUsers_orgResourceId 11                         //Column index {0 based} for WSID column user organization resource id
 #define cmeIDDResourcesDBUsers_orgResourceId_name "orgResourceId"       //Column name for WSID column user organization resource id
 #define cmeIDDResourcesDBStorageNumCols 12                              //# of columns for Storage tables in ResourceDB databases

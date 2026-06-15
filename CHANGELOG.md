@@ -4,6 +4,11 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `README.md`, `webservice_interface.c`, `common.h`, `TODO.md`:
+  Document OAuth as an external engine-manager responsibility, clarify
+  that CaumeDSE does not validate OAuth tokens internally, and mark TODO
+  item #35 complete.
+
 - `engine_admin.c`, `function_tests.c`: Evaluate ResourcesDB
   `filterWhitelist` and `filterBlacklist` resource fields as
   full-string POSIX extended regex filters during permission checks,

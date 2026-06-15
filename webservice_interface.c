@@ -884,7 +884,20 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         //AUTHENTICATION PHASE:
         if (cmeUseOAUTHAuthentication) //Try OAUTH client authentication.
         {
-            result=1; // TODO (OHR#2#): Add OAUTH authentication mechanism. The engine will still handle the same org. key (e.g. for authenticating owners with OAUTH), but for authorized users different from the owner another layer (e.g. an engine manager) should create another organization with different key and a standard name (e.g. <orgId>_OAUTH), put the authorized user and their permissions within this "temporal organization", and add any resources authorized by the user to this organization. When the OAUTH permissions timeout, the added layer should delete this organization and all associated resources (the engine doesn't store keys, so the added layer must maintain its own indexes).
+            /*
+             * OAuth delegation is handled by an external engine manager.  The
+             * manager validates OAuth credentials, creates a delegated
+             * organization/user/role/resource scope with its own orgKey, sends
+             * normal CaumeDSE requests with that delegated identity, and
+             * removes the delegated scope when the OAuth grant expires.  The
+             * engine never stores organization keys or OAuth tokens, so it
+             * cannot validate OAuth grants directly.
+             */
+            result=1;
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), OAuth authentication is delegated "
+                    "to an external engine manager and is not performed internally.\n");
+#endif
             if (!result) //OAUTH Authentication Successful.
             {
                 authentication+=1;
