@@ -60,6 +60,35 @@ static void cmeClearAdminKeyDisplay(void)
     }
 }
 
+static int cmeLoadRequiredWebServiceFile(char **pDstStr, const char *filePath,
+                                         const char *description)
+{
+    int result;
+    int readFileLen=0;
+
+    if ((!pDstStr)||(!filePath)||(!filePath[0]))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, missing %s file path.\n",
+                description);
+#endif
+        return(1);
+    }
+    *pDstStr=NULL;
+    result=cmeLoadStrFromFile(pDstStr,filePath,&readFileLen);
+    if ((result)||(!(*pDstStr))||(readFileLen<1))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't load %s file '%s' "
+                "(result=%d, bytes=%d).\n",description,filePath,result,readFileLen);
+#endif
+        cmeFree(*pDstStr);
+        return(result?result:2);
+    }
+    (*pDstStr)[readFileLen]='\0';
+    return(0);
+}
+
 int cmeSetupEngineAdminDBs ()
 {   //IDD ver. 1.0.21
     int result;
@@ -798,7 +827,7 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
 int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile, const char *sslCertFile, const char *caCertFile,
                         unsigned int numThreads)
 {
-    int readFileLen;
+    int result;
     struct MHD_Daemon *webServiceDaemon=NULL;
     char *key_pem=NULL;
     char *cert_pem=NULL;
@@ -816,16 +845,17 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
 
     if (useSSL) //HTTPS
     {
-        // TODO (ANY#2#): Add basic error handling for loading cert. files (e.g. if file is not found, function will return an int > 0.
-        cmeLoadStrFromFile(&key_pem,sslKeyFile,&readFileLen);
-        cmeLoadStrFromFile(&cert_pem,sslCertFile,&readFileLen);
-        cmeLoadStrFromFile(&ca_pem,caCertFile,&readFileLen);
-        if ((key_pem == NULL)||(cert_pem == NULL)||(ca_pem == NULL)) //Error
+        result=cmeLoadRequiredWebServiceFile(&key_pem,sslKeyFile,"HTTPS private key");
+        if (!result)
         {
-#ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't "
-                "read server key, server cert or ca cert files: %s %s %s\n",sslKeyFile,sslCertFile,caCertFile);
-#endif
+            result=cmeLoadRequiredWebServiceFile(&cert_pem,sslCertFile,"HTTPS certificate");
+        }
+        if (!result)
+        {
+            result=cmeLoadRequiredWebServiceFile(&ca_pem,caCertFile,"HTTPS CA certificate");
+        }
+        if (result)
+        {
             cmeWebServiceSetupFree();
             return (1);
         }

@@ -175,8 +175,9 @@
   - Source: `engine_admin.c:46`, `engine_admin.c:437`.
   - Done: after the first-run administrator organization key is acknowledged, interactive terminals now receive ANSI clear-screen, clear-scrollback, and cursor-home controls; redirected output gets an explicit warning because it cannot be cleared.
 
-- [ ] #29 Add basic error handling for certificate file loading.
-  - Source: `engine_admin.c:803`.
+- [x] #29 Add basic error handling for certificate file loading.
+  - Source: `engine_admin.c:64`, `engine_admin.c:842`.
+  - Done: HTTPS setup now loads the key, certificate, and CA certificate through a required-file helper that rejects missing paths, load errors, empty files, and null buffers with per-file diagnostics before starting the daemon.
 
 - [ ] #30 Replace temporary web-service `getchar()` waits with an exception/stop handler.
   - Source: `engine_admin.c:872`.

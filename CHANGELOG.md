@@ -4,6 +4,12 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `engine_admin.c`: Add required-file validation for HTTPS private
+  key, certificate, and CA certificate loading before starting the web
+  service daemon.
+
+- `TODO.md`: Mark TODO item #29 complete.
+
 - `engine_admin.c`: Clear the interactive terminal display and
   scrollback after the one-time default administrator organization key is
   acknowledged, and warn when redirected output cannot be cleared.
