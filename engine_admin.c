@@ -42,7 +42,250 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
     by Larry Wall and others.
 
 ***/
+#include <regex.h>
+#include <signal.h>
+
 #include "common.h"
+
+static volatile sig_atomic_t cmeWebServiceStopRequested=0;
+
+static void cmeClearAdminKeyDisplay(void)
+{
+    if (isatty(fileno(stdout)))
+    {
+        printf("\033[2J\033[3J\033[H");
+        fflush(stdout);
+    }
+    else
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Warning: cmeSetupEngineAdminDBs(), stdout is not a terminal; "
+                "the displayed default administrator organization key cannot be cleared from redirected output.\n");
+#endif
+    }
+}
+
+static int cmeLoadRequiredWebServiceFile(char **pDstStr, const char *filePath,
+                                         const char *description)
+{
+    int result;
+    int readFileLen=0;
+
+    if ((!pDstStr)||(!filePath)||(!filePath[0]))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, missing %s file path.\n",
+                description);
+#endif
+        return(1);
+    }
+    *pDstStr=NULL;
+    result=cmeLoadStrFromFile(pDstStr,filePath,&readFileLen);
+    if ((result)||(!(*pDstStr))||(readFileLen<1))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't load %s file '%s' "
+                "(result=%d, bytes=%d).\n",description,filePath,result,readFileLen);
+#endif
+        cmeFree(*pDstStr);
+        return(result?result:2);
+    }
+    (*pDstStr)[readFileLen]='\0';
+    return(0);
+}
+
+static void cmeWebServiceStopSignalHandler(int signalNumber)
+{
+    (void)signalNumber;
+    cmeWebServiceStopRequested=1;
+}
+
+static int cmeWebServiceInstallStopHandler(struct sigaction *oldIntAction,
+                                           struct sigaction *oldTermAction)
+{
+    struct sigaction stopAction;
+
+    memset(&stopAction,0,sizeof(stopAction));
+    stopAction.sa_handler=cmeWebServiceStopSignalHandler;
+    sigemptyset(&stopAction.sa_mask);
+    stopAction.sa_flags=0;
+    if (sigaction(SIGINT,&stopAction,oldIntAction))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't install SIGINT stop handler.\n");
+#endif
+        return(1);
+    }
+    if (sigaction(SIGTERM,&stopAction,oldTermAction))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't install SIGTERM stop handler.\n");
+#endif
+        sigaction(SIGINT,oldIntAction,NULL);
+        return(2);
+    }
+    return(0);
+}
+
+static void cmeWebServiceRestoreStopHandler(const struct sigaction *oldIntAction,
+                                            const struct sigaction *oldTermAction)
+{
+    sigaction(SIGINT,oldIntAction,NULL);
+    sigaction(SIGTERM,oldTermAction,NULL);
+}
+
+static void cmeWebServiceWaitForStop(void)
+{
+    const char *nonInteractive=getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
+
+    if (nonInteractive && *nonInteractive && strcmp(nonInteractive,"0"))
+    {
+#ifdef DEBUG
+        sleep(1);
+#endif
+        cmeWebServiceStopRequested=1;
+        return;
+    }
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: cmeWebServiceSetup(), web service running; send SIGINT or SIGTERM to stop.\n");
+    fflush(stdout);
+#endif
+    while (!cmeWebServiceStopRequested)
+    {
+        pause();
+    }
+}
+
+static void cmeWebServiceFreeResultRegisterCols(char ***resultRegisterCols, int numResultRegisterCols,
+                                                int numResultRegisters)
+{
+    int cont;
+
+    if (*resultRegisterCols)
+    {
+        for (cont=0;cont<(numResultRegisters+1)*numResultRegisterCols;cont++)
+        {
+            cmeFree((*resultRegisterCols)[cont]);
+        }
+        cmeFree(*resultRegisterCols);
+        *resultRegisterCols=NULL;
+    }
+}
+
+static int cmeWebServiceRegexFullMatch(const char *pattern, const char *value, int *match)
+{
+    regex_t regex;
+    regmatch_t regexMatch;
+    int result;
+
+    *match=0;
+    if ((!pattern)||(!value))
+    {
+        return(0);
+    }
+    result=regcomp(&regex,pattern,REG_EXTENDED);
+    if (result)
+    {
+#ifdef ERROR_LOG
+        char errorText[128];
+        regerror(result,&regex,errorText,sizeof(errorText));
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceCheckPermissions(), invalid filter regex '%s': %s.\n",
+                pattern,errorText);
+#endif
+        return(1);
+    }
+    result=regexec(&regex,value,1,&regexMatch,0);
+    if (!result)
+    {
+        *match=(regexMatch.rm_so==0)&&((size_t)regexMatch.rm_eo==strlen(value));
+    }
+    else if (result!=REG_NOMATCH)
+    {
+#ifdef ERROR_LOG
+        char errorText[128];
+        regerror(result,&regex,errorText,sizeof(errorText));
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceCheckPermissions(), can't evaluate filter regex '%s': %s.\n",
+                pattern,errorText);
+#endif
+        regfree(&regex);
+        return(2);
+    }
+    regfree(&regex);
+    return(0);
+}
+
+static int cmeWebServiceCountRegexFilterMatches(sqlite3 *pDB, const char *filterTableName,
+                                                const char *methodColumnName, const char *targetOrgId,
+                                                const char *targetUserId, const char *orgKey,
+                                                int *numConfigured, int *numMatches)
+{
+    int result;
+    int cont;
+    int orgMatch=0;
+    int userMatch=0;
+    int numResultRegisterCols=0;
+    int numResultRegisters=0;
+    char *methodColumnValue=NULL;
+    char **resultRegisterCols=NULL;
+    const char *columnNames[1]={methodColumnName};
+    const char *columnValues[1]={NULL};
+    #define cmeWebServiceCountRegexFilterMatchesFree() \
+        { \
+            cmeFree(methodColumnValue); \
+            cmeWebServiceFreeResultRegisterCols(&resultRegisterCols,numResultRegisterCols,numResultRegisters); \
+        } //Local free() macro.
+
+    *numMatches=0;
+    if (numConfigured)
+    {
+        *numConfigured=0;
+    }
+    cmeStrConstrAppend(&methodColumnValue,"1");
+    columnValues[0]=methodColumnValue;
+    result=cmeGetUnprotectDBRegisters(pDB,filterTableName,columnNames,columnValues,1,
+                                      &resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey);
+    if (result)
+    {
+        cmeWebServiceCountRegexFilterMatchesFree();
+        return(result);
+    }
+    if (numConfigured)
+    {
+        *numConfigured=numResultRegisters;
+    }
+    if ((numResultRegisters)&&(numResultRegisterCols<=cmeIDDRolesDBAnyTable_orgResourceId))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceCheckPermissions(), filter table '%s' returned "
+                "unexpected column count %d.\n",filterTableName,numResultRegisterCols);
+#endif
+        cmeWebServiceCountRegexFilterMatchesFree();
+        return(3);
+    }
+    for (cont=1;cont<=numResultRegisters;cont++)
+    {
+        result=cmeWebServiceRegexFullMatch(resultRegisterCols[cont*numResultRegisterCols+
+                                               cmeIDDRolesDBAnyTable_orgResourceId],
+                                          targetOrgId,&orgMatch);
+        if (!result)
+        {
+            result=cmeWebServiceRegexFullMatch(resultRegisterCols[cont*numResultRegisterCols+
+                                                   cmeIDDRolesDBAnyTable_userResourceId],
+                                              targetUserId,&userMatch);
+        }
+        if (result)
+        {
+            cmeWebServiceCountRegexFilterMatchesFree();
+            return(result);
+        }
+        if (orgMatch&&userMatch)
+        {
+            (*numMatches)++;
+        }
+    }
+    cmeWebServiceCountRegexFilterMatchesFree();
+    return(0);
+}
 
 int cmeSetupEngineAdminDBs ()
 {   //IDD ver. 1.0.21
@@ -421,7 +664,7 @@ int cmeSetupEngineAdminDBs ()
         {
             readChar=getchar();
         } while (readChar != '\n');
-        // TODO (OHR#2#): Implement, if possible, screen deletion of the administrator key (e.g. by printing control characters). Alternatively consider printing sensitive info. with a special library that allows this (curses?).
+        cmeClearAdminKeyDisplay();
         memset(rndAdminOrgPwd,0,strlen(rndAdminOrgPwd)); //Overwrite default admin. key in memory.
     }
     cmeSetupEngineAdminDBsFree();
@@ -782,34 +1025,44 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
 int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile, const char *sslCertFile, const char *caCertFile,
                         unsigned int numThreads)
 {
-    int readFileLen;
+    int result;
+    int stopHandlersInstalled=0;
+    struct sigaction oldIntAction;
+    struct sigaction oldTermAction;
     struct MHD_Daemon *webServiceDaemon=NULL;
     char *key_pem=NULL;
     char *cert_pem=NULL;
     char *ca_pem=NULL;
     #define cmeWebServiceSetupFree() \
         { \
-            cmeFree(key_pem); \
-            cmeFree(cert_pem); \
-            cmeFree(ca_pem); \
             if (webServiceDaemon) \
             { \
                 MHD_stop_daemon (webServiceDaemon); \
+                webServiceDaemon=NULL; \
             } \
+            if (stopHandlersInstalled) \
+            { \
+                cmeWebServiceRestoreStopHandler(&oldIntAction,&oldTermAction); \
+                stopHandlersInstalled=0; \
+            } \
+            cmeFree(key_pem); \
+            cmeFree(cert_pem); \
+            cmeFree(ca_pem); \
         } //Local free() macro.
 
     if (useSSL) //HTTPS
     {
-        // TODO (ANY#2#): Add basic error handling for loading cert. files (e.g. if file is not found, function will return an int > 0.
-        cmeLoadStrFromFile(&key_pem,sslKeyFile,&readFileLen);
-        cmeLoadStrFromFile(&cert_pem,sslCertFile,&readFileLen);
-        cmeLoadStrFromFile(&ca_pem,caCertFile,&readFileLen);
-        if ((key_pem == NULL)||(cert_pem == NULL)||(ca_pem == NULL)) //Error
+        result=cmeLoadRequiredWebServiceFile(&key_pem,sslKeyFile,"HTTPS private key");
+        if (!result)
         {
-#ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't "
-                "read server key, server cert or ca cert files: %s %s %s\n",sslKeyFile,sslCertFile,caCertFile);
-#endif
+            result=cmeLoadRequiredWebServiceFile(&cert_pem,sslCertFile,"HTTPS certificate");
+        }
+        if (!result)
+        {
+            result=cmeLoadRequiredWebServiceFile(&ca_pem,caCertFile,"HTTPS CA certificate");
+        }
+        if (result)
+        {
             cmeWebServiceSetupFree();
             return (1);
         }
@@ -859,19 +1112,14 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
             return (3);
         }
     }
+    cmeWebServiceStopRequested=0;
+    if (cmeWebServiceInstallStopHandler(&oldIntAction,&oldTermAction))
     {
-        const char *nonInteractive = getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
-        if (nonInteractive && *nonInteractive && strcmp(nonInteractive,"0"))
-        {
-#ifdef DEBUG
-            sleep(1);
-#endif
-        }
-        else
-        {
-            getchar ();                     //TODO (OHR#2#): Clear temporal "wait for enter"; create web service Exception Handler (stop) function.
-        }
+        cmeWebServiceSetupFree();
+        return(4);
     }
+    stopHandlersInstalled=1;
+    cmeWebServiceWaitForStop();
     cmeWebServiceSetupFree();
     return(0);
 }
@@ -1009,7 +1257,6 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     int numColumnValues=0;
-    int numWhitelistColumns=5;
     int numWhitelistConfigured=0;
     int numWhitelistMatches=0;
     int numBlacklistMatches=0;
@@ -1022,8 +1269,6 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
     char **columnValues=NULL;
     char *currentTableName=NULL;
     char **resultRegisterCols=NULL;
-    char **whitelistColumnNames=NULL;
-    char **whitelistColumnValues=NULL;
     const char *validRoleTableNames[20]={"documents","users","roleTables","parserScripts","outputDocuments","content",
                                          "contentRows","contentColumns","dbNames","dbTables","tableRows","tableColumns",
                                          "organizations","storage","documentTypes","engineCommands","transactions","meta",
@@ -1050,21 +1295,7 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
             } \
             if (numResultRegisterCols) \
             { \
-                for (cont=0;cont<(numResultRegisters+1)*numResultRegisterCols;cont++) \
-                { \
-                    cmeFree(resultRegisterCols[cont]); \
-                } \
-                cmeFree(resultRegisterCols); \
-            } \
-            if (whitelistColumnNames) \
-            { \
-                for (cont=0;cont<numWhitelistColumns;cont++) \
-                { \
-                    cmeFree(whitelistColumnNames[cont]); \
-                    cmeFree(whitelistColumnValues[cont]); \
-                } \
-                cmeFree(whitelistColumnNames); \
-                cmeFree(whitelistColumnValues); \
+                cmeWebServiceFreeResultRegisterCols(&resultRegisterCols,numResultRegisterCols,numResultRegisters); \
             } \
         } //Local free() macro.
 
@@ -1147,38 +1378,10 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                 {
                     if (resultRegisterCols)
                     {
-                        for (cont=0;cont<(numResultRegisters+1)*numResultRegisterCols;cont++)
-                        {
-                            cmeFree(resultRegisterCols[cont]);
-                        }
-                        cmeFree(resultRegisterCols);
-                        resultRegisterCols=NULL;
+                        cmeWebServiceFreeResultRegisterCols(&resultRegisterCols,numResultRegisterCols,numResultRegisters);
                         numResultRegisterCols=0;
                         numResultRegisters=0;
                     }
-                    whitelistColumnNames=(char **)malloc(sizeof(char *)*numWhitelistColumns);
-                    whitelistColumnValues=(char **)malloc(sizeof(char *)*numWhitelistColumns);
-                    if ((!whitelistColumnNames)||(!whitelistColumnValues))
-                    {
-                        cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
-                                           "METHOD: '%s' URL: '%s'."
-                                           " Latest IDD version: <code>%s</code>",method,url,
-                                           cmeInternalDBDefinitionsVersion);
-                        *responseCode=500;
-                        cmeWebServiceCheckPermissionsFree();
-                        return(3);
-                    }
-                    for (cont=0;cont<numWhitelistColumns;cont++)
-                    {
-                        whitelistColumnNames[cont]=NULL;
-                        whitelistColumnValues[cont]=NULL;
-                    }
-                    cmeStrConstrAppend(&(whitelistColumnNames[0]),"_%s",lcaseMethod);
-                    cmeStrConstrAppend(&(whitelistColumnValues[0]),"1");
-                    cmeStrConstrAppend(&(whitelistColumnNames[1]),"userResourceId");
-                    cmeStrConstrAppend(&(whitelistColumnValues[1]),"%s",urlElements[3]);
-                    cmeStrConstrAppend(&(whitelistColumnNames[2]),"orgResourceId");
-                    cmeStrConstrAppend(&(whitelistColumnValues[2]),"%s",urlElements[1]);
                     if (pDB)
                     {
                         cmeDBClose(pDB);
@@ -1190,60 +1393,25 @@ int cmeWebServiceCheckPermissions (const char *method, const char *url, const ch
                     result=cmeDBOpen(dbFilePath,&pDB);
                     if (!result)
                     {
-                        result=cmeGetUnprotectDBRegisters(pDB,"filterBlacklist",(const char **)whitelistColumnNames,
-                                                          (const char **)whitelistColumnValues,3,&resultRegisterCols,
-                                                          &numResultRegisterCols,&numBlacklistMatches,orgKey);
-                        numResultRegisters=numBlacklistMatches;
+                        result=cmeWebServiceCountRegexFilterMatches(pDB,"filterBlacklist",columnNames[0],
+                                                                    urlElements[1],urlElements[3],orgKey,
+                                                                    NULL,&numBlacklistMatches);
+                    }
+                    if ((!result)&&(numBlacklistMatches))
+                    {
+                        cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN request matches filterBlacklist.</b><br>"
+                                           "METHOD: '%s' URL: '%s'."
+                                           " Latest IDD version: <code>%s</code>",method,url,
+                                           cmeInternalDBDefinitionsVersion);
+                        *responseCode=403;
+                        cmeWebServiceCheckPermissionsFree();
+                        return(6);
                     }
                     if (!result)
                     {
-                        if (resultRegisterCols)
-                        {
-                            for (cont=0;cont<(numBlacklistMatches+1)*numResultRegisterCols;cont++)
-                            {
-                                cmeFree(resultRegisterCols[cont]);
-                            }
-                            cmeFree(resultRegisterCols);
-                            resultRegisterCols=NULL;
-                            numResultRegisterCols=0;
-                            numResultRegisters=0;
-                        }
-                        if (numBlacklistMatches)
-                        {
-                            cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN request matches filterBlacklist.</b><br>"
-                                               "METHOD: '%s' URL: '%s'."
-                                               " Latest IDD version: <code>%s</code>",method,url,
-                                               cmeInternalDBDefinitionsVersion);
-                            *responseCode=403;
-                            cmeWebServiceCheckPermissionsFree();
-                            return(6);
-                        }
-                    }
-                    if (!result)
-                    {
-                        result=cmeGetUnprotectDBRegisters(pDB,"filterWhitelist",(const char **)whitelistColumnNames,
-                                                          (const char **)whitelistColumnValues,1,&resultRegisterCols,
-                                                          &numResultRegisterCols,&numWhitelistConfigured,orgKey);
-                    }
-                    if (!result)
-                    {
-                        if (resultRegisterCols)
-                        {
-                            for (cont=0;cont<(numWhitelistConfigured+1)*numResultRegisterCols;cont++)
-                            {
-                                cmeFree(resultRegisterCols[cont]);
-                            }
-                            cmeFree(resultRegisterCols);
-                            resultRegisterCols=NULL;
-                            numResultRegisterCols=0;
-                        }
-                        if (numWhitelistConfigured)
-                        {
-                            result=cmeGetUnprotectDBRegisters(pDB,"filterWhitelist",(const char **)whitelistColumnNames,
-                                                              (const char **)whitelistColumnValues,3,
-                                                              &resultRegisterCols,&numResultRegisterCols,&numWhitelistMatches,orgKey);
-                            numResultRegisters=numWhitelistMatches;
-                        }
+                        result=cmeWebServiceCountRegexFilterMatches(pDB,"filterWhitelist",columnNames[0],
+                                                                    urlElements[1],urlElements[3],orgKey,
+                                                                    &numWhitelistConfigured,&numWhitelistMatches);
                     }
                     if (result)
                     {

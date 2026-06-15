@@ -152,11 +152,13 @@ note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT"
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
     run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE || exit 1
+    run_step make_clean make clean || exit 1
     run_step make make || exit 1
     run_step make_check make check || exit 1
     run_step make_install make install || exit 1
 else
     record_skip configure "requested --skip-build"
+    record_skip make_clean "requested --skip-build"
     record_skip make "requested --skip-build"
     record_skip make_check "requested --skip-build"
     record_skip make_install "requested --skip-build"
@@ -183,12 +185,12 @@ note "RUN  debug_engine"
         env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
             CDSE_DEBUG_TEST_HTTP_PORT="$HTTP_PORT" \
             CDSE_DEBUG_TEST_HTTPS_PORT="$HTTPS_PORT" \
-            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE"
+            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
     else
         env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
             CDSE_DEBUG_TEST_HTTP_PORT=0 \
             CDSE_DEBUG_TEST_HTTPS_PORT=0 \
-            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE"
+            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
     fi
 ) > "$FULL_LOG" 2>&1
 ENGINE_RC=$?
@@ -204,6 +206,9 @@ if check_forbidden "$FULL_LOG"; then
 else
     record_pass forbidden_markers
 fi
+
+check_component locale_printf 'locale .*printf|MB_CUR_MAX' "$FULL_LOG" \
+    "supports multibyte printf output"
 
 check_component crypto_gcm_direct 'GCM ciphertext size|GCM B64|GCM decrypted text' "$FULL_LOG" \
     'GCM decrypted text: This is cleartext for GCM.'
@@ -259,6 +264,14 @@ check_component document_types_resource 'Testing documentTypes resource handlers
     'TESTS: testDocumentTypes(), PASS: documentTypes unsupported GET responseCode=404' \
     'TESTS: testDocumentTypes(), PASS: class listing and resource validation verified.'
 
+check_component storage_document_tree_dispatch 'Testing storage document tree dispatcher routing|testStorageDocumentTree|documentTypes/documents dispatcher' "$FULL_LOG" \
+    '--- Testing storage document tree dispatcher routing:' \
+    'TESTS: testStorageDocumentTree(), PASS: documentTypes class dispatch GET responseCode=200' \
+    'TESTS: testStorageDocumentTree(), PASS: documentType resource dispatch GET responseCode=200' \
+    'TESTS: testStorageDocumentTree(), PASS: documents class dispatch OPTIONS responseCode=200' \
+    'TESTS: testStorageDocumentTree(), PASS: document resource dispatch OPTIONS responseCode=200' \
+    'TESTS: testStorageDocumentTree(), PASS: documentTypes/documents dispatcher routing verified.'
+
 check_component parser_scripts_resource 'Testing parserScripts resource handlers|testParserScripts|parserScripts' "$FULL_LOG" \
     '--- Testing parserScripts resource handlers:' \
     'TESTS: testParserScripts(), PASS: parserScripts class OPTIONS responseCode=200' \
@@ -273,6 +286,21 @@ check_component content_rows_resource 'Testing contentRows resource handlers|tes
     'TESTS: testContentRows(), PASS: contentRows append POST responseCode=201' \
     'TESTS: testContentRows(), PASS: contentRows appended DELETE responseCode=200' \
     'TESTS: testContentRows(), PASS: row get/append/update/delete/options verified.'
+
+check_component content_columns_resource 'Testing contentColumns resource handlers|testContentColumns|contentColumns' "$FULL_LOG" \
+    '--- Testing contentColumns resource handlers:' \
+    'TESTS: testContentColumns(), PASS: contentColumns class OPTIONS responseCode=200' \
+    'TESTS: testContentColumns(), PASS: contentColumns existing column GET responseCode=200' \
+    'TESTS: testContentColumns(), PASS: contentColumns empty document POST responseCode=201' \
+    'TESTS: testContentColumns(), PASS: contentColumns last column DELETE responseCode=200' \
+    'TESTS: testContentColumns(), PASS: column get/create/delete/options and edge cases verified.'
+
+check_component db_browsing_resource 'Testing dbNames secure DB browsing resource handlers|testDBBrowsing|dbNames|dbTables|tableRows|tableColumns' "$FULL_LOG" \
+    '--- Testing dbNames secure DB browsing resource handlers:' \
+    'TESTS: testDBBrowsing(), PASS: dbNames class GET responseCode=200' \
+    'TESTS: testDBBrowsing(), PASS: dbTables class GET responseCode=200' \
+    'TESTS: testDBBrowsing(), PASS: tableRow resource GET responseCode=200' \
+    'TESTS: testDBBrowsing(), PASS: dbNames/dbTables/tableRows/tableColumns browsing verified.'
 
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'

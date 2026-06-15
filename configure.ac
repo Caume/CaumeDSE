@@ -39,30 +39,18 @@ AC_SUBST([PERL_LDOPTS])
 
 # Checks for libraries.
 AC_MSG_NOTICE([ ----- Looking for required libraries -----])
-# FIXME: Replace `main' with a function in `-lc':
-AC_CHECK_LIB([c], [main], [], AC_MSG_ERROR([Library libc not found!]))
-# FIXME: Replace `main' with a function in `-lcrypt':
-AC_CHECK_LIB([crypt], [main], [], AC_MSG_ERROR([Library libcrypt not found!]))
-# FIXME: Replace `main' with a function in `-lcrypto':
-AC_CHECK_LIB([crypto], [main], [], AC_MSG_ERROR([Library libcrypto not found!]))
-# FIXME: Replace `main' with a function in `-ldl':
-AC_CHECK_LIB([dl], [main], [], AC_MSG_ERROR([Library libdl not found!]))
-# FIXME: Replace `main' with a function in `-lm':
-AC_CHECK_LIB([m], [main], [], AC_MSG_ERROR([Library libm not found!]))
-# FIXME: Replace `main' with a function in `-lmicrohttpd':
-AC_CHECK_LIB([microhttpd], [main], [], AC_MSG_ERROR([Library libmicrohttpd not found!]))
-# FIXME: Replace `main' with a function in `-lnsl':
-AC_CHECK_LIB([nsl], [main], [], AC_MSG_ERROR([Library libnsl not found!]))
-# FIXME: Replace `main' with a function in `-lperl':
-AC_CHECK_LIB([perl], [main], [], AC_MSG_ERROR([Library libperl not found!]))
-# FIXME: Replace `main' with a function in `-lpthread':
-AC_CHECK_LIB([pthread], [main], [], AC_MSG_ERROR([Library libpthread not found!]))
-# FIXME: Replace `main' with a function in `-lutil':
-AC_CHECK_LIB([util], [main], [], AC_MSG_ERROR([Library libutil not found!]))
-# FIXME: Replace `main' with a function in `-lgnutls':
-AC_CHECK_LIB([gnutls], [main], [], AC_MSG_ERROR([Library gnutls not found!]))
-# FIXME: Replace `main' with a function in `-lsqlite3':
-AC_CHECK_LIB([sqlite3], [main], [], AC_MSG_ERROR([Library sqlite3 not found!]))
+AC_CHECK_LIB([c], [printf], [], AC_MSG_ERROR([Library libc not found!]))
+AC_CHECK_LIB([crypt], [crypt], [], AC_MSG_ERROR([Library libcrypt not found!]))
+AC_CHECK_LIB([crypto], [EVP_EncryptInit_ex], [], AC_MSG_ERROR([Library libcrypto not found!]))
+AC_CHECK_LIB([dl], [dlopen], [], AC_MSG_ERROR([Library libdl not found!]))
+AC_CHECK_LIB([m], [cos], [], AC_MSG_ERROR([Library libm not found!]))
+AC_CHECK_LIB([microhttpd], [MHD_start_daemon], [], AC_MSG_ERROR([Library libmicrohttpd not found!]))
+AC_CHECK_LIB([nsl], [gethostbyname], [], AC_MSG_ERROR([Library libnsl not found!]))
+AC_CHECK_LIB([perl], [perl_parse], [], AC_MSG_ERROR([Library libperl not found!]), [$PERL_LDOPTS])
+AC_CHECK_LIB([pthread], [pthread_create], [], AC_MSG_ERROR([Library libpthread not found!]))
+AC_CHECK_LIB([util], [openpty], [], AC_MSG_ERROR([Library libutil not found!]))
+AC_CHECK_LIB([gnutls], [gnutls_global_init], [], AC_MSG_ERROR([Library gnutls not found!]))
+AC_CHECK_LIB([sqlite3], [sqlite3_open], [], AC_MSG_ERROR([Library sqlite3 not found!]))
 
 
 # Checks for header files.
@@ -249,4 +237,3 @@ echo \
      all                - build all binaries
      install            - install everything
 --------------------------------------------------"
-

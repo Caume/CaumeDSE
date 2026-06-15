@@ -118,61 +118,75 @@
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
   - Done: enabled contentRows collection OPTIONS routing, verified row GET/HEAD, append-only POST, in-range PUT, DELETE persistence, invalid rows, missing documents, and non-CSV rejection, and added DEBUG/component coverage.
 
-- [ ] #18 Finish and verify `/documents/{document}/contentColumns` resources for `file.csv`.
+- [x] #18 Finish and verify `/documents/{document}/contentColumns` resources for `file.csv`.
   - Review existing `contentColumns` routing and CSV column manipulation paths to determine whether the README marker is stale or the feature is partial.
   - Define column creation, retrieval, deletion, empty-document creation, duplicate-column handling, and error behavior for missing columns.
   - Implement or complete handlers using in-memory transformations followed by immediate durable secure-DB/file saves.
   - Preserve encrypted part MAC verification and the security goal of column shuffling, including safe behavior when duplicate column names exist.
   - Add tests for get, create, delete, duplicate names, last-column deletion, missing documents, non-CSV documents, and unauthorized access.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: enabled contentColumns collection OPTIONS routing, corrected column HEAD and DELETE semantics, verified column get/create/delete, duplicate rejection, empty-document creation, last-column deletion, missing documents, non-CSV rejection, and missing-key rejection, and added DEBUG/component coverage.
 
-- [ ] #19 Implement direct encrypted DB browsing resources under `/dbNames`.
+- [x] #19 Implement direct encrypted DB browsing resources under `/dbNames`.
   - Define the scope and security model for `/dbNames`, `{dbName}`, `/dbTables`, `{dbTable}`, `/tableRows`, `{tableRow}`, `/tableColumns`, and `{tableColumn}`.
   - Decide whether this hierarchy exposes only internal/admin databases, user data databases, or a restricted diagnostics view, and document the decision.
   - Add route parsing and handlers that never expose decrypted protected values unless the caller is authorized and supplies the required organization key.
   - Use prepared statements and strict identifier validation for database/table/row/column selectors.
   - Add tests for listing databases, listing tables, reading rows/columns, rejecting invalid identifiers, authorization failures, and SQL injection attempts.
   - Document the API and remove the README hierarchy `[not implemented]` marker after verification.
+  - Done: implemented a read-only diagnostics scope for registered `file.csv` secure document databases under organization storage, with table names restricted to `data` and `meta`, positive-integer row selectors, in-memory column selection, normal secure-DB verification before reads, DEBUG/component coverage, and README documentation.
 
 ## Source Code TODO/FIXME Markers
 
-- [ ] #20 Replace `main` placeholders in Autoconf library checks with real function probes.
+- [x] #20 Replace `main` placeholders in Autoconf library checks with real function probes.
   - Source: `configure.ac:42`, `configure.ac:44`, `configure.ac:46`, `configure.ac:48`, `configure.ac:50`, `configure.ac:52`, `configure.ac:54`, `configure.ac:56`, `configure.ac:58`, `configure.ac:60`, `configure.ac:62`, `configure.ac:64`.
+  - Done: replaced placeholder `main` checks with representative symbols for libc, libcrypt, libcrypto, libdl, libm, libmicrohttpd, libnsl, libperl, pthread, libutil, GnuTLS, and SQLite; regenerated `configure` and verified `./configure` resolves all probes.
 
-- [ ] #21 Add cloud storage wrappers for file handling.
+- [x] #21 Add cloud storage wrappers for file handling.
   - Source: `filehandling.c:53`.
+  - Done: added storage-provider wrappers for directory checks, file open/close, and file removal. Local filesystem behavior is preserved for provider `0`, non-local providers now fail explicitly until provider clients are implemented, and the default provider macro can be overridden at compile time.
 
-- [ ] #22 Factor common in-memory DB creation for CSV and memory-table imports.
+- [x] #22 Factor common in-memory DB creation for CSV and memory-table imports.
   - Source: `filehandling.c:649`, `filehandling.c:1687`.
+  - Done: factored the shared ColumnFile memory DB allocation, random filename/salt initialization, and `data`/`meta` table creation into `cmeCreateSecureDBMemColumnFiles()`, preserving the existing CSV and memory-table import return codes.
 
-- [ ] #23 Add SQL DB filename collision handling.
-  - Source: `filehandling.c:678`, `filehandling.c:1727`.
+- [x] #23 Add SQL DB filename collision handling.
+  - Source: `filehandling.c:148`.
+  - Done: ColumnFile SQL DB filenames are regenerated with a bounded retry loop when they collide with names already generated in the current batch or with existing files in the target storage path.
 
-- [ ] #24 Factor secure DB import insertion logic into a shared helper.
-  - Source: `filehandling.c:799`, `filehandling.c:1848`.
+- [x] #24 Factor secure DB import insertion logic into a shared helper.
+  - Source: `filehandling.c:960`, `filehandling.c:2053`.
+  - Done: factored duplicated CSV and memory-table secure DB `data` row insertion loops into `cmeInsertSecureDBDataRows()`, preserving caller-specific source column offsets, row-order bases, and existing public error codes.
 
-- [ ] #25 Implement MAC and protected MAC calculation during secure DB import.
-  - Source: `filehandling.c:840`, `filehandling.c:1889`.
+- [x] #25 Implement MAC and protected MAC calculation during secure DB import.
+  - Source: `filehandling.c:350`, `db.c:809`.
+  - Done: secure DB protection now uses shared `cmeMemSecureDBStoreValueHMAC()` logic to compute and store plaintext and protected value HMACs for `MAC`, `MACProtected`, `sign`, and `signProtected` attributes, preserving the existing import and verification behavior.
 
-- [ ] #26 Verify locale settings for `printf`, including UTF-8 behavior.
-  - Source: `main.c:66`.
+- [x] #26 Verify locale settings for `printf`, including UTF-8 behavior.
+  - Source: `main.c:66`, `TEST/run_debug_components.sh:193`.
+  - Done: startup now fails early when `LC_CTYPE` cannot be selected or is not multibyte-capable, logs the selected locale and `MB_CUR_MAX` in DEBUG builds, and the debug component script verifies that marker.
 
-- [ ] #27 Move DEBUG tests into a dedicated executable or test harness.
-  - Source: `main.c:136`.
+- [x] #27 Move DEBUG tests into a dedicated executable or test harness.
+  - Source: `debug_tests.c:11`, `Makefile.am:15`, `TEST/run_debug_components.sh:180`.
   - Related roadmap item: `#9`.
+  - Done: added the `CaumeDSE-debug-tests` harness, moved DEBUG component execution out of `main()`, shared runtime setup/cleanup through `runtime.c`, and updated the debug component script to execute the harness.
 
-- [ ] #28 Improve administrator key screen cleanup or use a sensitive terminal I/O library.
-  - Source: `engine_admin.c:424`.
+- [x] #28 Improve administrator key screen cleanup or use a sensitive terminal I/O library.
+  - Source: `engine_admin.c:46`, `engine_admin.c:437`.
+  - Done: after the first-run administrator organization key is acknowledged, interactive terminals now receive ANSI clear-screen, clear-scrollback, and cursor-home controls; redirected output gets an explicit warning because it cannot be cleared.
 
-- [ ] #29 Add basic error handling for certificate file loading.
-  - Source: `engine_admin.c:803`.
+- [x] #29 Add basic error handling for certificate file loading.
+  - Source: `engine_admin.c:64`, `engine_admin.c:842`.
+  - Done: HTTPS setup now loads the key, certificate, and CA certificate through a required-file helper that rejects missing paths, load errors, empty files, and null buffers with per-file diagnostics before starting the daemon.
 
-- [ ] #30 Replace temporary web-service `getchar()` waits with an exception/stop handler.
-  - Source: `engine_admin.c:872`.
+- [x] #30 Replace temporary web-service `getchar()` waits with an exception/stop handler.
+  - Source: `engine_admin.c:102`, `engine_admin.c:137`, `engine_admin.c:1122`.
+  - Done: web-service setup now installs SIGINT and SIGTERM stop handlers after daemon startup, waits with `pause()` until a stop signal arrives, restores the previous handlers during cleanup, and keeps debug noninteractive runs bounded for automated checks.
 
-- [ ] #31 Process whitelist and blacklist regex filter lists in ResourcesDB.
-  - Source: `engine_admin.c:1126`.
+- [x] #31 Process whitelist and blacklist regex filter lists in ResourcesDB.
+  - Source: `engine_admin.c:217`, `engine_admin.c:1396`, `function_tests.c:1187`, `function_tests.c:1355`.
   - Related roadmap items: `#13`, `#14`.
+  - Done: permission checks now load method-enabled filterWhitelist/filterBlacklist rows from ResourcesDB, evaluate orgResourceId and userResourceId as full-string POSIX extended regex filters, preserve blacklist deny precedence and whitelist opt-in enforcement, and cover regex allow/deny behavior in DEBUG component tests.
 
 - [x] #32 Sanitize variables used in string handling and generated queries.
   - Source: `strhandling.c:292`, `strhandling.c:309`, `db.c:66`, `webservice_interface.c:544`.
@@ -186,12 +200,14 @@
   - Source: `strhandling.c:376`, `webservice_interface.c:2444`, `webservice_interface.c:4113`, `webservice_interface.c:5343`.
   - Done: added a shared count response formatter for DELETE results that honors `outputType=csv` and the default/explicit HTML format, and routed existing DELETE count responses through it.
 
-- [ ] #35 Add OAuth authentication or document the required external manager layer.
-  - Source: `webservice_interface.c:615`.
+- [x] #35 Add OAuth authentication or document the required external manager layer.
+  - Source: `webservice_interface.c:885`, `README.md:2182`, `common.h:64`.
+  - Done: documented OAuth as an external engine-manager responsibility, clarified that CaumeDSE does not validate OAuth tokens internally, described the delegated organization/user/role/resource lifecycle, and updated source comments and OAuth field comments to match that boundary.
 
-- [ ] #36 Process storage `documentTypes` and `documents` resource tree requests.
-  - Source: `webservice_interface.c:1015`.
+- [x] #36 Process storage `documentTypes` and `documents` resource tree requests.
+  - Source: `webservice_interface.c:1421`, `webservice_interface.c:1438`, `webservice_interface.c:1455`, `webservice_interface.c:1472`, `function_tests.c:1487`, `TEST/run_debug_components.sh:267`.
   - Related roadmap item: `#15`.
+  - Done: removed the stale dispatcher TODO, verified the main request dispatcher routes storage documentTypes class/resource and documents class/resource requests with a DEBUG noninteractive dispatcher fixture, added component-script marker coverage for those dispatcher paths, and documented the storage document-tree route roots.
 
 - [x] #37 Move temporary POST attributes for `shuffle` and `protect` into API parameters.
   - Source: `webservice_interface.c:6256`, `webservice_interface.c:9605`, `webservice_interface.c:10686`.
@@ -248,3 +264,7 @@
 - [x] #50 Evaluate whether another random source is needed for systems without `/dev/random` or `/dev/urandom`.
   - Source: `crypto.c:436`.
   - Done: `cmeSeedPrng()` now uses OpenSSL platform seeding via `RAND_poll()`/`RAND_status()` and treats `/dev/random` and `/dev/urandom` as optional extra entropy sources when present.
+
+- [ ] #51 Add full webservice startup HTTP(S) component coverage without `--skip-web`.
+  - Source: `TEST/run_debug_components.sh:20`, `TEST/run_debug_components.sh:164`, `TEST/run_debug_components.sh:322`.
+  - Goal: make the default `TEST/run_debug_components.sh` path reliable for routine full HTTP and HTTPS startup verification, including port availability, generated certificate/key loading, webservice startup markers, bounded noninteractive shutdown, and failure diagnostics when either protocol cannot start.

@@ -237,6 +237,12 @@ The architecture of CaumeDSE is composed of several layers:
 2. Authentication - Authentication of users and applications is
        handled at the web server level.  Right now, client
        authentication with digital certificates with TLS is supported.
+       OAuth authentication is not performed inside CaumeDSE.  OAuth
+       deployments must place an external engine manager in front of the
+       engine; that manager validates OAuth credentials, creates and
+       later removes delegated CaumeDSE organization/user/role/resource
+       scopes, and forwards requests to the engine with the delegated
+       `userId`, `orgId`, and `orgKey`.
 
 3. Authorization - Authorization is handled internally by CaumeDSE
        with role tables for each user.  Each role table maps each
@@ -343,9 +349,9 @@ https://{engine}
 |               |               |-- /content
 |               |               |-- /contentRows
 |               |               |   `-- /{contentRow}
-|               |               `-- /contentColumns [not implemented]
+|               |               `-- /contentColumns
 |               |                   `-- /{contentColumn}
-|               `-- /dbNames [not implemented]
+|               `-- /dbNames
 |                   `-- /{dbName}
 |                       `-- /dbTables
 |                           `-- /{dbTable}
@@ -546,9 +552,9 @@ resource type refer to section V (REST (Resource) API reference).
 
     Prefixes: match (_) and update (*).
 
-    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
-    Consumer Secret for user authentication via OAUTH authentication
-    protocol in the future.
+    OAuth is delegated to an external engine manager.  This attribute is
+    available for manager-owned metadata but is not used by CaumeDSE for
+    internal OAuth token validation.
 
 #### `oauthConsumerSecret`
 
@@ -556,9 +562,9 @@ resource type refer to section V (REST (Resource) API reference).
 
     Prefixes: match (_) and update (*).
 
-    *FUNCTIONALITY NOT YET IMPLEMENTED*: This attribute may contain the
-    Consumer Secret for user authentication via OAUTH authentication
-    protocol in the future.
+    OAuth is delegated to an external engine manager.  This attribute is
+    available for manager-owned metadata but is not used by CaumeDSE for
+    internal OAuth token validation.
 
 #### `columnFile`
 
@@ -1316,6 +1322,9 @@ below).
     userResourceId, the parent `{organization}` maps to orgResourceId,
     and the method columns (`_get`, `_post`, `_put`, `_delete`, `_head`,
     `_options`) define which methods are allowlisted for that target.
+    `userResourceId` and `orgResourceId` are evaluated as POSIX extended
+    regular expressions and must match the full requested user and
+    organization resource values.
     Role-table authorization is still evaluated first. When whitelist
     records exist for a method, user-resource requests for that method
     must also match a whitelist record for the requested organization
@@ -1328,6 +1337,21 @@ below).
         URI:
             https://localhost/organizations/EngineOrg/users/
             RoleTableTestUser/filterWhitelist/RoleTableTestUser?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
+            *_put=0&*_delete=0&*_head=1&*_options=1
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2) Allow GET, HEAD and OPTIONS requests against every user
+            resource whose identifier starts with RoleTable.
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/users/
+            RoleTableTestUser/filterWhitelist/RoleTable.*?
             userId=EngineAdmin&orgId=EngineOrg&orgKey=
             0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
             *_put=0&*_delete=0&*_head=1&*_options=1
@@ -1356,6 +1380,9 @@ below).
     userResourceId, the parent `{organization}` maps to orgResourceId,
     and the method columns (`_get`, `_post`, `_put`, `_delete`, `_head`,
     `_options`) define which methods are denied for that target.
+    `userResourceId` and `orgResourceId` are evaluated as POSIX extended
+    regular expressions and must match the full requested user and
+    organization resource values.
     Role-table authorization is evaluated first; matching blacklist
     records then deny the request before whitelist allow records are
     considered.
@@ -1367,6 +1394,21 @@ below).
         URI:
             https://localhost/organizations/EngineOrg/users/
             RoleTableTestUser/filterBlacklist/RoleTableTestUser?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
+            *_put=0&*_delete=0&*_head=1&*_options=1
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2) Deny GET, HEAD and OPTIONS requests against every user
+            resource whose identifier starts with RoleTable.
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/users/
+            RoleTableTestUser/filterBlacklist/RoleTable.*?
             userId=EngineAdmin&orgId=EngineOrg&orgKey=
             0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
             *_put=0&*_delete=0&*_head=1&*_options=1
@@ -1484,6 +1526,8 @@ below).
     resource handlers run. Supported types are file.csv, file.raw,
     file.txt, file.json, file.xml, file.html, file.pdf, file.png,
     file.jpg, file.gif, file.zip, file.bin and script.perl.
+    These routes are handled through the main storage resource tree
+    dispatcher at `/organizations/{organization}/storage/{storage}`.
 
 ### `documents`
 
@@ -1506,6 +1550,8 @@ below).
     narrow the candidate set; CaumeDSE still decrypts and verifies the
     protected document attributes before returning, updating or deleting
     registers.  Legacy registers without lookup values remain supported.
+    Document collection and document resource routes are dispatched
+    under `/organizations/{organization}/storage/{storage}/documentTypes/{documentType}`.
 
     Example 1)     List attribute table for all document resources of
             type file.raw
@@ -1966,6 +2012,55 @@ sub cmePERLProcessColumnNames       #Get (and optionally modify) column names
         REQUEST BODY:
             <EMPTY>
 
+### `dbNames`, `dbTables`, `tableRows`, `tableColumns`
+
+    Supported HTTP methods: GET HEAD OPTIONS
+
+    Supported ATTRIBUTE PARAMETERS:
+        MATCH:
+            <NONE>
+        UPDATE:
+            <NONE>
+        SECURITY SCOPE:
+            These resources expose a read-only diagnostics view over
+            registered secure document databases for file.csv
+            documents in the selected organization storage.  They do
+            not browse arbitrary database files and do not expose
+            decrypted internal ResourcesDB, RolesDB, or LogsDB
+            records.  Requests must be authorized through the
+            corresponding role table and must provide userId, orgId,
+            and orgKey.  The secure document is loaded through the
+            normal verification path before data is returned.
+        SELECTORS:
+            /dbNames lists registered file.csv document database names.
+            /dbNames/{dbName}/dbTables lists exposed tables.
+            /dbTables/{dbTable} returns table rows for data or meta.
+            /tableRows/{tableRow} returns one 1-based row.
+            /tableColumns lists column names.
+            /tableColumns/{tableColumn} returns one column, with id.
+        RESPONSE HEADERS:
+            Engine-results: <number of matching registers>
+        RESPONSE BODY:
+            <Matching diagnostic table>
+
+    Example 1)    List secure CSV document databases in storage
+            EngineStorage.
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/dbNames?userId=EngineAdmin&orgId=
+            EngineOrg&orgKey=0CDBB9AF76AF43BDB72E095989E612CC
+
+    Example 2)    Read row 1 from the data table of document.csv.
+        METHOD:
+            GET
+        URI:
+            https://localhost/organizations/EngineOrg/storage/
+            EngineStorage/dbNames/document.csv/dbTables/data/
+            tableRows/1?userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC
+
 ### `transactions`
 
     Supported HTTP methods: GET HEAD OPTIONS
@@ -2082,11 +2177,39 @@ mode (which is slower), use the following parameter when running
     --enable-DEBUG
 Before running CaumeDSE in DEBUG mode, copy the contents of TEST/testfiles to /opt/cdse/testfiles and TEST/testDB_opt_cdse to /opt/cdse (or the directory specified by PATH_DATADIR) to provide data for the internal tests.
 
+The DEBUG component verification script can run the build, install the test
+database under `/tmp/cdse-verify`, and execute the noninteractive component
+harness:
+
+    CDSE_DEBUG_TEST_TIMEOUT=120s TEST/run_debug_components.sh --skip-web
+
+Omit `--skip-web` when validating full HTTP and HTTPS startup behavior.  The
+full mode uses `CDSE_DEBUG_TEST_HTTP_PORT` and `CDSE_DEBUG_TEST_HTTPS_PORT`
+when set, or ports 18080 and 18443 by default.
+
 Temporary-file deletion uses one zero-fill overwrite pass by default.  To
 compile with additional overwrite passes, define
 `CDSE_SECURE_OVERWRITE_PASSES` in `CFLAGS`, for example:
 
     CFLAGS="-DCDSE_SECURE_OVERWRITE_PASSES=3" ./configure
+
+### OAuth deployments
+
+CaumeDSE does not validate OAuth signatures, bearer tokens, refresh
+tokens, scopes, expiry, or revocation internally.  OAuth deployments must
+use an external engine manager or reverse-proxy layer that owns those
+protocol duties.  After validating an OAuth grant, that layer should
+create a delegated CaumeDSE scope, for example an organization named
+`<orgId>_OAUTH`, with a manager-held organization key.  It should then
+create the delegated user, role-table entries, filter-list entries, and
+resource copies or references that represent the OAuth grant.
+
+Requests forwarded to CaumeDSE must use the delegated `userId`, `orgId`,
+and `orgKey` parameters.  When the OAuth grant expires or is revoked, the
+manager must delete the delegated organization and associated resources.
+CaumeDSE intentionally does not store organization keys or OAuth tokens,
+so the manager must keep its own mapping from OAuth grants to delegated
+CaumeDSE scopes.
 
 In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).

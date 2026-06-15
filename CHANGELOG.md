@@ -4,6 +4,125 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `TODO.md`, `README.md`: Add TODO item #51 for full webservice
+  startup HTTP(S) component coverage without `--skip-web`, and document
+  the current DEBUG component verification commands and ports.
+
+- `webservice_interface.c`, `function_tests.c`, `TEST/run_debug_components.sh`,
+  `README.md`, `TODO.md`: Remove the stale storage document-tree dispatcher
+  TODO, add DEBUG component coverage for documentTypes/documents request
+  routing through `cmeWebServiceProcessRequest()`, document the route roots,
+  and mark TODO item #36 complete.
+
+- `README.md`, `webservice_interface.c`, `common.h`, `TODO.md`:
+  Document OAuth as an external engine-manager responsibility, clarify
+  that CaumeDSE does not validate OAuth tokens internally, and mark TODO
+  item #35 complete.
+
+- `engine_admin.c`, `function_tests.c`: Evaluate ResourcesDB
+  `filterWhitelist` and `filterBlacklist` resource fields as
+  full-string POSIX extended regex filters during permission checks,
+  with DEBUG component coverage for regex allow and deny behavior.
+
+- `README.md`, `common.h`, `TODO.md`: Document filter-list regex
+  semantics, update inline OPTIONS text, mark TODO item #31 complete,
+  and refresh shifted TODO item #30 source references.
+
+- `engine_admin.c`: Replace the temporary web-service Enter wait with
+  SIGINT/SIGTERM stop handling, restoring previous handlers during
+  cleanup while keeping debug noninteractive runs bounded.
+
+- `TODO.md`: Mark TODO item #30 complete and refresh the source
+  reference for TODO item #31.
+
+- `engine_admin.c`: Add required-file validation for HTTPS private
+  key, certificate, and CA certificate loading before starting the web
+  service daemon.
+
+- `TODO.md`: Mark TODO item #29 complete.
+
+- `engine_admin.c`: Clear the interactive terminal display and
+  scrollback after the one-time default administrator organization key is
+  acknowledged, and warn when redirected output cannot be cleared.
+
+- `TODO.md`: Mark TODO item #28 complete.
+
+- `debug_tests.c`, `runtime.c`, `runtime.h`, `main.c`,
+  `Makefile.am`, `Makefile.in`, `TEST/run_debug_components.sh`: Add
+  a dedicated `CaumeDSE-debug-tests` executable for DEBUG component
+  checks and move shared runtime setup/cleanup out of `main.c`.
+
+- `TODO.md`: Mark TODO item #27 complete.
+
+- `main.c`, `TEST/run_debug_components.sh`: Validate that startup
+  selects a multibyte-capable locale for UTF-8 `printf` output and add
+  a debug component check for the locale marker.
+
+- `TODO.md`: Mark TODO item #26 complete.
+
+- `db.c`: Consolidate secure DB `MAC`, `MACProtected`, `sign`,
+  and `signProtected` HMAC calculation and storage into a shared helper
+  while preserving existing import-time integrity behavior and error codes.
+
+- `TODO.md`: Mark TODO item #25 complete.
+
+- `filehandling.c`: Factor duplicated CSV and memory-table secure DB
+  `data` table row insertion logic into a shared helper while
+  preserving row-order and column-offset behavior.
+
+- `TODO.md`: Mark TODO item #24 complete and update the source
+  reference for TODO item #25 after the refactor.
+
+- `common.h`, `filehandling.c`: Add bounded collision handling for
+  randomly generated ColumnFile SQL DB filenames, checking both the
+  current generated batch and existing files in the target storage path.
+
+- `TODO.md`: Mark TODO item #23 complete.
+
+- `filehandling.c`: Factor the duplicated in-memory ColumnFile DB
+  allocation and schema creation used by CSV and memory-table secure DB
+  imports into a shared helper.
+
+- `TODO.md`: Mark TODO item #22 complete.
+
+- `common.h`, `filehandling.h`, `filehandling.c`: Add storage-provider
+  wrappers for directory checks and file open, close, and removal
+  operations. The local filesystem remains provider `0`, while
+  unsupported non-local providers now return explicit errors.
+
+- `TODO.md`: Mark TODO item #21 complete.
+
+- `configure.ac`, `configure`: Replace placeholder Autoconf library
+  checks for `main` with representative function probes for libc,
+  libcrypt, libcrypto, libdl, libm, libmicrohttpd, libnsl, libperl,
+  pthread, libutil, GnuTLS, and SQLite.
+
+- `TODO.md`: Mark TODO item #20 complete.
+
+- `webservice_interface.h`, `webservice_interface.c`: Implement
+  read-only `/dbNames` secure document database browsing for registered
+  `file.csv` documents, including `/dbTables`, `/tableRows`, and
+  `/tableColumns` under organization storage.
+
+- `function_tests.c`, `TEST/run_debug_components.sh`: Add DEBUG
+  coverage for DB browsing class/resource reads, invalid selectors,
+  missing databases, missing keys, and disallowed methods.
+
+- `README.md`, `TODO.md`: Document the restricted DB browsing security
+  scope and mark TODO item #19 complete.
+
+- `webservice_interface.h`, `webservice_interface.c`: Enable
+  `contentColumns` collection OPTIONS routing and align column HEAD and
+  DELETE behavior with resource semantics.
+
+- `function_tests.c`, `TEST/run_debug_components.sh`: Add DEBUG
+  coverage for CSV `contentColumns` get/create/delete, duplicate
+  rejection, empty-document creation, last-column deletion, missing
+  resources, non-CSV rejection, and missing-key rejection.
+
+- `README.md`, `TODO.md`: Remove the `contentColumns` not-implemented
+  marker and mark TODO item #18 complete.
+
 - `ChangeLog`, `CHANGELOG.md`: Migrate the historical changelog to GitHub-compatible Markdown while preserving the legacy file as a compatibility pointer.
 
 - `Makefile.am`, `Makefile.in`: Include `CHANGELOG.md` in distribution files so release archives carry the canonical Markdown changelog.

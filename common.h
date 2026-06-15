@@ -61,7 +61,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeBypassTLSAuthenticationInHTTP 1 //Allows bypassing TLS authentication with non TLS sessions {e.g. when testing HTTP connections with TLS auth. enabled, where TLS authentication would allways fail obvoiusly}.
 #endif /*BYPASS_TLS_IN_HTTP*/
 #define cmeUseTLSAuthentication 1       //TLS user authentication module {1=ON, 0=OFF}.
-#define cmeUseOAUTHAuthentication 0     //OAUTH user authentication module {1=ON, 0=OFF}. NOTE: NOT YET IMPLEMENTED
+#define cmeUseOAUTHAuthentication 0     //OAuth is delegated to an external engine manager; no internal OAuth module is enabled.
 #define cmeCSVRowBuffer 5000            //Buffer for processing CSV files - reads at most this # of rows at a time {RECOMMENDED: 5000} and processes them before reading more.
 #define cmeMaxCSVRowsInPart 500         //Max number of rows in a column slice {part} {RECOMMENDED: 1000}
 #define cmeMaxCSVRowSize 10240          //Max row size in a CSV file. {10240}
@@ -70,6 +70,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeMaxCSVColumns 256            //Max # of column parts in a CSV file
 #define cmeMaxCSVPartsPerColumn 10000   //Max {estimated} number of parts that a CSV table can hold {required by cmeSecureDBtoMemDB}.
 #define cmeMaxRAWDataInPart 4000        //Max number of bytes in a secure file slice {part}, estimated from smallest SQLITE secureDB column files. {RECOMMENDED: 5120}
+#define cmeMaxSQLDBFileNameCollisionRetries 64 //Max attempts to regenerate a random ColumnFile name after detecting a collision.
 #define cmeDefaultContentReaderCallbackPageSize (1024*64)   //Default Page size for ContentReaderCallback functions.
 #ifndef CDSE_SECURE_OVERWRITE_PASSES
 #define CDSE_SECURE_OVERWRITE_PASSES 1  //Compile-time overwrite passes for temporary file deletion. Set >1 to enable multi-round overwrites.
@@ -95,7 +96,9 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeDefaultResourcesDBName "ResourcesDB"     //Default filename for ResourcesDB sqlite3 filename.
 #define cmeDefaultRolesDBName "RolesDB"             //Default filename for ResourcesDB sqlite3 filename.
 #define cmeDefaultLogsDBName "LogsDB"               //Default filename for ResourcesDB sqlite3 filename.
+#ifndef cmeStorageProvider
 #define cmeStorageProvider 0            //Default Cloud storage provider {0=local/standard filesystem}.
+#endif
 #define cmeDefaultIDBytesLen 16         //Default size for CaumeDSE Byte based IDs {e.g. random DB filenames}. Note that it is also used by cmeGetRndSalt for this purpose.
 #define cmeDefaultSecureDBSaltLen 16    //Default salt length for meta and data salts within secure databases.
 #define cmeDefaultValueSaltLen 16        //Default size for prep-ended bytes for internal databases' encrypted values.
@@ -217,10 +220,10 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeIDDResourcesDBUsers_userResourceId_name "userResourceId"     //Column name for WSID column user resource id
 #define cmeIDDResourcesDBUsers_basicAuthPwdHash 8                       //Column index {0 based} for WSID column user 'basic authentication' password hash
 #define cmeIDDResourcesDBUsers_basicAuthPwdHash_name "basicAuthPwdHash" //Column name for WSID column user 'basic authentication' password hash
-#define cmeIDDResourcesDBUsers_oauthConsumerKey 9                       //Column index {0 based} for WSID column user OAUTH consumer key
-#define cmeIDDResourcesDBUsers_oauthConsumerKey_name "oauthConsumerKey" //Column name for WSID column user OAUTH consumer key
-#define cmeIDDResourcesDBUsers_oauthConsumerSecret 10                   //Column index {0 based} for WSID column user OAUTH consumer secret
-#define cmeIDDResourcesDBUsers_oauthConsumerSecret_name "oauthConsumerSecret"   //Column index {0 based} for WSID column user OAUTH consumer secret
+#define cmeIDDResourcesDBUsers_oauthConsumerKey 9                       //Column index {0 based} for manager-owned OAuth metadata
+#define cmeIDDResourcesDBUsers_oauthConsumerKey_name "oauthConsumerKey" //Column name for manager-owned OAuth metadata
+#define cmeIDDResourcesDBUsers_oauthConsumerSecret 10                   //Column index {0 based} for manager-owned OAuth metadata
+#define cmeIDDResourcesDBUsers_oauthConsumerSecret_name "oauthConsumerSecret"   //Column name for manager-owned OAuth metadata
 #define cmeIDDResourcesDBUsers_orgResourceId 11                         //Column index {0 based} for WSID column user organization resource id
 #define cmeIDDResourcesDBUsers_orgResourceId_name "orgResourceId"       //Column name for WSID column user organization resource id
 #define cmeIDDResourcesDBStorageNumCols 12                              //# of columns for Storage tables in ResourceDB databases
@@ -330,7 +333,8 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeWSMsgFilterWhitelistOptions "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                                  "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterWhitelist/{filterUser}" \
                                  "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
-                                 "OptionalParameters...]<br></code><br>" //Filter whitelist resource options.
+                                 "OptionalParameters...]<br></code><br>" \
+                                 "The organization and filterUser resource fields are full-string POSIX extended regex filters.<br>" //Filter whitelist resource options.
 #define cmeWSMsgFilterWhitelistClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterWhitelist" \
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
@@ -338,7 +342,8 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeWSMsgFilterBlacklistOptions "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                                  "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterBlacklist/{filterUser}" \
                                  "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
-                                 "OptionalParameters...]<br></code><br>" //Filter blacklist resource options.
+                                 "OptionalParameters...]<br></code><br>" \
+                                 "The organization and filterUser resource fields are full-string POSIX extended regex filters.<br>" //Filter blacklist resource options.
 #define cmeWSMsgFilterBlacklistClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterBlacklist" \
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \

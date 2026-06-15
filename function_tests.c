@@ -44,6 +44,10 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
+void testContentRows(void);
+void testContentColumns(void);
+void testDBBrowsing(void);
+
 static int cmeDebugTestsNonInteractiveEnabled(void)
 {
     const char *env = getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
@@ -715,6 +719,8 @@ void testCSV ()
 
     cmeDBClose(pResourcesDB);
     testContentRows();
+    testContentColumns();
+    testDBBrowsing();
     cmeFree(fName);
     cmeFree(fName2);
     cmeFree(resourcesDBPath);
@@ -1088,13 +1094,17 @@ void testFilterWhitelist ()
     int responseCode=0;
     const char *classUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist";
     const char *resourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist/RoleTableTestUser";
+    const char *regexResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist/RoleTable.*";
     const char *roleResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/roleTables/users";
     const char *permissionAllowedUrl="/organizations/EngineOrg/users/RoleTableTestUser";
+    const char *permissionRegexUrl="/organizations/EngineOrg/users/RoleTableRegexUser";
     const char *permissionDeniedUrl="/organizations/EngineOrg/users/NoWhitelistUser";
     const char *classElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist"};
     const char *resourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist","RoleTableTestUser"};
+    const char *regexResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist","RoleTable.*"};
     const char *roleResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","roleTables","users"};
     const char *permissionAllowedElements[]={"organizations","EngineOrg","users","RoleTableTestUser"};
+    const char *permissionRegexElements[]={"organizations","EngineOrg","users","RoleTableRegexUser"};
     const char *permissionDeniedElements[]={"organizations","EngineOrg","users","NoWhitelistUser"};
     const char *adminArgs[]={
         "userId","EngineAdmin",
@@ -1172,6 +1182,23 @@ void testFilterWhitelist ()
     errors+=cmeTestFilterWhitelistRequest("PUT",resourceUrl,resourceElements,6,putArgs,200,"filterWhitelist resource PUT");
     errors+=cmeTestFilterWhitelistRequest("DELETE",resourceUrl,resourceElements,6,adminArgs,200,"filterWhitelist resource DELETE");
     errors+=cmeTestFilterWhitelistRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,404,"filterWhitelist resource HEAD after DELETE");
+    errors+=cmeTestFilterWhitelistRequest("POST",regexResourceUrl,regexResourceElements,6,postArgs,201,"filterWhitelist regex resource POST");
+    responseText=NULL;
+    if (cmeWebServiceCheckPermissions("GET",permissionRegexUrl,permissionRegexElements,4,
+                                      &responseText,&responseCode,
+                                      "RoleTableTestUser","EngineOrg",
+                                      "0CDBB9AF76AF43BDB72E095989E612CC") || responseCode!=200)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterWhitelist(), regex whitelist permission failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testFilterWhitelist(), PASS: regex whitelist permission responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    errors+=cmeTestFilterWhitelistRequest("DELETE",regexResourceUrl,regexResourceElements,6,adminArgs,200,"filterWhitelist regex resource DELETE");
     errors+=cmeTestRoleTablesRequest("DELETE",roleResourceUrl,roleResourceElements,6,adminArgs,200,"filterWhitelist role DELETE");
     if (errors)
     {
@@ -1236,11 +1263,13 @@ void testFilterBlacklist ()
     int responseCode=0;
     const char *classUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterBlacklist";
     const char *resourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterBlacklist/RoleTableTestUser";
+    const char *regexResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterBlacklist/RoleTable.*";
     const char *whitelistUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist/RoleTableTestUser";
     const char *roleResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/roleTables/users";
     const char *permissionUrl="/organizations/EngineOrg/users/RoleTableTestUser";
     const char *classElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterBlacklist"};
     const char *resourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterBlacklist","RoleTableTestUser"};
+    const char *regexResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterBlacklist","RoleTable.*"};
     const char *whitelistElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist","RoleTableTestUser"};
     const char *roleResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","roleTables","users"};
     const char *permissionElements[]={"organizations","EngineOrg","users","RoleTableTestUser"};
@@ -1321,6 +1350,24 @@ void testFilterBlacklist ()
         printf("TESTS: testFilterBlacklist(), PASS: whitelist allow after blacklist delete responseCode=%d\n",responseCode);
     }
     cmeFree(responseText);
+    responseText=NULL;
+    errors+=cmeTestFilterBlacklistRequest("POST",regexResourceUrl,regexResourceElements,6,postArgs,201,"filterBlacklist regex resource POST");
+    cmeWebServiceCheckPermissions("GET",permissionUrl,permissionElements,4,
+                                  &responseText,&responseCode,
+                                  "RoleTableTestUser","EngineOrg",
+                                  "0CDBB9AF76AF43BDB72E095989E612CC");
+    if (responseCode!=403)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterBlacklist(), regex blacklist rejection failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testFilterBlacklist(), PASS: regex blacklist reject responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    errors+=cmeTestFilterBlacklistRequest("DELETE",regexResourceUrl,regexResourceElements,6,adminArgs,200,"filterBlacklist regex resource DELETE");
     errors+=cmeTestFilterBlacklistRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,404,"filterBlacklist resource HEAD after DELETE");
     errors+=cmeTestFilterWhitelistRequest("DELETE",whitelistUrl,whitelistElements,6,adminArgs,200,"filterBlacklist whitelist DELETE");
     errors+=cmeTestRoleTablesRequest("DELETE",roleResourceUrl,roleResourceElements,6,adminArgs,200,"filterBlacklist role DELETE");
@@ -1401,6 +1448,72 @@ void testDocumentTypes ()
     else
     {
         printf("TESTS: testDocumentTypes(), PASS: class listing and resource validation verified.\n");
+    }
+}
+
+static int cmeTestStorageDocumentTreeRequest(const char *method, const char *url,
+                                             const char **urlElements, int numUrlElements,
+                                             const char **argumentElements, int expectedCode,
+                                             const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char *responseFilePath=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testStorageDocumentTree(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    result=cmeWebServiceProcessRequest(&responseText,&responseFilePath,&responseHeaders,&responseCode,
+                                       url,urlElements,numUrlElements,NULL,argumentElements,method,NULL);
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testStorageDocumentTree(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeFree(responseFilePath);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testStorageDocumentTree(), PASS: %s responseCode=%d\n",marker,responseCode);
+    cmeFree(responseText);
+    cmeFree(responseFilePath);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testStorageDocumentTree ()
+{
+    int errors=0;
+    const char *documentTypesUrl="/organizations/CaumeDSE/storage/storage1/documentTypes";
+    const char *documentTypeUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv";
+    const char *documentsUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents";
+    const char *documentUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv";
+    const char *documentTypesElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes"};
+    const char *documentTypeElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv"};
+    const char *documentsElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents"};
+    const char *documentElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv"};
+    const char *adminArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        "orgKey","password1",
+        NULL
+    };
+
+    printf("--- Testing storage document tree dispatcher routing:\n");
+    errors+=cmeTestStorageDocumentTreeRequest("GET",documentTypesUrl,documentTypesElements,5,adminArgs,200,"documentTypes class dispatch GET");
+    errors+=cmeTestStorageDocumentTreeRequest("GET",documentTypeUrl,documentTypeElements,6,adminArgs,200,"documentType resource dispatch GET");
+    errors+=cmeTestStorageDocumentTreeRequest("OPTIONS",documentsUrl,documentsElements,7,adminArgs,200,"documents class dispatch OPTIONS");
+    errors+=cmeTestStorageDocumentTreeRequest("OPTIONS",documentUrl,documentElements,8,adminArgs,200,"document resource dispatch OPTIONS");
+    if (errors)
+    {
+        printf("TESTS: testStorageDocumentTree(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testStorageDocumentTree(), PASS: documentTypes/documents dispatcher routing verified.\n");
     }
 }
 
@@ -1581,6 +1694,201 @@ void testContentRows ()
     }
 }
 
+static int cmeTestContentColumnsRequest(const char *method, const char *url,
+                                        const char **urlElements, int numUrlElements,
+                                        const char **argumentElements, int expectedCode,
+                                        const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testContentColumns(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    if (numUrlElements==9)
+    {
+        result=cmeWebServiceProcessContentColumnClass(&responseText,&responseHeaders,&responseCode,
+                                                      url,urlElements,argumentElements,method);
+    }
+    else
+    {
+        result=cmeWebServiceProcessContentColumnResource(&responseText,&responseHeaders,&responseCode,
+                                                         url,urlElements,argumentElements,method,cmeDefaultFilePath);
+    }
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testContentColumns(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testContentColumns(), PASS: %s responseCode=%d",marker,responseCode);
+    if (responseHeaders[0]&&responseHeaders[1])
+    {
+        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+    }
+    printf("\n");
+    cmeFree(responseText);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testContentColumns ()
+{
+    int errors=0;
+    const char *classUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentColumns";
+    const char *nameUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentColumns/nombre ";
+    const char *emptyDocColumnUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/ContentColumnEmpty.csv/contentColumns/OnlyCol";
+    const char *emptyDocMissingColumnUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/ContentColumnEmpty.csv/contentColumns/MissingCol";
+    const char *reservedIdUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv/contentColumns/id";
+    const char *missingDocUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/MissingPayroll.csv/contentColumns/nombre ";
+    const char *nonCsvUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.raw/documents/AcmeIncPayroll.csv/contentColumns/nombre ";
+    const char *classElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentColumns"};
+    const char *nameElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentColumns","nombre "};
+    const char *emptyDocColumnElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","ContentColumnEmpty.csv","contentColumns","OnlyCol"};
+    const char *emptyDocMissingColumnElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","ContentColumnEmpty.csv","contentColumns","MissingCol"};
+    const char *reservedIdElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv","contentColumns","id"};
+    const char *missingDocElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","MissingPayroll.csv","contentColumns","nombre "};
+    const char *nonCsvElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.raw","documents","AcmeIncPayroll.csv","contentColumns","nombre "};
+    const char *authArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        "orgKey","password1",
+        NULL
+    };
+    const char *missingKeyArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        NULL
+    };
+
+    printf("--- Testing contentColumns resource handlers:\n");
+    errors+=cmeTestContentColumnsRequest("OPTIONS",classUrl,classElements,9,authArgs,200,"contentColumns class OPTIONS");
+    errors+=cmeTestContentColumnsRequest("GET",classUrl,classElements,9,authArgs,405,"contentColumns class GET not allowed");
+    errors+=cmeTestContentColumnsRequest("GET",nameUrl,nameElements,10,authArgs,200,"contentColumns existing column GET");
+    errors+=cmeTestContentColumnsRequest("POST",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,201,"contentColumns empty document POST");
+    errors+=cmeTestContentColumnsRequest("POST",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,403,"contentColumns duplicate POST rejected");
+    errors+=cmeTestContentColumnsRequest("GET",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,200,"contentColumns created column GET");
+    errors+=cmeTestContentColumnsRequest("HEAD",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,200,"contentColumns empty document HEAD");
+    errors+=cmeTestContentColumnsRequest("HEAD",emptyDocMissingColumnUrl,emptyDocMissingColumnElements,10,authArgs,404,"contentColumns missing column HEAD");
+    errors+=cmeTestContentColumnsRequest("DELETE",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,200,"contentColumns last column DELETE");
+    errors+=cmeTestContentColumnsRequest("HEAD",emptyDocColumnUrl,emptyDocColumnElements,10,authArgs,404,"contentColumns deleted document HEAD");
+    errors+=cmeTestContentColumnsRequest("POST",reservedIdUrl,reservedIdElements,10,authArgs,403,"contentColumns reserved id POST rejected");
+    errors+=cmeTestContentColumnsRequest("GET",missingDocUrl,missingDocElements,10,authArgs,404,"contentColumns missing document GET");
+    errors+=cmeTestContentColumnsRequest("GET",nonCsvUrl,nonCsvElements,10,authArgs,403,"contentColumns non-CSV GET");
+    errors+=cmeTestContentColumnsRequest("GET",nameUrl,nameElements,10,missingKeyArgs,409,"contentColumns missing key rejected");
+    if (errors)
+    {
+        printf("TESTS: testContentColumns(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testContentColumns(), PASS: column get/create/delete/options and edge cases verified.\n");
+    }
+}
+
+static int cmeTestDBBrowsingRequest(const char *method, const char *url,
+                                    const char **urlElements, int numUrlElements,
+                                    const char **argumentElements, int expectedCode,
+                                    const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testDBBrowsing(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    result=cmeWebServiceProcessDBBrowseResource(&responseText,&responseHeaders,&responseCode,
+                                                url,urlElements,numUrlElements,argumentElements,
+                                                method,cmeDefaultFilePath);
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testDBBrowsing(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testDBBrowsing(), PASS: %s responseCode=%d",marker,responseCode);
+    if (responseHeaders[0]&&responseHeaders[1])
+    {
+        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+    }
+    printf("\n");
+    cmeFree(responseText);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testDBBrowsing ()
+{
+    int errors=0;
+    int numCols=2;
+    int numRows=1;
+    int result __attribute__((unused));
+    const char *browseTable[]={"id","name","1","Ada"};
+    const char *attributes[]={"shuffle","protect"};
+    const char *attributesData[]={cmeDefaultEncAlg,cmeDefaultEncAlg};
+    const char *dbNamesUrl="/organizations/CaumeDSE/storage/storage1/dbNames";
+    const char *dbTablesUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables";
+    const char *badTableUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables/sqlite_master";
+    const char *tableRowUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables/data/tableRows/1";
+    const char *badRowUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables/data/tableRows/0";
+    const char *tableColumnUrl="/organizations/CaumeDSE/storage/storage1/dbNames/BrowseTest/dbTables/data/tableColumns/name";
+    const char *dbNamesElements[]={"organizations","CaumeDSE","storage","storage1","dbNames"};
+    const char *dbTablesElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables"};
+    const char *badTableElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables","sqlite_master"};
+    const char *tableRowElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables","data","tableRows","1"};
+    const char *badRowElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables","data","tableRows","0"};
+    const char *tableColumnElements[]={"organizations","CaumeDSE","storage","storage1","dbNames","BrowseTest","dbTables","data","tableColumns","name"};
+    const char *authArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        "orgKey","password1",
+        NULL
+    };
+    const char *missingKeyArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        NULL
+    };
+
+    printf("--- Testing dbNames secure DB browsing resource handlers:\n");
+    result=cmeMemTableToSecureDB(browseTable,numCols,numRows,"User123","CaumeDSE",
+                                 "password1",attributes,attributesData,2,1,0,
+                                 "DB browsing test.","file.csv","BrowseTest","storage1",
+                                 cmeDefaultFilePath);
+    if (result)
+    {
+        printf("TESTS: testDBBrowsing(), FAIL: setup failed result=%d.\n",result);
+        return;
+    }
+    errors+=cmeTestDBBrowsingRequest("OPTIONS",dbNamesUrl,dbNamesElements,5,authArgs,200,"dbNames class OPTIONS");
+    errors+=cmeTestDBBrowsingRequest("GET",dbNamesUrl,dbNamesElements,5,authArgs,200,"dbNames class GET");
+    errors+=cmeTestDBBrowsingRequest("GET",dbTablesUrl,dbTablesElements,7,authArgs,200,"dbTables class GET");
+    errors+=cmeTestDBBrowsingRequest("GET",badTableUrl,badTableElements,8,authArgs,404,"dbTable invalid selector rejected");
+    errors+=cmeTestDBBrowsingRequest("GET",tableRowUrl,tableRowElements,10,authArgs,200,"tableRow resource GET");
+    errors+=cmeTestDBBrowsingRequest("GET",badRowUrl,badRowElements,10,authArgs,403,"tableRow invalid selector rejected");
+    errors+=cmeTestDBBrowsingRequest("GET",tableColumnUrl,tableColumnElements,10,authArgs,200,"tableColumn resource GET");
+    errors+=cmeTestDBBrowsingRequest("GET",dbNamesUrl,dbNamesElements,5,missingKeyArgs,409,"dbNames missing key rejected");
+    errors+=cmeTestDBBrowsingRequest("POST",dbNamesUrl,dbNamesElements,5,authArgs,405,"dbNames POST not allowed");
+    if (errors)
+    {
+        printf("TESTS: testDBBrowsing(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testDBBrowsing(), PASS: dbNames/dbTables/tableRows/tableColumns browsing verified.\n");
+    }
+}
+
 void testEngMgmnt ()
 {
     int result __attribute__((unused));
@@ -1590,6 +1898,7 @@ void testEngMgmnt ()
     testFilterWhitelist();
     testFilterBlacklist();
     testDocumentTypes();
+    testStorageDocumentTree();
     testParserScripts();
 }
 
