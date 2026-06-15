@@ -2177,6 +2177,16 @@ mode (which is slower), use the following parameter when running
     --enable-DEBUG
 Before running CaumeDSE in DEBUG mode, copy the contents of TEST/testfiles to /opt/cdse/testfiles and TEST/testDB_opt_cdse to /opt/cdse (or the directory specified by PATH_DATADIR) to provide data for the internal tests.
 
+The DEBUG component verification script can run the build, install the test
+database under `/tmp/cdse-verify`, and execute the noninteractive component
+harness:
+
+    CDSE_DEBUG_TEST_TIMEOUT=120s TEST/run_debug_components.sh --skip-web
+
+Omit `--skip-web` when validating full HTTP and HTTPS startup behavior.  The
+full mode uses `CDSE_DEBUG_TEST_HTTP_PORT` and `CDSE_DEBUG_TEST_HTTPS_PORT`
+when set, or ports 18080 and 18443 by default.
+
 Temporary-file deletion uses one zero-fill overwrite pass by default.  To
 compile with additional overwrite passes, define
 `CDSE_SECURE_OVERWRITE_PASSES` in `CFLAGS`, for example:

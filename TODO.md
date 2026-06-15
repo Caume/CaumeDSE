@@ -264,3 +264,7 @@
 - [x] #50 Evaluate whether another random source is needed for systems without `/dev/random` or `/dev/urandom`.
   - Source: `crypto.c:436`.
   - Done: `cmeSeedPrng()` now uses OpenSSL platform seeding via `RAND_poll()`/`RAND_status()` and treats `/dev/random` and `/dev/urandom` as optional extra entropy sources when present.
+
+- [ ] #51 Add full webservice startup HTTP(S) component coverage without `--skip-web`.
+  - Source: `TEST/run_debug_components.sh:20`, `TEST/run_debug_components.sh:164`, `TEST/run_debug_components.sh:322`.
+  - Goal: make the default `TEST/run_debug_components.sh` path reliable for routine full HTTP and HTTPS startup verification, including port availability, generated certificate/key loading, webservice startup markers, bounded noninteractive shutdown, and failure diagnostics when either protocol cannot start.

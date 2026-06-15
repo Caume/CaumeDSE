@@ -4,6 +4,10 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `TODO.md`, `README.md`: Add TODO item #51 for full webservice
+  startup HTTP(S) component coverage without `--skip-web`, and document
+  the current DEBUG component verification commands and ports.
+
 - `webservice_interface.c`, `function_tests.c`, `TEST/run_debug_components.sh`,
   `README.md`, `TODO.md`: Remove the stale storage document-tree dispatcher
   TODO, add DEBUG component coverage for documentTypes/documents request
