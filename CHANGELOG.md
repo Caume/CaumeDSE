@@ -4,6 +4,13 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `engine_admin.c`: Replace the temporary web-service Enter wait with
+  SIGINT/SIGTERM stop handling, restoring previous handlers during
+  cleanup while keeping debug noninteractive runs bounded.
+
+- `TODO.md`: Mark TODO item #30 complete and refresh the source
+  reference for TODO item #31.
+
 - `engine_admin.c`: Add required-file validation for HTTPS private
   key, certificate, and CA certificate loading before starting the web
   service daemon.

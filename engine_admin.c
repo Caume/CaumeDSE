@@ -42,7 +42,11 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
     by Larry Wall and others.
 
 ***/
+#include <signal.h>
+
 #include "common.h"
+
+static volatile sig_atomic_t cmeWebServiceStopRequested=0;
 
 static void cmeClearAdminKeyDisplay(void)
 {
@@ -87,6 +91,68 @@ static int cmeLoadRequiredWebServiceFile(char **pDstStr, const char *filePath,
     }
     (*pDstStr)[readFileLen]='\0';
     return(0);
+}
+
+static void cmeWebServiceStopSignalHandler(int signalNumber)
+{
+    (void)signalNumber;
+    cmeWebServiceStopRequested=1;
+}
+
+static int cmeWebServiceInstallStopHandler(struct sigaction *oldIntAction,
+                                           struct sigaction *oldTermAction)
+{
+    struct sigaction stopAction;
+
+    memset(&stopAction,0,sizeof(stopAction));
+    stopAction.sa_handler=cmeWebServiceStopSignalHandler;
+    sigemptyset(&stopAction.sa_mask);
+    stopAction.sa_flags=0;
+    if (sigaction(SIGINT,&stopAction,oldIntAction))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't install SIGINT stop handler.\n");
+#endif
+        return(1);
+    }
+    if (sigaction(SIGTERM,&stopAction,oldTermAction))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't install SIGTERM stop handler.\n");
+#endif
+        sigaction(SIGINT,oldIntAction,NULL);
+        return(2);
+    }
+    return(0);
+}
+
+static void cmeWebServiceRestoreStopHandler(const struct sigaction *oldIntAction,
+                                            const struct sigaction *oldTermAction)
+{
+    sigaction(SIGINT,oldIntAction,NULL);
+    sigaction(SIGTERM,oldTermAction,NULL);
+}
+
+static void cmeWebServiceWaitForStop(void)
+{
+    const char *nonInteractive=getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
+
+    if (nonInteractive && *nonInteractive && strcmp(nonInteractive,"0"))
+    {
+#ifdef DEBUG
+        sleep(1);
+#endif
+        cmeWebServiceStopRequested=1;
+        return;
+    }
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: cmeWebServiceSetup(), web service running; send SIGINT or SIGTERM to stop.\n");
+    fflush(stdout);
+#endif
+    while (!cmeWebServiceStopRequested)
+    {
+        pause();
+    }
 }
 
 int cmeSetupEngineAdminDBs ()
@@ -828,19 +894,28 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
                         unsigned int numThreads)
 {
     int result;
+    int stopHandlersInstalled=0;
+    struct sigaction oldIntAction;
+    struct sigaction oldTermAction;
     struct MHD_Daemon *webServiceDaemon=NULL;
     char *key_pem=NULL;
     char *cert_pem=NULL;
     char *ca_pem=NULL;
     #define cmeWebServiceSetupFree() \
         { \
-            cmeFree(key_pem); \
-            cmeFree(cert_pem); \
-            cmeFree(ca_pem); \
             if (webServiceDaemon) \
             { \
                 MHD_stop_daemon (webServiceDaemon); \
+                webServiceDaemon=NULL; \
             } \
+            if (stopHandlersInstalled) \
+            { \
+                cmeWebServiceRestoreStopHandler(&oldIntAction,&oldTermAction); \
+                stopHandlersInstalled=0; \
+            } \
+            cmeFree(key_pem); \
+            cmeFree(cert_pem); \
+            cmeFree(ca_pem); \
         } //Local free() macro.
 
     if (useSSL) //HTTPS
@@ -905,19 +980,14 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
             return (3);
         }
     }
+    cmeWebServiceStopRequested=0;
+    if (cmeWebServiceInstallStopHandler(&oldIntAction,&oldTermAction))
     {
-        const char *nonInteractive = getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
-        if (nonInteractive && *nonInteractive && strcmp(nonInteractive,"0"))
-        {
-#ifdef DEBUG
-            sleep(1);
-#endif
-        }
-        else
-        {
-            getchar ();                     //TODO (OHR#2#): Clear temporal "wait for enter"; create web service Exception Handler (stop) function.
-        }
+        cmeWebServiceSetupFree();
+        return(4);
     }
+    stopHandlersInstalled=1;
+    cmeWebServiceWaitForStop();
     cmeWebServiceSetupFree();
     return(0);
 }
