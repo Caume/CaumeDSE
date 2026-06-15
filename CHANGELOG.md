@@ -4,6 +4,15 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `engine_admin.c`, `function_tests.c`: Evaluate ResourcesDB
+  `filterWhitelist` and `filterBlacklist` resource fields as
+  full-string POSIX extended regex filters during permission checks,
+  with DEBUG component coverage for regex allow and deny behavior.
+
+- `README.md`, `common.h`, `TODO.md`: Document filter-list regex
+  semantics, update inline OPTIONS text, mark TODO item #31 complete,
+  and refresh shifted TODO item #30 source references.
+
 - `engine_admin.c`: Replace the temporary web-service Enter wait with
   SIGINT/SIGTERM stop handling, restoring previous handlers during
   cleanup while keeping debug noninteractive runs bounded.

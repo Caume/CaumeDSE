@@ -1094,13 +1094,17 @@ void testFilterWhitelist ()
     int responseCode=0;
     const char *classUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist";
     const char *resourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist/RoleTableTestUser";
+    const char *regexResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist/RoleTable.*";
     const char *roleResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/roleTables/users";
     const char *permissionAllowedUrl="/organizations/EngineOrg/users/RoleTableTestUser";
+    const char *permissionRegexUrl="/organizations/EngineOrg/users/RoleTableRegexUser";
     const char *permissionDeniedUrl="/organizations/EngineOrg/users/NoWhitelistUser";
     const char *classElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist"};
     const char *resourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist","RoleTableTestUser"};
+    const char *regexResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist","RoleTable.*"};
     const char *roleResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","roleTables","users"};
     const char *permissionAllowedElements[]={"organizations","EngineOrg","users","RoleTableTestUser"};
+    const char *permissionRegexElements[]={"organizations","EngineOrg","users","RoleTableRegexUser"};
     const char *permissionDeniedElements[]={"organizations","EngineOrg","users","NoWhitelistUser"};
     const char *adminArgs[]={
         "userId","EngineAdmin",
@@ -1178,6 +1182,23 @@ void testFilterWhitelist ()
     errors+=cmeTestFilterWhitelistRequest("PUT",resourceUrl,resourceElements,6,putArgs,200,"filterWhitelist resource PUT");
     errors+=cmeTestFilterWhitelistRequest("DELETE",resourceUrl,resourceElements,6,adminArgs,200,"filterWhitelist resource DELETE");
     errors+=cmeTestFilterWhitelistRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,404,"filterWhitelist resource HEAD after DELETE");
+    errors+=cmeTestFilterWhitelistRequest("POST",regexResourceUrl,regexResourceElements,6,postArgs,201,"filterWhitelist regex resource POST");
+    responseText=NULL;
+    if (cmeWebServiceCheckPermissions("GET",permissionRegexUrl,permissionRegexElements,4,
+                                      &responseText,&responseCode,
+                                      "RoleTableTestUser","EngineOrg",
+                                      "0CDBB9AF76AF43BDB72E095989E612CC") || responseCode!=200)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterWhitelist(), regex whitelist permission failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testFilterWhitelist(), PASS: regex whitelist permission responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    errors+=cmeTestFilterWhitelistRequest("DELETE",regexResourceUrl,regexResourceElements,6,adminArgs,200,"filterWhitelist regex resource DELETE");
     errors+=cmeTestRoleTablesRequest("DELETE",roleResourceUrl,roleResourceElements,6,adminArgs,200,"filterWhitelist role DELETE");
     if (errors)
     {
@@ -1242,11 +1263,13 @@ void testFilterBlacklist ()
     int responseCode=0;
     const char *classUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterBlacklist";
     const char *resourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterBlacklist/RoleTableTestUser";
+    const char *regexResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterBlacklist/RoleTable.*";
     const char *whitelistUrl="/organizations/EngineOrg/users/RoleTableTestUser/filterWhitelist/RoleTableTestUser";
     const char *roleResourceUrl="/organizations/EngineOrg/users/RoleTableTestUser/roleTables/users";
     const char *permissionUrl="/organizations/EngineOrg/users/RoleTableTestUser";
     const char *classElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterBlacklist"};
     const char *resourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterBlacklist","RoleTableTestUser"};
+    const char *regexResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterBlacklist","RoleTable.*"};
     const char *whitelistElements[]={"organizations","EngineOrg","users","RoleTableTestUser","filterWhitelist","RoleTableTestUser"};
     const char *roleResourceElements[]={"organizations","EngineOrg","users","RoleTableTestUser","roleTables","users"};
     const char *permissionElements[]={"organizations","EngineOrg","users","RoleTableTestUser"};
@@ -1327,6 +1350,24 @@ void testFilterBlacklist ()
         printf("TESTS: testFilterBlacklist(), PASS: whitelist allow after blacklist delete responseCode=%d\n",responseCode);
     }
     cmeFree(responseText);
+    responseText=NULL;
+    errors+=cmeTestFilterBlacklistRequest("POST",regexResourceUrl,regexResourceElements,6,postArgs,201,"filterBlacklist regex resource POST");
+    cmeWebServiceCheckPermissions("GET",permissionUrl,permissionElements,4,
+                                  &responseText,&responseCode,
+                                  "RoleTableTestUser","EngineOrg",
+                                  "0CDBB9AF76AF43BDB72E095989E612CC");
+    if (responseCode!=403)
+    {
+        fprintf(stderr,"CaumeDSE Error: testFilterBlacklist(), regex blacklist rejection failed: responseCode=%d.\n",
+                responseCode);
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testFilterBlacklist(), PASS: regex blacklist reject responseCode=%d\n",responseCode);
+    }
+    cmeFree(responseText);
+    errors+=cmeTestFilterBlacklistRequest("DELETE",regexResourceUrl,regexResourceElements,6,adminArgs,200,"filterBlacklist regex resource DELETE");
     errors+=cmeTestFilterBlacklistRequest("HEAD",resourceUrl,resourceElements,6,adminArgs,404,"filterBlacklist resource HEAD after DELETE");
     errors+=cmeTestFilterWhitelistRequest("DELETE",whitelistUrl,whitelistElements,6,adminArgs,200,"filterBlacklist whitelist DELETE");
     errors+=cmeTestRoleTablesRequest("DELETE",roleResourceUrl,roleResourceElements,6,adminArgs,200,"filterBlacklist role DELETE");

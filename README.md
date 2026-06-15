@@ -1316,6 +1316,9 @@ below).
     userResourceId, the parent `{organization}` maps to orgResourceId,
     and the method columns (`_get`, `_post`, `_put`, `_delete`, `_head`,
     `_options`) define which methods are allowlisted for that target.
+    `userResourceId` and `orgResourceId` are evaluated as POSIX extended
+    regular expressions and must match the full requested user and
+    organization resource values.
     Role-table authorization is still evaluated first. When whitelist
     records exist for a method, user-resource requests for that method
     must also match a whitelist record for the requested organization
@@ -1328,6 +1331,21 @@ below).
         URI:
             https://localhost/organizations/EngineOrg/users/
             RoleTableTestUser/filterWhitelist/RoleTableTestUser?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
+            *_put=0&*_delete=0&*_head=1&*_options=1
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2) Allow GET, HEAD and OPTIONS requests against every user
+            resource whose identifier starts with RoleTable.
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/users/
+            RoleTableTestUser/filterWhitelist/RoleTable.*?
             userId=EngineAdmin&orgId=EngineOrg&orgKey=
             0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
             *_put=0&*_delete=0&*_head=1&*_options=1
@@ -1356,6 +1374,9 @@ below).
     userResourceId, the parent `{organization}` maps to orgResourceId,
     and the method columns (`_get`, `_post`, `_put`, `_delete`, `_head`,
     `_options`) define which methods are denied for that target.
+    `userResourceId` and `orgResourceId` are evaluated as POSIX extended
+    regular expressions and must match the full requested user and
+    organization resource values.
     Role-table authorization is evaluated first; matching blacklist
     records then deny the request before whitelist allow records are
     considered.
@@ -1367,6 +1388,21 @@ below).
         URI:
             https://localhost/organizations/EngineOrg/users/
             RoleTableTestUser/filterBlacklist/RoleTableTestUser?
+            userId=EngineAdmin&orgId=EngineOrg&orgKey=
+            0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
+            *_put=0&*_delete=0&*_head=1&*_options=1
+        REQUEST HEADERS:
+            <NONE>
+        REQUEST BODY:
+            <EMPTY>
+
+    Example 2) Deny GET, HEAD and OPTIONS requests against every user
+            resource whose identifier starts with RoleTable.
+        METHOD:
+            POST
+        URI:
+            https://localhost/organizations/EngineOrg/users/
+            RoleTableTestUser/filterBlacklist/RoleTable.*?
             userId=EngineAdmin&orgId=EngineOrg&orgKey=
             0CDBB9AF76AF43BDB72E095989E612CC&*_get=1&*_post=0&
             *_put=0&*_delete=0&*_head=1&*_options=1

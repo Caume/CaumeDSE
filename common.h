@@ -333,7 +333,8 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeWSMsgFilterWhitelistOptions "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                                  "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterWhitelist/{filterUser}" \
                                  "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
-                                 "OptionalParameters...]<br></code><br>" //Filter whitelist resource options.
+                                 "OptionalParameters...]<br></code><br>" \
+                                 "The organization and filterUser resource fields are full-string POSIX extended regex filters.<br>" //Filter whitelist resource options.
 #define cmeWSMsgFilterWhitelistClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterWhitelist" \
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
@@ -341,7 +342,8 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeWSMsgFilterBlacklistOptions "Allowed Methods: <code>GET,PUT,POST,DELETE,HEAD,OPTIONS</code><br>" \
                                  "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterBlacklist/{filterUser}" \
                                  "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
-                                 "OptionalParameters...]<br></code><br>" //Filter blacklist resource options.
+                                 "OptionalParameters...]<br></code><br>" \
+                                 "The organization and filterUser resource fields are full-string POSIX extended regex filters.<br>" //Filter blacklist resource options.
 #define cmeWSMsgFilterBlacklistClassOptions "Allowed Methods: <code>GET,OPTIONS</code><br>" \
                                     "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/users/{user}/filterBlacklist" \
                                     "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \

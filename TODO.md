@@ -180,12 +180,13 @@
   - Done: HTTPS setup now loads the key, certificate, and CA certificate through a required-file helper that rejects missing paths, load errors, empty files, and null buffers with per-file diagnostics before starting the daemon.
 
 - [x] #30 Replace temporary web-service `getchar()` waits with an exception/stop handler.
-  - Source: `engine_admin.c:102`, `engine_admin.c:136`, `engine_admin.c:983`.
+  - Source: `engine_admin.c:102`, `engine_admin.c:137`, `engine_admin.c:1122`.
   - Done: web-service setup now installs SIGINT and SIGTERM stop handlers after daemon startup, waits with `pause()` until a stop signal arrives, restores the previous handlers during cleanup, and keeps debug noninteractive runs bounded for automated checks.
 
-- [ ] #31 Process whitelist and blacklist regex filter lists in ResourcesDB.
-  - Source: `engine_admin.c:1120`.
+- [x] #31 Process whitelist and blacklist regex filter lists in ResourcesDB.
+  - Source: `engine_admin.c:217`, `engine_admin.c:1396`, `function_tests.c:1187`, `function_tests.c:1355`.
   - Related roadmap items: `#13`, `#14`.
+  - Done: permission checks now load method-enabled filterWhitelist/filterBlacklist rows from ResourcesDB, evaluate orgResourceId and userResourceId as full-string POSIX extended regex filters, preserve blacklist deny precedence and whitelist opt-in enforcement, and cover regex allow/deny behavior in DEBUG component tests.
 
 - [x] #32 Sanitize variables used in string handling and generated queries.
   - Source: `strhandling.c:292`, `strhandling.c:309`, `db.c:66`, `webservice_interface.c:544`.
