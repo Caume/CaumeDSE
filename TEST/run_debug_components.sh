@@ -264,6 +264,14 @@ check_component document_types_resource 'Testing documentTypes resource handlers
     'TESTS: testDocumentTypes(), PASS: documentTypes unsupported GET responseCode=404' \
     'TESTS: testDocumentTypes(), PASS: class listing and resource validation verified.'
 
+check_component storage_document_tree_dispatch 'Testing storage document tree dispatcher routing|testStorageDocumentTree|documentTypes/documents dispatcher' "$FULL_LOG" \
+    '--- Testing storage document tree dispatcher routing:' \
+    'TESTS: testStorageDocumentTree(), PASS: documentTypes class dispatch GET responseCode=200' \
+    'TESTS: testStorageDocumentTree(), PASS: documentType resource dispatch GET responseCode=200' \
+    'TESTS: testStorageDocumentTree(), PASS: documents class dispatch OPTIONS responseCode=200' \
+    'TESTS: testStorageDocumentTree(), PASS: document resource dispatch OPTIONS responseCode=200' \
+    'TESTS: testStorageDocumentTree(), PASS: documentTypes/documents dispatcher routing verified.'
+
 check_component parser_scripts_resource 'Testing parserScripts resource handlers|testParserScripts|parserScripts' "$FULL_LOG" \
     '--- Testing parserScripts resource handlers:' \
     'TESTS: testParserScripts(), PASS: parserScripts class OPTIONS responseCode=200' \

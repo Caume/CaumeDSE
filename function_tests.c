@@ -1451,6 +1451,72 @@ void testDocumentTypes ()
     }
 }
 
+static int cmeTestStorageDocumentTreeRequest(const char *method, const char *url,
+                                             const char **urlElements, int numUrlElements,
+                                             const char **argumentElements, int expectedCode,
+                                             const char *marker)
+{
+    int result,responseCode=0;
+    char *responseText=NULL;
+    char *responseFilePath=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testStorageDocumentTree(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
+    result=cmeWebServiceProcessRequest(&responseText,&responseFilePath,&responseHeaders,&responseCode,
+                                       url,urlElements,numUrlElements,NULL,argumentElements,method,NULL);
+    if (((expectedCode>=0)&&(responseCode!=expectedCode)) || (result && (expectedCode<400)))
+    {
+        fprintf(stderr,"CaumeDSE Error: testStorageDocumentTree(), %s failed: result=%d responseCode=%d expected=%d.\n",
+                marker,result,responseCode,expectedCode);
+        cmeFree(responseText);
+        cmeFree(responseFilePath);
+        cmeTestFreeResponseHeaders(responseHeaders);
+        return(1);
+    }
+    printf("TESTS: testStorageDocumentTree(), PASS: %s responseCode=%d\n",marker,responseCode);
+    cmeFree(responseText);
+    cmeFree(responseFilePath);
+    cmeTestFreeResponseHeaders(responseHeaders);
+    return(0);
+}
+
+void testStorageDocumentTree ()
+{
+    int errors=0;
+    const char *documentTypesUrl="/organizations/CaumeDSE/storage/storage1/documentTypes";
+    const char *documentTypeUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv";
+    const char *documentsUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents";
+    const char *documentUrl="/organizations/CaumeDSE/storage/storage1/documentTypes/file.csv/documents/AcmeIncPayroll.csv";
+    const char *documentTypesElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes"};
+    const char *documentTypeElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv"};
+    const char *documentsElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents"};
+    const char *documentElements[]={"organizations","CaumeDSE","storage","storage1","documentTypes","file.csv","documents","AcmeIncPayroll.csv"};
+    const char *adminArgs[]={
+        "userId","User123",
+        "orgId","CaumeDSE",
+        "orgKey","password1",
+        NULL
+    };
+
+    printf("--- Testing storage document tree dispatcher routing:\n");
+    errors+=cmeTestStorageDocumentTreeRequest("GET",documentTypesUrl,documentTypesElements,5,adminArgs,200,"documentTypes class dispatch GET");
+    errors+=cmeTestStorageDocumentTreeRequest("GET",documentTypeUrl,documentTypeElements,6,adminArgs,200,"documentType resource dispatch GET");
+    errors+=cmeTestStorageDocumentTreeRequest("OPTIONS",documentsUrl,documentsElements,7,adminArgs,200,"documents class dispatch OPTIONS");
+    errors+=cmeTestStorageDocumentTreeRequest("OPTIONS",documentUrl,documentElements,8,adminArgs,200,"document resource dispatch OPTIONS");
+    if (errors)
+    {
+        printf("TESTS: testStorageDocumentTree(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testStorageDocumentTree(), PASS: documentTypes/documents dispatcher routing verified.\n");
+    }
+}
+
 static int cmeTestParserScriptsRequest(const char *method, const char *url,
                                        const char **urlElements, int numUrlElements,
                                        const char **argumentElements, int expectedCode,
@@ -1832,6 +1898,7 @@ void testEngMgmnt ()
     testFilterWhitelist();
     testFilterBlacklist();
     testDocumentTypes();
+    testStorageDocumentTree();
     testParserScripts();
 }
 

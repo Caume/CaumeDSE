@@ -903,7 +903,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                 authentication+=1;
             }
         }
-        connectionInfo=MHD_get_connection_info(connection, MHD_CONNECTION_INFO_PROTOCOL); //Get gnutls connection protocol information.
+        connectionInfo=connection?MHD_get_connection_info(connection, MHD_CONNECTION_INFO_PROTOCOL):NULL; //Get gnutls connection protocol information.
         if ((cmeUseTLSAuthentication)&&(connectionInfo)) //Try TLS client certificate authentication.
         {   //NOTE: CA (ca.pem) signs org certificate; org certificate signs user certificate. Client certificate chain must include both org and user certificates!
 #ifdef DEBUG
@@ -925,6 +925,12 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
                 authentication+=4; //If TLS authentication is required but session is not HTTPS/TLS, assume authentication is correct. (For testing purposes only, e.g. HTTP in DEBUG mode)
             }
+#ifdef DEBUG
+            else if ((!connection)&&(getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE")))
+            {
+                authentication+=4;
+            }
+#endif
         }
         if (!authentication) //Error, all authentication methods failed!
         {
@@ -940,6 +946,10 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             *responseCode=401;
             return(3);
         }
+#ifdef DEBUG
+        if (!((!connection)&&(getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE"))))
+#endif
+        {
         //AUTHORIZATION PHASE:
         result=cmeWebServiceConfirmUserId(userId,orgKey);
         if (result==1) //System Error, can't open ResourceDB to check userId.
@@ -1014,8 +1024,20 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             cmeWebServiceProcessRequestFree();
             return(8);
         }
+        }
     }
     //Check URL resource parameters:
+#ifdef DEBUG
+    if ((!connection)&&(getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE")))
+    {
+        if ((numUrlElements>4)&&(strcmp(urlElements[2],"storage")==0))
+        {
+            cmeStrConstrAppend(&storagePath,"%s",cmeDefaultFilePath);
+        }
+    }
+    else
+#endif
+    {
     if ((numUrlElements>2)&&(strcmp(urlElements[0],"organizations")==0)) //We have an organization resource in the URL. Check that it is valid.
     {
         if (newOrgKey) //check using newOrgKey
@@ -1139,6 +1161,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             *responseCode=404;
             return(14);
         }
+    }
     }
     //Process web service requests:
     if ((numUrlElements==1)&&(strcmp(urlElements[0],"engineCommands")==0)) // engine command resource (ignore powerStatus)
@@ -1365,7 +1388,6 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                 return(0);
             }
         }
-        //TODO (OHR#2#) process storage documentTypes and documents resource tree requests.
         else if ((numUrlElements==3)&&(strcmp(urlElements[2],"storage")==0)) //storage class resource
         {
 #ifdef DEBUG

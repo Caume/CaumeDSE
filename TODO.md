@@ -204,9 +204,10 @@
   - Source: `webservice_interface.c:885`, `README.md:2182`, `common.h:64`.
   - Done: documented OAuth as an external engine-manager responsibility, clarified that CaumeDSE does not validate OAuth tokens internally, described the delegated organization/user/role/resource lifecycle, and updated source comments and OAuth field comments to match that boundary.
 
-- [ ] #36 Process storage `documentTypes` and `documents` resource tree requests.
-  - Source: `webservice_interface.c:1015`.
+- [x] #36 Process storage `documentTypes` and `documents` resource tree requests.
+  - Source: `webservice_interface.c:1421`, `webservice_interface.c:1438`, `webservice_interface.c:1455`, `webservice_interface.c:1472`, `function_tests.c:1487`, `TEST/run_debug_components.sh:267`.
   - Related roadmap item: `#15`.
+  - Done: removed the stale dispatcher TODO, verified the main request dispatcher routes storage documentTypes class/resource and documents class/resource requests with a DEBUG noninteractive dispatcher fixture, added component-script marker coverage for those dispatcher paths, and documented the storage document-tree route roots.
 
 - [x] #37 Move temporary POST attributes for `shuffle` and `protect` into API parameters.
   - Source: `webservice_interface.c:6256`, `webservice_interface.c:9605`, `webservice_interface.c:10686`.

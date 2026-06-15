@@ -1526,6 +1526,8 @@ below).
     resource handlers run. Supported types are file.csv, file.raw,
     file.txt, file.json, file.xml, file.html, file.pdf, file.png,
     file.jpg, file.gif, file.zip, file.bin and script.perl.
+    These routes are handled through the main storage resource tree
+    dispatcher at `/organizations/{organization}/storage/{storage}`.
 
 ### `documents`
 
@@ -1548,6 +1550,8 @@ below).
     narrow the candidate set; CaumeDSE still decrypts and verifies the
     protected document attributes before returning, updating or deleting
     registers.  Legacy registers without lookup values remain supported.
+    Document collection and document resource routes are dispatched
+    under `/organizations/{organization}/storage/{storage}/documentTypes/{documentType}`.
 
     Example 1)     List attribute table for all document resources of
             type file.raw

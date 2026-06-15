@@ -4,6 +4,12 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
 
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
+- `webservice_interface.c`, `function_tests.c`, `TEST/run_debug_components.sh`,
+  `README.md`, `TODO.md`: Remove the stale storage document-tree dispatcher
+  TODO, add DEBUG component coverage for documentTypes/documents request
+  routing through `cmeWebServiceProcessRequest()`, document the route roots,
+  and mark TODO item #36 complete.
+
 - `README.md`, `webservice_interface.c`, `common.h`, `TODO.md`:
   Document OAuth as an external engine-manager responsibility, clarify
   that CaumeDSE does not validate OAuth tokens internally, and mark TODO
