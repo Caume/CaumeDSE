@@ -55,6 +55,8 @@ int cmeRegisterSecureDBorFile (const char **SQLDBfNames, const int numSQLDBfName
 // numThreads: size of the MHD worker-thread pool (0 = use cmeDefaultMaxThreads).
 int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile, const char *sslCertFile, const char *caCertFile,
                         unsigned int numThreads);
+//Function to create/open system DBs and create first-run EngineAdmin resources when missing.
+int cmeSetupEngineAdminDBs ();
 //Function to create default roles within RolesDB for a default Admin user within the default engine organization.
 int cmeWebServiceInitAdminSetup (const char *orgKey);
 //Function to validate resource permissions for the specified userId and orgId in RolesDB.

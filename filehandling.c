@@ -347,7 +347,8 @@ static int cmeInsertSecureDBDataRows(sqlite3 **ppDB, char **SQLDBfNames,
             {
                 value=sourceRows[cont2+(numSourceCols*(cont3+cont*cmeMaxCSVRowsInPart))];
                 cmeStrConstrAppend(&securedRowOrder,"%d",cont3+rowOrderBase+cont*cmeMaxCSVRowsInPart);
-                cmeStrConstrAppend(&MAC,"%s",nullParam); // TODO (OHR#2#): Calculate MAC, MAC protected and stuff. Probably outside this function.
+                /* Integrity columns are populated later by cmeMemSecureDBProtect(). */
+                cmeStrConstrAppend(&MAC,"%s",nullParam);
                 cmeStrConstrAppend(&MACProtected,"%s",nullParam);
                 cmeStrConstrAppend(&sign,"%s",nullParam);
                 cmeStrConstrAppend(&signProtected,"%s",nullParam);
@@ -1214,6 +1215,14 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
 #endif
         cmeRAWFileToSecureFileFree();
         return(1);
+    }
+    if (tmpMemDataLen<=0)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeRAWFileToSecureFile(), raw file is empty: %s !\n",rawFileName);
+#endif
+        cmeRAWFileToSecureFileFree();
+        return(3);
     }
 
     numParts=tmpMemDataLen/cmeMaxRAWDataInPart;

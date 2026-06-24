@@ -2179,13 +2179,45 @@ Before running CaumeDSE in DEBUG mode, copy the contents of TEST/testfiles to /o
 
 The DEBUG component verification script can run the build, install the test
 database under `/tmp/cdse-verify`, and execute the noninteractive component
-harness:
+harness, including bounded HTTP and HTTPS startup checks and live API request
+flows:
 
-    CDSE_DEBUG_TEST_TIMEOUT=120s TEST/run_debug_components.sh --skip-web
+    TEST/run_debug_components.sh
 
-Omit `--skip-web` when validating full HTTP and HTTPS startup behavior.  The
-full mode uses `CDSE_DEBUG_TEST_HTTP_PORT` and `CDSE_DEBUG_TEST_HTTPS_PORT`
-when set, or ports 18080 and 18443 by default.
+The full mode uses `CDSE_DEBUG_TEST_HTTP_PORT` and
+`CDSE_DEBUG_TEST_HTTPS_PORT` when set, or ports 18080 and 18443 by default.
+The script rejects invalid, duplicate, or busy ports before launching the
+debug executable.  In full mode it also starts a held-open DEBUG web service
+for each protocol and uses `curl` to authenticate, create a temporary
+organization and storage resource, upload a CSV document, query a row and
+column, upload a `script.perl` document, and execute that parser script
+through both HTTP and HTTPS.  HTTPS uses a per-run client certificate chain
+signed by the committed test CA fixture.  `CDSE_DEBUG_TEST_TIMEOUT` controls
+the overall executable timeout and defaults to 120s.  Use `--skip-web` only
+when the local environment cannot bind test ports.
+
+The committed test database under `TEST/testDB_opt_cdse` uses
+`0CDBB9AF76AF43BDB72E095989E612CC` as the `EngineAdmin` / `EngineOrg`
+organization key in the DEBUG resource component tests and API examples.
+Older history shows the previous fixture key
+`6DA74D788E0A33A0272252796EF0748A` in `TEST/testDB_opt_cdse/secureTmp/EngineOrg.key.txt`
+and older README examples; it is not valid for the current committed fixture.
+The `password1` value used by several component tests is a document/resource
+fixture key for generated CSV and DB-browsing resources, not the default
+`EngineAdmin` organization key.
+
+For automated first-run release verification, the `CaumeDSE` binary accepts
+optional startup parameters:
+
+    --admin-org-key KEY
+    --admin-key-confirmed
+    --https-port PORT
+
+`--admin-org-key` sets the initial `EngineAdmin` organization key when the
+system databases do not exist yet.  `--admin-key-confirmed` skips the
+interactive prompt that normally waits for the operator to confirm that the
+generated key has been written down.  `--https-port` runs HTTPS on a specific
+port instead of the default 8443.
 
 Temporary-file deletion uses one zero-fill overwrite pass by default.  To
 compile with additional overwrite passes, define

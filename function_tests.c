@@ -1904,10 +1904,18 @@ void testEngMgmnt ()
 
 void testWebServices ()
 {
+    const char *skipWebEnv = getenv("CDSE_DEBUG_TEST_SKIP_WEB");
     const char *httpEnv = getenv("CDSE_DEBUG_TEST_HTTP_PORT");
     const char *httpsEnv = getenv("CDSE_DEBUG_TEST_HTTPS_PORT");
     int httpPort = cmeDefaultWebservicePort;
     int httpsPort = cmeDefaultWebServiceSSLPort;
+    int result;
+
+    if (skipWebEnv && *skipWebEnv && strcmp(skipWebEnv,"0"))
+    {
+        printf("--- Testing Web server: skipped by CDSE_DEBUG_TEST_SKIP_WEB\n");
+        return;
+    }
 
     if (cmeDebugTestsNonInteractiveEnabled())
     {
@@ -1926,9 +1934,25 @@ void testWebServices ()
     printf("--- Testing Web server HTTP port %d%s (thread pool: %d)\n",httpPort,
            cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)",
            cmeDefaultMaxThreads);
-    cmeWebServiceSetup(httpPort,0,NULL,NULL,NULL,0);
+    result=cmeWebServiceSetup(httpPort,0,NULL,NULL,NULL,0);
+    if (result)
+    {
+        printf("TESTS: testWebServices(), FAIL: HTTP startup failed on port %d result=%d\n",httpPort,result);
+    }
+    else
+    {
+        printf("TESTS: testWebServices(), PASS: HTTP startup and shutdown verified on port %d\n",httpPort);
+    }
     printf("--- Testing Web server HTTPS port %d%s (thread pool: %d)\n",httpsPort,
            cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)",
            cmeDefaultMaxThreads);
-    cmeWebServiceSetup(httpsPort,1,cmeDefaultHTTPSKeyFile,cmeDefaultHTTPSCertFile,cmeDefaultCACertFile,0);
+    result=cmeWebServiceSetup(httpsPort,1,cmeDefaultHTTPSKeyFile,cmeDefaultHTTPSCertFile,cmeDefaultCACertFile,0);
+    if (result)
+    {
+        printf("TESTS: testWebServices(), FAIL: HTTPS startup failed on port %d result=%d\n",httpsPort,result);
+    }
+    else
+    {
+        printf("TESTS: testWebServices(), PASS: HTTPS startup and shutdown verified on port %d\n",httpsPort);
+    }
 }

@@ -48,9 +48,67 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 // --- Function prototypes
 int main(int argc, char *argv[], char *env[]);   //'main' function
 
+static void cmePrintUsage(const char *programName)
+{
+    printf("Usage: %s [--admin-org-key KEY] [--admin-key-confirmed] [--https-port PORT]\n",
+           programName ? programName : "CaumeDSE");
+}
+
+static int cmeApplyCommandLineOptions(int argc, char *argv[])
+{
+    int cont;
+
+    for (cont=1; cont<argc; cont++)
+    {
+        if ((!strcmp(argv[cont],"--help"))||(!strcmp(argv[cont],"-h")))
+        {
+            cmePrintUsage(argv[0]);
+            return(1);
+        }
+        if (!strcmp(argv[cont],"--admin-key-confirmed"))
+        {
+            cmeAdminKeyAutoConfirm=1;
+        }
+        else if (!strcmp(argv[cont],"--admin-org-key"))
+        {
+            if ((cont+1)>=argc)
+            {
+                fprintf(stderr,"CaumeDSE Error: --admin-org-key requires a value.\n");
+                return(2);
+            }
+            cmeAdminOrgKeyOverride=argv[++cont];
+        }
+        else if (!strncmp(argv[cont],"--admin-org-key=",16))
+        {
+            cmeAdminOrgKeyOverride=argv[cont]+16;
+        }
+        else if (!strcmp(argv[cont],"--https-port"))
+        {
+            if ((cont+1)>=argc)
+            {
+                fprintf(stderr,"CaumeDSE Error: --https-port requires a value.\n");
+                return(2);
+            }
+            cmeWebServiceHttpsPort=(unsigned short)atoi(argv[++cont]);
+        }
+        else if (!strncmp(argv[cont],"--https-port=",13))
+        {
+            cmeWebServiceHttpsPort=(unsigned short)atoi(argv[cont]+13);
+        }
+        else
+        {
+            fprintf(stderr,"CaumeDSE Error: unknown option '%s'.\n",argv[cont]);
+            cmePrintUsage(argv[0]);
+            return(2);
+        }
+    }
+    return(0);
+}
+
 // --- Function definitions
 int main(int argc, char *argv[], char *env[])
 {
+    int optionResult;
     unsigned char *bufIn=NULL;
     unsigned char *bufOut=NULL;
     char *title=NULL;
@@ -63,6 +121,11 @@ int main(int argc, char *argv[], char *env[])
             PERL_SYS_TERM(); \
         } while (0); //Local free() macro
 
+    optionResult=cmeApplyCommandLineOptions(argc,argv);
+    if (optionResult)
+    {
+        return(optionResult==1 ? 0 : optionResult);
+    }
     PERL_SYS_INIT3(&argc,&argv,&env);
     if (cmeSetupRuntime(&bufIn,&bufOut,&cdsePerl))  //Setup/allocate general stuff.
     {

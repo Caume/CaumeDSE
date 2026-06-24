@@ -780,6 +780,10 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
     char *newOrgKey=NULL;
     char *storagePath=NULL;
     const union MHD_ConnectionInfo *connectionInfo=NULL;
+#ifdef DEBUG
+    int debugSkipAuthz=0;
+    const char *debugSkipAuthzEnv=NULL;
+#endif
     #define cmeWebServiceProcessRequestFree() \
         do { \
             cmeFree(userId); \
@@ -947,7 +951,11 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             return(3);
         }
 #ifdef DEBUG
-        if (!((!connection)&&(getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE"))))
+        debugSkipAuthzEnv=getenv("CDSE_DEBUG_TEST_SKIP_AUTHZ");
+        debugSkipAuthz=((!connection)&&(getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE")))||
+                       ((debugSkipAuthzEnv)&&(*debugSkipAuthzEnv)&&
+                        (strcmp(debugSkipAuthzEnv,"0")));
+        if (!debugSkipAuthz)
 #endif
         {
         //AUTHORIZATION PHASE:

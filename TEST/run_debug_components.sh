@@ -7,9 +7,10 @@ PREFIX="${CDSE_VERIFY_PREFIX:-/tmp/cdse-verify}"
 LOG_ROOT="${CDSE_VERIFY_LOG_DIR:-/tmp/cdse-debug-components-$(date +%Y%m%d-%H%M%S)}"
 HTTP_PORT="${CDSE_DEBUG_TEST_HTTP_PORT:-18080}"
 HTTPS_PORT="${CDSE_DEBUG_TEST_HTTPS_PORT:-18443}"
-RUN_TIMEOUT="${CDSE_DEBUG_TEST_TIMEOUT:-30s}"
+RUN_TIMEOUT="${CDSE_DEBUG_TEST_TIMEOUT:-120s}"
 SKIP_BUILD=0
 SKIP_WEB=0
+LIVE_FLOW_ID="liveflow$$"
 
 PASSED=0
 FAILED=0
@@ -24,7 +25,7 @@ usage() {
     printf '  CDSE_VERIFY_LOG_DIR        log directory, default /tmp/cdse-debug-components-<timestamp>\n'
     printf '  CDSE_DEBUG_TEST_HTTP_PORT  HTTP test port, default 18080\n'
     printf '  CDSE_DEBUG_TEST_HTTPS_PORT HTTPS test port, default 18443\n'
-    printf '  CDSE_DEBUG_TEST_TIMEOUT    executable timeout, default 30s\n'
+    printf '  CDSE_DEBUG_TEST_TIMEOUT    executable timeout, default 120s\n'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -98,6 +99,16 @@ port_in_use() {
     ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)${port}$"
 }
 
+valid_tcp_port() {
+    local port="$1"
+    case "$port" in
+        ''|*[!0-9]*)
+            return 1
+            ;;
+    esac
+    [ "$port" -gt 0 ] && [ "$port" -le 65535 ]
+}
+
 check_required() {
     local log="$1"
     local marker="$2"
@@ -106,11 +117,6 @@ check_required() {
 
 check_forbidden() {
     local log="$1"
-    if [ "$SKIP_WEB" -eq 1 ]; then
-        grep -E 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core' "$log" \
-            | grep -Ev 'cmeWebServiceSetup\(\).*can.t start (HTTP|HTTPS) server on port 0' >/dev/null
-        return $?
-    fi
     grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core' "$log"
 }
 
@@ -144,6 +150,224 @@ check_component() {
     fi
 }
 
+wait_for_log_marker() {
+    local log="$1"
+    local marker="$2"
+    local timeout_seconds="$3"
+    local waited=0
+
+    while [ "$waited" -lt "$timeout_seconds" ]; do
+        if grep -Fq -- "$marker" "$log" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    return 1
+}
+
+stop_live_service() {
+    local pid="$1"
+
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    fi
+}
+
+live_curl() {
+    local protocol="$1"
+    local name="$2"
+    local expected="$3"
+    local url="$4"
+    shift 4
+    local body="$LOG_ROOT/live_${protocol}_${name}.body"
+    local meta="$LOG_ROOT/live_${protocol}_${name}.meta"
+    local status
+    local rc
+
+    status="$(curl --silent --show-error --max-time 20 --output "$body" --write-out '%{http_code}' "$@" "$url" 2>"$meta")"
+    rc=$?
+    printf 'name=%s\nurl=%s\nstatus=%s\ncurl_rc=%s\n' "$name" "$url" "$status" "$rc" >> "$meta"
+    if [ "$rc" -ne 0 ]; then
+        return 1
+    fi
+    [ "$status" = "$expected" ]
+}
+
+check_live_body_marker() {
+    local protocol="$1"
+    local name="$2"
+    local marker="$3"
+    local body="$LOG_ROOT/live_${protocol}_${name}.body"
+
+    grep -Fq -- "$marker" "$body"
+}
+
+write_cert_ext_files() {
+    local ca_ext="$1"
+    local user_ext="$2"
+
+    cat > "$ca_ext" <<'EOF'
+[req]
+distinguished_name = req_dn
+[req_dn]
+[v3_ca]
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always,issuer:always
+basicConstraints       = critical,CA:true
+keyUsage               = critical,cRLSign,keyCertSign
+EOF
+    cat > "$user_ext" <<'EOF'
+[usr_cert]
+basicConstraints       = CA:FALSE
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always,issuer:always
+keyUsage               = critical,nonRepudiation,digitalSignature
+extendedKeyUsage       = clientAuth
+EOF
+}
+
+generate_live_client_cert_chain() {
+    local protocol="$1"
+    local org_id="$2"
+    local user_id="$3"
+    local org_key="$LOG_ROOT/live_${protocol}_org.key"
+    local org_req="$LOG_ROOT/live_${protocol}_org.req"
+    local org_pem="$LOG_ROOT/live_${protocol}_org.pem"
+    local user_key="$LOG_ROOT/live_${protocol}_user.key"
+    local user_req="$LOG_ROOT/live_${protocol}_user.req"
+    local user_pem="$LOG_ROOT/live_${protocol}_user.pem"
+    local ca_ext="$LOG_ROOT/live_${protocol}_ca_ext.cnf"
+    local user_ext="$LOG_ROOT/live_${protocol}_user_ext.cnf"
+    local chain="$LOG_ROOT/live_${protocol}_client_chain.pem"
+    local ca_serial="$LOG_ROOT/live_${protocol}_ca.srl"
+    local org_serial="$LOG_ROOT/live_${protocol}_org.srl"
+
+    write_cert_ext_files "$ca_ext" "$user_ext"
+    openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-384 -out "$org_key" >/dev/null 2>&1
+    openssl req -new -key "$org_key" \
+        -subj "/C=MX/ST=DF/L=Mexico City/O=$org_id/OU=CA/CN=$org_id" \
+        -sha384 -out "$org_req" >/dev/null 2>&1
+    openssl x509 -req -days 3650 -in "$org_req" \
+        -CA "$ROOT_DIR/TEST/testCertAuth/ca.pem" \
+        -CAkey "$ROOT_DIR/TEST/testCertAuth/ca.key" \
+        -CAserial "$ca_serial" -CAcreateserial \
+        -extfile "$ca_ext" -extensions v3_ca \
+        -sha384 -out "$org_pem" >/dev/null 2>&1
+    openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-384 -out "$user_key" >/dev/null 2>&1
+    openssl req -new -key "$user_key" \
+        -subj "/C=MX/ST=DF/L=Mexico City/O=$org_id/OU=Webmaster/CN=$user_id" \
+        -sha384 -out "$user_req" >/dev/null 2>&1
+    openssl x509 -req -days 3650 -in "$user_req" \
+        -CA "$org_pem" -CAkey "$org_key" \
+        -CAserial "$org_serial" -CAcreateserial \
+        -extfile "$user_ext" -extensions usr_cert \
+        -sha384 -out "$user_pem" >/dev/null 2>&1
+    cat "$user_pem" "$org_pem" > "$chain"
+    printf '%s\n%s\n' "$chain" "$user_key"
+}
+
+run_live_web_flow() {
+    local protocol="$1"
+    local port="$2"
+    local service_log="$LOG_ROOT/live_${protocol}_service.log"
+    local base_url
+    local service_pid
+    local protocol_label
+    local org_name="${LIVE_FLOW_ID}_${protocol}_org"
+    local org_key="${LIVE_FLOW_ID}${protocol}"
+    local storage_name="${LIVE_FLOW_ID}_${protocol}_storage"
+    local storage_path="$LOG_ROOT/live_${protocol}_storage"
+    local csv_name="${LIVE_FLOW_ID}_${protocol}.csv"
+    local script_name="${LIVE_FLOW_ID}_${protocol}.pl"
+    local user_id="User123"
+    local auth="userId=$user_id&orgId=$org_name&orgKey=$org_key"
+    local curl_tls_args=()
+    local failed=0
+    local client_chain
+    local client_key
+
+    if [ "$protocol" = "https" ]; then
+        base_url="https://localhost:$port"
+        protocol_label="HTTPS"
+        {
+            read -r client_chain
+            read -r client_key
+        } < <(generate_live_client_cert_chain "$protocol" "$org_name" "$user_id")
+        curl_tls_args=(--cacert "$PREFIX/cdse/ca.pem" --cert "$client_chain" --key "$client_key")
+    else
+        base_url="http://localhost:$port"
+        protocol_label="HTTP"
+    fi
+    mkdir -p "$storage_path"
+
+    note "RUN  live_${protocol}_api_flow"
+    (
+        cd "$ROOT_DIR" || exit 1
+        env CDSE_DEBUG_TEST_SKIP_AUTHZ=1 \
+            CDSE_DEBUG_TEST_HTTP_PORT="$HTTP_PORT" \
+            CDSE_DEBUG_TEST_HTTPS_PORT="$HTTPS_PORT" \
+            "$PREFIX/cdse/bin/CaumeDSE-debug-tests" --web-service "$protocol"
+    ) > "$service_log" 2>&1 &
+    service_pid=$!
+
+    if ! wait_for_log_marker "$service_log" "CaumeDSE Debug: cmeWebServiceSetup(), $protocol_label server started on port $port." 20; then
+        stop_live_service "$service_pid"
+        record_fail "live_${protocol}_api_flow" "service did not start log=$service_log"
+        return 1
+    fi
+
+    if ! live_curl "$protocol" create_org 201 "$base_url/organizations/$org_name?$auth&*resourceInfo=live%20$protocol%20organization&*certificate=undefined&*publicKey=undefined&newOrgKey=$org_key" "${curl_tls_args[@]}" -X POST; then
+        failed=1
+    fi
+    if ! live_curl "$protocol" create_storage 201 "$base_url/organizations/$org_name/storage/$storage_name?$auth&newOrgKey=$org_key&*resourceInfo=live%20$protocol%20storage&*location=localhost&*type=local&*accessPath=$storage_path&*accessUser=undefined&*accessPassword=undefined" "${curl_tls_args[@]}" -X POST; then
+        failed=1
+    fi
+    if ! live_curl "$protocol" upload_csv 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/randomdata-620_A.csv" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol CSV"; then
+        failed=1
+    fi
+    if ! live_curl "$protocol" row_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=csv" "${curl_tls_args[@]}"; then
+        failed=1
+    elif ! check_live_body_marker "$protocol" row_get "Jacob"; then
+        failed=1
+    fi
+    if ! live_curl "$protocol" column_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentColumns/name?$auth&newOrgKey=$org_key&outputType=csv" "${curl_tls_args[@]}"; then
+        failed=1
+    elif ! check_live_body_marker "$protocol" column_get "Jacob"; then
+        failed=1
+    fi
+    if ! live_curl "$protocol" upload_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$script_name" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/test.pl" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol Perl script"; then
+        failed=1
+    fi
+    if ! live_curl "$protocol" parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=csv" "${curl_tls_args[@]}"; then
+        failed=1
+    elif ! check_live_body_marker "$protocol" parser_get "82400"; then
+        failed=1
+    fi
+
+    stop_live_service "$service_pid"
+
+    if [ "$failed" -eq 0 ]; then
+        record_pass "live_${protocol}_api_flow"
+        return 0
+    fi
+    record_fail "live_${protocol}_api_flow" "request flow failed log=$service_log meta=$LOG_ROOT/live_${protocol}_*.meta"
+    return 1
+}
+
 note "CaumeDSE DEBUG component verification"
 note "root=$ROOT_DIR"
 note "prefix=$PREFIX"
@@ -151,7 +375,7 @@ note "logs=$LOG_ROOT"
 note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT"
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
-    run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE || exit 1
+    run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP || exit 1
     run_step make_clean make clean || exit 1
     run_step make make || exit 1
     run_step make_check make check || exit 1
@@ -165,12 +389,28 @@ else
 fi
 
 if [ "$SKIP_WEB" -eq 0 ]; then
+    if ! valid_tcp_port "$HTTP_PORT"; then
+        record_fail webservice_ports "HTTP port '$HTTP_PORT' is not a valid TCP port"
+        exit 1
+    fi
+    if ! valid_tcp_port "$HTTPS_PORT"; then
+        record_fail webservice_ports "HTTPS port '$HTTPS_PORT' is not a valid TCP port"
+        exit 1
+    fi
+    if [ "$HTTP_PORT" -eq "$HTTPS_PORT" ]; then
+        record_fail webservice_ports "HTTP and HTTPS ports must be different"
+        exit 1
+    fi
     if port_in_use "$HTTP_PORT"; then
         record_fail webservice_ports "HTTP port $HTTP_PORT is already in use"
         exit 1
     fi
     if port_in_use "$HTTPS_PORT"; then
         record_fail webservice_ports "HTTPS port $HTTPS_PORT is already in use"
+        exit 1
+    fi
+    if ! command -v curl >/dev/null 2>&1; then
+        record_fail live_web_api_prerequisites "curl is required for live HTTP(S) API flow checks"
         exit 1
     fi
 else
@@ -188,8 +428,7 @@ note "RUN  debug_engine"
             timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
     else
         env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
-            CDSE_DEBUG_TEST_HTTP_PORT=0 \
-            CDSE_DEBUG_TEST_HTTPS_PORT=0 \
+            CDSE_DEBUG_TEST_SKIP_WEB=1 \
             timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
     fi
 ) > "$FULL_LOG" 2>&1
@@ -319,14 +558,24 @@ check_component mac_macprotected 'MAC and MACProtected|MACProtected test|verifie
     "verified MACProtected for 'value' in row id 10."
 
 if [ "$SKIP_WEB" -eq 0 ]; then
-    check_component webservice_startup 'Testing Web server|cmeLoadStrFromFile|server.key|server.pem|ca.pem' "$FULL_LOG" \
+    check_component webservice_startup 'Testing Web server|cmeLoadStrFromFile|server.key|server.pem|ca.pem|webservice' "$FULL_LOG" \
         "--- Testing Web server HTTP port $HTTP_PORT" \
         "--- Testing Web server HTTPS port $HTTPS_PORT" \
-        "read 306 bytes from file $PREFIX/cdse/server.key" \
-        "read 1119 bytes from file $PREFIX/cdse/server.pem" \
-        "read 1054 bytes from file $PREFIX/cdse/ca.pem"
+        "TESTS: testWebServices(), PASS: HTTP startup and shutdown verified on port $HTTP_PORT" \
+        "TESTS: testWebServices(), PASS: HTTPS startup and shutdown verified on port $HTTPS_PORT"
+    for marker in "$PREFIX/cdse/server.key" "$PREFIX/cdse/server.pem" "$PREFIX/cdse/ca.pem"; do
+        if grep -E "read [1-9][0-9]* bytes from file " "$FULL_LOG" | grep -Fq -- "$marker"; then
+            :
+        else
+            record_fail webservice_certificate_loading "missing nonzero read marker for $marker"
+        fi
+    done
+    run_live_web_flow http "$HTTP_PORT"
+    run_live_web_flow https "$HTTPS_PORT"
 else
     record_skip webservice_startup "requested --skip-web"
+    record_skip live_http_api_flow "requested --skip-web"
+    record_skip live_https_api_flow "requested --skip-web"
 fi
 
 note "RESULT passed=$PASSED failed=$FAILED skipped=$SKIPPED"

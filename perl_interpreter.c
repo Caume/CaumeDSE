@@ -55,6 +55,7 @@ int cmePerlParserCmdLineInit (int argc, char **argv, PerlInterpreter *myPerl)
 #endif
         return(1);
     }
+    PERL_SET_CONTEXT(myPerl);
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmePerlParserCmdLineInit(), perl_parse() will be executed"
             " with: argc=%d, argv[0]=%s, argv[1]=%s and environment=NULL.\n",argc,argv[0],argv[1]);
@@ -81,6 +82,7 @@ int cmePerlParserInstruction (char *perlInstruction, PerlInterpreter *myPerl)
     const char prg[]="CaumeDSE";
     const char eParam[]="-e";
 
+    PERL_SET_CONTEXT(myPerl);
     PL_perl_destruct_level = 0; //Destruct and reconstruct again the Perl interpreter to avoid namespace problems.
     ilist[0]=(char *)prg;
     ilist[1]=(char *)eParam;
@@ -100,6 +102,7 @@ int cmePerlParserInstruction (char *perlInstruction, PerlInterpreter *myPerl)
 int cmePerlParserRun (PerlInterpreter *myPerl)
 {
     int result __attribute__((unused))=0;
+    PERL_SET_CONTEXT(myPerl);
     result=perl_run(myPerl);
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmePerlParserRun(), perl_run() executed"
@@ -114,6 +117,7 @@ int cmePerlParserScriptFunction (const char *fName, PerlInterpreter *myPerl, cha
     int cont=0;
     char *string=NULL;
 
+    PERL_SET_CONTEXT(myPerl);
     cmePerlParserRun (myPerl); // No cmePerlParserCmdLineInit(), in order to allow
                                // a single initialization with several calls to functions!!!!
                                // i.e. global variables in perl script are persistent :-)
