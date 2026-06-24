@@ -279,3 +279,12 @@
   - Source: `TEST/run_debug_components.sh`, `debug_tests.c`, `README.md`.
   - Goal: verify more than socket startup by driving authenticated web requests through both HTTP and HTTPS, including organization creation, CSV upload, content row and column queries, Perl script upload, and parser script execution.
   - Done: `CaumeDSE-debug-tests --web-service http|https` now holds a selected DEBUG web service open until SIGTERM, and `TEST/run_debug_components.sh` uses `curl` to run the live API flow over both protocols with temporary organization/storage resources, CSV/Perl fixtures, and a per-run HTTPS client certificate chain signed by the committed test CA fixture.
+
+- [x] #54 Clean up generated verification artifact stash.
+  - Source: `stash@{0}` (`codex-generated-verification-artifacts`), local build outputs.
+  - Goal: remove stale local generated artifacts from the post-verification workflow without losing source changes or useful diagnostics.
+  - Plan:
+    - Batch 1: inspect the stash metadata and file list, separating tracked generated files from untracked build products.
+    - Batch 2: confirm the stash contains no source, documentation, test fixture, or configuration changes worth preserving.
+    - Batch 3: drop only the generated-artifact stash, leave unrelated older stashes untouched, and verify the worktree remains clean.
+  - Done: inspected `codex-generated-verification-artifacts`, confirmed it contained only generated build/dependency outputs (`.Po`, `.o`, generated binaries, `Makefile`, `config.*`), dropped that stash, and left unrelated older stashes untouched.
