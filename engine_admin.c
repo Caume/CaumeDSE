@@ -1139,6 +1139,10 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
         }
     }
     cmeWebServiceStopRequested=0;
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: cmeWebServiceSetup(), %s server started on port %d.\n",
+            useSSL ? "HTTPS" : "HTTP",port);
+#endif
     if (cmeWebServiceInstallStopHandler(&oldIntAction,&oldTermAction))
     {
         cmeWebServiceSetupFree();
@@ -1146,6 +1150,10 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
     }
     stopHandlersInstalled=1;
     cmeWebServiceWaitForStop();
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: cmeWebServiceSetup(), %s server stopped on port %d.\n",
+            useSSL ? "HTTPS" : "HTTP",port);
+#endif
     cmeWebServiceSetupFree();
     return(0);
 }

@@ -19,6 +19,17 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
   `EngineAdmin` organization key, distinguish it from the historical fixture
   key and `password1` document fixture keys, and mark TODO item #52 complete.
 
+- `TEST/run_debug_components.sh`, `function_tests.c`, `engine_admin.c`,
+  `README.md`, `TODO.md`: Make full HTTP(S) startup coverage the default
+  DEBUG component verification path, add explicit web startup/shutdown
+  markers, validate test ports, verify certificate/key reads without fixed
+  byte counts, and mark TODO item #51 complete.
+
+- `TEST/run_debug_components.sh`, `debug_tests.c`, `README.md`, `TODO.md`:
+  Add live HTTP(S) API flow coverage to the DEBUG verifier, including
+  authenticated organization creation, CSV upload, row and column queries,
+  Perl script upload, and parser script execution through HTTP and HTTPS.
+
 ## 2026-06-10 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
 - `TODO.md`, `README.md`: Add TODO item #51 for full webservice

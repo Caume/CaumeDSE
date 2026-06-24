@@ -265,11 +265,17 @@
   - Source: `crypto.c:436`.
   - Done: `cmeSeedPrng()` now uses OpenSSL platform seeding via `RAND_poll()`/`RAND_status()` and treats `/dev/random` and `/dev/urandom` as optional extra entropy sources when present.
 
-- [ ] #51 Add full webservice startup HTTP(S) component coverage without `--skip-web`.
+- [x] #51 Add full webservice startup HTTP(S) component coverage without `--skip-web`.
   - Source: `TEST/run_debug_components.sh:20`, `TEST/run_debug_components.sh:164`, `TEST/run_debug_components.sh:322`.
   - Goal: make the default `TEST/run_debug_components.sh` path reliable for routine full HTTP and HTTPS startup verification, including port availability, generated certificate/key loading, webservice startup markers, bounded noninteractive shutdown, and failure diagnostics when either protocol cannot start.
+  - Done: default component verification now runs full web startup coverage with a 120s executable timeout, validates HTTP/HTTPS ports before launch, checks explicit HTTP/HTTPS startup-and-shutdown PASS markers, verifies nonzero certificate/key file reads without hard-coded byte counts, and reports startup failures with protocol and port diagnostics.
 
 - [x] #52 Verify and document the test database default password.
   - Source: `TEST/testDB_opt_cdse/ResourcesDB`, `README.md`, `function_tests.c`.
   - Goal: use repository history and HTTPS fixture checks to identify the actual default password/key for the committed test databases, update documentation and tests that still reference stale values, and explain why `password1` is not accepted when it is not the fixture key.
   - Done: documented that the current committed fixture uses `0CDBB9AF76AF43BDB72E095989E612CC` for `EngineAdmin` / `EngineOrg`, that older history used `6DA74D788E0A33A0272252796EF0748A`, and that `password1` is only a generated document/resource fixture key. Verified current component coverage with `TEST/run_debug_components.sh --skip-build --skip-web` and `CDSE_DEBUG_TEST_TIMEOUT=120s`.
+
+- [x] #53 Add live HTTP(S) API flow coverage to the DEBUG verifier.
+  - Source: `TEST/run_debug_components.sh`, `debug_tests.c`, `README.md`.
+  - Goal: verify more than socket startup by driving authenticated web requests through both HTTP and HTTPS, including organization creation, CSV upload, content row and column queries, Perl script upload, and parser script execution.
+  - Done: `CaumeDSE-debug-tests --web-service http|https` now holds a selected DEBUG web service open until SIGTERM, and `TEST/run_debug_components.sh` uses `curl` to run the live API flow over both protocols with temporary organization/storage resources, CSV/Perl fixtures, and a per-run HTTPS client certificate chain signed by the committed test CA fixture.
