@@ -371,7 +371,7 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 
 #define cmeWSMsgDocumentTypeOptions  "Allowed Methods: <code>GET,HEAD,OPTIONS</code><br>" \
                                      "Syntax: <code> HTTPS:&#47;&#47;{engine}/organizations/{organization}/storage/{storage}/documentTypes/{documentType}" \
-                                     "/&lt;file.csv|file.raw|file.txt|file.json|file.xml|file.html|file.pdf|file.png|file.jpg|file.gif|file.zip|file.bin|script.perl&gt;" \
+                                     "/&lt;file.csv|file.raw|file.txt|file.json|file.xml|file.html|file.pdf|file.png|file.jpg|file.gif|file.zip|file.bin|script.perl|script.python&gt;" \
                                      "?userId=&lt;userid&gt;&amp;orgId=&lt;orgid&gt;&amp;orgKey=&lt;orgKey&gt;[&amp;" \
                                      "OptionalParameters...]<br></code><br>" //Document Type resource options.
 

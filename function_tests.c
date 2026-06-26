@@ -1421,11 +1421,13 @@ void testDocumentTypes ()
     const char *csvUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/file.csv";
     const char *rawUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/file.raw";
     const char *perlUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/script.perl";
+    const char *pythonUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/script.python";
     const char *badUrl="/organizations/EngineOrg/storage/EngineStorage/documentTypes/file.exe";
     const char *classElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes"};
     const char *csvElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","file.csv"};
     const char *rawElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","file.raw"};
     const char *perlElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","script.perl"};
+    const char *pythonElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","script.python"};
     const char *badElements[]={"organizations","EngineOrg","storage","EngineStorage","documentTypes","file.exe"};
     const char *adminArgs[]={
         "userId","EngineAdmin",
@@ -1440,6 +1442,7 @@ void testDocumentTypes ()
     errors+=cmeTestDocumentTypesRequest("GET",csvUrl,csvElements,6,adminArgs,200,"documentTypes file.csv GET");
     errors+=cmeTestDocumentTypesRequest("HEAD",rawUrl,rawElements,6,adminArgs,200,"documentTypes file.raw HEAD");
     errors+=cmeTestDocumentTypesRequest("OPTIONS",perlUrl,perlElements,6,adminArgs,200,"documentTypes script.perl OPTIONS");
+    errors+=cmeTestDocumentTypesRequest("GET",pythonUrl,pythonElements,6,adminArgs,200,"documentTypes script.python GET");
     errors+=cmeTestDocumentTypesRequest("GET",badUrl,badElements,6,adminArgs,404,"documentTypes unsupported GET");
     if (errors)
     {

@@ -281,6 +281,7 @@ run_live_web_flow() {
     local storage_path="$LOG_ROOT/live_${protocol}_storage"
     local csv_name="${LIVE_FLOW_ID}_${protocol}.csv"
     local script_name="${LIVE_FLOW_ID}_${protocol}.pl"
+    local python_script_name="${LIVE_FLOW_ID}_${protocol}.py"
     local user_id="User123"
     local auth="userId=$user_id&orgId=$org_name&orgKey=$org_key"
     local curl_tls_args=()
@@ -355,6 +356,20 @@ run_live_web_flow() {
     if ! live_curl "$protocol" parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=csv" "${curl_tls_args[@]}"; then
         failed=1
     elif ! check_live_body_marker "$protocol" parser_get "82400"; then
+        failed=1
+    fi
+    if ! live_curl "$protocol" upload_python_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_script_name" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/test.py" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol Python script"; then
+        failed=1
+    fi
+    if ! live_curl "$protocol" python_parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=csv" "${curl_tls_args[@]}"; then
+        failed=1
+    elif ! check_live_body_marker "$protocol" python_parser_get "82400"; then
         failed=1
     fi
 
@@ -561,8 +576,8 @@ if [ "$SKIP_WEB" -eq 0 ]; then
     check_component webservice_startup 'Testing Web server|cmeLoadStrFromFile|server.key|server.pem|ca.pem|webservice' "$FULL_LOG" \
         "--- Testing Web server HTTP port $HTTP_PORT" \
         "--- Testing Web server HTTPS port $HTTPS_PORT" \
-        "TESTS: testWebServices(), PASS: HTTP startup and shutdown verified on port $HTTP_PORT" \
-        "TESTS: testWebServices(), PASS: HTTPS startup and shutdown verified on port $HTTPS_PORT"
+        "TESTS: testWebServices(), PASS: HTTP startup" \
+        "TESTS: testWebServices(), PASS: HTTPS startup"
     for marker in "$PREFIX/cdse/server.key" "$PREFIX/cdse/server.pem" "$PREFIX/cdse/ca.pem"; do
         if grep -E "read [1-9][0-9]* bytes from file " "$FULL_LOG" | grep -Fq -- "$marker"; then
             :

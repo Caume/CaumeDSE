@@ -43,6 +43,8 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 ***/
 #include "common.h"
+#include <errno.h>
+#include <sys/wait.h>
 
 static void cmeWebServiceSetThreadStatus(struct cmeWebServiceConnectionInfoStruct *con_info, int threadStatus)
 {
@@ -595,7 +597,8 @@ static const char *cmeWebServiceSupportedDocumentTypes[]={
     "file.gif",
     "file.zip",
     "file.bin",
-    "script.perl"
+    "script.perl",
+    "script.python"
 };
 
 static const int cmeWebServiceNumSupportedDocumentTypes=
@@ -619,6 +622,16 @@ static int cmeWebServiceIsSupportedDocumentType(const char *documentType)
     return(0);
 }
 
+static int cmeWebServiceIsParserScriptDocumentType(const char *documentType)
+{
+    if (!documentType)
+    {
+        return(0);
+    }
+    return((!strcmp(documentType,"script.perl"))||
+           (!strcmp(documentType,"script.python")));
+}
+
 static int cmeWebServiceIsRawFileDocumentType(const char *documentType)
 {
     if (!documentType)
@@ -636,6 +649,148 @@ static int cmeWebServiceIsRawFileDocumentType(const char *documentType)
            (!strcmp(documentType,"file.gif"))||
            (!strcmp(documentType,"file.zip"))||
            (!strcmp(documentType,"file.bin")));
+}
+
+static int cmeWebServiceCreateSecureTmpPath(char **tmpPath)
+{
+    char *tmpName=NULL;
+
+    if (!tmpPath)
+    {
+        return(1);
+    }
+    *tmpPath=NULL;
+    if (cmeGetRndSalt(&tmpName))
+    {
+        return(2);
+    }
+    cmeStrConstrAppend(tmpPath,"%s%s",cmeDefaultSecureTmpFilePath,tmpName);
+    cmeFree(tmpName);
+    return((*tmpPath)?0:3);
+}
+
+static int cmeWebServiceWriteResultMemTableCSV(const char *filePath)
+{
+    int result;
+    char *csvTable=NULL;
+
+    if ((!filePath)||(!cmeResultMemTable)||(cmeResultMemTableCols<=0))
+    {
+        return(1);
+    }
+    result=cmeMemTableToCSVTableStr((const char **)cmeResultMemTable,&csvTable,
+                                    cmeResultMemTableCols,cmeResultMemTableRows);
+    if (result)
+    {
+        cmeFree(csvTable);
+        return(2);
+    }
+    result=cmeWriteStrToFile(csvTable,filePath,(int)strlen(csvTable));
+    cmeFree(csvTable);
+    return(result?3:0);
+}
+
+static int cmeWebServiceLoadCSVToResultMemTable(const char *filePath)
+{
+    int cont,result;
+    int numCols=0;
+    int processedRows=0;
+    char **elements=NULL;
+
+    if (!filePath)
+    {
+        return(1);
+    }
+    result=cmeCSVFileRowsToMemTable(filePath,&elements,&numCols,&processedRows,1,0,
+                                    cmeMaxCSVRowsInPart*cmeMaxCSVPartsPerColumn);
+    if (result)
+    {
+        return(2);
+    }
+    cmeResultMemTableClean();
+    cmeResultMemTableCols=numCols;
+    cmeResultMemTableRows=processedRows;
+    cmeResultMemTable=(char **)malloc(sizeof(char *)*numCols*(processedRows+1));
+    if (!cmeResultMemTable)
+    {
+        cmeCSVFileRowsToMemTableFinal(&elements,numCols,processedRows+1);
+        cmeResultMemTableCols=0;
+        cmeResultMemTableRows=0;
+        return(3);
+    }
+    for (cont=0;cont<numCols*(processedRows+1);cont++)
+    {
+        cmeResultMemTable[cont]=NULL;
+        cmeStrConstrAppend(&(cmeResultMemTable[cont]),"%s",elements[cont]?elements[cont]:"");
+    }
+    cmeCSVFileRowsToMemTableFinal(&elements,numCols,processedRows+1);
+    return(0);
+}
+
+static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
+{
+    int result=0;
+    int status=0;
+    char *inputPath=NULL;
+    char *outputPath=NULL;
+    pid_t pid;
+
+    if (!scriptPath)
+    {
+        return(1);
+    }
+    result=cmeWebServiceCreateSecureTmpPath(&inputPath);
+    if (!result)
+    {
+        result=cmeWebServiceCreateSecureTmpPath(&outputPath);
+    }
+    if (!result)
+    {
+        result=cmeWebServiceWriteResultMemTableCSV(inputPath);
+    }
+    if (!result)
+    {
+        pid=fork();
+        if (pid<0)
+        {
+            result=4;
+        }
+        else if (pid==0)
+        {
+            execlp("python3","python3",scriptPath,inputPath,outputPath,(char *)NULL);
+            _exit(127);
+        }
+        else
+        {
+            do
+            {
+                result=waitpid(pid,&status,0);
+            } while ((result<0)&&(errno==EINTR));
+            if ((result<0)||(!WIFEXITED(status))||(WEXITSTATUS(status)!=0))
+            {
+                result=5;
+            }
+            else
+            {
+                result=0;
+            }
+        }
+    }
+    if (!result)
+    {
+        result=cmeWebServiceLoadCSVToResultMemTable(outputPath);
+    }
+    if (inputPath)
+    {
+        cmeFileOverwriteAndDelete(inputPath);
+    }
+    if (outputPath)
+    {
+        cmeFileOverwriteAndDelete(outputPath);
+    }
+    cmeFree(inputPath);
+    cmeFree(outputPath);
+    return(result);
 }
 
 static int cmeWebServiceBuildSecureDBAttributes(const char **argumentElements,
@@ -7170,7 +7325,7 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                             return(4);
                         }
                     }
-                    else if((!strcmp("script.perl",urlElements[5]))||
+                    else if((cmeWebServiceIsParserScriptDocumentType(urlElements[5]))||
                             (cmeWebServiceIsRawFileDocumentType(urlElements[5]))) //Process raw-compatible secure file types.
                     {
                         resourceInfoText = (char *) MHD_lookup_connection_value(connection,MHD_GET_ARGUMENT_KIND,"*resourceInfo");
@@ -8651,8 +8806,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     const char *tableName="documents";
     const char *validGETALLMatchColumns[9]={"_userId","_orgId","_resourceInfo","_columnFile",
                                             "_partHash","_totalParts","_partId","_lastModified","_columnId"};
-    const char *scriptNameMatch[2]={"documentId","type"};
-    char *scriptNameValues[2]={"TBD","script.perl"};
+    const char *scriptNameMatch[1]={"documentId"};
+    char *scriptNameValues[1]={"TBD"};
     #define cmeWebServiceProcessParserScriptResourceFree() \
         do { \
             cmeFree(orgKey); \
@@ -8768,10 +8923,9 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
             if (!result) //if OK
             {
                 scriptNameValues[0]=(void*)urlElements[9]; //Just point to proper documentId for the script; no need to free it here.
-                /* NOTE (ANY#9#): Currently, only script.perl is supported. */
-                //Get Script first:
+                //Get parser script first:
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,scriptNameMatch,(const char **)scriptNameValues,
-                                                  2,&resultRegisterCols,&numResultRegisterCols,
+                                                  1,&resultRegisterCols,&numResultRegisterCols,
                                                   &numResultRegisters,orgKey);
                 if (!result) //OK
                 {
@@ -8830,6 +8984,20 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     *responseCode=500;
                     return(2);
                 }
+                if ((numResultRegisters)&&
+                    (!cmeWebServiceIsParserScriptDocumentType(resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type])))
+                {
+                    cmeStrConstrAppend(responseText,"<b>404 ERROR Script resource not found.</b><br>"
+                                           "Internal server error number '%d'."
+                                           "METHOD: '%s' URL: '%s'."
+                                            "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgParserScriptResourceOptions,
+                                            cmeInternalDBDefinitionsVersion);
+                    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                    cmeWebServiceProcessParserScriptResourceFree();
+                    *responseCode=404;
+                    return(0);
+                }
                 //Now, get the protected file.
                 if (!strncmp(urlElements[5],"file.csv",8)) //If type of documentId to be parsed is file.csv, then...
                 {
@@ -8850,32 +9018,44 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         *responseCode=500;
                         return(4);
                     }
-                    cmeResultMemTableClean();
-                    // Serialise only the shared Perl interpreter parse and callback execution.
-                    pthread_mutex_lock(&cmePerlMutex);
-                    perlLocked=1;
-                    ilist[0]="CaumeDSE";
-                    ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
-                    result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
-                    if (result) //Error
+                    if (!strcmp(resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],"script.perl"))
                     {
-                        cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
-                                           "Internal server error number '%d'."
-                                           "METHOD: '%s' URL: '%s'."
-                                            "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgParserScriptResourceOptions,
-                                            cmeInternalDBDefinitionsVersion);
+                        cmeResultMemTableClean();
+                        // Serialise only the shared Perl interpreter parse and callback execution.
+                        pthread_mutex_lock(&cmePerlMutex);
+                        perlLocked=1;
+                        ilist[0]="CaumeDSE";
+                        ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
+                        result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
+                        if (result) //Error
+                        {
+                            cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
+                                               "Internal server error number '%d'."
+                                               "METHOD: '%s' URL: '%s'."
+                                                "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgParserScriptResourceOptions,
+                                                cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+                            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
+                                    " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
 #endif
-                        cmeWebServiceProcessParserScriptResourceFree();
-                        *responseCode=500;
-                        return(3);
+                            cmeWebServiceProcessParserScriptResourceFree();
+                            *responseCode=500;
+                            return(3);
+                        }
+                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",
+                                   cmeDefaultPerlIterationFunction,cdsePerl); //Select
+                        pthread_mutex_unlock(&cmePerlMutex);
+                        perlLocked=0;
                     }
-                    result=cmeSQLRows(resultDB,"SELECT * FROM data;",
-                               cmeDefaultPerlIterationFunction,cdsePerl); //Select
-                    pthread_mutex_unlock(&cmePerlMutex);
-                    perlLocked=0;
+                    else
+                    {
+                        cmeResultMemTableClean();
+                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",NULL,NULL);
+                        if (!result)
+                        {
+                            result=cmeWebServiceRunPythonParserScript(tmpRAWFile);
+                        }
+                    }
                     if (!result) //OK
                     {
                         //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -8999,10 +9179,9 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
             if (!result) //if OK
             {
                 scriptNameValues[0]=(void*)urlElements[9]; //Just point to proper documentId for the script; no need to free it here.
-                /* NOTE (ANY#9#): Currently, only script.perl is supported. */
-                //Get Script first:
+                //Get parser script first:
                 result=cmeGetUnprotectDBRegisters(pDB,tableName,scriptNameMatch,(const char **)scriptNameValues,
-                                                  2,&resultRegisterCols,&numResultRegisterCols,
+                                                  1,&resultRegisterCols,&numResultRegisterCols,
                                                   &numResultRegisters,orgKey);
                 if (!result) //OK
                 {
@@ -9043,6 +9222,13 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     *responseCode=500; //No responseText in HEAD!
                     return(11);
                 }
+                if ((numResultRegisters)&&
+                    (!cmeWebServiceIsParserScriptDocumentType(resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type])))
+                {
+                    cmeWebServiceProcessParserScriptResourceFree();
+                    *responseCode=404;
+                    return(0);
+                }
                 //Now, get the protected file.
                 if (!strncmp(urlElements[5],"file.csv",8)) //If type of documentId to be parsed is file.csv, then...
                 {
@@ -9058,27 +9244,39 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         *responseCode=500;  //No responseText in HEAD!
                         return(13);
                     }
-                    cmeResultMemTableClean();
-                    // Serialise only the shared Perl interpreter parse and callback execution.
-                    pthread_mutex_lock(&cmePerlMutex);
-                    perlLocked=1;
-                    ilist[0]="CaumeDSE";
-                    ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
-                    result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
-                    if (result) //Error
+                    if (!strcmp(resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],"script.perl"))
                     {
+                        cmeResultMemTableClean();
+                        // Serialise only the shared Perl interpreter parse and callback execution.
+                        pthread_mutex_lock(&cmePerlMutex);
+                        perlLocked=1;
+                        ilist[0]="CaumeDSE";
+                        ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
+                        result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
+                        if (result) //Error
+                        {
 #ifdef ERROR_LOG
-                        fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+                            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
+                                    " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
 #endif
-                        cmeWebServiceProcessParserScriptResourceFree();
-                        *responseCode=500; //No responseText in HEAD!
-                        return(12);
+                            cmeWebServiceProcessParserScriptResourceFree();
+                            *responseCode=500; //No responseText in HEAD!
+                            return(12);
+                        }
+                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",
+                                          cmeDefaultPerlIterationFunction,cdsePerl); //Select
+                        pthread_mutex_unlock(&cmePerlMutex);
+                        perlLocked=0;
                     }
-                    result=cmeSQLRows(resultDB,"SELECT * FROM data;",
-                                      cmeDefaultPerlIterationFunction,cdsePerl); //Select
-                    pthread_mutex_unlock(&cmePerlMutex);
-                    perlLocked=0;
+                    else
+                    {
+                        cmeResultMemTableClean();
+                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",NULL,NULL);
+                        if (!result)
+                        {
+                            result=cmeWebServiceRunPythonParserScript(tmpRAWFile);
+                        }
+                    }
                     if (!result) //OK
                     {
                         if (cmeResultMemTableRows) // Found >0 rows.
