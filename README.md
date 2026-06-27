@@ -1513,7 +1513,7 @@ below).
         DOCUMENT TYPES:
             file.csv file.raw file.txt file.json file.xml file.html
             file.pdf file.png file.jpg file.gif file.zip file.bin
-            script.perl
+            script.perl script.python
         RESPONSE HEADERS:
             <NONE>
         RESPONSE BODY:
@@ -1525,7 +1525,8 @@ below).
     requested type is supported before document collection and document
     resource handlers run. Supported types are file.csv, file.raw,
     file.txt, file.json, file.xml, file.html, file.pdf, file.png,
-    file.jpg, file.gif, file.zip, file.bin and script.perl.
+    file.jpg, file.gif, file.zip, file.bin, script.perl and
+    script.python.
     These routes are handled through the main storage resource tree
     dispatcher at `/organizations/{organization}/storage/{storage}`.
 
@@ -1716,13 +1717,15 @@ This is a raw file
         RESPONSE HEADERS:
             Engine-results: <number of matching registers>
         RESPONSE BODY:
-            <Contents of parsed file.csv with perl script>
+            <Contents of parsed file.csv with parser script>
 
     The parserScripts collection supports OPTIONS. Individual
-    parserScript resources load the named script.perl document,
-    reconstruct it through the secure-file path, and run it against
-    file.csv document content with the embedded Perl interpreter after
-    normal authorization succeeds.
+    parserScript resources load the named script.perl or script.python
+    document, reconstruct it through the secure-file path, and run it
+    against file.csv document content after normal authorization
+    succeeds. Perl scripts use the embedded Perl interpreter. Python
+    scripts are executed with `python3` and receive two command-line
+    arguments: an input CSV file path and an output CSV file path.
 
     Example 1)     Get parsed contents of payroll.csv file (of type
             file.csv) using script myscript.pl (of type

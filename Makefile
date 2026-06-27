@@ -89,7 +89,7 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = aarch64-unknown-linux-gnu
 host_triplet = aarch64-unknown-linux-gnu
-ipathbin_PROGRAMS = CaumeDSE$(EXEEXT)
+ipathbin_PROGRAMS = CaumeDSE$(EXEEXT) CaumeDSE-debug-tests$(EXEEXT)
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ax_check_compile_flag.m4 \
@@ -111,10 +111,18 @@ PROGRAMS = $(ipathbin_PROGRAMS)
 am_CaumeDSE_OBJECTS = main.$(OBJEXT) config.$(OBJEXT) crypto.$(OBJEXT) \
 	db.$(OBJEXT) engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
 	filehandling.$(OBJEXT) function_tests.$(OBJEXT) \
-	perl_interpreter.$(OBJEXT) strhandling.$(OBJEXT) \
+	perl_interpreter.$(OBJEXT) runtime.$(OBJEXT) strhandling.$(OBJEXT) \
 	webservice_interface.$(OBJEXT) xs_init.$(OBJEXT)
 CaumeDSE_OBJECTS = $(am_CaumeDSE_OBJECTS)
 CaumeDSE_LDADD = $(LDADD)
+am_CaumeDSE_debug_tests_OBJECTS = debug_tests.$(OBJEXT) \
+	config.$(OBJEXT) crypto.$(OBJEXT) db.$(OBJEXT) \
+	engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
+	filehandling.$(OBJEXT) function_tests.$(OBJEXT) \
+	perl_interpreter.$(OBJEXT) runtime.$(OBJEXT) strhandling.$(OBJEXT) \
+	webservice_interface.$(OBJEXT) xs_init.$(OBJEXT)
+CaumeDSE_debug_tests_OBJECTS = $(am_CaumeDSE_debug_tests_OBJECTS)
+CaumeDSE_debug_tests_LDADD = $(LDADD)
 AM_V_P = $(am__v_P_$(V))
 am__v_P_ = $(am__v_P_$(AM_DEFAULT_VERBOSITY))
 am__v_P_0 = false
@@ -131,10 +139,10 @@ DEFAULT_INCLUDES = -I.
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
 am__depfiles_remade = ./$(DEPDIR)/config.Po ./$(DEPDIR)/crypto.Po \
-	./$(DEPDIR)/db.Po ./$(DEPDIR)/engine_admin.Po \
+	./$(DEPDIR)/db.Po ./$(DEPDIR)/debug_tests.Po ./$(DEPDIR)/engine_admin.Po \
 	./$(DEPDIR)/engine_interface.Po ./$(DEPDIR)/filehandling.Po \
 	./$(DEPDIR)/function_tests.Po ./$(DEPDIR)/main.Po \
-	./$(DEPDIR)/perl_interpreter.Po ./$(DEPDIR)/strhandling.Po \
+	./$(DEPDIR)/perl_interpreter.Po ./$(DEPDIR)/runtime.Po ./$(DEPDIR)/strhandling.Po \
 	./$(DEPDIR)/webservice_interface.Po ./$(DEPDIR)/xs_init.Po
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
@@ -149,8 +157,8 @@ AM_V_CCLD = $(am__v_CCLD_$(V))
 am__v_CCLD_ = $(am__v_CCLD_$(AM_DEFAULT_VERBOSITY))
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(CaumeDSE_SOURCES)
-DIST_SOURCES = $(CaumeDSE_SOURCES)
+SOURCES = $(CaumeDSE_SOURCES) $(CaumeDSE_debug_tests_SOURCES)
+DIST_SOURCES = $(CaumeDSE_SOURCES) $(CaumeDSE_debug_tests_SOURCES)
 RECURSIVE_TARGETS = all-recursive check-recursive cscopelist-recursive \
 	ctags-recursive dvi-recursive html-recursive info-recursive \
 	install-data-recursive install-dvi-recursive \
@@ -266,13 +274,13 @@ distuninstallcheck_listfiles = find . -type f -print
 am__distuninstallcheck_listfiles = $(distuninstallcheck_listfiles) \
   | sed 's|^\./|$(prefix)/|' | grep -v '$(infodir)/dir$$'
 distcleancheck_listfiles = find . -type f -print
-ACLOCAL = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' aclocal-1.16
+ACLOCAL = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' aclocal-1.18
 ADDITIONAL_CFLAGS = -g -DDEBUG
 AMTAR = $${TAR-tar}
 AM_DEFAULT_VERBOSITY = 1
 AUTOCONF = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' autoconf
 AUTOHEADER = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' autoheader
-AUTOMAKE = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' automake-1.16
+AUTOMAKE = ${SHELL} '/home/oherrera/Projects/CaumeDSE/missing' automake-1.18
 AWK = gawk
 BINDIR = /tmp/cdse-verify/cdse/bin
 CC = gcc
@@ -313,10 +321,10 @@ OBJEXT = o
 PACKAGE = caumedse
 PACKAGE_BUGREPORT = 0h3rr3r4@gmail.com
 PACKAGE_NAME = CaumeDSE
-PACKAGE_STRING = CaumeDSE 1.0.7
+PACKAGE_STRING = CaumeDSE 1.0.10
 PACKAGE_TARNAME = caumedse
 PACKAGE_URL = 
-PACKAGE_VERSION = 1.0.7
+PACKAGE_VERSION = 1.0.10
 PATH_SEPARATOR = :
 PERL = /usr/bin/perl
 PERL_CCOPTS =  -D_REENTRANT -D_GNU_SOURCE -DDEBIAN -fwrapv -fno-strict-aliasing -pipe -I/usr/local/include -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64  -I/usr/lib/aarch64-linux-gnu/perl/5.40/CORE 
@@ -329,7 +337,7 @@ SHELL = /bin/bash
 STRIP = 
 TESTDB = /tmp/cdse-verify/cdse
 TESTFILES = /tmp/cdse-verify/cdse/testfiles
-VERSION = 1.0.7
+VERSION = 1.0.10
 abs_builddir = /home/oherrera/Projects/CaumeDSE
 abs_srcdir = /home/oherrera/Projects/CaumeDSE
 abs_top_builddir = /home/oherrera/Projects/CaumeDSE
@@ -339,8 +347,8 @@ ac_ct_CXX = g++
 am__include = include
 am__leading_dot = .
 am__quote = 
-am__tar = $${TAR-tar} chof - "$$tardir"
-am__untar = $${TAR-tar} xf -
+am__tar = tar --format=ustar -chf - "$$tardir"
+am__untar = tar -xf -
 bindir = ${exec_prefix}/bin
 build = aarch64-unknown-linux-gnu
 build_alias = 
@@ -393,7 +401,9 @@ tpath = /tmp/cdse-verify/cdse/testfiles
 ipath = /tmp/cdse-verify
 ipathbindir = /tmp/cdse-verify/cdse/bin
 ipathdatadir = /tmp/cdse-verify/cdse
-CaumeDSE_SOURCES = main.c common.h config.c crypto.c crypto.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+caume_common_sources = common.h config.c crypto.c crypto.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+CaumeDSE_SOURCES = main.c $(caume_common_sources)
+CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = TEST README-alpha CHANGELOG.md README.md
 all: config.h
@@ -496,6 +506,10 @@ CaumeDSE$(EXEEXT): $(CaumeDSE_OBJECTS) $(CaumeDSE_DEPENDENCIES) $(EXTRA_CaumeDSE
 	@rm -f CaumeDSE$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(CaumeDSE_OBJECTS) $(CaumeDSE_LDADD) $(LIBS)
 
+CaumeDSE-debug-tests$(EXEEXT): $(CaumeDSE_debug_tests_OBJECTS) $(CaumeDSE_debug_tests_DEPENDENCIES) $(EXTRA_CaumeDSE_debug_tests_DEPENDENCIES) 
+	@rm -f CaumeDSE-debug-tests$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(CaumeDSE_debug_tests_OBJECTS) $(CaumeDSE_debug_tests_LDADD) $(LIBS)
+
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
 
@@ -505,12 +519,14 @@ distclean-compile:
 include ./$(DEPDIR)/config.Po # am--include-marker
 include ./$(DEPDIR)/crypto.Po # am--include-marker
 include ./$(DEPDIR)/db.Po # am--include-marker
+include ./$(DEPDIR)/debug_tests.Po # am--include-marker
 include ./$(DEPDIR)/engine_admin.Po # am--include-marker
 include ./$(DEPDIR)/engine_interface.Po # am--include-marker
 include ./$(DEPDIR)/filehandling.Po # am--include-marker
 include ./$(DEPDIR)/function_tests.Po # am--include-marker
 include ./$(DEPDIR)/main.Po # am--include-marker
 include ./$(DEPDIR)/perl_interpreter.Po # am--include-marker
+include ./$(DEPDIR)/runtime.Po # am--include-marker
 include ./$(DEPDIR)/strhandling.Po # am--include-marker
 include ./$(DEPDIR)/webservice_interface.Po # am--include-marker
 include ./$(DEPDIR)/xs_init.Po # am--include-marker
@@ -1030,7 +1046,7 @@ install-data-local:
 		$(MKDIR_P) "$(tpath)" && cp -R TEST/testfiles/* "$(tpath)" ; \
 	fi
 	if [ ! -z "$(spath)" ] ; then \
-		$(MKDIR_P) "$(spath)" && chmod 600 "$(spath)" ; \
+		$(MKDIR_P) "$(spath)" && chmod 700 "$(spath)" ; \
 	fi
 	if [ ! -z "$(tdbpath)" ] ; then \
 		cp -R TEST/testDB_opt_cdse/* "$(tdbpath)" ; \

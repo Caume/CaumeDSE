@@ -288,3 +288,29 @@
     - Batch 2: confirm the stash contains no source, documentation, test fixture, or configuration changes worth preserving.
     - Batch 3: drop only the generated-artifact stash, leave unrelated older stashes untouched, and verify the worktree remains clean.
   - Done: inspected `codex-generated-verification-artifacts`, confirmed it contained only generated build/dependency outputs (`.Po`, `.o`, generated binaries, `Makefile`, `config.*`), dropped that stash, and left unrelated older stashes untouched.
+
+- [ ] #55 Use document storage paths when deleting secure DB column files.
+  - Source: `engine_interface.c:566`.
+  - Goal: make `cmeDeleteSecureDB()` delete column files from the storage path associated with the secure document instead of assuming `cmeDefaultFilePath`.
+  - Plan:
+    - Batch 1: trace `cmeDeleteSecureDB()` callers and ResourcesDB document metadata to identify the authoritative storage path available during deletion.
+    - Batch 2: update deletion path construction to use the provided or document-defined storage path, preserving existing local filesystem behavior and secure cleanup semantics.
+    - Batch 3: add DEBUG/component coverage that creates a secure document under a non-default storage path, deletes it, and verifies ResourcesDB rows and column files are both removed.
+
+- [x] #56 Add Python parser script support.
+  - Source: `webservice_interface.c:8771`, `webservice_interface.c:9002`.
+  - Goal: support `script.python` parser scripts alongside `script.perl` for parser script resources while preserving encrypted script loading, authorization, and secure temporary-file cleanup.
+  - Plan:
+    - Batch 1: define the `script.python` document type behavior, accepted URL/resource semantics, output contract, and interpreter/runtime dependency expectations.
+    - Batch 2: add type validation, upload/storage handling, and parser dispatch so `script.perl` continues through the existing Perl path while `script.python` uses a Python execution path with bounded inputs and sanitized temporary files.
+    - Batch 3: add DEBUG/component and live HTTP(S) coverage for Python script upload and parser execution, including missing-script, unsupported-type, parser-error, and unauthorized-access cases.
+  - Done: added `script.python` as a supported raw script document type, dispatch parserScripts requests to `python3` with secure temporary input/output CSV files, documented the Python parser contract, added a Python parser fixture, and extended live HTTP(S) verifier coverage for upload and parser execution.
+
+- [ ] #57 Add live web verification coverage for all API features.
+  - Source: `TEST/run_debug_components.sh`, DEBUG web-service harness, API resource handlers.
+  - Goal: provide an unsandboxed live HTTP(S) verification mode that exercises every documented API feature end-to-end, not only startup and a representative document/parser flow.
+  - Plan:
+    - Batch 1: inventory documented API resources, methods, required parameters, output formats, and existing DEBUG/component coverage to define the live coverage matrix.
+    - Batch 2: extend the live verifier to run only under explicit unsandboxed execution, allocate isolated ports/storage, create disposable organizations/users/resources, and clean up after each scenario.
+    - Batch 3: add live HTTP and HTTPS scenarios for organizations, users, storage, documentTypes, documents, content rows/columns, parser scripts, roleTables, filterWhitelist/filterBlacklist, DB browsing, and negative authorization/error cases.
+    - Batch 4: report per-feature PASS/FAIL markers and request/response log paths so failures are diagnosable without reading the full DEBUG log.
