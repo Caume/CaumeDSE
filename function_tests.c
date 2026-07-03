@@ -561,9 +561,15 @@ void testCSV ()
     int numCols=0;
     int numRows=0;
     int processedRows=0;
+    int deleteNumResultRegisterCols=0;
+    int deleteNumResultRegisters=0;
+    int oldColumnFilesRemoved=1;
     char *fName=NULL;
     char *fName2=NULL;
     char *resourcesDBPath=NULL;
+    char *deleteStoragePath=NULL;
+    char **deleteResultRegisterCols=NULL;
+    char **deleteColumnFilePaths=NULL;
     char **elements=NULL;
     char **pQueryResult=NULL;
     char **pQueryResult2=NULL;
@@ -577,6 +583,8 @@ void testCSV ()
     fName=cmeTestPath("testfiles/CSVtest.csv");
     fName2=cmeTestPath("testfiles/CSVtest2.csv");
     resourcesDBPath=cmeTestPath(cmeDefaultResourcesDBName);
+    cmeStrConstrAppend(&deleteStoragePath,"%sdelete-storage/",cmeDefaultFilePath);
+    mkdir(deleteStoragePath,0700);
 
     result=cmeCSVFileRowsToMemTable (fName, &elements, &numCols, &processedRows, 0, 6, 10);
     for (cont2=0; cont2<=processedRows; cont2++)
@@ -622,6 +630,7 @@ void testCSV ()
         cmeFree(fName);
         cmeFree(fName2);
         cmeFree(resourcesDBPath);
+        cmeFree(deleteStoragePath);
         return;
     }
     cmeSecureDBToMemDB (&resultDB, pResourcesDB,"AcmeIncPayroll.csv","password1",cmeDefaultFilePath);
@@ -644,6 +653,7 @@ void testCSV ()
         cmeFree(fName);
         cmeFree(fName2);
         cmeFree(resourcesDBPath);
+        cmeFree(deleteStoragePath);
         return;
     }
     result=cmeMemTableToSecureDB((const char **)pQueryResult,numCols,numRows,"User123","CaumeDSE",
@@ -672,13 +682,98 @@ void testCSV ()
         cmeFree(fName);
         cmeFree(fName2);
         cmeFree(resourcesDBPath);
+        cmeFree(deleteStoragePath);
         return;
     }
     cmeMemTableFinal(pQueryResult);
     cmeMemTableFinal(pQueryResult2);
     cmeDBClose(resultDB);
     resultDB=NULL;
-    //result=cmeDeleteSecureDB(pResourcesDB,"AcmeIncPayroll Tests.csv", "password2",cmeDefaultFilePath);
+
+    printf("\n--- Testing secure DB delete with non-default storage path:\n");
+    result=cmeCSVFileToSecureDB(fName,1,&numCols,&processedRows,"User123","CaumeDSE",
+                                "password-delete",attributes, attributesData,2,1,0,
+                                "Delete storage path test.",
+                                "file.csv","DeleteStoragePath.csv","storage-delete",deleteStoragePath);
+    if (result)
+    {
+        printf("TESTS: testCSV(), FAIL: non-default storage setup import result=%d.\n",result);
+    }
+    else
+    {
+        const char *deleteMatchColumns[2]={"documentId","type"};
+        const char *deleteMatchValues[2]={"DeleteStoragePath.csv","file.csv"};
+        result=cmeGetUnprotectDBRegisters(pResourcesDB,"documents",deleteMatchColumns,deleteMatchValues,2,
+                                          &deleteResultRegisterCols,&deleteNumResultRegisterCols,
+                                          &deleteNumResultRegisters,"password-delete");
+        if ((result)||(!deleteNumResultRegisters))
+        {
+            printf("TESTS: testCSV(), FAIL: non-default storage setup query result=%d rows=%d.\n",
+                   result,deleteNumResultRegisters);
+        }
+        else
+        {
+            deleteColumnFilePaths=(char **)malloc(sizeof(char *)*deleteNumResultRegisters);
+            for (cont=0;cont<deleteNumResultRegisters;cont++)
+            {
+                deleteColumnFilePaths[cont]=NULL;
+                cmeStrConstrAppend(&(deleteColumnFilePaths[cont]),"%s%s",deleteStoragePath,
+                                   deleteResultRegisterCols[(cont+1)*deleteNumResultRegisterCols+
+                                                            cmeIDDResourcesDBDocuments_columnFile]);
+                if (access(deleteColumnFilePaths[cont],F_OK))
+                {
+                    oldColumnFilesRemoved=0;
+                }
+            }
+            result=cmeCSVFileToSecureDB(fName2,1,&numCols,&processedRows,"User123","CaumeDSE",
+                                        "password-delete",attributes, attributesData,2,1,0,
+                                        "Delete storage path replacement test.",
+                                        "file.csv","DeleteStoragePath.csv","storage-delete",deleteStoragePath);
+            if (result)
+            {
+                printf("TESTS: testCSV(), FAIL: non-default storage replacement import result=%d.\n",result);
+            }
+            else
+            {
+                for (cont=0;cont<deleteNumResultRegisters;cont++)
+                {
+                    if (!access(deleteColumnFilePaths[cont],F_OK))
+                    {
+                        oldColumnFilesRemoved=0;
+                    }
+                }
+                if (oldColumnFilesRemoved)
+                {
+                    printf("TESTS: testCSV(), PASS: secure DB replacement removed old column files from non-default storage path.\n");
+                }
+                else
+                {
+                    printf("TESTS: testCSV(), FAIL: secure DB replacement left old column files in non-default storage path.\n");
+                }
+            }
+        }
+    }
+    if (deleteResultRegisterCols)
+    {
+        for (cont=0;cont<deleteNumResultRegisterCols*(deleteNumResultRegisters+1);cont++)
+        {
+            cmeFree(deleteResultRegisterCols[cont]);
+        }
+        cmeFree(deleteResultRegisterCols);
+    }
+    if (deleteColumnFilePaths)
+    {
+        for (cont=0;cont<deleteNumResultRegisters;cont++)
+        {
+            if (!access(deleteColumnFilePaths[cont],F_OK))
+            {
+                cmeFileOverwriteAndDelete(deleteColumnFilePaths[cont]);
+            }
+            cmeFree(deleteColumnFilePaths[cont]);
+        }
+        cmeFree(deleteColumnFilePaths);
+    }
+    cmeDeleteSecureDB(pResourcesDB,"DeleteStoragePath.csv","password-delete",deleteStoragePath);
 
     // Test integrity attributes: protect data, compute plaintext and protected signatures/MACs,
     // then verify integrity on retrieval.
@@ -724,6 +819,7 @@ void testCSV ()
     cmeFree(fName);
     cmeFree(fName2);
     cmeFree(resourcesDBPath);
+    cmeFree(deleteStoragePath);
 }
 
 // ---------------------------------------------------------------------------

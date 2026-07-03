@@ -563,7 +563,7 @@ int cmeDeleteSecureDB (sqlite3 *pResourcesDB,const char *documentId, const char 
                 return(4);
             }
             //Delete Column Files:
-            cmeStrConstrAppend(&currentFName,"%s%s",cmeDefaultFilePath,colSQLDBfNames[cont]); // NOTE (OHR#2#): Use provided storagePath (or better yet, get it from the document defined storage) instead of using cmeDefaultFilePath
+            cmeStrConstrAppend(&currentFName,"%s%s",storagePath?storagePath:cmeDefaultFilePath,colSQLDBfNames[cont]);
             result=remove(currentFName);
             cmeFree(currentFName);
             if (result)
