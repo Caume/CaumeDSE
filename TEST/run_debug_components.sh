@@ -561,7 +561,8 @@ check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|t
 
 check_component csv_securedb_roundtrip 'CSV file to secure DB|AcmeIncPayroll.csv|Retrieved data from secure table|Omar|Pablo' "$FULL_LOG" \
     '--- Retrieved data from secure table (CSV file to secure DB):' \
-    '[10][10][Pablo][Martinez][14000.5]'
+    '[10][10][Pablo][Martinez][14000.5]' \
+    'TESTS: testCSV(), PASS: secure DB replacement removed old column files from non-default storage path.'
 
 check_component memtable_securedb_roundtrip 'Memory Table to secure DB|AcmeIncPayroll Tests.csv|Retrieved data from secure table' "$FULL_LOG" \
     '--- Retrieved data from secure table (Memory Table to secure DB):' \

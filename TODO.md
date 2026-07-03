@@ -289,13 +289,14 @@
     - Batch 3: drop only the generated-artifact stash, leave unrelated older stashes untouched, and verify the worktree remains clean.
   - Done: inspected `codex-generated-verification-artifacts`, confirmed it contained only generated build/dependency outputs (`.Po`, `.o`, generated binaries, `Makefile`, `config.*`), dropped that stash, and left unrelated older stashes untouched.
 
-- [ ] #55 Use document storage paths when deleting secure DB column files.
+- [x] #55 Use document storage paths when deleting secure DB column files.
   - Source: `engine_interface.c:566`.
   - Goal: make `cmeDeleteSecureDB()` delete column files from the storage path associated with the secure document instead of assuming `cmeDefaultFilePath`.
   - Plan:
     - Batch 1: trace `cmeDeleteSecureDB()` callers and ResourcesDB document metadata to identify the authoritative storage path available during deletion.
     - Batch 2: update deletion path construction to use the provided or document-defined storage path, preserving existing local filesystem behavior and secure cleanup semantics.
     - Batch 3: add DEBUG/component coverage that creates a secure document under a non-default storage path, deletes it, and verifies ResourcesDB rows and column files are both removed.
+  - Done: `cmeDeleteSecureDB()` now builds secure column file delete paths from the supplied storage path with the previous default path as a fallback, and DEBUG component coverage verifies replacement removes old column files created under a non-default storage directory.
 
 - [x] #56 Add Python parser script support.
   - Source: `webservice_interface.c:8771`, `webservice_interface.c:9002`.
