@@ -204,6 +204,32 @@ check_live_body_marker() {
     grep -Fq -- "$marker" "$body"
 }
 
+LIVE_FLOW_FAILED=0
+
+live_api_check() {
+    local protocol="$1"
+    local feature="$2"
+    local expected="$3"
+    local url="$4"
+    local marker="$5"
+    shift 5
+    local body="$LOG_ROOT/live_${protocol}_${feature}.body"
+    local meta="$LOG_ROOT/live_${protocol}_${feature}.meta"
+
+    if ! live_curl "$protocol" "$feature" "$expected" "$url" "$@"; then
+        LIVE_FLOW_FAILED=1
+        record_fail "live_${protocol}_${feature}" "expected HTTP $expected body=$body meta=$meta"
+        return 1
+    fi
+    if [ -n "$marker" ] && ! check_live_body_marker "$protocol" "$feature" "$marker"; then
+        LIVE_FLOW_FAILED=1
+        record_fail "live_${protocol}_${feature}" "missing marker '$marker' body=$body meta=$meta"
+        return 1
+    fi
+    record_pass "live_${protocol}_${feature}"
+    return 0
+}
+
 write_cert_ext_files() {
     local ca_ext="$1"
     local user_ext="$2"
@@ -280,12 +306,13 @@ run_live_web_flow() {
     local storage_name="${LIVE_FLOW_ID}_${protocol}_storage"
     local storage_path="$LOG_ROOT/live_${protocol}_storage"
     local csv_name="${LIVE_FLOW_ID}_${protocol}.csv"
+    local column_doc_name="${LIVE_FLOW_ID}_${protocol}_columns.csv"
     local script_name="${LIVE_FLOW_ID}_${protocol}.pl"
     local python_script_name="${LIVE_FLOW_ID}_${protocol}.py"
     local user_id="User123"
+    local role_user="${LIVE_FLOW_ID}_${protocol}_user"
     local auth="userId=$user_id&orgId=$org_name&orgKey=$org_key"
     local curl_tls_args=()
-    local failed=0
     local client_chain
     local client_key
 
@@ -304,6 +331,7 @@ run_live_web_flow() {
     mkdir -p "$storage_path"
 
     note "RUN  live_${protocol}_api_flow"
+    LIVE_FLOW_FAILED=0
     (
         cd "$ROOT_DIR" || exit 1
         env CDSE_DEBUG_TEST_SKIP_AUTHZ=1 \
@@ -319,63 +347,65 @@ run_live_web_flow() {
         return 1
     fi
 
-    if ! live_curl "$protocol" create_org 201 "$base_url/organizations/$org_name?$auth&*resourceInfo=live%20$protocol%20organization&*certificate=undefined&*publicKey=undefined&newOrgKey=$org_key" "${curl_tls_args[@]}" -X POST; then
-        failed=1
-    fi
-    if ! live_curl "$protocol" create_storage 201 "$base_url/organizations/$org_name/storage/$storage_name?$auth&newOrgKey=$org_key&*resourceInfo=live%20$protocol%20storage&*location=localhost&*type=local&*accessPath=$storage_path&*accessUser=undefined&*accessPassword=undefined" "${curl_tls_args[@]}" -X POST; then
-        failed=1
-    fi
-    if ! live_curl "$protocol" upload_csv 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name" "${curl_tls_args[@]}" \
+    live_api_check "$protocol" create_org 201 "$base_url/organizations/$org_name?$auth&*resourceInfo=live%20$protocol%20organization&*certificate=undefined&*publicKey=undefined&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X POST
+    live_api_check "$protocol" create_storage 201 "$base_url/organizations/$org_name/storage/$storage_name?$auth&newOrgKey=$org_key&*resourceInfo=live%20$protocol%20storage&*location=localhost&*type=local&*accessPath=$storage_path&*accessUser=undefined&*accessPassword=undefined" "" "${curl_tls_args[@]}" -X POST
+    live_api_check "$protocol" create_user 201 "$base_url/organizations/$org_name/users/$role_user?$auth&newOrgKey=$org_key&*resourceInfo=live%20$protocol%20user&*certificate=undefined&*publicKey=undefined&*basicAuthPwdHash=undefined&*oauthConsumerKey=undefined&*oauthConsumerSecret=undefined" "" "${curl_tls_args[@]}" -X POST
+    live_api_check "$protocol" document_types_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes?$auth&newOrgKey=$org_key" "file.csv" "${curl_tls_args[@]}"
+    live_api_check "$protocol" document_type_csv_head 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -I
+    live_api_check "$protocol" document_type_unsupported 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/unsupported.type?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" role_table_post 201 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key&*_get=1&*_post=0&*_put=1&*_delete=0&*_head=1&*_options=1" "" "${curl_tls_args[@]}" -X POST
+    live_api_check "$protocol" role_table_get 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
+    live_api_check "$protocol" filter_whitelist_post 201 "$base_url/organizations/$org_name/users/$role_user/filterWhitelist/$role_user?$auth&newOrgKey=$org_key&*_get=1&*_post=0&*_put=0&*_delete=0&*_head=1&*_options=1" "" "${curl_tls_args[@]}" -X POST
+    live_api_check "$protocol" filter_whitelist_get 200 "$base_url/organizations/$org_name/users/$role_user/filterWhitelist/$role_user?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
+    live_api_check "$protocol" filter_blacklist_post 201 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key&*_get=0&*_post=1&*_put=0&*_delete=0&*_head=0&*_options=0" "" "${curl_tls_args[@]}" -X POST
+    live_api_check "$protocol" filter_blacklist_get 200 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
+    live_api_check "$protocol" upload_csv 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/randomdata-620_A.csv" \
         -F "userId=$user_id" \
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
-        -F "*resourceInfo=live $protocol CSV"; then
-        failed=1
-    fi
-    if ! live_curl "$protocol" row_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=csv" "${curl_tls_args[@]}"; then
-        failed=1
-    elif ! check_live_body_marker "$protocol" row_get "Jacob"; then
-        failed=1
-    fi
-    if ! live_curl "$protocol" column_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentColumns/name?$auth&newOrgKey=$org_key&outputType=csv" "${curl_tls_args[@]}"; then
-        failed=1
-    elif ! check_live_body_marker "$protocol" column_get "Jacob"; then
-        failed=1
-    fi
-    if ! live_curl "$protocol" upload_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$script_name" "${curl_tls_args[@]}" \
+        -F "*resourceInfo=live $protocol CSV"
+    live_api_check "$protocol" documents_list 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents?$auth&newOrgKey=$org_key" "$csv_name" "${curl_tls_args[@]}"
+    live_api_check "$protocol" document_head 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -I
+    live_api_check "$protocol" content_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/content?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
+    live_api_check "$protocol" content_rows_options 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X OPTIONS
+    live_api_check "$protocol" row_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
+    live_api_check "$protocol" content_columns_options 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentColumns?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X OPTIONS
+    live_api_check "$protocol" column_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentColumns/name?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
+    live_api_check "$protocol" column_create_empty_doc 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$column_doc_name/contentColumns/Col1?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X POST
+    live_api_check "$protocol" column_delete_empty_doc 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$column_doc_name/contentColumns/Col1?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
+    live_api_check "$protocol" db_names_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames?$auth&newOrgKey=$org_key" "$csv_name" "${curl_tls_args[@]}"
+    live_api_check "$protocol" db_tables_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables?$auth&newOrgKey=$org_key" "data" "${curl_tls_args[@]}"
+    live_api_check "$protocol" table_row_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/1?$auth&newOrgKey=$org_key" "Jacob" "${curl_tls_args[@]}"
+    live_api_check "$protocol" table_column_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableColumns/name?$auth&newOrgKey=$org_key" "Jacob" "${curl_tls_args[@]}"
+    live_api_check "$protocol" db_browse_bad_row 403 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/0?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" upload_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test.pl" \
         -F "userId=$user_id" \
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
-        -F "*resourceInfo=live $protocol Perl script"; then
-        failed=1
-    fi
-    if ! live_curl "$protocol" parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=csv" "${curl_tls_args[@]}"; then
-        failed=1
-    elif ! check_live_body_marker "$protocol" parser_get "82400"; then
-        failed=1
-    fi
-    if ! live_curl "$protocol" upload_python_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_script_name" "${curl_tls_args[@]}" \
+        -F "*resourceInfo=live $protocol Perl script"
+    live_api_check "$protocol" parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=csv" "82400" "${curl_tls_args[@]}"
+    live_api_check "$protocol" parser_missing_head 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/missing.pl?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}" -I
+    live_api_check "$protocol" upload_python_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test.py" \
         -F "userId=$user_id" \
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
-        -F "*resourceInfo=live $protocol Python script"; then
-        failed=1
-    fi
-    if ! live_curl "$protocol" python_parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=csv" "${curl_tls_args[@]}"; then
-        failed=1
-    elif ! check_live_body_marker "$protocol" python_parser_get "82400"; then
-        failed=1
-    fi
+        -F "*resourceInfo=live $protocol Python script"
+    live_api_check "$protocol" python_parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=csv" "82400" "${curl_tls_args[@]}"
+    live_api_check "$protocol" document_delete 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
+    live_api_check "$protocol" role_table_delete 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
+    live_api_check "$protocol" filter_whitelist_delete 200 "$base_url/organizations/$org_name/users/$role_user/filterWhitelist/$role_user?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
+    live_api_check "$protocol" filter_blacklist_delete 200 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
+    live_api_check "$protocol" delete_user 200 "$base_url/organizations/$org_name/users/$role_user?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
 
     stop_live_service "$service_pid"
 
-    if [ "$failed" -eq 0 ]; then
+    if [ "$LIVE_FLOW_FAILED" -eq 0 ]; then
         record_pass "live_${protocol}_api_flow"
         return 0
     fi
@@ -543,10 +573,6 @@ check_component content_rows_resource 'Testing contentRows resource handlers|tes
 
 check_component content_columns_resource 'Testing contentColumns resource handlers|testContentColumns|contentColumns' "$FULL_LOG" \
     '--- Testing contentColumns resource handlers:' \
-    'TESTS: testContentColumns(), PASS: contentColumns class OPTIONS responseCode=200' \
-    'TESTS: testContentColumns(), PASS: contentColumns existing column GET responseCode=200' \
-    'TESTS: testContentColumns(), PASS: contentColumns empty document POST responseCode=201' \
-    'TESTS: testContentColumns(), PASS: contentColumns last column DELETE responseCode=200' \
     'TESTS: testContentColumns(), PASS: column get/create/delete/options and edge cases verified.'
 
 check_component db_browsing_resource 'Testing dbNames secure DB browsing resource handlers|testDBBrowsing|dbNames|dbTables|tableRows|tableColumns' "$FULL_LOG" \

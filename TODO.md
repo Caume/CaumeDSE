@@ -307,7 +307,7 @@
     - Batch 3: add DEBUG/component and live HTTP(S) coverage for Python script upload and parser execution, including missing-script, unsupported-type, parser-error, and unauthorized-access cases.
   - Done: added `script.python` as a supported raw script document type, dispatch parserScripts requests to `python3` with secure temporary input/output CSV files, documented the Python parser contract, added a Python parser fixture, and extended live HTTP(S) verifier coverage for upload and parser execution.
 
-- [ ] #57 Add live web verification coverage for all API features.
+- [x] #57 Add live web verification coverage for all API features.
   - Source: `TEST/run_debug_components.sh`, DEBUG web-service harness, API resource handlers.
   - Goal: provide an unsandboxed live HTTP(S) verification mode that exercises every documented API feature end-to-end, not only startup and a representative document/parser flow.
   - Plan:
@@ -315,3 +315,4 @@
     - Batch 2: extend the live verifier to run only under explicit unsandboxed execution, allocate isolated ports/storage, create disposable organizations/users/resources, and clean up after each scenario.
     - Batch 3: add live HTTP and HTTPS scenarios for organizations, users, storage, documentTypes, documents, content rows/columns, parser scripts, roleTables, filterWhitelist/filterBlacklist, DB browsing, and negative authorization/error cases.
     - Batch 4: report per-feature PASS/FAIL markers and request/response log paths so failures are diagnosable without reading the full DEBUG log.
+  - Done: `TEST/run_debug_components.sh` now reports per-feature live HTTP/HTTPS PASS/FAIL markers with body/meta log paths, creates disposable organizations, users, storage, documents, role/filter rules and scripts, and verifies documentTypes, document metadata, content, contentRows/contentColumns, parserScripts, DB browsing, roleTables, filterWhitelist/filterBlacklist, cleanup, and representative negative routes over both protocols.
