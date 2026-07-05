@@ -10,6 +10,8 @@ HTTPS_PORT="${CDSE_DEBUG_TEST_HTTPS_PORT:-18443}"
 RUN_TIMEOUT="${CDSE_DEBUG_TEST_TIMEOUT:-120s}"
 SKIP_BUILD=0
 SKIP_WEB=0
+LIVE_ONLY=0
+WEB_PROTOCOL="both"
 LIVE_FLOW_ID="liveflow$$"
 
 PASSED=0
@@ -18,7 +20,13 @@ SKIPPED=0
 SUMMARY_FILE=""
 
 usage() {
-    printf 'Usage: %s [--skip-build] [--skip-web]\n' "$0"
+    printf 'Usage: %s [--skip-build] [--skip-web] [--live-only] [--web-protocol=http|https|both]\n' "$0"
+    printf '\n'
+    printf 'Options:\n'
+    printf '  --skip-build              reuse the current install prefix\n'
+    printf '  --skip-web                skip DEBUG web startup and live API checks\n'
+    printf '  --live-only               run only live API checks; implies --skip-build\n'
+    printf '  --web-protocol=VALUE      live protocol to run: http, https, or both; default both\n'
     printf '\n'
     printf 'Environment:\n'
     printf '  CDSE_VERIFY_PREFIX         install prefix, default /tmp/cdse-verify\n'
@@ -36,6 +44,13 @@ while [ "$#" -gt 0 ]; do
         --skip-web)
             SKIP_WEB=1
             ;;
+        --live-only)
+            LIVE_ONLY=1
+            SKIP_BUILD=1
+            ;;
+        --web-protocol=*)
+            WEB_PROTOCOL="${1#*=}"
+            ;;
         -h|--help)
             usage
             exit 0
@@ -48,6 +63,21 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
+
+case "$WEB_PROTOCOL" in
+    http|https|both)
+        ;;
+    *)
+        printf 'Invalid --web-protocol value: %s\n' "$WEB_PROTOCOL" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+if [ "$LIVE_ONLY" -eq 1 ] && [ "$SKIP_WEB" -eq 1 ]; then
+    printf '%s\n' '--live-only cannot be combined with --skip-web' >&2
+    exit 2
+fi
 
 mkdir -p "$LOG_ROOT"
 SUMMARY_FILE="$LOG_ROOT/summary.txt"
@@ -72,23 +102,39 @@ record_skip() {
     note "SKIP $1 - $2"
 }
 
+elapsed_seconds() {
+    local start="$1"
+    local now
+
+    now="$(date +%s)"
+    printf '%ss' "$((now - start))"
+}
+
 run_step() {
     local name="$1"
     shift
     local log="$LOG_ROOT/${name}.log"
+    local start
 
     note "RUN  $name"
+    start="$(date +%s)"
     (
         cd "$ROOT_DIR" || exit 1
         "$@"
     ) > "$log" 2>&1
     local rc=$?
     if [ "$rc" -eq 0 ]; then
-        record_pass "$name"
+        record_pass "$name ($(elapsed_seconds "$start"))"
     else
-        record_fail "$name" "exit=$rc log=$log"
+        record_fail "$name" "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
     fi
     return "$rc"
+}
+
+protocol_enabled() {
+    local protocol="$1"
+
+    [ "$WEB_PROTOCOL" = "both" ] || [ "$WEB_PROTOCOL" = "$protocol" ]
 }
 
 port_in_use() {
@@ -215,18 +261,21 @@ live_api_check() {
     shift 5
     local body="$LOG_ROOT/live_${protocol}_${feature}.body"
     local meta="$LOG_ROOT/live_${protocol}_${feature}.meta"
+    local start
+
+    start="$(date +%s)"
 
     if ! live_curl "$protocol" "$feature" "$expected" "$url" "$@"; then
         LIVE_FLOW_FAILED=1
-        record_fail "live_${protocol}_${feature}" "expected HTTP $expected body=$body meta=$meta"
+        record_fail "live_${protocol}_${feature}" "expected HTTP $expected elapsed=$(elapsed_seconds "$start") body=$body meta=$meta"
         return 1
     fi
     if [ -n "$marker" ] && ! check_live_body_marker "$protocol" "$feature" "$marker"; then
         LIVE_FLOW_FAILED=1
-        record_fail "live_${protocol}_${feature}" "missing marker '$marker' body=$body meta=$meta"
+        record_fail "live_${protocol}_${feature}" "missing marker '$marker' elapsed=$(elapsed_seconds "$start") body=$body meta=$meta"
         return 1
     fi
-    record_pass "live_${protocol}_${feature}"
+    record_pass "live_${protocol}_${feature} ($(elapsed_seconds "$start"))"
     return 0
 }
 
@@ -417,7 +466,7 @@ note "CaumeDSE DEBUG component verification"
 note "root=$ROOT_DIR"
 note "prefix=$PREFIX"
 note "logs=$LOG_ROOT"
-note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT"
+note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_protocol=$WEB_PROTOCOL live_only=$LIVE_ONLY"
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
     run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP || exit 1
@@ -426,31 +475,39 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
     run_step make_check make check || exit 1
     run_step make_install make install || exit 1
 else
-    record_skip configure "requested --skip-build"
-    record_skip make_clean "requested --skip-build"
-    record_skip make "requested --skip-build"
-    record_skip make_check "requested --skip-build"
-    record_skip make_install "requested --skip-build"
+    if [ "$LIVE_ONLY" -eq 1 ]; then
+        record_skip configure "requested --live-only"
+        record_skip make_clean "requested --live-only"
+        record_skip make "requested --live-only"
+        record_skip make_check "requested --live-only"
+        record_skip make_install "requested --live-only"
+    else
+        record_skip configure "requested --skip-build"
+        record_skip make_clean "requested --skip-build"
+        record_skip make "requested --skip-build"
+        record_skip make_check "requested --skip-build"
+        record_skip make_install "requested --skip-build"
+    fi
 fi
 
 if [ "$SKIP_WEB" -eq 0 ]; then
-    if ! valid_tcp_port "$HTTP_PORT"; then
+    if protocol_enabled http && ! valid_tcp_port "$HTTP_PORT"; then
         record_fail webservice_ports "HTTP port '$HTTP_PORT' is not a valid TCP port"
         exit 1
     fi
-    if ! valid_tcp_port "$HTTPS_PORT"; then
+    if protocol_enabled https && ! valid_tcp_port "$HTTPS_PORT"; then
         record_fail webservice_ports "HTTPS port '$HTTPS_PORT' is not a valid TCP port"
         exit 1
     fi
-    if [ "$HTTP_PORT" -eq "$HTTPS_PORT" ]; then
+    if [ "$WEB_PROTOCOL" = "both" ] && [ "$HTTP_PORT" -eq "$HTTPS_PORT" ]; then
         record_fail webservice_ports "HTTP and HTTPS ports must be different"
         exit 1
     fi
-    if port_in_use "$HTTP_PORT"; then
+    if protocol_enabled http && port_in_use "$HTTP_PORT"; then
         record_fail webservice_ports "HTTP port $HTTP_PORT is already in use"
         exit 1
     fi
-    if port_in_use "$HTTPS_PORT"; then
+    if protocol_enabled https && port_in_use "$HTTPS_PORT"; then
         record_fail webservice_ports "HTTPS port $HTTPS_PORT is already in use"
         exit 1
     fi
@@ -463,33 +520,35 @@ else
 fi
 
 FULL_LOG="$LOG_ROOT/full-debug-run.log"
-note "RUN  debug_engine"
-(
-    cd "$ROOT_DIR" || exit 1
-    if [ "$SKIP_WEB" -eq 0 ]; then
-        env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
-            CDSE_DEBUG_TEST_HTTP_PORT="$HTTP_PORT" \
-            CDSE_DEBUG_TEST_HTTPS_PORT="$HTTPS_PORT" \
-            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
+if [ "$LIVE_ONLY" -eq 0 ]; then
+    DEBUG_ENGINE_START="$(date +%s)"
+    note "RUN  debug_engine"
+    (
+        cd "$ROOT_DIR" || exit 1
+        if [ "$SKIP_WEB" -eq 0 ]; then
+            env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
+                CDSE_DEBUG_TEST_HTTP_PORT="$HTTP_PORT" \
+                CDSE_DEBUG_TEST_HTTPS_PORT="$HTTPS_PORT" \
+                timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
+        else
+            env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
+                CDSE_DEBUG_TEST_SKIP_WEB=1 \
+                timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
+        fi
+    ) > "$FULL_LOG" 2>&1
+    ENGINE_RC=$?
+
+    if [ "$ENGINE_RC" -eq 0 ]; then
+        record_pass "debug_engine ($(elapsed_seconds "$DEBUG_ENGINE_START"))"
     else
-        env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
-            CDSE_DEBUG_TEST_SKIP_WEB=1 \
-            timeout "$RUN_TIMEOUT" "$PREFIX/cdse/bin/CaumeDSE-debug-tests"
+        record_fail debug_engine "exit=$ENGINE_RC elapsed=$(elapsed_seconds "$DEBUG_ENGINE_START") log=$FULL_LOG"
     fi
-) > "$FULL_LOG" 2>&1
-ENGINE_RC=$?
 
-if [ "$ENGINE_RC" -eq 0 ]; then
-    record_pass debug_engine
-else
-    record_fail debug_engine "exit=$ENGINE_RC log=$FULL_LOG"
-fi
-
-if check_forbidden "$FULL_LOG"; then
-    record_fail forbidden_markers "found forbidden marker in $FULL_LOG"
-else
-    record_pass forbidden_markers
-fi
+    if check_forbidden "$FULL_LOG"; then
+        record_fail forbidden_markers "found forbidden marker in $FULL_LOG"
+    else
+        record_pass forbidden_markers
+    fi
 
 check_component locale_printf 'locale .*printf|MB_CUR_MAX' "$FULL_LOG" \
     "supports multibyte printf output"
@@ -598,22 +657,39 @@ check_component mac_macprotected 'MAC and MACProtected|MACProtected test|verifie
     '--- Testing MAC and MACProtected column attributes:' \
     "--- Retrieved data from secure table (MAC+MACProtected test):" \
     "verified MACProtected for 'value' in row id 10."
+else
+    record_skip debug_engine "requested --live-only"
+    record_skip component_markers "requested --live-only"
+fi
 
 if [ "$SKIP_WEB" -eq 0 ]; then
-    check_component webservice_startup 'Testing Web server|cmeLoadStrFromFile|server.key|server.pem|ca.pem|webservice' "$FULL_LOG" \
-        "--- Testing Web server HTTP port $HTTP_PORT" \
-        "--- Testing Web server HTTPS port $HTTPS_PORT" \
-        "TESTS: testWebServices(), PASS: HTTP startup" \
-        "TESTS: testWebServices(), PASS: HTTPS startup"
-    for marker in "$PREFIX/cdse/server.key" "$PREFIX/cdse/server.pem" "$PREFIX/cdse/ca.pem"; do
-        if grep -E "read [1-9][0-9]* bytes from file " "$FULL_LOG" | grep -Fq -- "$marker"; then
-            :
-        else
-            record_fail webservice_certificate_loading "missing nonzero read marker for $marker"
-        fi
-    done
-    run_live_web_flow http "$HTTP_PORT"
-    run_live_web_flow https "$HTTPS_PORT"
+    if [ "$LIVE_ONLY" -eq 0 ]; then
+        check_component webservice_startup 'Testing Web server|cmeLoadStrFromFile|server.key|server.pem|ca.pem|webservice' "$FULL_LOG" \
+            "--- Testing Web server HTTP port $HTTP_PORT" \
+            "--- Testing Web server HTTPS port $HTTPS_PORT" \
+            "TESTS: testWebServices(), PASS: HTTP startup" \
+            "TESTS: testWebServices(), PASS: HTTPS startup"
+        for marker in "$PREFIX/cdse/server.key" "$PREFIX/cdse/server.pem" "$PREFIX/cdse/ca.pem"; do
+            if grep -E "read [1-9][0-9]* bytes from file " "$FULL_LOG" | grep -Fq -- "$marker"; then
+                :
+            else
+                record_fail webservice_certificate_loading "missing nonzero read marker for $marker"
+            fi
+        done
+    else
+        record_skip webservice_startup "requested --live-only"
+        record_skip webservice_certificate_loading "requested --live-only"
+    fi
+    if protocol_enabled http; then
+        run_live_web_flow http "$HTTP_PORT"
+    else
+        record_skip live_http_api_flow "not selected by --web-protocol=$WEB_PROTOCOL"
+    fi
+    if protocol_enabled https; then
+        run_live_web_flow https "$HTTPS_PORT"
+    else
+        record_skip live_https_api_flow "not selected by --web-protocol=$WEB_PROTOCOL"
+    fi
 else
     record_skip webservice_startup "requested --skip-web"
     record_skip live_http_api_flow "requested --skip-web"

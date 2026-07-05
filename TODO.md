@@ -316,3 +316,13 @@
     - Batch 3: add live HTTP and HTTPS scenarios for organizations, users, storage, documentTypes, documents, content rows/columns, parser scripts, roleTables, filterWhitelist/filterBlacklist, DB browsing, and negative authorization/error cases.
     - Batch 4: report per-feature PASS/FAIL markers and request/response log paths so failures are diagnosable without reading the full DEBUG log.
   - Done: `TEST/run_debug_components.sh` now reports per-feature live HTTP/HTTPS PASS/FAIL markers with body/meta log paths, creates disposable organizations, users, storage, documents, role/filter rules and scripts, and verifies documentTypes, document metadata, content, contentRows/contentColumns, parserScripts, DB browsing, roleTables, filterWhitelist/filterBlacklist, cleanup, and representative negative routes over both protocols.
+
+- [x] #58 Improve DEBUG verifier runtime and focused rerun ergonomics.
+  - Source: `TEST/run_debug_components.sh`.
+  - Goal: keep full DEBUG/live API coverage available while making routine iteration faster and easier to diagnose after failures.
+  - Plan:
+    - Batch 1: add explicit TODO tracking and inspect where the verifier spends time after live API coverage expansion.
+    - Batch 2: add focused execution switches for live-only reruns and protocol selection without weakening the default full verifier path.
+    - Batch 3: report elapsed time for major steps and live API feature checks so slow regressions are visible in the summary.
+    - Batch 4: validate syntax plus focused and full-compatible verifier modes, then document the completed workflow in this TODO item.
+  - Done: `TEST/run_debug_components.sh` now supports `--live-only` focused reruns, `--web-protocol=http|https|both` live protocol selection, elapsed-time reporting for build/debug-engine steps and live API feature checks, and protocol-aware port validation. Focused runs showed secure CSV reads, DB browsing, and parser execution as the slow live checks under DEBUG logging, while HTTP-only and HTTPS-only live reruns now avoid rebuilding, component extraction, and the unselected protocol.
