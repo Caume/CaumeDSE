@@ -326,3 +326,22 @@
     - Batch 3: report elapsed time for major steps and live API feature checks so slow regressions are visible in the summary.
     - Batch 4: validate syntax plus focused and full-compatible verifier modes, then document the completed workflow in this TODO item.
   - Done: `TEST/run_debug_components.sh` now supports `--live-only` focused reruns, `--web-protocol=http|https|both` live protocol selection, elapsed-time reporting for build/debug-engine steps and live API feature checks, and protocol-aware port validation. Focused runs showed secure CSV reads, DB browsing, and parser execution as the slow live checks under DEBUG logging, while HTTP-only and HTTPS-only live reruns now avoid rebuilding, component extraction, and the unselected protocol.
+
+- [x] #59 Reduce slow live verifier secure CSV checks.
+  - Source: `TEST/run_debug_components.sh`, `TEST/testfiles/randomdata-620_A.csv`, `TEST/testfiles/CSVtest.csv`.
+  - Goal: keep live route coverage broad while reducing the slow secure CSV read, DB browsing, and parser checks identified by #58.
+  - Plan:
+    - Batch 1: compare live verifier fixture size and route markers to determine whether the broad live flow needs the large CSV fixture.
+    - Batch 2: switch the live verifier to a smaller fixture when coverage only needs representative secure CSV rows, preserving document/content/parser/DB browsing assertions.
+    - Batch 3: validate focused HTTP and HTTPS live-only modes and compare elapsed timings against the #58 baseline.
+    - Batch 4: update this TODO with the measured impact and any remaining bottlenecks.
+  - Done: added `TEST/testfiles/live-api-small.csv` with the same `name,lastName,employeeId,salary` schema and representative first-row/parser values, and switched the live API upload to that fixture. Focused HTTP and HTTPS live runs still verify document/content/parser/DB browsing markers, while the previously slow secure CSV upload/read/browse/parser checks dropped from roughly 16-17s each to mostly 1-2s under DEBUG logging.
+
+- [ ] #60 Create a comprehensive cryptography and data security tutorial.
+  - Source: `TUTORIAL.md`, `README.md`, CaumeDSE cryptographic/data-security implementation and API examples.
+  - Goal: create a tutorial that teaches core cryptographic and data security concepts through CaumeDSE as an applied example, explaining how its features use strong security concepts and where operational boundaries remain.
+  - Plan:
+    - Batch 1: outline the tutorial structure, covering threat models, encryption, authenticated encryption, hashing, HMAC, PBKDF/key derivation, salting, protected indexes, MAC/signature concepts, secure deletion, TLS/client certificates, authorization, audit logs, and secure parser execution.
+    - Batch 2: map each concept to concrete CaumeDSE features, code paths, configuration, API examples, and verifier coverage so readers can connect theory to implementation.
+    - Batch 3: write `TUTORIAL.md` with practical examples, diagrams or tables where useful, and explicit notes about what CaumeDSE protects, what it does not protect, and how to operate it safely.
+    - Batch 4: cross-link the tutorial from `README.md`, validate examples against current fixtures/API routes, and run documentation/spell checks or targeted verifier commands as appropriate.
