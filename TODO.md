@@ -337,7 +337,7 @@
     - Batch 4: update this TODO with the measured impact and any remaining bottlenecks.
   - Done: added `TEST/testfiles/live-api-small.csv` with the same `name,lastName,employeeId,salary` schema and representative first-row/parser values, and switched the live API upload to that fixture. Focused HTTP and HTTPS live runs still verify document/content/parser/DB browsing markers, while the previously slow secure CSV upload/read/browse/parser checks dropped from roughly 16-17s each to mostly 1-2s under DEBUG logging.
 
-- [ ] #60 Create a comprehensive cryptography and data security tutorial.
+- [x] #60 Create a comprehensive cryptography and data security tutorial.
   - Source: `TUTORIAL.md`, `README.md`, CaumeDSE cryptographic/data-security implementation and API examples.
   - Goal: create a tutorial that teaches core cryptographic and data security concepts through CaumeDSE as an applied example, explaining how its features use strong security concepts and where operational boundaries remain.
   - Plan:
@@ -345,3 +345,4 @@
     - Batch 2: map each concept to concrete CaumeDSE features, code paths, configuration, API examples, and verifier coverage so readers can connect theory to implementation.
     - Batch 3: write `TUTORIAL.md` with practical examples, diagrams or tables where useful, and explicit notes about what CaumeDSE protects, what it does not protect, and how to operate it safely.
     - Batch 4: cross-link the tutorial from `README.md`, validate examples against current fixtures/API routes, and run documentation/spell checks or targeted verifier commands as appropriate.
+  - Done: added `TUTORIAL.md` covering threat models, key handling, salts, PBKDF2, AES-GCM encryption, HMAC/MACProtected integrity, secure CSV/raw-file storage, protected lookup indexes, TLS client certificates, role/filter authorization, parser execution, secure deletion, audit logs, verifier usage, and operational boundaries. Linked the tutorial from `README.md` and validated the documentation references plus `TEST/run_debug_components.sh --skip-build --skip-web`.
