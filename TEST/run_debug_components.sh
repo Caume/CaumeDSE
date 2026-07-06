@@ -409,7 +409,7 @@ run_live_web_flow() {
     live_api_check "$protocol" filter_blacklist_post 201 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key&*_get=0&*_post=1&*_put=0&*_delete=0&*_head=0&*_options=0" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" filter_blacklist_get 200 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_csv 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name" "" "${curl_tls_args[@]}" \
-        -F "file=@$ROOT_DIR/TEST/testfiles/randomdata-620_A.csv" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/live-api-small.csv" \
         -F "userId=$user_id" \
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
