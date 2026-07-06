@@ -366,11 +366,16 @@ Security considerations:
 - Parser output is decrypted application data.
 - Temporary files must be protected by filesystem permissions and cleanup.
 - Scripts should be reviewed for data exfiltration and resource exhaustion.
+- Python parser scripts run in a child process with a compile-time timeout and
+  output-file size cap. Perl parser callbacks use the embedded interpreter and
+  share the parser result-table cap; process-level Perl isolation is a separate
+  hardening step.
 
 Verifier coverage:
 
-`TEST/run_debug_components.sh` uploads Perl and Python parser scripts and runs
-both over live HTTP and HTTPS flows.
+`TEST/run_debug_components.sh` uploads Perl and Python parser scripts, runs both
+over live HTTP and HTTPS flows, and verifies Python timeout and oversized-output
+failure paths.
 
 ## Secure Deletion and Temporary Files
 

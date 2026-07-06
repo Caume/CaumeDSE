@@ -346,3 +346,45 @@
     - Batch 3: write `TUTORIAL.md` with practical examples, diagrams or tables where useful, and explicit notes about what CaumeDSE protects, what it does not protect, and how to operate it safely.
     - Batch 4: cross-link the tutorial from `README.md`, validate examples against current fixtures/API routes, and run documentation/spell checks or targeted verifier commands as appropriate.
   - Done: added `TUTORIAL.md` covering threat models, key handling, salts, PBKDF2, AES-GCM encryption, HMAC/MACProtected integrity, secure CSV/raw-file storage, protected lookup indexes, TLS client certificates, role/filter authorization, parser execution, secure deletion, audit logs, verifier usage, and operational boundaries. Linked the tutorial from `README.md` and validated the documentation references plus `TEST/run_debug_components.sh --skip-build --skip-web`.
+
+- [ ] #61 Add live verifier API coverage matrix output.
+  - Source: `TEST/run_debug_components.sh`, live HTTP(S) API checks, README API resource tree.
+  - Goal: make live API coverage visible as a clear matrix instead of requiring maintainers to infer coverage from shell code.
+  - Plan:
+    - Batch 1: inventory current `live_api_check` calls and define matrix columns for protocol, feature, method, expected status, marker, elapsed time, and log paths.
+    - Batch 2: have the verifier emit a stable coverage table or CSV artifact while preserving the current PASS/FAIL summary.
+    - Batch 3: document how to compare coverage after route changes and validate HTTP-only, HTTPS-only, and both-protocol runs.
+
+- [x] #62 Harden parser script execution limits.
+  - Source: `webservice_interface.c`, `TEST/run_debug_components.sh`, `TEST/testfiles/test.py`, `TEST/testfiles/test.pl`.
+  - Goal: bound parser-script execution and output so scripts that process decrypted CSV data cannot hang a worker indefinitely or create unbounded response data.
+  - Plan:
+    - Batch 1: add explicit parser execution limits for child-process parser runtimes, starting with Python timeout and output-file byte caps.
+    - Batch 2: add shared parser result-size validation for both Perl and Python results, with clear DEBUG/error diagnostics and secure temporary-file cleanup on timeout/error paths.
+    - Batch 3: add focused DEBUG/live verifier fixtures for normal parser execution, timeout, oversized output, and temporary-file cleanup behavior.
+    - Batch 4: document the limits and the remaining embedded-Perl boundary, then validate syntax, component markers, and focused live parser flows.
+  - Done: added compile-time parser limits for Python child-process timeout, Python output-file size, and shared parser result-table cells; Python parser temp files are still securely overwritten/deleted on timeout and oversized-output paths. Added live verifier fixtures for timeout and oversized output, extended HTTP/HTTPS live parser checks, documented the limits in README and TUTORIAL, and validated `bash -n TEST/run_debug_components.sh`, `make`, `TEST/run_debug_components.sh --skip-build --skip-web`, `TEST/run_debug_components.sh --web-protocol=http`, and `TEST/run_debug_components.sh --live-only --web-protocol=https`. Embedded Perl now shares the result-table cap; process-level Perl runtime isolation remains a future hardening step because it requires moving Perl execution out of the embedded interpreter path.
+
+- [ ] #63 Add live negative authorization scenarios.
+  - Source: `TEST/run_debug_components.sh`, roleTables/filterWhitelist/filterBlacklist routes, TLS client certificate setup.
+  - Goal: increase confidence that authorization failures are enforced over live HTTP(S), not only representative component tests.
+  - Plan:
+    - Batch 1: define negative cases for denied role/filter combinations, wrong user, missing org key, invalid client certificate, and forbidden document access.
+    - Batch 2: add isolated live requests that assert the expected 401/403/404 responses without weakening cleanup.
+    - Batch 3: validate both HTTP and HTTPS focused modes and document any protocol-specific authentication differences.
+
+- [ ] #64 Create API reference examples from live verifier fixtures.
+  - Source: `README.md`, `TEST/run_debug_components.sh`, live API fixture data.
+  - Goal: provide tested, minimal API examples without further expanding the main README.
+  - Plan:
+    - Batch 1: extract the current live verifier flow into a concise examples outline for organization, storage, user, document, parser, and DB browsing operations.
+    - Batch 2: add `API_EXAMPLES.md` with curl examples aligned to the live verifier fixtures and documented authentication parameters.
+    - Batch 3: cross-link the examples from README and validate example routes against live verifier behavior.
+
+- [ ] #65 Add CI-friendly verifier profile.
+  - Source: `TEST/run_debug_components.sh`, build/test workflow.
+  - Goal: keep full local verification available while providing a practical PR/CI smoke profile.
+  - Plan:
+    - Batch 1: define the minimum CI smoke set: syntax/build, component markers, and one selected live protocol.
+    - Batch 2: add a verifier switch such as `--ci-smoke` that selects the bounded profile without changing the default full run.
+    - Batch 3: document expected runtime, prerequisites, exit behavior, and failure artifacts.

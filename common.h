@@ -71,6 +71,15 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeMaxCSVPartsPerColumn 10000   //Max {estimated} number of parts that a CSV table can hold {required by cmeSecureDBtoMemDB}.
 #define cmeMaxRAWDataInPart 4000        //Max number of bytes in a secure file slice {part}, estimated from smallest SQLITE secureDB column files. {RECOMMENDED: 5120}
 #define cmeMaxSQLDBFileNameCollisionRetries 64 //Max attempts to regenerate a random ColumnFile name after detecting a collision.
+#ifndef CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS
+#define CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS 10 //Max seconds to wait for child-process parser scripts.
+#endif
+#ifndef CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES
+#define CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES (1024*1024) //Max parser output CSV size before loading it.
+#endif
+#ifndef CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS
+#define CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS 1000000 //Max cells allowed in parser result tables.
+#endif
 #define cmeDefaultContentReaderCallbackPageSize (1024*64)   //Default Page size for ContentReaderCallback functions.
 #ifndef CDSE_SECURE_OVERWRITE_PASSES
 #define CDSE_SECURE_OVERWRITE_PASSES 1  //Compile-time overwrite passes for temporary file deletion. Set >1 to enable multi-round overwrites.

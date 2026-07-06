@@ -358,6 +358,8 @@ run_live_web_flow() {
     local column_doc_name="${LIVE_FLOW_ID}_${protocol}_columns.csv"
     local script_name="${LIVE_FLOW_ID}_${protocol}.pl"
     local python_script_name="${LIVE_FLOW_ID}_${protocol}.py"
+    local python_timeout_script_name="${LIVE_FLOW_ID}_${protocol}_timeout.py"
+    local python_oversize_script_name="${LIVE_FLOW_ID}_${protocol}_oversize.py"
     local user_id="User123"
     local role_user="${LIVE_FLOW_ID}_${protocol}_user"
     local auth="userId=$user_id&orgId=$org_name&orgKey=$org_key"
@@ -446,6 +448,22 @@ run_live_web_flow() {
         -F "newOrgKey=$org_key" \
         -F "*resourceInfo=live $protocol Python script"
     live_api_check "$protocol" python_parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=csv" "82400" "${curl_tls_args[@]}"
+    live_api_check "$protocol" upload_python_timeout_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_timeout_script_name" "" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/test_timeout.py" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol timeout Python script"
+    live_api_check "$protocol" python_parser_timeout 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_timeout_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" upload_python_oversize_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_oversize_script_name" "" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/test_oversize.py" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol oversize Python script"
+    live_api_check "$protocol" python_parser_oversize 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_oversize_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" document_delete 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
     live_api_check "$protocol" role_table_delete 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
     live_api_check "$protocol" filter_whitelist_delete 200 "$base_url/organizations/$org_name/users/$role_user/filterWhitelist/$role_user?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
