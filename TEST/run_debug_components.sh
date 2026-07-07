@@ -18,6 +18,10 @@ PASSED=0
 FAILED=0
 SKIPPED=0
 SUMMARY_FILE=""
+LIVE_COVERAGE_CSV=""
+LIVE_COVERAGE_TXT=""
+LIVE_LAST_STATUS=""
+LIVE_LAST_CURL_RC=""
 
 usage() {
     printf 'Usage: %s [--skip-build] [--skip-web] [--live-only] [--web-protocol=http|https|both]\n' "$0"
@@ -81,7 +85,12 @@ fi
 
 mkdir -p "$LOG_ROOT"
 SUMMARY_FILE="$LOG_ROOT/summary.txt"
+LIVE_COVERAGE_CSV="$LOG_ROOT/live-api-coverage.csv"
+LIVE_COVERAGE_TXT="$LOG_ROOT/live-api-coverage.txt"
 : > "$SUMMARY_FILE"
+printf 'protocol,feature,method,expected_status,actual_status,curl_rc,marker,status,elapsed,body,meta\n' > "$LIVE_COVERAGE_CSV"
+printf '%-7s %-32s %-7s %-8s %-8s %-7s %-6s %-8s %-7s %s\n' \
+    "proto" "feature" "method" "expect" "actual" "curl" "marker" "status" "elapsed" "logs" > "$LIVE_COVERAGE_TXT"
 
 note() {
     printf '%s\n' "$*" | tee -a "$SUMMARY_FILE"
@@ -108,6 +117,93 @@ elapsed_seconds() {
 
     now="$(date +%s)"
     printf '%ss' "$((now - start))"
+}
+
+csv_escape() {
+    local value="$1"
+    value="${value//\"/\"\"}"
+    printf '"%s"' "$value"
+}
+
+infer_live_method() {
+    local method="GET"
+    local arg
+    local prev_x=0
+
+    for arg in "$@"; do
+        if [ "$prev_x" -eq 1 ]; then
+            method="$arg"
+            prev_x=0
+            continue
+        fi
+        case "$arg" in
+            -X)
+                prev_x=1
+                ;;
+            -X*)
+                method="${arg#-X}"
+                ;;
+            --request)
+                prev_x=1
+                ;;
+            --request=*)
+                method="${arg#--request=}"
+                ;;
+            -I|--head)
+                method="HEAD"
+                ;;
+            -F|--form|-F*|--form=*)
+                if [ "$method" = "GET" ]; then
+                    method="POST"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$method"
+}
+
+record_live_coverage() {
+    local protocol="$1"
+    local feature="$2"
+    local method="$3"
+    local expected="$4"
+    local actual="$5"
+    local curl_rc="$6"
+    local marker_status="$7"
+    local status="$8"
+    local elapsed="$9"
+    local body="${10}"
+    local meta="${11}"
+
+    {
+        csv_escape "$protocol"; printf ','
+        csv_escape "$feature"; printf ','
+        csv_escape "$method"; printf ','
+        csv_escape "$expected"; printf ','
+        csv_escape "$actual"; printf ','
+        csv_escape "$curl_rc"; printf ','
+        csv_escape "$marker_status"; printf ','
+        csv_escape "$status"; printf ','
+        csv_escape "$elapsed"; printf ','
+        csv_escape "$body"; printf ','
+        csv_escape "$meta"; printf '\n'
+    } >> "$LIVE_COVERAGE_CSV"
+
+    printf '%-7s %-32s %-7s %-8s %-8s %-7s %-6s %-8s %-7s body=%s meta=%s\n' \
+        "$protocol" "$feature" "$method" "$expected" "$actual" "$curl_rc" \
+        "$marker_status" "$status" "$elapsed" "$body" "$meta" >> "$LIVE_COVERAGE_TXT"
+}
+
+append_live_coverage_summary() {
+    if [ ! -s "$LIVE_COVERAGE_TXT" ] || [ "$(wc -l < "$LIVE_COVERAGE_TXT")" -le 1 ]; then
+        return 0
+    fi
+    note "LIVE API COVERAGE MATRIX"
+    while IFS= read -r line; do
+        note "$line"
+    done < "$LIVE_COVERAGE_TXT"
+    note "live_api_coverage_csv=$LIVE_COVERAGE_CSV"
+    note "live_api_coverage_txt=$LIVE_COVERAGE_TXT"
 }
 
 run_step() {
@@ -234,6 +330,8 @@ live_curl() {
 
     status="$(curl --silent --show-error --max-time 20 --output "$body" --write-out '%{http_code}' "$@" "$url" 2>"$meta")"
     rc=$?
+    LIVE_LAST_STATUS="$status"
+    LIVE_LAST_CURL_RC="$rc"
     printf 'name=%s\nurl=%s\nstatus=%s\ncurl_rc=%s\n' "$name" "$url" "$status" "$rc" >> "$meta"
     if [ "$rc" -ne 0 ]; then
         return 1
@@ -261,21 +359,34 @@ live_api_check() {
     shift 5
     local body="$LOG_ROOT/live_${protocol}_${feature}.body"
     local meta="$LOG_ROOT/live_${protocol}_${feature}.meta"
+    local method
     local start
+    local elapsed
 
+    method="$(infer_live_method "$@")"
     start="$(date +%s)"
 
     if ! live_curl "$protocol" "$feature" "$expected" "$url" "$@"; then
         LIVE_FLOW_FAILED=1
-        record_fail "live_${protocol}_${feature}" "expected HTTP $expected elapsed=$(elapsed_seconds "$start") body=$body meta=$meta"
+        elapsed="$(elapsed_seconds "$start")"
+        record_live_coverage "$protocol" "$feature" "$method" "$expected" "$LIVE_LAST_STATUS" "$LIVE_LAST_CURL_RC" "not_checked" "FAIL" "$elapsed" "$body" "$meta"
+        record_fail "live_${protocol}_${feature}" "expected HTTP $expected elapsed=$elapsed body=$body meta=$meta"
         return 1
     fi
     if [ -n "$marker" ] && ! check_live_body_marker "$protocol" "$feature" "$marker"; then
         LIVE_FLOW_FAILED=1
-        record_fail "live_${protocol}_${feature}" "missing marker '$marker' elapsed=$(elapsed_seconds "$start") body=$body meta=$meta"
+        elapsed="$(elapsed_seconds "$start")"
+        record_live_coverage "$protocol" "$feature" "$method" "$expected" "$LIVE_LAST_STATUS" "$LIVE_LAST_CURL_RC" "missing" "FAIL" "$elapsed" "$body" "$meta"
+        record_fail "live_${protocol}_${feature}" "missing marker '$marker' elapsed=$elapsed body=$body meta=$meta"
         return 1
     fi
-    record_pass "live_${protocol}_${feature} ($(elapsed_seconds "$start"))"
+    elapsed="$(elapsed_seconds "$start")"
+    if [ -n "$marker" ]; then
+        record_live_coverage "$protocol" "$feature" "$method" "$expected" "$LIVE_LAST_STATUS" "$LIVE_LAST_CURL_RC" "found" "PASS" "$elapsed" "$body" "$meta"
+    else
+        record_live_coverage "$protocol" "$feature" "$method" "$expected" "$LIVE_LAST_STATUS" "$LIVE_LAST_CURL_RC" "none" "PASS" "$elapsed" "$body" "$meta"
+    fi
+    record_pass "live_${protocol}_${feature} ($elapsed)"
     return 0
 }
 
@@ -714,6 +825,7 @@ else
     record_skip live_https_api_flow "requested --skip-web"
 fi
 
+append_live_coverage_summary
 note "RESULT passed=$PASSED failed=$FAILED skipped=$SKIPPED"
 note "summary=$SUMMARY_FILE"
 note "full_log=$FULL_LOG"

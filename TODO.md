@@ -347,13 +347,14 @@
     - Batch 4: cross-link the tutorial from `README.md`, validate examples against current fixtures/API routes, and run documentation/spell checks or targeted verifier commands as appropriate.
   - Done: added `TUTORIAL.md` covering threat models, key handling, salts, PBKDF2, AES-GCM encryption, HMAC/MACProtected integrity, secure CSV/raw-file storage, protected lookup indexes, TLS client certificates, role/filter authorization, parser execution, secure deletion, audit logs, verifier usage, and operational boundaries. Linked the tutorial from `README.md` and validated the documentation references plus `TEST/run_debug_components.sh --skip-build --skip-web`.
 
-- [ ] #61 Add live verifier API coverage matrix output.
+- [x] #61 Add live verifier API coverage matrix output.
   - Source: `TEST/run_debug_components.sh`, live HTTP(S) API checks, README API resource tree.
   - Goal: make live API coverage visible as a clear matrix instead of requiring maintainers to infer coverage from shell code.
   - Plan:
     - Batch 1: inventory current `live_api_check` calls and define matrix columns for protocol, feature, method, expected status, marker, elapsed time, and log paths.
     - Batch 2: have the verifier emit a stable coverage table or CSV artifact while preserving the current PASS/FAIL summary.
     - Batch 3: document how to compare coverage after route changes and validate HTTP-only, HTTPS-only, and both-protocol runs.
+  - Done: `TEST/run_debug_components.sh` now writes `live-api-coverage.csv` and `live-api-coverage.txt` under the verifier log directory and appends the fixed-width matrix plus artifact paths to `summary.txt`. Each live request row records protocol, feature, inferred HTTP method, expected and actual status, curl result, marker status, pass/fail state, elapsed time, and body/meta log paths. Documented the artifacts in README and TUTORIAL, and validated `bash -n TEST/run_debug_components.sh`, `TEST/run_debug_components.sh --live-only --web-protocol=http`, and `TEST/run_debug_components.sh --live-only --web-protocol=https`; each focused live run produced 41 live request rows and passed with `42 passed, 0 failed, 10 skipped`.
 
 - [x] #62 Harden parser script execution limits.
   - Source: `webservice_interface.c`, `TEST/run_debug_components.sh`, `TEST/testfiles/test.py`, `TEST/testfiles/test.pl`.
