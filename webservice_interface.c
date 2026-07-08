@@ -44,6 +44,8 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 #include <errno.h>
+#include <signal.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 static void cmeWebServiceSetThreadStatus(struct cmeWebServiceConnectionInfoStruct *con_info, int threadStatus)
@@ -727,10 +729,64 @@ static int cmeWebServiceLoadCSVToResultMemTable(const char *filePath)
     return(0);
 }
 
+static int cmeWebServiceValidateParserResultSize(const char *context)
+{
+    long long cells;
+
+    if ((cmeResultMemTableCols<0)||(cmeResultMemTableRows<0))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: %s(), invalid parser result dimensions cols=%d rows=%d.\n",
+                context?context:"cmeWebServiceValidateParserResultSize",
+                cmeResultMemTableCols,cmeResultMemTableRows);
+#endif
+        return(1);
+    }
+    cells=(long long)cmeResultMemTableCols*(long long)(cmeResultMemTableRows+1);
+    if (cells>CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: %s(), parser result has %lld cells; limit is %d.\n",
+                context?context:"cmeWebServiceValidateParserResultSize",
+                cells,CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS);
+#endif
+        return(2);
+    }
+    return(0);
+}
+
+static int cmeWebServiceValidateParserOutputFileSize(const char *filePath)
+{
+    struct stat st;
+
+    if (!filePath)
+    {
+        return(1);
+    }
+    if (stat(filePath,&st))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceValidateParserOutputFileSize(), stat() failed for '%s': %s.\n",
+                filePath,strerror(errno));
+#endif
+        return(2);
+    }
+    if (st.st_size>CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceValidateParserOutputFileSize(), parser output '%s' is %lld bytes; limit is %d.\n",
+                filePath,(long long)st.st_size,CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES);
+#endif
+        return(3);
+    }
+    return(0);
+}
+
 static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
 {
     int result=0;
     int status=0;
+    int waited=0;
     char *inputPath=NULL;
     char *outputPath=NULL;
     pid_t pid;
@@ -762,15 +818,48 @@ static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
         }
         else
         {
-            do
+            while (1)
             {
-                result=waitpid(pid,&status,0);
-            } while ((result<0)&&(errno==EINTR));
-            if ((result<0)||(!WIFEXITED(status))||(WEXITSTATUS(status)!=0))
+                result=waitpid(pid,&status,WNOHANG);
+                if (result==pid)
+                {
+                    break;
+                }
+                if ((result<0)&&(errno==EINTR))
+                {
+                    continue;
+                }
+                if (result<0)
+                {
+                    break;
+                }
+                if (waited>=CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS)
+                {
+                    kill(pid,SIGTERM);
+                    sleep(1);
+                    if (waitpid(pid,&status,WNOHANG)==0)
+                    {
+                        kill(pid,SIGKILL);
+                    }
+                    while ((waitpid(pid,&status,0)<0)&&(errno==EINTR))
+                    {
+                    }
+#ifdef ERROR_LOG
+                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceRunPythonParserScript(), parser timed out after %d seconds.\n",
+                            CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS);
+#endif
+                    result=6;
+                    break;
+                }
+                sleep(1);
+                waited++;
+            }
+            if ((result!=6)&&
+                ((result<0)||(!WIFEXITED(status))||(WEXITSTATUS(status)!=0)))
             {
                 result=5;
             }
-            else
+            else if (result!=6)
             {
                 result=0;
             }
@@ -778,7 +867,23 @@ static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
     }
     if (!result)
     {
+        result=cmeWebServiceValidateParserOutputFileSize(outputPath);
+        if (result)
+        {
+            result=7;
+        }
+    }
+    if (!result)
+    {
         result=cmeWebServiceLoadCSVToResultMemTable(outputPath);
+    }
+    if (!result)
+    {
+        result=cmeWebServiceValidateParserResultSize("cmeWebServiceRunPythonParserScript");
+        if (result)
+        {
+            result=8;
+        }
     }
     if (inputPath)
     {
@@ -9046,6 +9151,14 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                                    cmeDefaultPerlIterationFunction,cdsePerl); //Select
                         pthread_mutex_unlock(&cmePerlMutex);
                         perlLocked=0;
+                        if (!result)
+                        {
+                            result=cmeWebServiceValidateParserResultSize("cmeWebServiceProcessParserScriptResource");
+                            if (result)
+                            {
+                                result=17;
+                            }
+                        }
                     }
                     else
                     {
@@ -9267,6 +9380,14 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                                           cmeDefaultPerlIterationFunction,cdsePerl); //Select
                         pthread_mutex_unlock(&cmePerlMutex);
                         perlLocked=0;
+                        if (!result)
+                        {
+                            result=cmeWebServiceValidateParserResultSize("cmeWebServiceProcessParserScriptResource");
+                            if (result)
+                            {
+                                result=17;
+                            }
+                        }
                     }
                     else
                     {

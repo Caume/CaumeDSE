@@ -1730,6 +1730,14 @@ This is a raw file
     succeeds. Perl scripts use the embedded Perl interpreter. Python
     scripts are executed with `python3` and receive two command-line
     arguments: an input CSV file path and an output CSV file path.
+    Python parser child processes are bounded by
+    `CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS`, and their output CSV files are
+    rejected above `CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES` before loading.
+    Parser result tables are rejected above
+    `CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS`. These limits are compile-time
+    macros with conservative defaults. Embedded Perl parser callbacks share
+    the result-table limit; hard runtime isolation for Perl requires moving
+    Perl execution out of the embedded interpreter path.
 
     Example 1)     Get parsed contents of payroll.csv file (of type
             file.csv) using script myscript.pl (of type
@@ -2201,7 +2209,12 @@ column, upload a `script.perl` document, and execute that parser script
 through both HTTP and HTTPS.  HTTPS uses a per-run client certificate chain
 signed by the committed test CA fixture.  `CDSE_DEBUG_TEST_TIMEOUT` controls
 the overall executable timeout and defaults to 120s.  Use `--skip-web` only
-when the local environment cannot bind test ports.
+when the local environment cannot bind test ports.  Live API runs also write
+coverage artifacts under the log directory: `live-api-coverage.csv` for
+machine-readable comparisons and `live-api-coverage.txt` for the fixed-width
+summary table.  Each row records protocol, feature name, inferred HTTP method,
+expected and actual status, curl result, marker status, elapsed time, and
+body/meta log paths.
 
 The committed test database under `TEST/testDB_opt_cdse` uses
 `0CDBB9AF76AF43BDB72E095989E612CC` as the `EngineAdmin` / `EngineOrg`
