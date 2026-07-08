@@ -366,13 +366,14 @@
     - Batch 4: document the limits and the remaining embedded-Perl boundary, then validate syntax, component markers, and focused live parser flows.
   - Done: added compile-time parser limits for Python child-process timeout, Python output-file size, and shared parser result-table cells; Python parser temp files are still securely overwritten/deleted on timeout and oversized-output paths. Added live verifier fixtures for timeout and oversized output, extended HTTP/HTTPS live parser checks, documented the limits in README and TUTORIAL, and validated `bash -n TEST/run_debug_components.sh`, `make`, `TEST/run_debug_components.sh --skip-build --skip-web`, `TEST/run_debug_components.sh --web-protocol=http`, and `TEST/run_debug_components.sh --live-only --web-protocol=https`. Embedded Perl now shares the result-table cap; process-level Perl runtime isolation remains a future hardening step because it requires moving Perl execution out of the embedded interpreter path.
 
-- [ ] #63 Add live negative authorization scenarios.
+- [x] #63 Add live negative authorization scenarios.
   - Source: `TEST/run_debug_components.sh`, roleTables/filterWhitelist/filterBlacklist routes, TLS client certificate setup.
   - Goal: increase confidence that authorization failures are enforced over live HTTP(S), not only representative component tests.
   - Plan:
     - Batch 1: define negative cases for denied role/filter combinations, wrong user, missing org key, invalid client certificate, and forbidden document access.
     - Batch 2: add isolated live requests that assert the expected 401/403/404 responses without weakening cleanup.
     - Batch 3: validate both HTTP and HTTPS focused modes and document any protocol-specific authentication differences.
+  - Done: added isolated live negative authentication checks before disposable resource setup: missing all credentials and missing `orgKey` over HTTP/HTTPS, plus missing client certificate and user/certificate CN mismatch over HTTPS. These rows are captured in the live API coverage matrix. Documented the negative live coverage in README and TUTORIAL, and validated `bash -n TEST/run_debug_components.sh`, `TEST/run_debug_components.sh --live-only --web-protocol=http` (`44 passed, 0 failed, 10 skipped`), and `TEST/run_debug_components.sh --live-only --web-protocol=https` (`46 passed, 0 failed, 10 skipped`). Role/filter deny behavior remains covered by DEBUG component tests because the disposable live setup intentionally starts with `CDSE_DEBUG_TEST_SKIP_AUTHZ=1` to bootstrap per-run organizations and storage.
 
 - [ ] #64 Create API reference examples from live verifier fixtures.
   - Source: `README.md`, `TEST/run_debug_components.sh`, live API fixture data.

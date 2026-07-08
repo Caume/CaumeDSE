@@ -509,6 +509,13 @@ run_live_web_flow() {
         return 1
     fi
 
+    live_api_check "$protocol" auth_missing_all 401 "$base_url/organizations/$org_name" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" auth_missing_org_key 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name" "" "${curl_tls_args[@]}"
+    if [ "$protocol" = "https" ]; then
+        live_api_check "$protocol" auth_missing_client_cert 401 "$base_url/organizations/$org_name?$auth" "" --cacert "$PREFIX/cdse/ca.pem"
+        live_api_check "$protocol" auth_client_cert_user_mismatch 401 "$base_url/organizations/$org_name?userId=${user_id}_mismatch&orgId=$org_name&orgKey=$org_key" "" "${curl_tls_args[@]}"
+    fi
+
     live_api_check "$protocol" create_org 201 "$base_url/organizations/$org_name?$auth&*resourceInfo=live%20$protocol%20organization&*certificate=undefined&*publicKey=undefined&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" create_storage 201 "$base_url/organizations/$org_name/storage/$storage_name?$auth&newOrgKey=$org_key&*resourceInfo=live%20$protocol%20storage&*location=localhost&*type=local&*accessPath=$storage_path&*accessUser=undefined&*accessPassword=undefined" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" create_user 201 "$base_url/organizations/$org_name/users/$role_user?$auth&newOrgKey=$org_key&*resourceInfo=live%20$protocol%20user&*certificate=undefined&*publicKey=undefined&*basicAuthPwdHash=undefined&*oauthConsumerKey=undefined&*oauthConsumerSecret=undefined" "" "${curl_tls_args[@]}" -X POST

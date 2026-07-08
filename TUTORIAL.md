@@ -445,10 +445,12 @@ TEST/run_debug_components.sh --live-only --web-protocol=https
 The verifier checks cryptographic primitives, protected database behavior,
 role/filter resources, document routes, secure CSV round trips, MAC-protected
 values, web startup, live API flows, parser execution, DB browsing, and
-negative routes. Live API runs write `live-api-coverage.csv` and
-`live-api-coverage.txt` under the verifier log directory so route coverage,
-expected/actual statuses, marker checks, elapsed time, and response log paths
-can be reviewed without reading the shell script.
+negative routes. The live API flow asserts missing-credential failures on HTTP
+and HTTPS plus missing and mismatched client certificate failures on HTTPS.
+Live API runs write `live-api-coverage.csv` and `live-api-coverage.txt` under
+the verifier log directory so route coverage, expected/actual statuses, marker
+checks, elapsed time, and response log paths can be reviewed without reading
+the shell script.
 
 ## Operational Checklist
 

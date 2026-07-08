@@ -2206,10 +2206,13 @@ debug executable.  In full mode it also starts a held-open DEBUG web service
 for each protocol and uses `curl` to authenticate, create a temporary
 organization and storage resource, upload a CSV document, query a row and
 column, upload a `script.perl` document, and execute that parser script
-through both HTTP and HTTPS.  HTTPS uses a per-run client certificate chain
-signed by the committed test CA fixture.  `CDSE_DEBUG_TEST_TIMEOUT` controls
-the overall executable timeout and defaults to 120s.  Use `--skip-web` only
-when the local environment cannot bind test ports.  Live API runs also write
+through both HTTP and HTTPS.  The live flow also asserts negative
+authentication cases for missing credentials on both protocols and missing or
+mismatched client certificates on HTTPS.  HTTPS uses a per-run client
+certificate chain signed by the committed test CA fixture.
+`CDSE_DEBUG_TEST_TIMEOUT` controls the overall executable timeout and defaults
+to 120s.  Use `--skip-web` only when the local environment cannot bind test
+ports.  Live API runs also write
 coverage artifacts under the log directory: `live-api-coverage.csv` for
 machine-readable comparisons and `live-api-coverage.txt` for the fixed-width
 summary table.  Each row records protocol, feature name, inferred HTTP method,
