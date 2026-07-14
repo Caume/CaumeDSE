@@ -2227,6 +2227,13 @@ summary table.  Each row records protocol, feature name, inferred HTTP method,
 expected and actual status, curl result, marker status, elapsed time, and
 body/meta log paths.
 
+Set `CDSE_VERIFY_REDACT=1` for CI logs or AI-assisted debugging sessions.  In
+that mode the verifier masks `orgKey`, `newOrgKey`, selected credential-style
+request parameters, and generated certificate/key file paths in `summary.txt`,
+live request body/meta artifacts, the full DEBUG run log, component extract
+logs, and live service logs.  Redaction is disabled by default so local
+debugging keeps full request details unless explicitly requested.
+
 The `--ci-smoke` profile runs configure, build, install, component markers,
 HTTP/HTTPS startup checks, and one live API protocol. It defaults to HTTP live
 coverage; use `--ci-smoke --web-protocol=https` to select HTTPS instead.

@@ -255,4 +255,8 @@ TEST/run_debug_components.sh --live-only --web-protocol=https
 ```
 
 The verifier writes `live-api-coverage.csv` and `live-api-coverage.txt` under
-its log directory.
+its log directory.  Use `CDSE_VERIFY_REDACT=1 TEST/run_debug_components.sh ...`
+when saving verifier artifacts in CI or AI-assisted debugging sessions; this
+masks organization keys, `newOrgKey` values, selected credential-style request
+parameters, and generated certificate/key paths in summaries and live request
+artifacts.

@@ -425,13 +425,20 @@
     - Batch 2: add a sample Python client with guardrails to avoid putting org keys or sensitive data in prompts/logs.
     - Batch 3: document setup, expected outputs, and validation against DEBUG/live verifier fixtures.
 
-- [ ] #70 Add redaction mode for logs and verifier artifacts.
+- [x] #70 Add redaction mode for logs and verifier artifacts.
   - Source: DEBUG logging, `TEST/run_debug_components.sh`, live coverage artifacts.
   - Goal: reduce accidental disclosure of org keys, `newOrgKey`, certificate paths, and sensitive query values during AI-assisted debugging and CI runs.
   - Plan:
     - Batch 1: identify log and metadata paths that currently include secrets or sensitive request values.
     - Batch 2: add a config/env-controlled redaction mode for live verifier artifacts and selected DEBUG diagnostics.
     - Batch 3: validate that pass/fail diagnostics remain useful while secrets are masked.
+  - Done: added opt-in `CDSE_VERIFY_REDACT=1` support to the DEBUG verifier.
+    Redacted runs mask `orgKey`, `newOrgKey`, selected credential-style request
+    parameters, and generated certificate/key paths in `summary.txt`, live
+    request body/meta artifacts, the full DEBUG run log, component extract logs,
+    and live service logs while preserving statuses, markers, elapsed times, and
+    artifact names. Documented the mode in README, TUTORIAL, API_EXAMPLES, and
+    AGENTS.
 
 - [ ] #71 Add MCP server prototype.
   - Source: new `samples/mcp-server/` or `samples/ai-agent/`, REST API examples.
