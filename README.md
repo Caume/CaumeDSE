@@ -5,12 +5,16 @@ This is the canonical GitHub-compatible Markdown README. The legacy `README` fil
 For an applied explanation of the cryptographic and data-security concepts used
 by CaumeDSE, see [TUTORIAL.md](TUTORIAL.md).
 
+For tested `curl` examples based on the live verifier fixtures, see
+[API_EXAMPLES.md](API_EXAMPLES.md).
+
 
 ## Contents
 
 - [Purpose and Philosophy](#purpose-and-philosophy)
 - [Status](#status)
 - [Cryptography and Data Security Tutorial](TUTORIAL.md)
+- [API Examples](API_EXAMPLES.md)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)
 - [REST Resource API Reference](#rest-resource-api-reference)

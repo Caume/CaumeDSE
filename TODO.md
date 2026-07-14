@@ -375,13 +375,14 @@
     - Batch 3: validate both HTTP and HTTPS focused modes and document any protocol-specific authentication differences.
   - Done: added isolated live negative authentication checks before disposable resource setup: missing all credentials and missing `orgKey` over HTTP/HTTPS, plus missing client certificate and user/certificate CN mismatch over HTTPS. These rows are captured in the live API coverage matrix. Documented the negative live coverage in README and TUTORIAL, and validated `bash -n TEST/run_debug_components.sh`, `TEST/run_debug_components.sh --live-only --web-protocol=http` (`44 passed, 0 failed, 10 skipped`), and `TEST/run_debug_components.sh --live-only --web-protocol=https` (`46 passed, 0 failed, 10 skipped`). Role/filter deny behavior remains covered by DEBUG component tests because the disposable live setup intentionally starts with `CDSE_DEBUG_TEST_SKIP_AUTHZ=1` to bootstrap per-run organizations and storage.
 
-- [ ] #64 Create API reference examples from live verifier fixtures.
+- [x] #64 Create API reference examples from live verifier fixtures.
   - Source: `README.md`, `TEST/run_debug_components.sh`, live API fixture data.
   - Goal: provide tested, minimal API examples without further expanding the main README.
   - Plan:
     - Batch 1: extract the current live verifier flow into a concise examples outline for organization, storage, user, document, parser, and DB browsing operations.
     - Batch 2: add `API_EXAMPLES.md` with curl examples aligned to the live verifier fixtures and documented authentication parameters.
     - Batch 3: cross-link the examples from README and validate example routes against live verifier behavior.
+  - Done: added `API_EXAMPLES.md` with curl examples derived from the live verifier flow, covering authentication negatives, organization/storage/user setup, documentTypes, role/filter resources, secure CSV upload/content, rows/columns, secure DB browsing, parser scripts, cleanup, and verifier commands. Linked it from README and validated the examples against the current live verifier route names and committed fixtures.
 
 - [ ] #65 Add CI-friendly verifier profile.
   - Source: `TEST/run_debug_components.sh`, build/test workflow.
