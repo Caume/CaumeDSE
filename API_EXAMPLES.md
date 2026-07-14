@@ -249,6 +249,7 @@ The examples are derived from the live verifier. To exercise the same flow and
 produce a coverage matrix, run:
 
 ```sh
+TEST/run_debug_components.sh --ci-smoke
 TEST/run_debug_components.sh --live-only --web-protocol=http
 TEST/run_debug_components.sh --live-only --web-protocol=https
 ```

@@ -2203,6 +2203,10 @@ flows:
 
     TEST/run_debug_components.sh
 
+For CI smoke coverage, use:
+
+    TEST/run_debug_components.sh --ci-smoke
+
 The full mode uses `CDSE_DEBUG_TEST_HTTP_PORT` and
 `CDSE_DEBUG_TEST_HTTPS_PORT` when set, or ports 18080 and 18443 by default.
 The script rejects invalid, duplicate, or busy ports before launching the
@@ -2222,6 +2226,10 @@ machine-readable comparisons and `live-api-coverage.txt` for the fixed-width
 summary table.  Each row records protocol, feature name, inferred HTTP method,
 expected and actual status, curl result, marker status, elapsed time, and
 body/meta log paths.
+
+The `--ci-smoke` profile runs configure, build, install, component markers,
+HTTP/HTTPS startup checks, and one live API protocol. It defaults to HTTP live
+coverage; use `--ci-smoke --web-protocol=https` to select HTTPS instead.
 
 The committed test database under `TEST/testDB_opt_cdse` uses
 `0CDBB9AF76AF43BDB72E095989E612CC` as the `EngineAdmin` / `EngineOrg`

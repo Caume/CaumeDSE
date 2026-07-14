@@ -384,10 +384,67 @@
     - Batch 3: cross-link the examples from README and validate example routes against live verifier behavior.
   - Done: added `API_EXAMPLES.md` with curl examples derived from the live verifier flow, covering authentication negatives, organization/storage/user setup, documentTypes, role/filter resources, secure CSV upload/content, rows/columns, secure DB browsing, parser scripts, cleanup, and verifier commands. Linked it from README and validated the examples against the current live verifier route names and committed fixtures.
 
-- [ ] #65 Add CI-friendly verifier profile.
+- [x] #65 Add CI-friendly verifier profile.
   - Source: `TEST/run_debug_components.sh`, build/test workflow.
   - Goal: keep full local verification available while providing a practical PR/CI smoke profile.
   - Plan:
     - Batch 1: define the minimum CI smoke set: syntax/build, component markers, and one selected live protocol.
     - Batch 2: add a verifier switch such as `--ci-smoke` that selects the bounded profile without changing the default full run.
     - Batch 3: document expected runtime, prerequisites, exit behavior, and failure artifacts.
+  - Done: added `--ci-smoke` to `TEST/run_debug_components.sh`. The profile keeps the normal configure/build/check/install path, component marker extraction, and DEBUG web startup checks, then runs one live API protocol instead of both. It defaults to HTTP live coverage and accepts `--ci-smoke --web-protocol=https` to select HTTPS. Documented the command in README, TUTORIAL, API_EXAMPLES, and AGENTS, and validated `bash -n TEST/run_debug_components.sh` plus `TEST/run_debug_components.sh --ci-smoke` (`73 passed, 0 failed, 1 skipped`).
+
+- [ ] #66 Add AI-safe API usage examples.
+  - Source: `AI_USAGE.md`, `API_EXAMPLES.md`, live verifier fixtures.
+  - Goal: document safe patterns for LLM agents and automation that call CaumeDSE without leaking keys or over-broad access.
+  - Plan:
+    - Batch 1: outline safe agent workflows for scoped org keys, least-privilege users, parser-script restrictions, audit logs, and cleanup.
+    - Batch 2: add `AI_USAGE.md` with concrete examples and explicit anti-patterns for prompts, logs, and generated scripts.
+    - Batch 3: cross-link from README/API examples and validate examples against current verifier routes.
+
+- [ ] #67 Add machine-readable OpenAPI spec.
+  - Source: `README.md`, `API_EXAMPLES.md`, `TEST/run_debug_components.sh`.
+  - Goal: make CaumeDSE easier for AI agents, SDK generators, docs tooling, and API validators to consume.
+  - Plan:
+    - Batch 1: inventory documented REST resources, methods, parameters, status codes, and response formats.
+    - Batch 2: add `openapi.yaml` for the stable documented routes, starting with live-verifier-covered resources.
+    - Batch 3: add a lightweight validation check that compares key examples or route names against the spec.
+
+- [ ] #68 Add JSON output mode for key API resources.
+  - Source: `webservice_interface.c`, response formatting helpers, README/API examples.
+  - Goal: provide structured responses that are easier for AI agents and modern clients to parse than HTML or CSV.
+  - Plan:
+    - Batch 1: identify shared response-formatting helpers and the safest initial resources to support.
+    - Batch 2: add `outputType=json` for documentTypes, documents, content rows/columns, dbNames/dbTables, parserScripts, and role/filter reads.
+    - Batch 3: extend DEBUG/live verifier coverage and document JSON examples.
+
+- [ ] #69 Add AI agent integration sample.
+  - Source: `samples/ai-agent/`, `API_EXAMPLES.md`, verifier fixtures.
+  - Goal: show a guarded end-to-end Python agent workflow using CaumeDSE APIs.
+  - Plan:
+    - Batch 1: define a minimal scripted workflow for create org/storage, upload CSV, query rows/columns, run parser, and cleanup.
+    - Batch 2: add a sample Python client with guardrails to avoid putting org keys or sensitive data in prompts/logs.
+    - Batch 3: document setup, expected outputs, and validation against DEBUG/live verifier fixtures.
+
+- [ ] #70 Add redaction mode for logs and verifier artifacts.
+  - Source: DEBUG logging, `TEST/run_debug_components.sh`, live coverage artifacts.
+  - Goal: reduce accidental disclosure of org keys, `newOrgKey`, certificate paths, and sensitive query values during AI-assisted debugging and CI runs.
+  - Plan:
+    - Batch 1: identify log and metadata paths that currently include secrets or sensitive request values.
+    - Batch 2: add a config/env-controlled redaction mode for live verifier artifacts and selected DEBUG diagnostics.
+    - Batch 3: validate that pass/fail diagnostics remain useful while secrets are masked.
+
+- [ ] #71 Add MCP server prototype.
+  - Source: new `samples/mcp-server/` or `samples/ai-agent/`, REST API examples.
+  - Goal: expose safe CaumeDSE operations through Model Context Protocol tools for AI assistants.
+  - Plan:
+    - Batch 1: define a minimal tool surface such as list document types, upload CSV, query column, run parser, and cleanup workspace.
+    - Batch 2: implement a prototype MCP wrapper that calls the REST API with scoped credentials.
+    - Batch 3: document security boundaries and avoid exposing raw org keys or unrestricted parser execution.
+
+- [ ] #72 Add prompt-injection resistant parser-script guidance.
+  - Source: `TUTORIAL.md`, parser script docs, `TEST/testfiles/`.
+  - Goal: help users treat CSV contents and generated parser scripts as untrusted inputs in LLM-connected systems.
+  - Plan:
+    - Batch 1: document prompt-injection and data-exfiltration risks specific to parser scripts and CSV content.
+    - Batch 2: add safe parser-script patterns and review checklists for generated Perl/Python scripts.
+    - Batch 3: link the guidance from parser documentation and AI usage examples.

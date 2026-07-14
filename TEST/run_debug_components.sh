@@ -12,6 +12,8 @@ SKIP_BUILD=0
 SKIP_WEB=0
 LIVE_ONLY=0
 WEB_PROTOCOL="both"
+WEB_PROTOCOL_SET=0
+CI_SMOKE=0
 LIVE_FLOW_ID="liveflow$$"
 
 PASSED=0
@@ -24,12 +26,13 @@ LIVE_LAST_STATUS=""
 LIVE_LAST_CURL_RC=""
 
 usage() {
-    printf 'Usage: %s [--skip-build] [--skip-web] [--live-only] [--web-protocol=http|https|both]\n' "$0"
+    printf 'Usage: %s [--skip-build] [--skip-web] [--live-only] [--ci-smoke] [--web-protocol=http|https|both]\n' "$0"
     printf '\n'
     printf 'Options:\n'
     printf '  --skip-build              reuse the current install prefix\n'
     printf '  --skip-web                skip DEBUG web startup and live API checks\n'
     printf '  --live-only               run only live API checks; implies --skip-build\n'
+    printf '  --ci-smoke                run build, component markers, and one live protocol; default http\n'
     printf '  --web-protocol=VALUE      live protocol to run: http, https, or both; default both\n'
     printf '\n'
     printf 'Environment:\n'
@@ -52,8 +55,12 @@ while [ "$#" -gt 0 ]; do
             LIVE_ONLY=1
             SKIP_BUILD=1
             ;;
+        --ci-smoke)
+            CI_SMOKE=1
+            ;;
         --web-protocol=*)
             WEB_PROTOCOL="${1#*=}"
+            WEB_PROTOCOL_SET=1
             ;;
         -h|--help)
             usage
@@ -68,6 +75,10 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 
+if [ "$CI_SMOKE" -eq 1 ] && [ "$WEB_PROTOCOL_SET" -eq 0 ]; then
+    WEB_PROTOCOL="http"
+fi
+
 case "$WEB_PROTOCOL" in
     http|https|both)
         ;;
@@ -80,6 +91,16 @@ esac
 
 if [ "$LIVE_ONLY" -eq 1 ] && [ "$SKIP_WEB" -eq 1 ]; then
     printf '%s\n' '--live-only cannot be combined with --skip-web' >&2
+    exit 2
+fi
+
+if [ "$CI_SMOKE" -eq 1 ] && [ "$LIVE_ONLY" -eq 1 ]; then
+    printf '%s\n' '--ci-smoke cannot be combined with --live-only' >&2
+    exit 2
+fi
+
+if [ "$CI_SMOKE" -eq 1 ] && [ "$SKIP_WEB" -eq 1 ]; then
+    printf '%s\n' '--ci-smoke cannot be combined with --skip-web' >&2
     exit 2
 fi
 
@@ -602,7 +623,7 @@ note "CaumeDSE DEBUG component verification"
 note "root=$ROOT_DIR"
 note "prefix=$PREFIX"
 note "logs=$LOG_ROOT"
-note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_protocol=$WEB_PROTOCOL live_only=$LIVE_ONLY"
+note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_protocol=$WEB_PROTOCOL live_only=$LIVE_ONLY ci_smoke=$CI_SMOKE"
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
     run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP || exit 1

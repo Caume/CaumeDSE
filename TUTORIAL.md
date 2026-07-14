@@ -435,6 +435,9 @@ TEST/run_debug_components.sh
 # Component-only rerun using an existing install.
 TEST/run_debug_components.sh --skip-build --skip-web
 
+# CI smoke profile: build, component markers, web startup, and HTTP live flow.
+TEST/run_debug_components.sh --ci-smoke
+
 # Focused live HTTP rerun.
 TEST/run_debug_components.sh --live-only --web-protocol=http
 
