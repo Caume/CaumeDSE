@@ -585,14 +585,18 @@ run_live_web_flow() {
     live_api_check "$protocol" create_storage 201 "$base_url/organizations/$org_name/storage/$storage_name?$auth&newOrgKey=$org_key&*resourceInfo=live%20$protocol%20storage&*location=localhost&*type=local&*accessPath=$storage_path&*accessUser=undefined&*accessPassword=undefined" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" create_user 201 "$base_url/organizations/$org_name/users/$role_user?$auth&newOrgKey=$org_key&*resourceInfo=live%20$protocol%20user&*certificate=undefined&*publicKey=undefined&*basicAuthPwdHash=undefined&*oauthConsumerKey=undefined&*oauthConsumerSecret=undefined" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" document_types_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes?$auth&newOrgKey=$org_key" "file.csv" "${curl_tls_args[@]}"
+    live_api_check "$protocol" document_types_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" document_type_csv_head 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -I
     live_api_check "$protocol" document_type_unsupported 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/unsupported.type?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" role_table_post 201 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key&*_get=1&*_post=0&*_put=1&*_delete=0&*_head=1&*_options=1" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" role_table_get 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
+    live_api_check "$protocol" role_table_json_get 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" filter_whitelist_post 201 "$base_url/organizations/$org_name/users/$role_user/filterWhitelist/$role_user?$auth&newOrgKey=$org_key&*_get=1&*_post=0&*_put=0&*_delete=0&*_head=1&*_options=1" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" filter_whitelist_get 200 "$base_url/organizations/$org_name/users/$role_user/filterWhitelist/$role_user?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
+    live_api_check "$protocol" filter_whitelist_json_get 200 "$base_url/organizations/$org_name/users/$role_user/filterWhitelist/$role_user?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" filter_blacklist_post 201 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key&*_get=0&*_post=1&*_put=0&*_delete=0&*_head=0&*_options=0" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" filter_blacklist_get 200 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
+    live_api_check "$protocol" filter_blacklist_json_get 200 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_csv 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/live-api-small.csv" \
         -F "userId=$user_id" \
@@ -601,18 +605,25 @@ run_live_web_flow() {
         -F "newOrgKey=$org_key" \
         -F "*resourceInfo=live $protocol CSV"
     live_api_check "$protocol" documents_list 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents?$auth&newOrgKey=$org_key" "$csv_name" "${curl_tls_args[@]}"
+    live_api_check "$protocol" documents_json_list 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" document_head 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -I
     live_api_check "$protocol" content_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/content?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
     live_api_check "$protocol" content_rows_options 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X OPTIONS
     live_api_check "$protocol" row_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
+    live_api_check "$protocol" row_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
     live_api_check "$protocol" content_columns_options 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentColumns?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X OPTIONS
     live_api_check "$protocol" column_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentColumns/name?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
+    live_api_check "$protocol" column_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentColumns/name?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
     live_api_check "$protocol" column_create_empty_doc 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$column_doc_name/contentColumns/Col1?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" column_delete_empty_doc 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$column_doc_name/contentColumns/Col1?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
     live_api_check "$protocol" db_names_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames?$auth&newOrgKey=$org_key" "$csv_name" "${curl_tls_args[@]}"
+    live_api_check "$protocol" db_names_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" db_tables_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables?$auth&newOrgKey=$org_key" "data" "${curl_tls_args[@]}"
+    live_api_check "$protocol" db_tables_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" table_row_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/1?$auth&newOrgKey=$org_key" "Jacob" "${curl_tls_args[@]}"
+    live_api_check "$protocol" table_row_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/1?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
     live_api_check "$protocol" table_column_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableColumns/name?$auth&newOrgKey=$org_key" "Jacob" "${curl_tls_args[@]}"
+    live_api_check "$protocol" table_column_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableColumns/name?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
     live_api_check "$protocol" db_browse_bad_row 403 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/0?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test.pl" \
@@ -622,6 +633,7 @@ run_live_web_flow() {
         -F "newOrgKey=$org_key" \
         -F "*resourceInfo=live $protocol Perl script"
     live_api_check "$protocol" parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=csv" "82400" "${curl_tls_args[@]}"
+    live_api_check "$protocol" parser_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=json" '"salary":"82400"' "${curl_tls_args[@]}"
     live_api_check "$protocol" parser_missing_head 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/missing.pl?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}" -I
     live_api_check "$protocol" upload_python_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test.py" \
@@ -631,6 +643,7 @@ run_live_web_flow() {
         -F "newOrgKey=$org_key" \
         -F "*resourceInfo=live $protocol Python script"
     live_api_check "$protocol" python_parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=csv" "82400" "${curl_tls_args[@]}"
+    live_api_check "$protocol" python_parser_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=json" '"salary":"82400"' "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_python_timeout_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_timeout_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test_timeout.py" \
         -F "userId=$user_id" \
@@ -760,6 +773,12 @@ check_component crypto_gcm_direct 'GCM ciphertext size|GCM B64|GCM decrypted tex
 
 check_component crypto_gcm_bytestring 'testCryptoSymmetricGCM_ByteString|cipher mode|PBKDF' "$FULL_LOG" \
     'TESTS: testCryptoSymmetricGCM_ByteString(), PASS: plaintext matches.'
+
+check_component json_response_formatting 'Testing JSON response formatting|testJSONResponses|JSON outputType' "$FULL_LOG" \
+    '--- Testing JSON response formatting:' \
+    'TESTS: testJSONResponses(), PASS: table response JSON outputType.' \
+    'TESTS: testJSONResponses(), PASS: count response JSON outputType.' \
+    'TESTS: testJSONResponses(), PASS: JSON response formatting verified.'
 
 check_component crypto_streaming '---ctSize|---etSize|Decrypted text|Unprotected text' "$FULL_LOG" \
     'Unprotected text: This is cleartext This is cleartext This is cleartext This is cleartext.'

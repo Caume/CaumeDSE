@@ -62,6 +62,7 @@ void testDocumentTypes ();
 void testParserScripts ();
 void testContentRows ();
 void testThreadSafety ();
+void testJSONResponses ();
 void testWebServices ();
 
 #endif // FUNCTION_TESTS_H_INCLUDED

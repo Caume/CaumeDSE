@@ -990,10 +990,12 @@ newOrgKey
 
 outputType
     Specifies the type of output for the result. Available values are
-    csv and HTML (the later is the default).  this is particularly
-    useful for results that return data tables, such as resource
-    specification queries or requests for the contents of csv type
-    files.
+    csv, json and HTML (the latter is the default).  This is
+    particularly useful for results that return data tables, such as
+    resource specification queries, content rows/columns, parser script
+    output, secure DB browsing, and requests for the contents of csv
+    type files. JSON table responses use this shape:
+    `{"columns":[...],"rows":[{"column":"value"}]}`.
 
 #### 3.4 Document POST parameters
 

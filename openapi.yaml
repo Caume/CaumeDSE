@@ -5,8 +5,8 @@ info:
   description: |
     Machine-readable reference for the stable CaumeDSE routes documented in
     README.md and exercised by TEST/run_debug_components.sh. Responses are
-    currently HTML or CSV-oriented text tables unless a route returns only a
-    status code. JSON output is tracked separately in TODO #68.
+    currently HTML, CSV, or JSON-oriented text tables unless a route returns
+    only a status code.
 servers:
   - url: http://localhost:18080
     description: DEBUG HTTP verifier server
@@ -1278,7 +1278,7 @@ components:
       required: false
       schema:
         type: string
-        enum: [html, csv]
+        enum: [html, csv, json]
       description: Requested response format supported by current handlers.
     matchPublicKey:
       name: _publicKey
@@ -1473,6 +1473,20 @@ components:
         text/csv:
           schema:
             type: string
+        application/json:
+          schema:
+            type: object
+            properties:
+              columns:
+                type: array
+                items:
+                  type: string
+              rows:
+                type: array
+                items:
+                  type: object
+                  additionalProperties:
+                    type: string
     CsvResponse:
       description: CSV-formatted response body.
       headers:
@@ -1486,6 +1500,20 @@ components:
         text/plain:
           schema:
             type: string
+        application/json:
+          schema:
+            type: object
+            properties:
+              columns:
+                type: array
+                items:
+                  type: string
+              rows:
+                type: array
+                items:
+                  type: object
+                  additionalProperties:
+                    type: string
     FileContentResponse:
       description: Reconstructed document content.
       headers:
@@ -1496,6 +1524,11 @@ components:
         text/csv:
           schema:
             type: string
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              type: integer
         text/plain:
           schema:
             type: string

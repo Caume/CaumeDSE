@@ -81,6 +81,9 @@ List document types, check `file.csv`, and verify an unsupported document type.
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes?$AUTH&newOrgKey=$ORG_KEY"
 
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
+
 curl -I $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv?$AUTH&newOrgKey=$ORG_KEY"
 
@@ -100,6 +103,9 @@ curl -i $TLS_ARGS -X POST \
 
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/users/$USER/roleTables/users?$AUTH&newOrgKey=$ORG_KEY"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/users/$USER/roleTables/users?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
 
 curl -i $TLS_ARGS -X POST \
   "$BASE_URL/organizations/$ORG/users/$USER/filterWhitelist/$USER?$AUTH&newOrgKey=$ORG_KEY&*_get=1&*_post=0&*_put=0&*_delete=0&*_head=1&*_options=1"
@@ -131,6 +137,9 @@ curl -i $TLS_ARGS \
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents?$AUTH&newOrgKey=$ORG_KEY"
 
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
+
 curl -I $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC?$AUTH&newOrgKey=$ORG_KEY"
 
@@ -149,6 +158,9 @@ curl -i $TLS_ARGS -X OPTIONS \
 
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=csv"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
 
 curl -i $TLS_ARGS -X OPTIONS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentColumns?$AUTH&newOrgKey=$ORG_KEY"
@@ -180,6 +192,9 @@ curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableRows/1?$AUTH&newOrgKey=$ORG_KEY"
 
 curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
+
+curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableColumns/name?$AUTH&newOrgKey=$ORG_KEY"
 
 # Invalid row selectors return 403.
@@ -204,6 +219,9 @@ curl -i $TLS_ARGS \
 
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/parserScripts/$SCRIPT_PERL?$AUTH&newOrgKey=$ORG_KEY&outputType=csv"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/parserScripts/$SCRIPT_PERL?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
 
 curl -I $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/parserScripts/missing.pl?$AUTH&newOrgKey=$ORG_KEY&outputType=csv"

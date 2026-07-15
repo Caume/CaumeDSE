@@ -78,6 +78,8 @@ int cmeStrSqlUPDATEConstruct (char **resultQuery, const char *tableName, const c
 int cmeMemTableToHTMLTableStr (const char** srcMemTable,char **resultHTMLTableStr,int numColumns,int numRows);
 // Function to create a string with a CSV representation of a MemTable
 int cmeMemTableToCSVTableStr (const char** srcMemTable,char **resultCSVTableStr,int numColumns,int numRows);
+// Function to create a string with a JSON representation of a MemTable.
+int cmeMemTableToJSONTableStr (const char** srcMemTable,char **resultJSONTableStr,int numColumns,int numRows);
 // Function to find a key string within an (URI) Argument pair list, and return a pointer of the corresponding value within the list, if a match is found.
 int cmeFindInArgPairList (const char** stringPairs, const char *key, const char **pValue);
 // Function to construct a responseStr and add corresponding headers, according to an (optional) outputType parameter, as requested by the user (e.g. csv, html)

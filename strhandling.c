@@ -403,6 +403,92 @@ int cmeMemTableToCSVTableStr (const char** srcMemTable,char **resultCSVTableStr,
     return(0);
 }
 
+static void cmeAppendJSONStringValue(char **dst, const char *src)
+{
+    const unsigned char *p=(const unsigned char *)src;
+
+    cmeStrConstrAppend(dst,"\"");
+    if (p)
+    {
+        while (*p)
+        {
+            switch (*p)
+            {
+                case '\"':
+                    cmeStrConstrAppend(dst,"\\\"");
+                    break;
+                case '\\':
+                    cmeStrConstrAppend(dst,"\\\\");
+                    break;
+                case '\b':
+                    cmeStrConstrAppend(dst,"\\b");
+                    break;
+                case '\f':
+                    cmeStrConstrAppend(dst,"\\f");
+                    break;
+                case '\n':
+                    cmeStrConstrAppend(dst,"\\n");
+                    break;
+                case '\r':
+                    cmeStrConstrAppend(dst,"\\r");
+                    break;
+                case '\t':
+                    cmeStrConstrAppend(dst,"\\t");
+                    break;
+                default:
+                    if (*p<0x20)
+                    {
+                        cmeStrConstrAppend(dst,"\\u%04x",*p);
+                    }
+                    else
+                    {
+                        cmeStrConstrAppend(dst,"%c",*p);
+                    }
+                    break;
+            }
+            p++;
+        }
+    }
+    cmeStrConstrAppend(dst,"\"");
+}
+
+int cmeMemTableToJSONTableStr (const char** srcMemTable,char **resultJSONTableStr,int numColumns,int numRows)
+{
+    int cont,cont2;
+
+    cmeStrConstrAppend(resultJSONTableStr,"{\"columns\":[");
+    for (cont=0;cont<numColumns;cont++)
+    {
+        cmeAppendJSONStringValue(resultJSONTableStr,srcMemTable[cont]);
+        if ((cont+1)<numColumns)
+        {
+            cmeStrConstrAppend(resultJSONTableStr,",");
+        }
+    }
+    cmeStrConstrAppend(resultJSONTableStr,"],\"rows\":[");
+    for (cont=1;cont<=numRows;cont++)
+    {
+        cmeStrConstrAppend(resultJSONTableStr,"{");
+        for(cont2=0;cont2<numColumns;cont2++)
+        {
+            cmeAppendJSONStringValue(resultJSONTableStr,srcMemTable[cont2]);
+            cmeStrConstrAppend(resultJSONTableStr,":");
+            cmeAppendJSONStringValue(resultJSONTableStr,srcMemTable[numColumns*cont+cont2]);
+            if ((cont2+1)<numColumns)
+            {
+                cmeStrConstrAppend(resultJSONTableStr,",");
+            }
+        }
+        cmeStrConstrAppend(resultJSONTableStr,"}");
+        if (cont<numRows)
+        {
+            cmeStrConstrAppend(resultJSONTableStr,",");
+        }
+    }
+    cmeStrConstrAppend(resultJSONTableStr,"]}");
+    return(0);
+}
+
 int cmeFindInArgPairList (const char** stringPairs, const char *key, const char **pValue)
 {
     int cont=0;
@@ -443,6 +529,12 @@ int cmeConstructWebServiceTableResponse (const char **resultTable, const int tab
                 result=cmeMemTableToHTMLTableStr((const char **)resultTable,resultTableStr,tableCols,tableRows);
                 cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");  //Note: fields 0 & 1 will be set with Engine-results later.
                 cmeStrConstrAppend(&((*responseHeaders)[3]),"text/html; charset=utf-8");
+            }
+            else if (!strcmp("json",pOutputType)) // user request results in JSON format.
+            {
+                result=cmeMemTableToJSONTableStr((const char **)resultTable,resultTableStr,tableCols,tableRows);
+                cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");  //Note: fields 0 & 1 will be set with Engine-results later.
+                cmeStrConstrAppend(&((*responseHeaders)[3]),"application/json");
             }
             else //Error, unknown outputType.
             {
@@ -507,6 +599,14 @@ int cmeConstructWebServiceCountResponse (const char *resultName, const int resul
             cmeStrConstrAppend(resultStr,"<p>%s: %d</p><br>",resultName,resultCount);
             cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");  //Note: fields 0 & 1 are Engine-results.
             cmeStrConstrAppend(&((*responseHeaders)[3]),"text/html; charset=utf-8");
+        }
+        else if (!strcmp("json",pOutputType))
+        {
+            cmeStrConstrAppend(resultStr,"{");
+            cmeAppendJSONStringValue(resultStr,resultName);
+            cmeStrConstrAppend(resultStr,":%d}",resultCount);
+            cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");  //Note: fields 0 & 1 are Engine-results.
+            cmeStrConstrAppend(&((*responseHeaders)[3]),"application/json");
         }
         else //Error, unknown outputType.
         {

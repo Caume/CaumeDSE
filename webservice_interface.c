@@ -1715,7 +1715,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
                         "documentType class resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
 #endif
-            result=cmeWebServiceProcessDocumentTypeClass(responseText, responseCode,
+            result=cmeWebServiceProcessDocumentTypeClass(responseText, responseHeaders, responseCode,
                                                          url, urlElements, argumentElements, method);
             if (result)
             {
@@ -6960,18 +6960,42 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
     }
 }
 
-int cmeWebServiceProcessDocumentTypeClass (char **responseText, int *responseCode,
+int cmeWebServiceProcessDocumentTypeClass (char **responseText, char ***responseHeaders, int *responseCode,
                                            const char *url, const char **urlElements,
                                            const char **argumentElements, const char *method)
 {
     int cont;
+    const char *pOutputType=NULL;
 
     if(!strcmp(method,"GET"))
     {
-        cmeStrConstrAppend(responseText,"<b>200 OK - Available document types:</b><br>");
-        for (cont=0;cont<cmeWebServiceNumSupportedDocumentTypes;cont++)
+        if ((argumentElements)&&(!cmeFindInArgPairList(argumentElements,"outputType",&pOutputType))&&(pOutputType)&&(!strcmp("json",pOutputType)))
         {
-            cmeStrConstrAppend(responseText,"%s<br>",cmeWebServiceSupportedDocumentTypes[cont]);
+            cmeStrConstrAppend(responseText,"{\"columns\":[\"documentType\"],\"rows\":[");
+            for (cont=0;cont<cmeWebServiceNumSupportedDocumentTypes;cont++)
+            {
+                cmeStrConstrAppend(responseText,"{\"documentType\":\"%s\"}",cmeWebServiceSupportedDocumentTypes[cont]);
+                if ((cont+1)<cmeWebServiceNumSupportedDocumentTypes)
+                {
+                    cmeStrConstrAppend(responseText,",");
+                }
+            }
+            cmeStrConstrAppend(responseText,"]}");
+            if ((responseHeaders)&&(*responseHeaders))
+            {
+                cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",cmeWebServiceNumSupportedDocumentTypes);
+                cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");
+                cmeStrConstrAppend(&((*responseHeaders)[3]),"application/json");
+            }
+        }
+        else
+        {
+            cmeStrConstrAppend(responseText,"<b>200 OK - Available document types:</b><br>");
+            for (cont=0;cont<cmeWebServiceNumSupportedDocumentTypes;cont++)
+            {
+                cmeStrConstrAppend(responseText,"%s<br>",cmeWebServiceSupportedDocumentTypes[cont]);
+            }
         }
         *responseCode=200;
         return(0);
