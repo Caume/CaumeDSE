@@ -393,13 +393,17 @@
     - Batch 3: document expected runtime, prerequisites, exit behavior, and failure artifacts.
   - Done: added `--ci-smoke` to `TEST/run_debug_components.sh`. The profile keeps the normal configure/build/check/install path, component marker extraction, and DEBUG web startup checks, then runs one live API protocol instead of both. It defaults to HTTP live coverage and accepts `--ci-smoke --web-protocol=https` to select HTTPS. Documented the command in README, TUTORIAL, API_EXAMPLES, and AGENTS, and validated `bash -n TEST/run_debug_components.sh` plus `TEST/run_debug_components.sh --ci-smoke` (`73 passed, 0 failed, 1 skipped`).
 
-- [ ] #66 Add AI-safe API usage examples.
+- [x] #66 Add AI-safe API usage examples.
   - Source: `AI_USAGE.md`, `API_EXAMPLES.md`, live verifier fixtures.
   - Goal: document safe patterns for LLM agents and automation that call CaumeDSE without leaking keys or over-broad access.
   - Plan:
     - Batch 1: outline safe agent workflows for scoped org keys, least-privilege users, parser-script restrictions, audit logs, and cleanup.
     - Batch 2: add `AI_USAGE.md` with concrete examples and explicit anti-patterns for prompts, logs, and generated scripts.
     - Batch 3: cross-link from README/API examples and validate examples against current verifier routes.
+  - Done: added `AI_USAGE.md` with AI-agent boundaries, least-privilege
+    workflow guidance, secret-safe shell setup, narrow request examples,
+    parser-script review guardrails, redacted verifier usage, anti-patterns, and
+    validation commands. Linked it from README and API_EXAMPLES.
 
 - [ ] #67 Add machine-readable OpenAPI spec.
   - Source: `README.md`, `API_EXAMPLES.md`, `TEST/run_debug_components.sh`.

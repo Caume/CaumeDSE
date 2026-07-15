@@ -3,7 +3,8 @@
 This file contains compact `curl` examples aligned with the live verifier flow
 in `TEST/run_debug_components.sh`. The examples are meant for development and
 integration testing. They show the request shape for common resources without
-expanding the main README API reference.
+expanding the main README API reference. For AI-agent and automation guardrails
+around these examples, see `AI_USAGE.md`.
 
 ## Setup
 
