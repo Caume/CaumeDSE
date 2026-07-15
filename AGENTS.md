@@ -23,6 +23,11 @@ external clients are under `samples/`. User-facing documentation is in
   against an existing build without binding web ports.
 - `TEST/run_debug_components.sh --live-only --web-protocol=http|https` reruns a
   focused live API flow and writes `live-api-coverage.csv`.
+- `TEST/run_debug_components.sh --ci-smoke` runs the CI-friendly build,
+  component-marker, startup, and single-protocol live profile.
+- Prefix verifier runs with `CDSE_VERIFY_REDACT=1` before sharing logs; it masks
+  org keys, `newOrgKey`, selected credential-style request parameters, and
+  generated certificate/key paths in retained artifacts.
 
 ## Coding Style & Naming Conventions
 

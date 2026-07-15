@@ -3,7 +3,8 @@
 This file contains compact `curl` examples aligned with the live verifier flow
 in `TEST/run_debug_components.sh`. The examples are meant for development and
 integration testing. They show the request shape for common resources without
-expanding the main README API reference.
+expanding the main README API reference. For AI-agent and automation guardrails
+around these examples, see `AI_USAGE.md`.
 
 ## Setup
 
@@ -249,9 +250,14 @@ The examples are derived from the live verifier. To exercise the same flow and
 produce a coverage matrix, run:
 
 ```sh
+TEST/run_debug_components.sh --ci-smoke
 TEST/run_debug_components.sh --live-only --web-protocol=http
 TEST/run_debug_components.sh --live-only --web-protocol=https
 ```
 
 The verifier writes `live-api-coverage.csv` and `live-api-coverage.txt` under
-its log directory.
+its log directory.  Use `CDSE_VERIFY_REDACT=1 TEST/run_debug_components.sh ...`
+when saving verifier artifacts in CI or AI-assisted debugging sessions; this
+masks organization keys, `newOrgKey` values, selected credential-style request
+parameters, and generated certificate/key paths in summaries and live request
+artifacts.

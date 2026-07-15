@@ -435,6 +435,9 @@ TEST/run_debug_components.sh
 # Component-only rerun using an existing install.
 TEST/run_debug_components.sh --skip-build --skip-web
 
+# CI smoke profile: build, component markers, web startup, and HTTP live flow.
+TEST/run_debug_components.sh --ci-smoke
+
 # Focused live HTTP rerun.
 TEST/run_debug_components.sh --live-only --web-protocol=http
 
@@ -451,6 +454,13 @@ Live API runs write `live-api-coverage.csv` and `live-api-coverage.txt` under
 the verifier log directory so route coverage, expected/actual statuses, marker
 checks, elapsed time, and response log paths can be reviewed without reading
 the shell script.
+
+For CI logs or AI-assisted debugging, run the verifier with
+`CDSE_VERIFY_REDACT=1`.  This masks `orgKey`, `newOrgKey`, selected
+credential-style request parameters, and generated certificate/key paths in the
+run summary, live request artifacts, the full DEBUG run log, component extract
+logs, and live service logs while preserving status codes, markers, elapsed
+times, and artifact names.
 
 ## Operational Checklist
 

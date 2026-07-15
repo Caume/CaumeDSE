@@ -12,7 +12,10 @@ SKIP_BUILD=0
 SKIP_WEB=0
 LIVE_ONLY=0
 WEB_PROTOCOL="both"
+WEB_PROTOCOL_SET=0
+CI_SMOKE=0
 LIVE_FLOW_ID="liveflow$$"
+REDACT_OUTPUT="${CDSE_VERIFY_REDACT:-0}"
 
 PASSED=0
 FAILED=0
@@ -24,12 +27,13 @@ LIVE_LAST_STATUS=""
 LIVE_LAST_CURL_RC=""
 
 usage() {
-    printf 'Usage: %s [--skip-build] [--skip-web] [--live-only] [--web-protocol=http|https|both]\n' "$0"
+    printf 'Usage: %s [--skip-build] [--skip-web] [--live-only] [--ci-smoke] [--web-protocol=http|https|both]\n' "$0"
     printf '\n'
     printf 'Options:\n'
     printf '  --skip-build              reuse the current install prefix\n'
     printf '  --skip-web                skip DEBUG web startup and live API checks\n'
     printf '  --live-only               run only live API checks; implies --skip-build\n'
+    printf '  --ci-smoke                run build, component markers, and one live protocol; default http\n'
     printf '  --web-protocol=VALUE      live protocol to run: http, https, or both; default both\n'
     printf '\n'
     printf 'Environment:\n'
@@ -38,6 +42,7 @@ usage() {
     printf '  CDSE_DEBUG_TEST_HTTP_PORT  HTTP test port, default 18080\n'
     printf '  CDSE_DEBUG_TEST_HTTPS_PORT HTTPS test port, default 18443\n'
     printf '  CDSE_DEBUG_TEST_TIMEOUT    executable timeout, default 120s\n'
+    printf '  CDSE_VERIFY_REDACT         redact live verifier secrets from summaries and artifacts when set to 1/true/on\n'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -52,8 +57,12 @@ while [ "$#" -gt 0 ]; do
             LIVE_ONLY=1
             SKIP_BUILD=1
             ;;
+        --ci-smoke)
+            CI_SMOKE=1
+            ;;
         --web-protocol=*)
             WEB_PROTOCOL="${1#*=}"
+            WEB_PROTOCOL_SET=1
             ;;
         -h|--help)
             usage
@@ -67,6 +76,10 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
+
+if [ "$CI_SMOKE" -eq 1 ] && [ "$WEB_PROTOCOL_SET" -eq 0 ]; then
+    WEB_PROTOCOL="http"
+fi
 
 case "$WEB_PROTOCOL" in
     http|https|both)
@@ -83,6 +96,16 @@ if [ "$LIVE_ONLY" -eq 1 ] && [ "$SKIP_WEB" -eq 1 ]; then
     exit 2
 fi
 
+if [ "$CI_SMOKE" -eq 1 ] && [ "$LIVE_ONLY" -eq 1 ]; then
+    printf '%s\n' '--ci-smoke cannot be combined with --live-only' >&2
+    exit 2
+fi
+
+if [ "$CI_SMOKE" -eq 1 ] && [ "$SKIP_WEB" -eq 1 ]; then
+    printf '%s\n' '--ci-smoke cannot be combined with --skip-web' >&2
+    exit 2
+fi
+
 mkdir -p "$LOG_ROOT"
 SUMMARY_FILE="$LOG_ROOT/summary.txt"
 LIVE_COVERAGE_CSV="$LOG_ROOT/live-api-coverage.csv"
@@ -92,8 +115,60 @@ printf 'protocol,feature,method,expected_status,actual_status,curl_rc,marker,sta
 printf '%-7s %-32s %-7s %-8s %-8s %-7s %-6s %-8s %-7s %s\n' \
     "proto" "feature" "method" "expect" "actual" "curl" "marker" "status" "elapsed" "logs" > "$LIVE_COVERAGE_TXT"
 
+elapsed_seconds() {
+    local start="$1"
+    local now
+
+    now="$(date +%s)"
+    printf '%ss' "$((now - start))"
+}
+
+csv_escape() {
+    local value="$1"
+    value="${value//\"/\"\"}"
+    printf '"%s"' "$value"
+}
+
+redaction_enabled() {
+    case "$REDACT_OUTPUT" in
+        1|true|TRUE|yes|YES|on|ON)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+redact_stream() {
+    if ! redaction_enabled; then
+        cat
+        return 0
+    fi
+
+    sed -E \
+        -e 's/([?&])(\*?)(orgKey|newOrgKey|accessPath|accessUser|accessPassword|basicAuthPwdHash|oauthConsumerSecret|certificate|publicKey)=([^&"[:space:]]*)/\1\2\3=<redacted>/g' \
+        -e 's/(^|[[:space:]])(\*?)(orgKey|newOrgKey|accessPath|accessUser|accessPassword|basicAuthPwdHash|oauthConsumerSecret|certificate|publicKey)=([^"[:space:]]*)/\1\2\3=<redacted>/g' \
+        -e 's/(")(\*?)(orgKey|newOrgKey|accessPath|accessUser|accessPassword|basicAuthPwdHash|oauthConsumerSecret|certificate|publicKey)=([^"]*)(")/\1\2\3=<redacted>\5/g' \
+        -e 's#([^"[:space:]]*/[^"[:space:]]+\.(key|pem|srl|req|cnf))#<redacted-cert-path>#g'
+}
+
+redact_file_in_place() {
+    local file="$1"
+    local tmp
+
+    if ! redaction_enabled || [ ! -f "$file" ]; then
+        return 0
+    fi
+    tmp="${file}.redacted.$$"
+    if redact_stream < "$file" > "$tmp"; then
+        mv "$tmp" "$file"
+    else
+        rm -f "$tmp"
+        return 1
+    fi
+}
+
 note() {
-    printf '%s\n' "$*" | tee -a "$SUMMARY_FILE"
+    printf '%s\n' "$*" | redact_stream | tee -a "$SUMMARY_FILE"
 }
 
 record_pass() {
@@ -109,20 +184,6 @@ record_fail() {
 record_skip() {
     SKIPPED=$((SKIPPED + 1))
     note "SKIP $1 - $2"
-}
-
-elapsed_seconds() {
-    local start="$1"
-    local now
-
-    now="$(date +%s)"
-    printf '%ss' "$((now - start))"
-}
-
-csv_escape() {
-    local value="$1"
-    value="${value//\"/\"\"}"
-    printf '"%s"' "$value"
 }
 
 infer_live_method() {
@@ -267,6 +328,7 @@ extract_component_log() {
     local pattern="$2"
     local source="$3"
     grep -nE -- "$pattern" "$source" > "$out" 2>/dev/null || true
+    redact_file_in_place "$out"
 }
 
 check_component() {
@@ -333,6 +395,8 @@ live_curl() {
     LIVE_LAST_STATUS="$status"
     LIVE_LAST_CURL_RC="$rc"
     printf 'name=%s\nurl=%s\nstatus=%s\ncurl_rc=%s\n' "$name" "$url" "$status" "$rc" >> "$meta"
+    redact_file_in_place "$body"
+    redact_file_in_place "$meta"
     if [ "$rc" -ne 0 ]; then
         return 1
     fi
@@ -505,6 +569,7 @@ run_live_web_flow() {
 
     if ! wait_for_log_marker "$service_log" "CaumeDSE Debug: cmeWebServiceSetup(), $protocol_label server started on port $port." 20; then
         stop_live_service "$service_pid"
+        redact_file_in_place "$service_log"
         record_fail "live_${protocol}_api_flow" "service did not start log=$service_log"
         return 1
     fi
@@ -589,6 +654,7 @@ run_live_web_flow() {
     live_api_check "$protocol" delete_user 200 "$base_url/organizations/$org_name/users/$role_user?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
 
     stop_live_service "$service_pid"
+    redact_file_in_place "$service_log"
 
     if [ "$LIVE_FLOW_FAILED" -eq 0 ]; then
         record_pass "live_${protocol}_api_flow"
@@ -602,7 +668,7 @@ note "CaumeDSE DEBUG component verification"
 note "root=$ROOT_DIR"
 note "prefix=$PREFIX"
 note "logs=$LOG_ROOT"
-note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_protocol=$WEB_PROTOCOL live_only=$LIVE_ONLY"
+note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_protocol=$WEB_PROTOCOL live_only=$LIVE_ONLY ci_smoke=$CI_SMOKE redact=$REDACT_OUTPUT"
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
     run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP || exit 1
@@ -832,6 +898,7 @@ else
     record_skip live_https_api_flow "requested --skip-web"
 fi
 
+redact_file_in_place "$FULL_LOG"
 append_live_coverage_summary
 note "RESULT passed=$PASSED failed=$FAILED skipped=$SKIPPED"
 note "summary=$SUMMARY_FILE"

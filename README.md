@@ -8,6 +8,9 @@ by CaumeDSE, see [TUTORIAL.md](TUTORIAL.md).
 For tested `curl` examples based on the live verifier fixtures, see
 [API_EXAMPLES.md](API_EXAMPLES.md).
 
+For safe AI-agent and automation patterns around the API, see
+[AI_USAGE.md](AI_USAGE.md).
+
 
 ## Contents
 
@@ -15,6 +18,7 @@ For tested `curl` examples based on the live verifier fixtures, see
 - [Status](#status)
 - [Cryptography and Data Security Tutorial](TUTORIAL.md)
 - [API Examples](API_EXAMPLES.md)
+- [AI-Safe API Usage](AI_USAGE.md)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)
 - [REST Resource API Reference](#rest-resource-api-reference)
@@ -2203,6 +2207,10 @@ flows:
 
     TEST/run_debug_components.sh
 
+For CI smoke coverage, use:
+
+    TEST/run_debug_components.sh --ci-smoke
+
 The full mode uses `CDSE_DEBUG_TEST_HTTP_PORT` and
 `CDSE_DEBUG_TEST_HTTPS_PORT` when set, or ports 18080 and 18443 by default.
 The script rejects invalid, duplicate, or busy ports before launching the
@@ -2222,6 +2230,17 @@ machine-readable comparisons and `live-api-coverage.txt` for the fixed-width
 summary table.  Each row records protocol, feature name, inferred HTTP method,
 expected and actual status, curl result, marker status, elapsed time, and
 body/meta log paths.
+
+Set `CDSE_VERIFY_REDACT=1` for CI logs or AI-assisted debugging sessions.  In
+that mode the verifier masks `orgKey`, `newOrgKey`, selected credential-style
+request parameters, and generated certificate/key file paths in `summary.txt`,
+live request body/meta artifacts, the full DEBUG run log, component extract
+logs, and live service logs.  Redaction is disabled by default so local
+debugging keeps full request details unless explicitly requested.
+
+The `--ci-smoke` profile runs configure, build, install, component markers,
+HTTP/HTTPS startup checks, and one live API protocol. It defaults to HTTP live
+coverage; use `--ci-smoke --web-protocol=https` to select HTTPS instead.
 
 The committed test database under `TEST/testDB_opt_cdse` uses
 `0CDBB9AF76AF43BDB72E095989E612CC` as the `EngineAdmin` / `EngineOrg`
