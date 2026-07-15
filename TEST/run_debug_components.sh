@@ -843,6 +843,12 @@ check_component db_browsing_resource 'Testing dbNames secure DB browsing resourc
     'TESTS: testDBBrowsing(), PASS: tableRow resource GET responseCode=200' \
     'TESTS: testDBBrowsing(), PASS: dbNames/dbTables/tableRows/tableColumns browsing verified.'
 
+if bash "$ROOT_DIR/TEST/validate_openapi_routes.sh" > "$LOG_ROOT/openapi-validation.log" 2>&1; then
+    record_pass "openapi_route_reference"
+else
+    record_fail "openapi_route_reference" "see $LOG_ROOT/openapi-validation.log"
+fi
+
 check_component sqlite_thread_safety 'Testing thread safety|Thread safety test|test_thread_' "$FULL_LOG" \
     '--- Thread safety test: PASSED'
 

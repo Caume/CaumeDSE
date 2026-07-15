@@ -1,0 +1,1572 @@
+openapi: 3.0.3
+info:
+  title: CaumeDSE REST API
+  version: 1.0.9
+  description: |
+    Machine-readable reference for the stable CaumeDSE routes documented in
+    README.md and exercised by TEST/run_debug_components.sh. Responses are
+    currently HTML or CSV-oriented text tables unless a route returns only a
+    status code. JSON output is tracked separately in TODO #68.
+servers:
+  - url: http://localhost:18080
+    description: DEBUG HTTP verifier server
+  - url: https://localhost:18443
+    description: DEBUG HTTPS verifier server
+tags:
+  - name: Authentication
+  - name: Organizations
+  - name: Users
+  - name: Roles and filters
+  - name: Storage
+  - name: Document types
+  - name: Documents
+  - name: Document content
+  - name: Parser scripts
+  - name: Secure DB browsing
+
+paths:
+  /organizations:
+    get:
+      tags: [Organizations]
+      summary: List organization resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/outputType"
+        - $ref: "#/components/parameters/matchPublicKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [Organizations]
+      summary: Update matching organization resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+        - $ref: "#/components/parameters/certificateUpdate"
+        - $ref: "#/components/parameters/publicKeyUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      tags: [Organizations]
+      summary: Delete matching organization resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    head:
+      tags: [Organizations]
+      summary: Count matching organization resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Organizations]
+      summary: Return supported methods for organizations.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+    get:
+      tags: [Organizations, Authentication]
+      summary: Read one organization resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Organizations]
+      summary: Create an organization resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+        - $ref: "#/components/parameters/certificateUpdate"
+        - $ref: "#/components/parameters/publicKeyUpdate"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    put:
+      tags: [Organizations]
+      summary: Update one organization resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+        - $ref: "#/components/parameters/certificateUpdate"
+        - $ref: "#/components/parameters/publicKeyUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      tags: [Organizations]
+      summary: Delete one organization resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    head:
+      tags: [Organizations]
+      summary: Check whether one organization resource exists.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Organizations]
+      summary: Return supported methods for one organization resource.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/users:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+    get:
+      tags: [Users]
+      summary: List user resources in an organization.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/outputType"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    put:
+      tags: [Users]
+      summary: Update matching user resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+        - $ref: "#/components/parameters/certificateUpdate"
+        - $ref: "#/components/parameters/publicKeyUpdate"
+        - $ref: "#/components/parameters/basicAuthPwdHashUpdate"
+        - $ref: "#/components/parameters/oauthConsumerKeyUpdate"
+        - $ref: "#/components/parameters/oauthConsumerSecretUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    delete:
+      tags: [Users]
+      summary: Delete matching user resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+    head:
+      tags: [Users]
+      summary: Count matching user resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Users]
+      summary: Return supported methods for users.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/users/{user}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/user"
+    get:
+      tags: [Users]
+      summary: Read one user resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Users]
+      summary: Create one user resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+        - $ref: "#/components/parameters/certificateUpdate"
+        - $ref: "#/components/parameters/publicKeyUpdate"
+        - $ref: "#/components/parameters/basicAuthPwdHashUpdate"
+        - $ref: "#/components/parameters/oauthConsumerKeyUpdate"
+        - $ref: "#/components/parameters/oauthConsumerSecretUpdate"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    put:
+      tags: [Users]
+      summary: Update one user resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    delete:
+      tags: [Users]
+      summary: Delete one user resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+    head:
+      tags: [Users]
+      summary: Check whether one user resource exists.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Users]
+      summary: Return supported methods for one user resource.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/users/{user}/roleTables/{roleTable}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/user"
+      - $ref: "#/components/parameters/roleTable"
+    get: &roleFilterGet
+      tags: [Roles and filters]
+      summary: Read one role table, whitelist, or blacklist resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post: &roleFilterPost
+      tags: [Roles and filters]
+      summary: Create one role table, whitelist, or blacklist resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/methodGetUpdate"
+        - $ref: "#/components/parameters/methodPostUpdate"
+        - $ref: "#/components/parameters/methodPutUpdate"
+        - $ref: "#/components/parameters/methodDeleteUpdate"
+        - $ref: "#/components/parameters/methodHeadUpdate"
+        - $ref: "#/components/parameters/methodOptionsUpdate"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    put: &roleFilterPut
+      tags: [Roles and filters]
+      summary: Update one role table, whitelist, or blacklist resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/methodGetUpdate"
+        - $ref: "#/components/parameters/methodPostUpdate"
+        - $ref: "#/components/parameters/methodPutUpdate"
+        - $ref: "#/components/parameters/methodDeleteUpdate"
+        - $ref: "#/components/parameters/methodHeadUpdate"
+        - $ref: "#/components/parameters/methodOptionsUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    delete: &roleFilterDelete
+      tags: [Roles and filters]
+      summary: Delete one role table, whitelist, or blacklist resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+    head: &roleFilterHead
+      tags: [Roles and filters]
+      summary: Check whether one role table, whitelist, or blacklist resource exists.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options: &roleFilterOptions
+      tags: [Roles and filters]
+      summary: Return supported methods for one role table, whitelist, or blacklist resource.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+  /organizations/{organization}/users/{user}/filterWhitelist/{filterUser}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/user"
+      - $ref: "#/components/parameters/filterUser"
+    get: *roleFilterGet
+    post: *roleFilterPost
+    put: *roleFilterPut
+    delete: *roleFilterDelete
+    head: *roleFilterHead
+    options: *roleFilterOptions
+  /organizations/{organization}/users/{user}/filterBlacklist/{filterUser}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/user"
+      - $ref: "#/components/parameters/filterUser"
+    get: *roleFilterGet
+    post: *roleFilterPost
+    put: *roleFilterPut
+    delete: *roleFilterDelete
+    head: *roleFilterHead
+    options: *roleFilterOptions
+
+  /organizations/{organization}/storage:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+    get:
+      tags: [Storage]
+      summary: List storage resources in an organization.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/storageTypeMatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    put:
+      tags: [Storage]
+      summary: Update matching storage resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+        - $ref: "#/components/parameters/locationUpdate"
+        - $ref: "#/components/parameters/storageTypeUpdate"
+        - $ref: "#/components/parameters/accessPathUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    delete:
+      tags: [Storage]
+      summary: Delete matching storage resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+    head:
+      tags: [Storage]
+      summary: Count matching storage resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Storage]
+      summary: Return supported methods for storage resources.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+    get:
+      tags: [Storage]
+      summary: Read one storage resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    post:
+      tags: [Storage]
+      summary: Create one storage resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+        - $ref: "#/components/parameters/locationUpdate"
+        - $ref: "#/components/parameters/storageTypeUpdate"
+        - $ref: "#/components/parameters/accessPathUpdate"
+        - $ref: "#/components/parameters/accessUserUpdate"
+        - $ref: "#/components/parameters/accessPasswordUpdate"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    put:
+      tags: [Storage]
+      summary: Update one storage resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    delete:
+      tags: [Storage]
+      summary: Delete one storage resource.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+    head:
+      tags: [Storage]
+      summary: Check whether one storage resource exists.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Storage]
+      summary: Return supported methods for one storage resource.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+    get:
+      tags: [Document types]
+      summary: List supported document types.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    options:
+      tags: [Document types]
+      summary: Return supported methods for documentTypes.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/{documentType}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/documentType"
+    get:
+      tags: [Document types]
+      summary: Validate one supported document type.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    head:
+      tags: [Document types]
+      summary: Check whether a document type is supported.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Document types]
+      summary: Return supported methods for one documentType.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/documentType"
+    get:
+      tags: [Documents]
+      summary: List document resources for a document type.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/outputType"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    put:
+      tags: [Documents]
+      summary: Update matching document resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    delete:
+      tags: [Documents]
+      summary: Delete matching document resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+    head:
+      tags: [Documents]
+      summary: Count matching document resources.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Documents]
+      summary: Return supported methods for documents.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents/{document}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/documentType"
+      - $ref: "#/components/parameters/document"
+    get:
+      tags: [Documents]
+      summary: Read one document resource metadata table.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Documents]
+      summary: Upload one document.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DocumentUpload"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    put:
+      tags: [Documents]
+      summary: Update one document resource metadata table.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/resourceInfoUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    delete:
+      tags: [Documents]
+      summary: Delete one document and its secure storage parts.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+    head:
+      tags: [Documents]
+      summary: Check whether one document resource exists.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Documents]
+      summary: Return supported methods for one document resource.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents/{document}/content:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/documentType"
+      - $ref: "#/components/parameters/document"
+    get:
+      tags: [Document content]
+      summary: Return reconstructed document content.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/outputType"
+      responses:
+        "200":
+          $ref: "#/components/responses/FileContentResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    head:
+      tags: [Document content]
+      summary: Check whether reconstructed document content is available.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Document content]
+      summary: Return supported methods for content.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/document"
+    options:
+      tags: [Document content]
+      summary: Return supported methods for CSV content rows.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows/{contentRow}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/document"
+      - $ref: "#/components/parameters/contentRow"
+    get:
+      tags: [Document content]
+      summary: Read one 1-based CSV content row.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/outputType"
+      responses:
+        "200":
+          $ref: "#/components/responses/CsvResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Document content]
+      summary: Append the next CSV content row.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [Document content]
+      summary: Update one existing CSV content row.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Document content]
+      summary: Delete one CSV content row.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+    head:
+      tags: [Document content]
+      summary: Check whether one CSV content row exists.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Document content]
+      summary: Return supported methods for one CSV content row.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentColumns:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/document"
+    options:
+      tags: [Document content]
+      summary: Return supported methods for CSV content columns.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentColumns/{contentColumn}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/document"
+      - $ref: "#/components/parameters/contentColumn"
+    get:
+      tags: [Document content]
+      summary: Read one CSV content column.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/outputType"
+      responses:
+        "200":
+          $ref: "#/components/responses/CsvResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Document content]
+      summary: Add a CSV content column, creating an empty document if needed.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "201":
+          $ref: "#/components/responses/Created"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Document content]
+      summary: Delete a CSV content column.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/CountResponse"
+    head:
+      tags: [Document content]
+      summary: Check whether one CSV content column exists.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Document content]
+      summary: Return supported methods for one CSV content column.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/document"
+    options:
+      tags: [Parser scripts]
+      summary: Return supported methods for parserScripts.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts/{parserScript}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/document"
+      - $ref: "#/components/parameters/parserScript"
+    get:
+      tags: [Parser scripts]
+      summary: Run a stored Perl or Python parser script against a CSV document.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/outputType"
+      responses:
+        "200":
+          $ref: "#/components/responses/CsvResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    head:
+      tags: [Parser scripts]
+      summary: Check whether one parser script can be resolved.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Parser scripts]
+      summary: Return supported methods for one parser script resource.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/dbNames:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+    get:
+      tags: [Secure DB browsing]
+      summary: List registered secure CSV document database names.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    head:
+      tags: [Secure DB browsing]
+      summary: Count registered secure CSV document database names.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Secure DB browsing]
+      summary: Return supported methods for dbNames.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/dbName"
+    get:
+      tags: [Secure DB browsing]
+      summary: List exposed tables for one secure CSV document database.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    head:
+      tags: [Secure DB browsing]
+      summary: Check whether exposed tables are available.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Secure DB browsing]
+      summary: Return supported methods for dbTables.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/tableRows/{tableRow}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/dbName"
+      - $ref: "#/components/parameters/dbTable"
+      - $ref: "#/components/parameters/tableRow"
+    get:
+      tags: [Secure DB browsing]
+      summary: Read one 1-based row from an exposed secure CSV table.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/outputType"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    head:
+      tags: [Secure DB browsing]
+      summary: Check whether one exposed secure CSV table row exists.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Secure DB browsing]
+      summary: Return supported methods for tableRows.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/tableColumns/{tableColumn}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/dbName"
+      - $ref: "#/components/parameters/dbTable"
+      - $ref: "#/components/parameters/tableColumn"
+    get:
+      tags: [Secure DB browsing]
+      summary: Read one column from an exposed secure CSV table.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/outputType"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    head:
+      tags: [Secure DB browsing]
+      summary: Check whether one exposed secure CSV table column exists.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Secure DB browsing]
+      summary: Return supported methods for tableColumns.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+components:
+  parameters:
+    organization:
+      name: organization
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Organization resource identifier from the URL.
+    user:
+      name: user
+      in: path
+      required: true
+      schema:
+        type: string
+      description: User resource identifier from the URL.
+    roleTable:
+      name: roleTable
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Role table resource identifier such as users or documents.
+    filterUser:
+      name: filterUser
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Whitelist or blacklist user-resource filter, interpreted as a POSIX extended regular expression.
+    storage:
+      name: storage
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Storage resource identifier from the URL.
+    documentType:
+      name: documentType
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+          - file.csv
+          - file.raw
+          - file.txt
+          - file.json
+          - file.xml
+          - file.html
+          - file.pdf
+          - file.png
+          - file.jpg
+          - file.gif
+          - file.zip
+          - file.bin
+          - script.perl
+          - script.python
+      description: Supported document type identifier.
+    document:
+      name: document
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Document resource identifier.
+    contentRow:
+      name: contentRow
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: 1-based content row selector.
+    contentColumn:
+      name: contentColumn
+      in: path
+      required: true
+      schema:
+        type: string
+      description: CSV content column name.
+    parserScript:
+      name: parserScript
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Stored script.perl or script.python document name.
+    dbName:
+      name: dbName
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Registered file.csv document database name.
+    dbTable:
+      name: dbTable
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [data, meta]
+      description: Exposed secure CSV table name.
+    tableRow:
+      name: tableRow
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: 1-based table row selector.
+    tableColumn:
+      name: tableColumn
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Exposed secure CSV table column name.
+    userId:
+      name: userId
+      in: query
+      required: true
+      schema:
+        type: string
+      description: Authenticated CaumeDSE user identifier.
+    orgId:
+      name: orgId
+      in: query
+      required: true
+      schema:
+        type: string
+      description: Authenticated CaumeDSE organization identifier.
+    orgKey:
+      name: orgKey
+      in: query
+      required: true
+      schema:
+        type: string
+        format: password
+      description: Organization key. Treat as a secret.
+    newOrgKey:
+      name: newOrgKey
+      in: query
+      required: false
+      schema:
+        type: string
+        format: password
+      description: Key used for creating or rewriting protected resources.
+    outputType:
+      name: outputType
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [html, csv]
+      description: Requested response format supported by current handlers.
+    matchPublicKey:
+      name: _publicKey
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact-match filter for publicKey.
+    storageTypeMatch:
+      name: _type
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Exact-match filter for storage type.
+    resourceInfoUpdate:
+      name: "*resourceInfo"
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Resource information update value.
+    certificateUpdate:
+      name: "*certificate"
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Certificate update value.
+    publicKeyUpdate:
+      name: "*publicKey"
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Public key update value.
+    basicAuthPwdHashUpdate:
+      name: "*basicAuthPwdHash"
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Basic-auth password hash update value.
+    oauthConsumerKeyUpdate:
+      name: "*oauthConsumerKey"
+      in: query
+      required: false
+      schema:
+        type: string
+      description: External OAuth consumer key metadata.
+    oauthConsumerSecretUpdate:
+      name: "*oauthConsumerSecret"
+      in: query
+      required: false
+      schema:
+        type: string
+        format: password
+      description: External OAuth consumer secret metadata.
+    locationUpdate:
+      name: "*location"
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Storage location update value.
+    storageTypeUpdate:
+      name: "*type"
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Storage provider type. Current local storage uses local.
+    accessPathUpdate:
+      name: "*accessPath"
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Storage access path.
+    accessUserUpdate:
+      name: "*accessUser"
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Storage access user metadata.
+    accessPasswordUpdate:
+      name: "*accessPassword"
+      in: query
+      required: false
+      schema:
+        type: string
+        format: password
+      description: Storage access password metadata.
+    methodGetUpdate:
+      name: "*_get"
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum: [0, 1]
+      description: Allow or deny GET depending on role/filter resource type.
+    methodPostUpdate:
+      name: "*_post"
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum: [0, 1]
+      description: Allow or deny POST depending on role/filter resource type.
+    methodPutUpdate:
+      name: "*_put"
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum: [0, 1]
+      description: Allow or deny PUT depending on role/filter resource type.
+    methodDeleteUpdate:
+      name: "*_delete"
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum: [0, 1]
+      description: Allow or deny DELETE depending on role/filter resource type.
+    methodHeadUpdate:
+      name: "*_head"
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum: [0, 1]
+      description: Allow or deny HEAD depending on role/filter resource type.
+    methodOptionsUpdate:
+      name: "*_options"
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum: [0, 1]
+      description: Allow or deny OPTIONS depending on role/filter resource type.
+
+  schemas:
+    TextTable:
+      type: string
+      description: HTML or CSV-style table text returned by current handlers.
+    DocumentUpload:
+      type: object
+      required: [file, userId, orgId, orgKey]
+      properties:
+        file:
+          type: string
+          format: binary
+        userId:
+          type: string
+        orgId:
+          type: string
+        orgKey:
+          type: string
+          format: password
+        newOrgKey:
+          type: string
+          format: password
+        "*resourceInfo":
+          type: string
+        shuffle:
+          type: string
+          description: Optional secure CSV import flag.
+        protect:
+          type: string
+          description: Optional secure CSV import flag.
+        replaceDB:
+          type: string
+          description: Optional secure CSV import flag.
+        vacuumDB:
+          type: string
+          description: Optional secure CSV import flag.
+
+  responses:
+    TableResponse:
+      description: Matching resources as an HTML or CSV-style table.
+      headers:
+        Engine-results:
+          schema:
+            type: integer
+          description: Number of matching result registers.
+      content:
+        text/html:
+          schema:
+            $ref: "#/components/schemas/TextTable"
+        text/csv:
+          schema:
+            type: string
+    CsvResponse:
+      description: CSV-formatted response body.
+      headers:
+        Engine-results:
+          schema:
+            type: integer
+      content:
+        text/csv:
+          schema:
+            type: string
+        text/plain:
+          schema:
+            type: string
+    FileContentResponse:
+      description: Reconstructed document content.
+      headers:
+        Engine-results:
+          schema:
+            type: integer
+      content:
+        text/csv:
+          schema:
+            type: string
+        text/plain:
+          schema:
+            type: string
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    TextResponse:
+      description: Text response.
+      content:
+        text/plain:
+          schema:
+            type: string
+        text/html:
+          schema:
+            type: string
+    CountResponse:
+      description: Operation result count.
+      headers:
+        Engine-results:
+          schema:
+            type: integer
+      content:
+        text/plain:
+          schema:
+            type: string
+        text/html:
+          schema:
+            type: string
+        text/csv:
+          schema:
+            type: string
+    HeaderOnly:
+      description: Status and response headers only.
+      headers:
+        Engine-results:
+          schema:
+            type: integer
+    Created:
+      description: Resource created.
+      content:
+        text/plain:
+          schema:
+            type: string
+    Unauthorized:
+      description: Missing or invalid credentials, organization key, or HTTPS client certificate.
+      content:
+        text/plain:
+          schema:
+            type: string
+    Forbidden:
+      description: Authenticated caller is not authorized or selector is invalid.
+      content:
+        text/plain:
+          schema:
+            type: string
+    NotFound:
+      description: Requested resource was not found.
+      content:
+        text/plain:
+          schema:
+            type: string
+    Conflict:
+      description: Request conflicts with current resource state.
+      content:
+        text/plain:
+          schema:
+            type: string
+    ServerError:
+      description: Server-side processing failed.
+      content:
+        text/plain:
+          schema:
+            type: string

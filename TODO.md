@@ -405,13 +405,14 @@
     parser-script review guardrails, redacted verifier usage, anti-patterns, and
     validation commands. Linked it from README and API_EXAMPLES.
 
-- [ ] #67 Add machine-readable OpenAPI spec.
+- [x] #67 Add machine-readable OpenAPI spec.
   - Source: `README.md`, `API_EXAMPLES.md`, `TEST/run_debug_components.sh`.
   - Goal: make CaumeDSE easier for AI agents, SDK generators, docs tooling, and API validators to consume.
   - Plan:
     - Batch 1: inventory documented REST resources, methods, parameters, status codes, and response formats.
     - Batch 2: add `openapi.yaml` for the stable documented routes, starting with live-verifier-covered resources.
     - Batch 3: add a lightweight validation check that compares key examples or route names against the spec.
+  - Done: added `openapi.yaml` for the stable README/API_EXAMPLES/live-verifier route surface, including organizations, users, storage, documentTypes, documents, content, contentRows/contentColumns, parserScripts, role/filter resources, and secure DB browsing. Added `TEST/validate_openapi_routes.sh`, wired it into the DEBUG verifier summary, and linked the spec from README/API_EXAMPLES.
 
 - [ ] #68 Add JSON output mode for key API resources.
   - Source: `webservice_interface.c`, response formatting helpers, README/API examples.

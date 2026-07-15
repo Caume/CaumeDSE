@@ -8,6 +8,9 @@ by CaumeDSE, see [TUTORIAL.md](TUTORIAL.md).
 For tested `curl` examples based on the live verifier fixtures, see
 [API_EXAMPLES.md](API_EXAMPLES.md).
 
+For a machine-readable route reference for the stable live-verifier-covered
+API surface, see [openapi.yaml](openapi.yaml).
+
 For safe AI-agent and automation patterns around the API, see
 [AI_USAGE.md](AI_USAGE.md).
 
@@ -18,6 +21,7 @@ For safe AI-agent and automation patterns around the API, see
 - [Status](#status)
 - [Cryptography and Data Security Tutorial](TUTORIAL.md)
 - [API Examples](API_EXAMPLES.md)
+- [OpenAPI Route Reference](openapi.yaml)
 - [AI-Safe API Usage](AI_USAGE.md)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)

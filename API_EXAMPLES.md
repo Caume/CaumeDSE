@@ -4,7 +4,8 @@ This file contains compact `curl` examples aligned with the live verifier flow
 in `TEST/run_debug_components.sh`. The examples are meant for development and
 integration testing. They show the request shape for common resources without
 expanding the main README API reference. For AI-agent and automation guardrails
-around these examples, see `AI_USAGE.md`.
+around these examples, see `AI_USAGE.md`. For a machine-readable reference for
+the stable documented routes, see `openapi.yaml`.
 
 ## Setup
 
@@ -253,6 +254,7 @@ produce a coverage matrix, run:
 TEST/run_debug_components.sh --ci-smoke
 TEST/run_debug_components.sh --live-only --web-protocol=http
 TEST/run_debug_components.sh --live-only --web-protocol=https
+TEST/validate_openapi_routes.sh
 ```
 
 The verifier writes `live-api-coverage.csv` and `live-api-coverage.txt` under
