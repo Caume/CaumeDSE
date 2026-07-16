@@ -1004,6 +1004,79 @@ static char **cmeTestAllocResponseHeaders(void)
     return(responseHeaders);
 }
 
+void testJSONResponses(void)
+{
+    int errors=0;
+    int responseCode=0;
+    char *jsonTable=NULL;
+    char *jsonCount=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+    const char *table[]={
+        "name","note",
+        "Jacob","quoted \"value\"",
+        "Line","one\ntwo"
+    };
+    const char *args[]={"outputType","json",NULL};
+
+    printf("--- Testing JSON response formatting:\n");
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testJSONResponses(), can't allocate response headers.\n");
+        return;
+    }
+    if (cmeConstructWebServiceTableResponse(table,2,2,args,"GET","/json-test","json-test",
+                                            &responseHeaders,&jsonTable,&responseCode) ||
+        responseCode!=200 ||
+        !jsonTable ||
+        !strstr(jsonTable,"\"columns\":[\"name\",\"note\"]") ||
+        !strstr(jsonTable,"\"name\":\"Jacob\"") ||
+        !strstr(jsonTable,"quoted \\\"value\\\"") ||
+        !strstr(jsonTable,"one\\ntwo") ||
+        !responseHeaders[2] ||
+        strcmp(responseHeaders[2],"Content-Type") ||
+        !responseHeaders[3] ||
+        strcmp(responseHeaders[3],"application/json"))
+    {
+        errors++;
+        fprintf(stderr,"CaumeDSE Error: testJSONResponses(), table JSON formatting failed. responseCode=%d body=%s\n",
+                responseCode,jsonTable?jsonTable:"(null)");
+    }
+    else
+    {
+        printf("TESTS: testJSONResponses(), PASS: table response JSON outputType.\n");
+    }
+    cmeFree(jsonTable);
+    cmeTestFreeResponseHeaders(responseHeaders);
+
+    responseHeaders=cmeTestAllocResponseHeaders();
+    responseCode=0;
+    if (!responseHeaders ||
+        cmeConstructWebServiceCountResponse("Deleted registers",3,args,"DELETE","/json-test",
+                                            &responseHeaders,&jsonCount,&responseCode) ||
+        !jsonCount ||
+        strcmp(jsonCount,"{\"Deleted registers\":3}") ||
+        !responseHeaders[2] ||
+        strcmp(responseHeaders[2],"Content-Type") ||
+        !responseHeaders[3] ||
+        strcmp(responseHeaders[3],"application/json"))
+    {
+        errors++;
+        fprintf(stderr,"CaumeDSE Error: testJSONResponses(), count JSON formatting failed. body=%s\n",
+                jsonCount?jsonCount:"(null)");
+    }
+    else
+    {
+        printf("TESTS: testJSONResponses(), PASS: count response JSON outputType.\n");
+    }
+    cmeFree(jsonCount);
+    cmeTestFreeResponseHeaders(responseHeaders);
+
+    if (!errors)
+    {
+        printf("TESTS: testJSONResponses(), PASS: JSON response formatting verified.\n");
+    }
+}
+
 static int cmeTestRoleTablesRequest(const char *method, const char *url,
                                     const char **urlElements, int numUrlElements,
                                     const char **argumentElements, int expectedCode,
@@ -1485,10 +1558,17 @@ static int cmeTestDocumentTypesRequest(const char *method, const char *url,
     int result,responseCode=0;
     char *responseText=NULL;
     char *responseFilePath=NULL;
+    char **responseHeaders=cmeTestAllocResponseHeaders();
+
+    if (!responseHeaders)
+    {
+        fprintf(stderr,"CaumeDSE Error: testDocumentTypes(), can't allocate response headers for %s.\n",marker);
+        return(1);
+    }
 
     if (numUrlElements==5)
     {
-        result=cmeWebServiceProcessDocumentTypeClass(&responseText,&responseCode,
+        result=cmeWebServiceProcessDocumentTypeClass(&responseText,&responseHeaders,&responseCode,
                                                      url,urlElements,argumentElements,method);
     }
     else
@@ -1502,11 +1582,13 @@ static int cmeTestDocumentTypesRequest(const char *method, const char *url,
                 marker,result,responseCode,expectedCode);
         cmeFree(responseText);
         cmeFree(responseFilePath);
+        cmeTestFreeResponseHeaders(responseHeaders);
         return(1);
     }
     printf("TESTS: testDocumentTypes(), PASS: %s responseCode=%d\n",marker,responseCode);
     cmeFree(responseText);
     cmeFree(responseFilePath);
+    cmeTestFreeResponseHeaders(responseHeaders);
     return(0);
 }
 

@@ -4,7 +4,9 @@ This file contains compact `curl` examples aligned with the live verifier flow
 in `TEST/run_debug_components.sh`. The examples are meant for development and
 integration testing. They show the request shape for common resources without
 expanding the main README API reference. For AI-agent and automation guardrails
-around these examples, see `AI_USAGE.md`.
+around these examples, see `AI_USAGE.md`. For a machine-readable reference for
+the stable documented routes, see `openapi.yaml`. For a guarded end-to-end
+Python automation sample, see `samples/ai-agent/`.
 
 ## Setup
 
@@ -80,6 +82,9 @@ List document types, check `file.csv`, and verify an unsupported document type.
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes?$AUTH&newOrgKey=$ORG_KEY"
 
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
+
 curl -I $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv?$AUTH&newOrgKey=$ORG_KEY"
 
@@ -99,6 +104,9 @@ curl -i $TLS_ARGS -X POST \
 
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/users/$USER/roleTables/users?$AUTH&newOrgKey=$ORG_KEY"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/users/$USER/roleTables/users?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
 
 curl -i $TLS_ARGS -X POST \
   "$BASE_URL/organizations/$ORG/users/$USER/filterWhitelist/$USER?$AUTH&newOrgKey=$ORG_KEY&*_get=1&*_post=0&*_put=0&*_delete=0&*_head=1&*_options=1"
@@ -130,6 +138,9 @@ curl -i $TLS_ARGS \
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents?$AUTH&newOrgKey=$ORG_KEY"
 
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
+
 curl -I $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC?$AUTH&newOrgKey=$ORG_KEY"
 
@@ -148,6 +159,9 @@ curl -i $TLS_ARGS -X OPTIONS \
 
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=csv"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
 
 curl -i $TLS_ARGS -X OPTIONS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentColumns?$AUTH&newOrgKey=$ORG_KEY"
@@ -179,6 +193,9 @@ curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableRows/1?$AUTH&newOrgKey=$ORG_KEY"
 
 curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
+
+curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableColumns/name?$AUTH&newOrgKey=$ORG_KEY"
 
 # Invalid row selectors return 403.
@@ -203,6 +220,9 @@ curl -i $TLS_ARGS \
 
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/parserScripts/$SCRIPT_PERL?$AUTH&newOrgKey=$ORG_KEY&outputType=csv"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/parserScripts/$SCRIPT_PERL?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
 
 curl -I $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/parserScripts/missing.pl?$AUTH&newOrgKey=$ORG_KEY&outputType=csv"
@@ -253,6 +273,7 @@ produce a coverage matrix, run:
 TEST/run_debug_components.sh --ci-smoke
 TEST/run_debug_components.sh --live-only --web-protocol=http
 TEST/run_debug_components.sh --live-only --web-protocol=https
+TEST/validate_openapi_routes.sh
 ```
 
 The verifier writes `live-api-coverage.csv` and `live-api-coverage.txt` under

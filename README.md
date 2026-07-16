@@ -8,8 +8,14 @@ by CaumeDSE, see [TUTORIAL.md](TUTORIAL.md).
 For tested `curl` examples based on the live verifier fixtures, see
 [API_EXAMPLES.md](API_EXAMPLES.md).
 
+For a machine-readable route reference for the stable live-verifier-covered
+API surface, see [openapi.yaml](openapi.yaml).
+
 For safe AI-agent and automation patterns around the API, see
 [AI_USAGE.md](AI_USAGE.md).
+
+For a guarded Python AI-agent workflow sample, see
+[samples/ai-agent/](samples/ai-agent/).
 
 
 ## Contents
@@ -18,7 +24,9 @@ For safe AI-agent and automation patterns around the API, see
 - [Status](#status)
 - [Cryptography and Data Security Tutorial](TUTORIAL.md)
 - [API Examples](API_EXAMPLES.md)
+- [OpenAPI Route Reference](openapi.yaml)
 - [AI-Safe API Usage](AI_USAGE.md)
+- [AI Agent Sample](samples/ai-agent/)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)
 - [REST Resource API Reference](#rest-resource-api-reference)
@@ -986,10 +994,12 @@ newOrgKey
 
 outputType
     Specifies the type of output for the result. Available values are
-    csv and HTML (the later is the default).  this is particularly
-    useful for results that return data tables, such as resource
-    specification queries or requests for the contents of csv type
-    files.
+    csv, json and HTML (the latter is the default).  This is
+    particularly useful for results that return data tables, such as
+    resource specification queries, content rows/columns, parser script
+    output, secure DB browsing, and requests for the contents of csv
+    type files. JSON table responses use this shape:
+    `{"columns":[...],"rows":[{"column":"value"}]}`.
 
 #### 3.4 Document POST parameters
 

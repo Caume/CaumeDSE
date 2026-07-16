@@ -127,3 +127,10 @@ CDSE_VERIFY_REDACT=1 TEST/run_debug_components.sh --ci-smoke
 For quick documentation-only edits, compare route names against
 `API_EXAMPLES.md` and `TEST/run_debug_components.sh` before running the full
 live flow.
+
+## Integration Sample
+
+See `samples/ai-agent/` for a guarded Python workflow that creates disposable
+resources, uploads verifier fixtures, queries row/column/parser results as
+JSON, builds an LLM-safe prompt preview without secrets, and cleans up the
+workspace.

@@ -123,7 +123,7 @@ int cmeWebServiceProcessStorageResource (char **responseText, char **responseFil
 int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeaders, int *responseCode,
                                       const char *url, const char **urlElements, const char **argumentElements, const char *method);
 //Function to process documentType class resource requests
-int cmeWebServiceProcessDocumentTypeClass (char **responseText, int *responseCode,
+int cmeWebServiceProcessDocumentTypeClass (char **responseText, char ***responseHeaders, int *responseCode,
                                            const char *url, const char **urlElements,
                                            const char **argumentElements, const char *method);
 //Function to process documentType resource requests
