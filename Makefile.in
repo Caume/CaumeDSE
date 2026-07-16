@@ -405,7 +405,7 @@ caume_common_sources = common.h config.c crypto.c crypto.h db.c db.h engine_admi
 CaumeDSE_SOURCES = main.c $(caume_common_sources)
 CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
-EXTRA_DIST = TEST README-alpha CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md openapi.yaml
+EXTRA_DIST = TEST samples README-alpha CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md openapi.yaml
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
 

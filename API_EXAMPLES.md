@@ -5,7 +5,8 @@ in `TEST/run_debug_components.sh`. The examples are meant for development and
 integration testing. They show the request shape for common resources without
 expanding the main README API reference. For AI-agent and automation guardrails
 around these examples, see `AI_USAGE.md`. For a machine-readable reference for
-the stable documented routes, see `openapi.yaml`.
+the stable documented routes, see `openapi.yaml`. For a guarded end-to-end
+Python automation sample, see `samples/ai-agent/`.
 
 ## Setup
 

@@ -423,13 +423,14 @@
     - Batch 3: extend DEBUG/live verifier coverage and document JSON examples.
   - Done: added JSON table/count response formatting with escaping and `application/json` headers, added JSON handling for the special `documentTypes` collection route, documented `outputType=json`, updated OpenAPI response metadata, and extended DEBUG plus live HTTP verifier coverage for documentTypes, documents, content rows/columns, dbNames/dbTables/tableRows/tableColumns, parserScripts, and role/filter reads.
 
-- [ ] #69 Add AI agent integration sample.
+- [x] #69 Add AI agent integration sample.
   - Source: `samples/ai-agent/`, `API_EXAMPLES.md`, verifier fixtures.
   - Goal: show a guarded end-to-end Python agent workflow using CaumeDSE APIs.
   - Plan:
     - Batch 1: define a minimal scripted workflow for create org/storage, upload CSV, query rows/columns, run parser, and cleanup.
     - Batch 2: add a sample Python client with guardrails to avoid putting org keys or sensitive data in prompts/logs.
     - Batch 3: document setup, expected outputs, and validation against DEBUG/live verifier fixtures.
+  - Done: added `samples/ai-agent/guarded_agent_workflow.py` and README documentation. The sample uses environment-based secrets, redacted request logging, reviewed verifier fixtures, narrow JSON row/column/parser queries, an LLM-safe prompt preview, and best-effort cleanup of uploaded documents, storage, and user resources. Linked the sample from README, AI_USAGE, and API_EXAMPLES.
 
 - [x] #70 Add redaction mode for logs and verifier artifacts.
   - Source: DEBUG logging, `TEST/run_debug_components.sh`, live coverage artifacts.

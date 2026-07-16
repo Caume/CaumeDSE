@@ -14,6 +14,9 @@ API surface, see [openapi.yaml](openapi.yaml).
 For safe AI-agent and automation patterns around the API, see
 [AI_USAGE.md](AI_USAGE.md).
 
+For a guarded Python AI-agent workflow sample, see
+[samples/ai-agent/](samples/ai-agent/).
+
 
 ## Contents
 
@@ -23,6 +26,7 @@ For safe AI-agent and automation patterns around the API, see
 - [API Examples](API_EXAMPLES.md)
 - [OpenAPI Route Reference](openapi.yaml)
 - [AI-Safe API Usage](AI_USAGE.md)
+- [AI Agent Sample](samples/ai-agent/)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)
 - [REST Resource API Reference](#rest-resource-api-reference)
