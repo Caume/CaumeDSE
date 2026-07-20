@@ -447,13 +447,20 @@
     artifact names. Documented the mode in README, TUTORIAL, API_EXAMPLES, and
     AGENTS.
 
-- [ ] #71 Add MCP server prototype.
+- [x] #71 Add MCP server prototype.
   - Source: new `samples/mcp-server/` or `samples/ai-agent/`, REST API examples.
   - Goal: expose safe CaumeDSE operations through Model Context Protocol tools for AI assistants.
   - Plan:
     - Batch 1: define a minimal tool surface such as list document types, upload CSV, query column, run parser, and cleanup workspace.
     - Batch 2: implement a prototype MCP wrapper that calls the REST API with scoped credentials.
     - Batch 3: document security boundaries and avoid exposing raw org keys or unrestricted parser execution.
+  - Done: added `samples/mcp-server/`, a stdio JSON-RPC MCP prototype with an
+    allow-listed tool surface for disposable workspace setup, document-type
+    listing, reviewed CSV/parser uploads, bounded column/parser queries, and
+    cleanup. The wrapper reads credentials from `CDSE_MCP_*` environment
+    variables, redacts secret query parameters in request logs, avoids exposing
+    org keys through tool schemas/results, and documents client configuration
+    plus security boundaries for parser and CSV handling.
 
 - [ ] #72 Add prompt-injection resistant parser-script guidance.
   - Source: `TUTORIAL.md`, parser script docs, `TEST/testfiles/`.
