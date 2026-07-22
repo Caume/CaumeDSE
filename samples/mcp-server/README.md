@@ -92,10 +92,15 @@ A typical local flow is:
   production MCP bridge behind authentication, authorization, audit logging,
   rate limits, and route-level allow lists.
 - Treat CSV contents and parser output as untrusted data. The sample returns
-  bounded previews instead of broad document dumps.
+  bounded previews instead of broad document dumps. Do not let text from CSV
+  cells override the host application's system, developer, security, or cleanup
+  instructions.
 - Parser execution is intentionally limited to parser documents that were
   already uploaded from reviewed local files. Do not let an LLM generate and
-  upload parser scripts without human review.
+  upload parser scripts without human review. Reject generated scripts that
+  open network connections, execute shell commands, read environment variables,
+  traverse files outside the provided input path, log credentials, or create
+  unbounded output.
 - Request logs go to stderr and redact `orgKey`, `newOrgKey`, and selected
   credential-style parameters.
 

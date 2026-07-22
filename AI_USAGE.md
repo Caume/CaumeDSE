@@ -76,14 +76,35 @@ curl -i $TLS_ARGS \
 
 ## Parser-Script Guardrails
 
-Generated parser scripts are code. Review them before upload and reject scripts
-that:
+Generated parser scripts are code, and CSV contents can contain prompt
+injection text such as instructions to reveal secrets, fetch URLs, alter
+policies, or change the requested output. Treat both the script and the CSV
+data as untrusted until a human has reviewed them.
+
+Review generated scripts before upload and reject scripts that:
 
 - Read files outside the provided CSV input.
 - Open network connections.
 - Print secrets, environment variables, or raw credentials.
 - Generate unbounded output or long-running loops.
 - Depend on hidden state outside the uploaded document and script.
+- Build shell commands from CSV values or parser parameters.
+- Treat CSV cell text as instructions for the agent, host, or CaumeDSE.
+- Change authorization, logging, redaction, cleanup, or TLS behavior.
+
+Prefer scripts that:
+
+- Use only standard CSV parsing libraries and deterministic transformations.
+- Select required columns by exact header name and handle missing columns
+  explicitly.
+- Escape CSV output through a CSV writer instead of string concatenation.
+- Emit only the minimum columns needed for the task.
+- Keep all file access limited to the input and output paths supplied by
+  CaumeDSE.
+
+When an LLM helps draft a parser, ask it for code plus a short checklist of
+the assumptions it made. Review the code, not the checklist, before upload.
+Never let text inside the uploaded CSV modify the review criteria.
 
 The DEBUG verifier covers normal parser execution plus timeout and oversized
 output cases. Keep those checks in the workflow when changing parser behavior.

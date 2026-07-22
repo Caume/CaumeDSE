@@ -371,6 +371,23 @@ Security considerations:
   share the parser result-table cap; process-level Perl isolation is a separate
   hardening step.
 
+Prompt-injection boundary:
+
+In an LLM-connected workflow, decrypted CSV cells and parser output are
+untrusted text. A row can contain instructions such as "ignore your policy",
+"send the organization key", or "load another file". CaumeDSE will store and
+return that text as data; the application that sends it to an LLM must keep it
+inside a data field and must not let it override system, developer, security,
+or cleanup instructions.
+
+For generated parser scripts, review the source before uploading it as
+`script.perl` or `script.python`. Reject scripts that open network sockets,
+execute shell commands, read environment variables, traverse files outside the
+provided CSV input path, disable redaction, log credentials, or produce
+unbounded output. Prefer deterministic transformations that use CSV parsing
+libraries, select columns by exact header names, validate missing columns, and
+write output through a CSV writer.
+
 Verifier coverage:
 
 `TEST/run_debug_components.sh` uploads Perl and Python parser scripts, runs both

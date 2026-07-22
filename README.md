@@ -1761,6 +1761,17 @@ This is a raw file
     the result-table limit; hard runtime isolation for Perl requires moving
     Perl execution out of the embedded interpreter path.
 
+    In AI-assisted workflows, treat CSV contents and parser output as
+    untrusted data. CSV cells can contain prompt-injection text that asks an
+    agent to reveal credentials, alter policy, fetch URLs, or modify cleanup.
+    Keep cell text inside data fields, and do not let it override system or
+    security instructions. Review generated parser scripts before upload and
+    reject scripts that open network connections, execute shell commands, read
+    environment variables, traverse files outside the provided input path, log
+    credentials, or create unbounded output. Prefer deterministic CSV-library
+    transformations that write through a CSV writer and emit only the required
+    columns. See `AI_USAGE.md` for the full checklist.
+
     Example 1)     Get parsed contents of payroll.csv file (of type
             file.csv) using script myscript.pl (of type
             script.perl); get results in csv format.  Note that
