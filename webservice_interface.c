@@ -47,6 +47,9 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/resource.h>
+#endif
 
 static void cmeWebServiceSetThreadStatus(struct cmeWebServiceConnectionInfoStruct *con_info, int threadStatus)
 {
@@ -782,14 +785,205 @@ static int cmeWebServiceValidateParserOutputFileSize(const char *filePath)
     return(0);
 }
 
-static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
+static int cmeWebServiceWaitForParserChild(pid_t pid, const char *context)
 {
     int result=0;
     int status=0;
     int waited=0;
+
+    while (1)
+    {
+        result=waitpid(pid,&status,WNOHANG);
+        if (result==pid)
+        {
+            break;
+        }
+        if ((result<0)&&(errno==EINTR))
+        {
+            continue;
+        }
+        if (result<0)
+        {
+            break;
+        }
+        if (waited>=CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS)
+        {
+            kill(pid,SIGTERM);
+            sleep(1);
+            if (waitpid(pid,&status,WNOHANG)==0)
+            {
+                kill(pid,SIGKILL);
+            }
+            while ((waitpid(pid,&status,0)<0)&&(errno==EINTR))
+            {
+            }
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: %s(), parser timed out after %d seconds.\n",
+                    context?context:"cmeWebServiceWaitForParserChild",
+                    CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS);
+#endif
+            return(6);
+        }
+        sleep(1);
+        waited++;
+    }
+    if ((result<0)||(!WIFEXITED(status))||(WEXITSTATUS(status)!=0))
+    {
+        return(5);
+    }
+    return(0);
+}
+
+#if defined(__unix__) || defined(__APPLE__)
+static int cmeWebServiceSetParserLimit(int resource, rlim_t requested)
+{
+    struct rlimit limit;
+    rlim_t effective;
+
+    if (getrlimit(resource,&limit))
+    {
+        return(1);
+    }
+    effective=requested;
+    if ((limit.rlim_max!=RLIM_INFINITY)&&(effective>limit.rlim_max))
+    {
+        effective=limit.rlim_max;
+    }
+    limit.rlim_cur=effective;
+    limit.rlim_max=effective;
+    if (setrlimit(resource,&limit))
+    {
+        return(2);
+    }
+    return(0);
+}
+#endif
+
+static int cmeWebServiceApplyParserChildLimits(void)
+{
+#if defined(RLIMIT_CPU)
+    if (cmeWebServiceSetParserLimit(RLIMIT_CPU,(rlim_t)(CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS+2)))
+    {
+        return(1);
+    }
+#endif
+#if defined(RLIMIT_FSIZE)
+    if (cmeWebServiceSetParserLimit(RLIMIT_FSIZE,(rlim_t)(CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES+65536)))
+    {
+        return(2);
+    }
+#endif
+#if defined(RLIMIT_AS)
+    if (cmeWebServiceSetParserLimit(RLIMIT_AS,(rlim_t)CDSE_PARSER_SCRIPT_MAX_ADDRESS_SPACE_BYTES))
+    {
+        return(3);
+    }
+#endif
+#if defined(RLIMIT_NOFILE)
+    if (cmeWebServiceSetParserLimit(RLIMIT_NOFILE,(rlim_t)CDSE_PARSER_SCRIPT_MAX_OPEN_FILES))
+    {
+        return(4);
+    }
+#endif
+#if defined(RLIMIT_NPROC)
+    if (cmeWebServiceSetParserLimit(RLIMIT_NPROC,(rlim_t)CDSE_PARSER_SCRIPT_MAX_PROCESSES))
+    {
+        return(5);
+    }
+#endif
+    return(0);
+}
+
+static void cmeWebServiceCloseParserChildFds(void)
+{
+    long maxFd=sysconf(_SC_OPEN_MAX);
+    long fd;
+
+    if ((maxFd<0)||(maxFd>4096))
+    {
+        maxFd=4096;
+    }
+    for (fd=3;fd<maxFd;fd++)
+    {
+        close((int)fd);
+    }
+}
+
+static int cmeWebServiceRedirectParserChildStdio(void)
+{
+    int nullFd=open("/dev/null",O_RDWR);
+
+    if (nullFd<0)
+    {
+        return(1);
+    }
+    if ((dup2(nullFd,STDIN_FILENO)<0)||
+        (dup2(nullFd,STDOUT_FILENO)<0)||
+        (dup2(nullFd,STDERR_FILENO)<0))
+    {
+        if (nullFd>STDERR_FILENO)
+        {
+            close(nullFd);
+        }
+        return(2);
+    }
+    if (nullFd>STDERR_FILENO)
+    {
+        close(nullFd);
+    }
+    return(0);
+}
+
+static void cmeWebServiceExecParserChild(const char *interpreterPath, char *const argv[])
+{
+    char *const childEnv[]={
+        "PATH=/usr/bin:/bin",
+        "LANG=C",
+        "LC_ALL=C",
+        NULL
+    };
+
+    if ((!interpreterPath)||(!argv)||(!argv[0])||
+        (chdir(cmeDefaultSecureTmpFilePath))||
+        (cmeWebServiceRedirectParserChildStdio()))
+    {
+        _exit(126);
+    }
+    cmeWebServiceCloseParserChildFds();
+    if (cmeWebServiceApplyParserChildLimits())
+    {
+        _exit(126);
+    }
+    execve(interpreterPath,argv,childEnv);
+    _exit(127);
+}
+
+static int cmeWebServiceRunParserChild(const char *interpreterPath, char *const argv[], const char *context)
+{
+    pid_t pid;
+
+    if ((!interpreterPath)||(!argv))
+    {
+        return(1);
+    }
+    pid=fork();
+    if (pid<0)
+    {
+        return(4);
+    }
+    if (pid==0)
+    {
+        cmeWebServiceExecParserChild(interpreterPath,argv);
+    }
+    return(cmeWebServiceWaitForParserChild(pid,context));
+}
+
+static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
+{
+    int result=0;
     char *inputPath=NULL;
     char *outputPath=NULL;
-    pid_t pid;
+    char *argv[5];
 
     if (!scriptPath)
     {
@@ -806,64 +1000,13 @@ static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
     }
     if (!result)
     {
-        pid=fork();
-        if (pid<0)
-        {
-            result=4;
-        }
-        else if (pid==0)
-        {
-            execlp("python3","python3",scriptPath,inputPath,outputPath,(char *)NULL);
-            _exit(127);
-        }
-        else
-        {
-            while (1)
-            {
-                result=waitpid(pid,&status,WNOHANG);
-                if (result==pid)
-                {
-                    break;
-                }
-                if ((result<0)&&(errno==EINTR))
-                {
-                    continue;
-                }
-                if (result<0)
-                {
-                    break;
-                }
-                if (waited>=CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS)
-                {
-                    kill(pid,SIGTERM);
-                    sleep(1);
-                    if (waitpid(pid,&status,WNOHANG)==0)
-                    {
-                        kill(pid,SIGKILL);
-                    }
-                    while ((waitpid(pid,&status,0)<0)&&(errno==EINTR))
-                    {
-                    }
-#ifdef ERROR_LOG
-                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceRunPythonParserScript(), parser timed out after %d seconds.\n",
-                            CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS);
-#endif
-                    result=6;
-                    break;
-                }
-                sleep(1);
-                waited++;
-            }
-            if ((result!=6)&&
-                ((result<0)||(!WIFEXITED(status))||(WEXITSTATUS(status)!=0)))
-            {
-                result=5;
-            }
-            else if (result!=6)
-            {
-                result=0;
-            }
-        }
+        argv[0]=(char *)CDSE_PARSER_PYTHON_PATH;
+        argv[1]=(char *)scriptPath;
+        argv[2]=inputPath;
+        argv[3]=outputPath;
+        argv[4]=NULL;
+        result=cmeWebServiceRunParserChild(CDSE_PARSER_PYTHON_PATH,argv,
+                                           "cmeWebServiceRunPythonParserScript");
     }
     if (!result)
     {
@@ -895,6 +1038,165 @@ static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
     }
     cmeFree(inputPath);
     cmeFree(outputPath);
+    return(result);
+}
+
+static const char *cmePerlParserChildRunner =
+"my ($script_path,$input_path,$output_path)=@ARGV;\n"
+"exit 2 unless defined $script_path && defined $input_path && defined $output_path;\n"
+"sub cdse_load_script {\n"
+"    my ($path)=@_;\n"
+"    my $result=do $path;\n"
+"    if (!defined $result) {\n"
+"        print STDERR \"CaumeDSE Perl parser load failed: \",($@ || $! || 'unknown'),\"\\n\";\n"
+"        exit 3;\n"
+"    }\n"
+"}\n"
+"sub cdse_parse_csv_line {\n"
+"    my ($line)=@_;\n"
+"    $line='' unless defined $line;\n"
+"    chomp $line;\n"
+"    $line =~ s/\\r\\z//;\n"
+"    my @fields=();\n"
+"    my $field='';\n"
+"    my $quoted=0;\n"
+"    my @chars=split //,$line;\n"
+"    while (@chars) {\n"
+"        my $ch=shift @chars;\n"
+"        if ($quoted) {\n"
+"            if ($ch eq '\"') {\n"
+"                if (@chars && $chars[0] eq '\"') { $field.=shift @chars; }\n"
+"                else { $quoted=0; }\n"
+"            }\n"
+"            else { $field.=$ch; }\n"
+"        }\n"
+"        else {\n"
+"            if ($ch eq ',') { push @fields,$field; $field=''; }\n"
+"            elsif (($ch eq '\"') && ($field eq '')) { $quoted=1; }\n"
+"            else { $field.=$ch; }\n"
+"        }\n"
+"    }\n"
+"    push @fields,$field;\n"
+"    return @fields;\n"
+"}\n"
+"sub cdse_write_csv_line {\n"
+"    my ($fh,@fields)=@_;\n"
+"    for (my $idx=0; $idx<@fields; $idx++) {\n"
+"        my $field=defined $fields[$idx] ? $fields[$idx] : '';\n"
+"        $field =~ s/\"/\"\"/g;\n"
+"        if ($field =~ /[\",\\r\\n]/) { $field='\"'.$field.'\"'; }\n"
+"        print $fh ',' if $idx;\n"
+"        print $fh $field;\n"
+"    }\n"
+"    print $fh \"\\n\";\n"
+"}\n"
+"open my $in,'<',$input_path or exit 4;\n"
+"open my $out,'>',$output_path or exit 5;\n"
+"my $header=<$in>;\n"
+"if (defined $header) {\n"
+"    cdse_load_script($script_path);\n"
+"    my @cols=cdse_parse_csv_line($header);\n"
+"    my @out_cols=@cols;\n"
+"    if (defined &cmePERLProcessColumnNames) {\n"
+"        my @candidate=cmePERLProcessColumnNames(@cols);\n"
+"        @out_cols=@candidate if @candidate==@cols;\n"
+"    }\n"
+"    cdse_write_csv_line($out,@out_cols);\n"
+"    while (my $line=<$in>) {\n"
+"        cdse_load_script($script_path);\n"
+"        my @row=cdse_parse_csv_line($line);\n"
+"        my @out_row=@row;\n"
+"        if (defined &cmePERLProcessRow) {\n"
+"            my @candidate=cmePERLProcessRow(@row);\n"
+"            @out_row=@candidate if @candidate==@row;\n"
+"        }\n"
+"        cdse_write_csv_line($out,@out_row);\n"
+"    }\n"
+"}\n"
+"close $out or exit 6;\n"
+"close $in or exit 7;\n"
+"exit 0;\n";
+
+static int cmeWebServiceRunPerlParserScript(const char *scriptPath)
+{
+    int result=0;
+    char *inputPath=NULL;
+    char *outputPath=NULL;
+    char *runnerPath=NULL;
+    char *argv[6];
+
+    if (!scriptPath)
+    {
+        return(1);
+    }
+    result=cmeWebServiceCreateSecureTmpPath(&inputPath);
+    if (!result)
+    {
+        result=cmeWebServiceCreateSecureTmpPath(&outputPath);
+    }
+    if (!result)
+    {
+        result=cmeWebServiceCreateSecureTmpPath(&runnerPath);
+    }
+    if (!result)
+    {
+        result=cmeWebServiceWriteResultMemTableCSV(inputPath);
+    }
+    if (!result)
+    {
+        result=cmeWriteStrToFile((char *)cmePerlParserChildRunner,runnerPath,
+                                 (int)strlen(cmePerlParserChildRunner));
+        if (result)
+        {
+            result=3;
+        }
+    }
+    if (!result)
+    {
+        argv[0]=(char *)CDSE_PARSER_PERL_PATH;
+        argv[1]=runnerPath;
+        argv[2]=(char *)scriptPath;
+        argv[3]=inputPath;
+        argv[4]=outputPath;
+        argv[5]=NULL;
+        result=cmeWebServiceRunParserChild(CDSE_PARSER_PERL_PATH,argv,
+                                           "cmeWebServiceRunPerlParserScript");
+    }
+    if (!result)
+    {
+        result=cmeWebServiceValidateParserOutputFileSize(outputPath);
+        if (result)
+        {
+            result=7;
+        }
+    }
+    if (!result)
+    {
+        result=cmeWebServiceLoadCSVToResultMemTable(outputPath);
+    }
+    if (!result)
+    {
+        result=cmeWebServiceValidateParserResultSize("cmeWebServiceRunPerlParserScript");
+        if (result)
+        {
+            result=8;
+        }
+    }
+    if (inputPath)
+    {
+        cmeFileOverwriteAndDelete(inputPath);
+    }
+    if (outputPath)
+    {
+        cmeFileOverwriteAndDelete(outputPath);
+    }
+    if (runnerPath)
+    {
+        cmeFileOverwriteAndDelete(runnerPath);
+    }
+    cmeFree(inputPath);
+    cmeFree(outputPath);
+    cmeFree(runnerPath);
     return(result);
 }
 
@@ -8915,7 +9217,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     int numMatchArgs=0;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
-    int perlLocked=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -8929,7 +9230,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     char *tmpRAWFile=NULL;              //Full path to temporal, unencrypted script file.
     char *dbFilePath=NULL;
     char **resultRegisterCols=NULL;
-    char *ilist[2];                     //Parameter list for myPerl initialization.
     const int numColumns=15;            //Number of columns in corresponding resource table.
     const int numValidGETALLMatch=9;    //9 parameters + 4 (storageId,orgResourceId,documentId,type) from URL
     const char *tableName="documents";
@@ -9000,11 +9300,6 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                 resultDB=NULL; \
             } \
             cmeResultMemTableClean(); \
-            if (perlLocked) \
-            { \
-                pthread_mutex_unlock(&cmePerlMutex); \
-                perlLocked=0; \
-            } \
         } while (0); //Local free() macro.
 
     columnValues=(char **)malloc(sizeof(char *)*numColumns); //Set space to store organization resource information, columns 1 to 11 (POST/PUT).
@@ -9141,7 +9436,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                                             cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+                                " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
                         cmeWebServiceProcessParserScriptResourceFree();
                         *responseCode=500;
@@ -9150,38 +9445,10 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     if (!strcmp(resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],"script.perl"))
                     {
                         cmeResultMemTableClean();
-                        // Serialise only the shared Perl interpreter parse and callback execution.
-                        pthread_mutex_lock(&cmePerlMutex);
-                        perlLocked=1;
-                        ilist[0]="CaumeDSE";
-                        ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
-                        result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
-                        if (result) //Error
-                        {
-                            cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
-                                               "Internal server error number '%d'."
-                                               "METHOD: '%s' URL: '%s'."
-                                                "%sLatest IDD version: <code>%s</code>",result,method,url,cmeWSMsgParserScriptResourceOptions,
-                                                cmeInternalDBDefinitionsVersion);
-#ifdef ERROR_LOG
-                            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                                    " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
-#endif
-                            cmeWebServiceProcessParserScriptResourceFree();
-                            *responseCode=500;
-                            return(3);
-                        }
-                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",
-                                   cmeDefaultPerlIterationFunction,cdsePerl); //Select
-                        pthread_mutex_unlock(&cmePerlMutex);
-                        perlLocked=0;
+                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",NULL,NULL);
                         if (!result)
                         {
-                            result=cmeWebServiceValidateParserResultSize("cmeWebServiceProcessParserScriptResource");
-                            if (result)
-                            {
-                                result=17;
-                            }
+                            result=cmeWebServiceRunPerlParserScript(tmpRAWFile);
                         }
                     }
                     else
@@ -9375,7 +9642,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     {
 #ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+                                " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
                         cmeWebServiceProcessParserScriptResourceFree();
                         *responseCode=500;  //No responseText in HEAD!
@@ -9384,33 +9651,10 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     if (!strcmp(resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],"script.perl"))
                     {
                         cmeResultMemTableClean();
-                        // Serialise only the shared Perl interpreter parse and callback execution.
-                        pthread_mutex_lock(&cmePerlMutex);
-                        perlLocked=1;
-                        ilist[0]="CaumeDSE";
-                        ilist[1]=tmpRAWFile;//Set pointer to TMP script full path.
-                        result=cmePerlParserCmdLineInit(2,ilist,cdsePerl);
-                        if (result) //Error
-                        {
-#ifdef ERROR_LOG
-                            fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessParserScriptResource(), Error, internal server error '%d'."
-                                    " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
-#endif
-                            cmeWebServiceProcessParserScriptResourceFree();
-                            *responseCode=500; //No responseText in HEAD!
-                            return(12);
-                        }
-                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",
-                                          cmeDefaultPerlIterationFunction,cdsePerl); //Select
-                        pthread_mutex_unlock(&cmePerlMutex);
-                        perlLocked=0;
+                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",NULL,NULL);
                         if (!result)
                         {
-                            result=cmeWebServiceValidateParserResultSize("cmeWebServiceProcessParserScriptResource");
-                            if (result)
-                            {
-                                result=17;
-                            }
+                            result=cmeWebServiceRunPerlParserScript(tmpRAWFile);
                         }
                     }
                     else
@@ -9974,7 +10218,7 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                                             cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentClass(), Error, internal server error '%d'."
-                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+                                " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
                         cmeWebServiceProcessContentClassFree();
                         *responseCode=500;
@@ -10195,7 +10439,7 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                                             cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                         fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentClass(), Error, internal server error '%d'."
-                                " Method: '%s', URL: '%s', cmePerlParserCmdLineInit() error!\n",result,method,url);
+                                " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
                         cmeWebServiceProcessContentClassFree();
                         *responseCode=500;

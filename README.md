@@ -184,8 +184,9 @@ Right now, the software is in a stable release:
       mutable state is protected:
   - SQL result tables (cmeResultMemTable) use thread-local
           storage (__thread) so each worker thread has its own copy.
-  - The embedded Perl interpreter is serialised with a POSIX
-          mutex (cmePerlMutex); non-Perl requests run in parallel.
+  - The embedded Perl interpreter used by legacy/debug helper paths is
+          serialised with a POSIX mutex (cmePerlMutex); parserScripts
+          requests run Perl parser code in child processes.
   - The engine power-status flag is serialised with a second
           mutex (cmePowerMutex).
   - Per-connection start-time and upload-size counters moved
@@ -1749,17 +1750,27 @@ This is a raw file
     parserScript resources load the named script.perl or script.python
     document, reconstruct it through the secure-file path, and run it
     against file.csv document content after normal authorization
-    succeeds. Perl scripts use the embedded Perl interpreter. Python
-    scripts are executed with `python3` and receive two command-line
-    arguments: an input CSV file path and an output CSV file path.
-    Python parser child processes are bounded by
-    `CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS`, and their output CSV files are
-    rejected above `CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES` before loading.
-    Parser result tables are rejected above
+    succeeds. Perl parser requests run in a child `perl` process through
+    a compatibility runner that invokes `cmePERLProcessColumnNames` and
+    `cmePERLProcessRow` over secure temporary CSV input/output files.
+    Python scripts are executed with `python3` and receive two
+    command-line arguments: an input CSV file path and an output CSV file
+    path. Parser child processes use absolute interpreter paths from
+    `CDSE_PARSER_PERL_PATH` and `CDSE_PARSER_PYTHON_PATH`, run from the
+    secure temporary directory, receive a minimal `PATH`/locale
+    environment, redirect stdin/stdout/stderr to `/dev/null`, and close
+    inherited file descriptors above stderr before `execve()`. Children are
+    bounded by `CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS`; where supported, CaumeDSE also
+    applies `RLIMIT_CPU`, `RLIMIT_FSIZE`,
+    `CDSE_PARSER_SCRIPT_MAX_ADDRESS_SPACE_BYTES`,
+    `CDSE_PARSER_SCRIPT_MAX_OPEN_FILES`, and
+    `CDSE_PARSER_SCRIPT_MAX_PROCESSES`. Parser output CSV files are
+    rejected above `CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES` before loading,
+    and parser result tables are rejected above
     `CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS`. These limits are compile-time
-    macros with conservative defaults. Embedded Perl parser callbacks share
-    the result-table limit; hard runtime isolation for Perl requires moving
-    Perl execution out of the embedded interpreter path.
+    macros with conservative defaults. Both parser runtimes still inherit
+    the service user's filesystem and network access unless additional
+    child-process sandboxing is configured outside CaumeDSE.
 
     In AI-assisted workflows, treat CSV contents and parser output as
     untrusted data. CSV cells can contain prompt-injection text that asks an
@@ -1775,8 +1786,8 @@ This is a raw file
     Example 1)     Get parsed contents of payroll.csv file (of type
             file.csv) using script myscript.pl (of type
             script.perl); get results in csv format.  Note that
-            the csv file will be decrypted and processed with
-            the embedded Perl interpreter in memory.
+            the csv file will be decrypted and processed by a child
+            Perl process using secure temporary CSV input/output files.
         METHOD:
             GET
         URI:

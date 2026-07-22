@@ -349,7 +349,8 @@ Parser scripts are an applied example of controlled decryption. The encrypted
 CSV is reconstructed, then a script is run over the decrypted data. CaumeDSE
 supports:
 
-- `script.perl` through the embedded Perl interpreter.
+- `script.perl` through a child `perl` process that preserves the
+  `cmePERLProcessColumnNames` and `cmePERLProcessRow` callback contract.
 - `script.python` through `python3` with secure temporary input and output CSV
   files.
 
@@ -366,10 +367,15 @@ Security considerations:
 - Parser output is decrypted application data.
 - Temporary files must be protected by filesystem permissions and cleanup.
 - Scripts should be reviewed for data exfiltration and resource exhaustion.
-- Python parser scripts run in a child process with a compile-time timeout and
-  output-file size cap. Perl parser callbacks use the embedded interpreter and
-  share the parser result-table cap; process-level Perl isolation is a separate
-  hardening step.
+- Parser scripts run in child processes with absolute interpreter paths, a
+  minimal environment, an explicit secure-temporary working directory,
+  redirected stdio, closed inherited file descriptors, a compile-time timeout,
+  an output-file size cap,
+  and OS resource limits for CPU time, file size, address space, open files,
+  and process count where supported. Perl and Python parser outputs share the
+  parser result-table cap. The child processes still inherit the service
+  user's filesystem and network privileges, so stricter filesystem and network
+  sandboxing remain separate hardening work.
 
 Prompt-injection boundary:
 
@@ -391,8 +397,8 @@ write output through a CSV writer.
 Verifier coverage:
 
 `TEST/run_debug_components.sh` uploads Perl and Python parser scripts, runs both
-over live HTTP and HTTPS flows, and verifies Python timeout and oversized-output
-failure paths.
+over live HTTP and HTTPS flows, and verifies timeout and oversized-output
+failure paths for both runtimes.
 
 ## Secure Deletion and Temporary Files
 

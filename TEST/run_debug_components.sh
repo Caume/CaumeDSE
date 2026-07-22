@@ -532,6 +532,8 @@ run_live_web_flow() {
     local csv_name="${LIVE_FLOW_ID}_${protocol}.csv"
     local column_doc_name="${LIVE_FLOW_ID}_${protocol}_columns.csv"
     local script_name="${LIVE_FLOW_ID}_${protocol}.pl"
+    local perl_timeout_script_name="${LIVE_FLOW_ID}_${protocol}_timeout.pl"
+    local perl_oversize_script_name="${LIVE_FLOW_ID}_${protocol}_oversize.pl"
     local python_script_name="${LIVE_FLOW_ID}_${protocol}.py"
     local python_timeout_script_name="${LIVE_FLOW_ID}_${protocol}_timeout.py"
     local python_oversize_script_name="${LIVE_FLOW_ID}_${protocol}_oversize.py"
@@ -635,6 +637,22 @@ run_live_web_flow() {
     live_api_check "$protocol" parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=csv" "82400" "${curl_tls_args[@]}"
     live_api_check "$protocol" parser_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=json" '"salary":"82400"' "${curl_tls_args[@]}"
     live_api_check "$protocol" parser_missing_head 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/missing.pl?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}" -I
+    live_api_check "$protocol" upload_perl_timeout_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$perl_timeout_script_name" "" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/test_timeout.pl" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol timeout Perl script"
+    live_api_check "$protocol" perl_parser_timeout 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$perl_timeout_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" upload_perl_oversize_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$perl_oversize_script_name" "" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/test_oversize.pl" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol oversize Perl script"
+    live_api_check "$protocol" perl_parser_oversize 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$perl_oversize_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_python_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test.py" \
         -F "userId=$user_id" \
