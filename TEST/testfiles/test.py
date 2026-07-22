@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Reviewed parser fixture: no network, shell, environment, or extra file reads."""
 import csv
 import sys
 

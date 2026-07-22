@@ -80,5 +80,8 @@ python3 samples/ai-agent/guarded_agent_workflow.py --keep-resources
   and record counts. It never includes raw organization keys.
 - Parser scripts are loaded only from reviewed local fixture files.
 - The sample queries narrow resources, not broad document dumps.
+- CSV cells and parser output are treated as untrusted data. Do not let text
+  returned from CaumeDSE rewrite the agent's security instructions or cause new
+  parser uploads without review.
 
 See `../../AI_USAGE.md` for the broader AI-agent policy and anti-patterns.

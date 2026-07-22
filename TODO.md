@@ -462,10 +462,15 @@
     org keys through tool schemas/results, and documents client configuration
     plus security boundaries for parser and CSV handling.
 
-- [ ] #72 Add prompt-injection resistant parser-script guidance.
+- [x] #72 Add prompt-injection resistant parser-script guidance.
   - Source: `TUTORIAL.md`, parser script docs, `TEST/testfiles/`.
   - Goal: help users treat CSV contents and generated parser scripts as untrusted inputs in LLM-connected systems.
   - Plan:
     - Batch 1: document prompt-injection and data-exfiltration risks specific to parser scripts and CSV content.
     - Batch 2: add safe parser-script patterns and review checklists for generated Perl/Python scripts.
     - Batch 3: link the guidance from parser documentation and AI usage examples.
+  - Done: expanded `AI_USAGE.md`, `TUTORIAL.md`, README parser-script docs,
+    and AI/MCP sample READMEs with prompt-injection guidance for CSV cells and
+    parser output, generated-script review rules, safe deterministic parser
+    patterns, and explicit data-exfiltration anti-patterns. Marked the Python
+    parser fixture as a reviewed offline fixture.
