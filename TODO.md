@@ -475,13 +475,20 @@
     patterns, and explicit data-exfiltration anti-patterns. Marked the Python
     parser fixture as a reviewed offline fixture.
 
-- [ ] #73 Move Perl parser execution out of the main process.
+- [x] #73 Move Perl parser execution out of the main process.
   - Source: `webservice_interface.c`, `perl_interpreter.c`, parser script docs, live verifier parser checks.
   - Goal: reduce the blast radius of malicious or buggy `script.perl` documents by running Perl parser code in a child process instead of the embedded interpreter inside the CaumeDSE server process.
   - Plan:
     - Batch 1: define a child-process Perl parser contract that preserves the current callback/output semantics or introduces a compatible CSV-in/CSV-out wrapper.
     - Batch 2: implement child-process Perl execution with secure temporary input/output files and remove request-time parser callbacks from the shared embedded interpreter path.
     - Batch 3: extend DEBUG/live verifier coverage for normal Perl parser execution, parser errors, timeout, oversized output, and cleanup.
+  - Done: parserScripts now run `script.perl` documents through a child `perl`
+    process with a generated compatibility runner that preserves
+    `cmePERLProcessColumnNames` and `cmePERLProcessRow` behavior over secure
+    temporary CSV input/output files. Perl requests now share the same timeout,
+    output-size, result-table-size, and cleanup flow used for Python child
+    parsers. Added live verifier fixtures/checks for Perl timeout and oversized
+    output, and updated README/TUTORIAL parser isolation docs.
 
 - [ ] #74 Add common sandbox controls for child-process parsers.
   - Source: `webservice_interface.c`, parser script execution helpers, build configuration.
