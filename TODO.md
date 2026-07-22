@@ -474,3 +474,43 @@
     parser output, generated-script review rules, safe deterministic parser
     patterns, and explicit data-exfiltration anti-patterns. Marked the Python
     parser fixture as a reviewed offline fixture.
+
+- [ ] #73 Move Perl parser execution out of the main process.
+  - Source: `webservice_interface.c`, `perl_interpreter.c`, parser script docs, live verifier parser checks.
+  - Goal: reduce the blast radius of malicious or buggy `script.perl` documents by running Perl parser code in a child process instead of the embedded interpreter inside the CaumeDSE server process.
+  - Plan:
+    - Batch 1: define a child-process Perl parser contract that preserves the current callback/output semantics or introduces a compatible CSV-in/CSV-out wrapper.
+    - Batch 2: implement child-process Perl execution with secure temporary input/output files and remove request-time parser callbacks from the shared embedded interpreter path.
+    - Batch 3: extend DEBUG/live verifier coverage for normal Perl parser execution, parser errors, timeout, oversized output, and cleanup.
+
+- [ ] #74 Add common sandbox controls for child-process parsers.
+  - Source: `webservice_interface.c`, parser script execution helpers, build configuration.
+  - Goal: apply consistent process-level limits and containment to `script.python` and future child-process `script.perl` execution.
+  - Plan:
+    - Batch 1: introduce a shared parser-child launcher that uses absolute interpreter paths, a minimal environment, closed inherited file descriptors, and explicit working directories.
+    - Batch 2: add OS resource limits for CPU time, address space, file size, process count, and open files where supported.
+    - Batch 3: document platform support and add verifier cases that prove limits fail closed.
+
+- [ ] #75 Harden parser temporary file creation.
+  - Source: `webservice_interface.c`, `filehandling.c`, secure deletion helpers.
+  - Goal: eliminate parser temp-file race and symlink risks by creating input/output files atomically with strict permissions in a private parser temp directory.
+  - Plan:
+    - Batch 1: replace random temp-path generation for parser files with exclusive creation such as `mkstemp` or `open(O_CREAT|O_EXCL)` plus restrictive modes.
+    - Batch 2: ensure parser temp directories have strict ownership/permissions and are configurable separately from general storage.
+    - Batch 3: add tests for cleanup, collision handling, and refusal to follow pre-existing symlinks.
+
+- [ ] #76 Add optional network and filesystem isolation for parser child processes.
+  - Source: parser child launcher, deployment docs, verifier environment.
+  - Goal: enforce the existing guidance that parser scripts must not open network connections or read arbitrary host files.
+  - Plan:
+    - Batch 1: evaluate portable containment options and Linux-specific hardening such as unprivileged users, namespaces, chroot, seccomp, or container profiles.
+    - Batch 2: add opt-in isolation settings that fail closed when requested isolation cannot be applied.
+    - Batch 3: document operational requirements and add negative fixtures for network and outside-file access where the platform supports enforcement.
+
+- [ ] #77 Add parser execution audit and policy controls.
+  - Source: `webservice_interface.c`, resources/roles DB handling, AI usage docs.
+  - Goal: make parser execution decisions visible and policy-driven so deployments can restrict high-risk scripts before runtime.
+  - Plan:
+    - Batch 1: add parser policy metadata for allowed script types, reviewed status, interpreter path, timeout profile, and isolation profile.
+    - Batch 2: record structured audit events for parser upload, execution, timeout, limit rejection, and cleanup failure without logging secrets or raw CSV contents.
+    - Batch 3: document least-privilege parser roles and extend verifier checks for policy allow/deny behavior.
