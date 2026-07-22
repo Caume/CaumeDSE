@@ -134,3 +134,7 @@ See `samples/ai-agent/` for a guarded Python workflow that creates disposable
 resources, uploads verifier fixtures, queries row/column/parser results as
 JSON, builds an LLM-safe prompt preview without secrets, and cleans up the
 workspace.
+
+See `samples/mcp-server/` for a prototype MCP stdio server that exposes a
+small allow-listed tool surface for the same REST API operations while keeping
+organization keys in environment variables.

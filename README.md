@@ -17,6 +17,9 @@ For safe AI-agent and automation patterns around the API, see
 For a guarded Python AI-agent workflow sample, see
 [samples/ai-agent/](samples/ai-agent/).
 
+For a prototype MCP stdio server that wraps a safe REST tool surface, see
+[samples/mcp-server/](samples/mcp-server/).
+
 
 ## Contents
 
@@ -27,6 +30,7 @@ For a guarded Python AI-agent workflow sample, see
 - [OpenAPI Route Reference](openapi.yaml)
 - [AI-Safe API Usage](AI_USAGE.md)
 - [AI Agent Sample](samples/ai-agent/)
+- [MCP Server Prototype](samples/mcp-server/)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)
 - [REST Resource API Reference](#rest-resource-api-reference)
