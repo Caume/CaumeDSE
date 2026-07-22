@@ -47,6 +47,9 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/resource.h>
+#endif
 
 static void cmeWebServiceSetThreadStatus(struct cmeWebServiceConnectionInfoStruct *con_info, int threadStatus)
 {
@@ -831,12 +834,156 @@ static int cmeWebServiceWaitForParserChild(pid_t pid, const char *context)
     return(0);
 }
 
+#if defined(__unix__) || defined(__APPLE__)
+static int cmeWebServiceSetParserLimit(int resource, rlim_t requested)
+{
+    struct rlimit limit;
+    rlim_t effective;
+
+    if (getrlimit(resource,&limit))
+    {
+        return(1);
+    }
+    effective=requested;
+    if ((limit.rlim_max!=RLIM_INFINITY)&&(effective>limit.rlim_max))
+    {
+        effective=limit.rlim_max;
+    }
+    limit.rlim_cur=effective;
+    limit.rlim_max=effective;
+    if (setrlimit(resource,&limit))
+    {
+        return(2);
+    }
+    return(0);
+}
+#endif
+
+static int cmeWebServiceApplyParserChildLimits(void)
+{
+#if defined(RLIMIT_CPU)
+    if (cmeWebServiceSetParserLimit(RLIMIT_CPU,(rlim_t)(CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS+2)))
+    {
+        return(1);
+    }
+#endif
+#if defined(RLIMIT_FSIZE)
+    if (cmeWebServiceSetParserLimit(RLIMIT_FSIZE,(rlim_t)(CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES+65536)))
+    {
+        return(2);
+    }
+#endif
+#if defined(RLIMIT_AS)
+    if (cmeWebServiceSetParserLimit(RLIMIT_AS,(rlim_t)CDSE_PARSER_SCRIPT_MAX_ADDRESS_SPACE_BYTES))
+    {
+        return(3);
+    }
+#endif
+#if defined(RLIMIT_NOFILE)
+    if (cmeWebServiceSetParserLimit(RLIMIT_NOFILE,(rlim_t)CDSE_PARSER_SCRIPT_MAX_OPEN_FILES))
+    {
+        return(4);
+    }
+#endif
+#if defined(RLIMIT_NPROC)
+    if (cmeWebServiceSetParserLimit(RLIMIT_NPROC,(rlim_t)CDSE_PARSER_SCRIPT_MAX_PROCESSES))
+    {
+        return(5);
+    }
+#endif
+    return(0);
+}
+
+static void cmeWebServiceCloseParserChildFds(void)
+{
+    long maxFd=sysconf(_SC_OPEN_MAX);
+    long fd;
+
+    if ((maxFd<0)||(maxFd>4096))
+    {
+        maxFd=4096;
+    }
+    for (fd=3;fd<maxFd;fd++)
+    {
+        close((int)fd);
+    }
+}
+
+static int cmeWebServiceRedirectParserChildStdio(void)
+{
+    int nullFd=open("/dev/null",O_RDWR);
+
+    if (nullFd<0)
+    {
+        return(1);
+    }
+    if ((dup2(nullFd,STDIN_FILENO)<0)||
+        (dup2(nullFd,STDOUT_FILENO)<0)||
+        (dup2(nullFd,STDERR_FILENO)<0))
+    {
+        if (nullFd>STDERR_FILENO)
+        {
+            close(nullFd);
+        }
+        return(2);
+    }
+    if (nullFd>STDERR_FILENO)
+    {
+        close(nullFd);
+    }
+    return(0);
+}
+
+static void cmeWebServiceExecParserChild(const char *interpreterPath, char *const argv[])
+{
+    char *const childEnv[]={
+        "PATH=/usr/bin:/bin",
+        "LANG=C",
+        "LC_ALL=C",
+        NULL
+    };
+
+    if ((!interpreterPath)||(!argv)||(!argv[0])||
+        (chdir(cmeDefaultSecureTmpFilePath))||
+        (cmeWebServiceRedirectParserChildStdio()))
+    {
+        _exit(126);
+    }
+    cmeWebServiceCloseParserChildFds();
+    if (cmeWebServiceApplyParserChildLimits())
+    {
+        _exit(126);
+    }
+    execve(interpreterPath,argv,childEnv);
+    _exit(127);
+}
+
+static int cmeWebServiceRunParserChild(const char *interpreterPath, char *const argv[], const char *context)
+{
+    pid_t pid;
+
+    if ((!interpreterPath)||(!argv))
+    {
+        return(1);
+    }
+    pid=fork();
+    if (pid<0)
+    {
+        return(4);
+    }
+    if (pid==0)
+    {
+        cmeWebServiceExecParserChild(interpreterPath,argv);
+    }
+    return(cmeWebServiceWaitForParserChild(pid,context));
+}
+
 static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
 {
     int result=0;
     char *inputPath=NULL;
     char *outputPath=NULL;
-    pid_t pid;
+    char *argv[5];
 
     if (!scriptPath)
     {
@@ -853,20 +1000,13 @@ static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
     }
     if (!result)
     {
-        pid=fork();
-        if (pid<0)
-        {
-            result=4;
-        }
-        else if (pid==0)
-        {
-            execlp("python3","python3",scriptPath,inputPath,outputPath,(char *)NULL);
-            _exit(127);
-        }
-        else
-        {
-            result=cmeWebServiceWaitForParserChild(pid,"cmeWebServiceRunPythonParserScript");
-        }
+        argv[0]=(char *)CDSE_PARSER_PYTHON_PATH;
+        argv[1]=(char *)scriptPath;
+        argv[2]=inputPath;
+        argv[3]=outputPath;
+        argv[4]=NULL;
+        result=cmeWebServiceRunParserChild(CDSE_PARSER_PYTHON_PATH,argv,
+                                           "cmeWebServiceRunPythonParserScript");
     }
     if (!result)
     {
@@ -983,7 +1123,7 @@ static int cmeWebServiceRunPerlParserScript(const char *scriptPath)
     char *inputPath=NULL;
     char *outputPath=NULL;
     char *runnerPath=NULL;
-    pid_t pid;
+    char *argv[6];
 
     if (!scriptPath)
     {
@@ -1013,20 +1153,14 @@ static int cmeWebServiceRunPerlParserScript(const char *scriptPath)
     }
     if (!result)
     {
-        pid=fork();
-        if (pid<0)
-        {
-            result=4;
-        }
-        else if (pid==0)
-        {
-            execlp("perl","perl",runnerPath,scriptPath,inputPath,outputPath,(char *)NULL);
-            _exit(127);
-        }
-        else
-        {
-            result=cmeWebServiceWaitForParserChild(pid,"cmeWebServiceRunPerlParserScript");
-        }
+        argv[0]=(char *)CDSE_PARSER_PERL_PATH;
+        argv[1]=runnerPath;
+        argv[2]=(char *)scriptPath;
+        argv[3]=inputPath;
+        argv[4]=outputPath;
+        argv[5]=NULL;
+        result=cmeWebServiceRunParserChild(CDSE_PARSER_PERL_PATH,argv,
+                                           "cmeWebServiceRunPerlParserScript");
     }
     if (!result)
     {

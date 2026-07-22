@@ -367,11 +367,15 @@ Security considerations:
 - Parser output is decrypted application data.
 - Temporary files must be protected by filesystem permissions and cleanup.
 - Scripts should be reviewed for data exfiltration and resource exhaustion.
-- Parser scripts run in child processes with a compile-time timeout and
-  output-file size cap. Perl and Python parser outputs share the parser
-  result-table cap. The child processes still inherit the service user's OS
-  privileges, so filesystem and network sandboxing remain separate hardening
-  work.
+- Parser scripts run in child processes with absolute interpreter paths, a
+  minimal environment, an explicit secure-temporary working directory,
+  redirected stdio, closed inherited file descriptors, a compile-time timeout,
+  an output-file size cap,
+  and OS resource limits for CPU time, file size, address space, open files,
+  and process count where supported. Perl and Python parser outputs share the
+  parser result-table cap. The child processes still inherit the service
+  user's filesystem and network privileges, so stricter filesystem and network
+  sandboxing remain separate hardening work.
 
 Prompt-injection boundary:
 

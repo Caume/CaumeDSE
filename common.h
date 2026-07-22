@@ -80,6 +80,21 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #ifndef CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS
 #define CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS 1000000 //Max cells allowed in parser result tables.
 #endif
+#ifndef CDSE_PARSER_PYTHON_PATH
+#define CDSE_PARSER_PYTHON_PATH "/usr/bin/python3" //Absolute interpreter path for Python parser child processes.
+#endif
+#ifndef CDSE_PARSER_PERL_PATH
+#define CDSE_PARSER_PERL_PATH "/usr/bin/perl" //Absolute interpreter path for Perl parser child processes.
+#endif
+#ifndef CDSE_PARSER_SCRIPT_MAX_ADDRESS_SPACE_BYTES
+#define CDSE_PARSER_SCRIPT_MAX_ADDRESS_SPACE_BYTES (256*1024*1024) //Max parser child address space where RLIMIT_AS is available.
+#endif
+#ifndef CDSE_PARSER_SCRIPT_MAX_OPEN_FILES
+#define CDSE_PARSER_SCRIPT_MAX_OPEN_FILES 32 //Max parser child open files where RLIMIT_NOFILE is available.
+#endif
+#ifndef CDSE_PARSER_SCRIPT_MAX_PROCESSES
+#define CDSE_PARSER_SCRIPT_MAX_PROCESSES 16 //Max parser child process count where RLIMIT_NPROC is available.
+#endif
 #define cmeDefaultContentReaderCallbackPageSize (1024*64)   //Default Page size for ContentReaderCallback functions.
 #ifndef CDSE_SECURE_OVERWRITE_PASSES
 #define CDSE_SECURE_OVERWRITE_PASSES 1  //Compile-time overwrite passes for temporary file deletion. Set >1 to enable multi-round overwrites.

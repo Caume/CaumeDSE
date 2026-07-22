@@ -490,13 +490,22 @@
     parsers. Added live verifier fixtures/checks for Perl timeout and oversized
     output, and updated README/TUTORIAL parser isolation docs.
 
-- [ ] #74 Add common sandbox controls for child-process parsers.
+- [x] #74 Add common sandbox controls for child-process parsers.
   - Source: `webservice_interface.c`, parser script execution helpers, build configuration.
   - Goal: apply consistent process-level limits and containment to `script.python` and future child-process `script.perl` execution.
   - Plan:
     - Batch 1: introduce a shared parser-child launcher that uses absolute interpreter paths, a minimal environment, closed inherited file descriptors, and explicit working directories.
     - Batch 2: add OS resource limits for CPU time, address space, file size, process count, and open files where supported.
     - Batch 3: document platform support and add verifier cases that prove limits fail closed.
+  - Done: added a shared parser child launcher used by both Perl and Python
+    parserScripts. The launcher uses compile-time absolute interpreter paths,
+    runs children from the secure temporary directory, supplies a minimal
+    `PATH`/locale environment, redirects stdio to `/dev/null`, closes inherited
+    file descriptors above stderr, and applies supported `setrlimit()` caps for
+    CPU time, output file size, address space, open files, and process count
+    before `execve()`. Updated
+    README/TUTORIAL documentation; existing live timeout and oversized-output
+    verifier cases now exercise the common child launcher for both runtimes.
 
 - [ ] #75 Harden parser temporary file creation.
   - Source: `webservice_interface.c`, `filehandling.c`, secure deletion helpers.

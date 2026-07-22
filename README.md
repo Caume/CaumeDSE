@@ -1755,10 +1755,18 @@ This is a raw file
     `cmePERLProcessRow` over secure temporary CSV input/output files.
     Python scripts are executed with `python3` and receive two
     command-line arguments: an input CSV file path and an output CSV file
-    path. Parser child processes are bounded by
-    `CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS`, and their output CSV files are
-    rejected above `CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES` before loading.
-    Parser result tables are rejected above
+    path. Parser child processes use absolute interpreter paths from
+    `CDSE_PARSER_PERL_PATH` and `CDSE_PARSER_PYTHON_PATH`, run from the
+    secure temporary directory, receive a minimal `PATH`/locale
+    environment, redirect stdin/stdout/stderr to `/dev/null`, and close
+    inherited file descriptors above stderr before `execve()`. Children are
+    bounded by `CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS`; where supported, CaumeDSE also
+    applies `RLIMIT_CPU`, `RLIMIT_FSIZE`,
+    `CDSE_PARSER_SCRIPT_MAX_ADDRESS_SPACE_BYTES`,
+    `CDSE_PARSER_SCRIPT_MAX_OPEN_FILES`, and
+    `CDSE_PARSER_SCRIPT_MAX_PROCESSES`. Parser output CSV files are
+    rejected above `CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES` before loading,
+    and parser result tables are rejected above
     `CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS`. These limits are compile-time
     macros with conservative defaults. Both parser runtimes still inherit
     the service user's filesystem and network access unless additional
