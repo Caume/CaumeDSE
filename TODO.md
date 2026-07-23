@@ -507,13 +507,20 @@
     README/TUTORIAL documentation; existing live timeout and oversized-output
     verifier cases now exercise the common child launcher for both runtimes.
 
-- [ ] #75 Harden parser temporary file creation.
+- [x] #75 Harden parser temporary file creation.
   - Source: `webservice_interface.c`, `filehandling.c`, secure deletion helpers.
   - Goal: eliminate parser temp-file race and symlink risks by creating input/output files atomically with strict permissions in a private parser temp directory.
   - Plan:
     - Batch 1: replace random temp-path generation for parser files with exclusive creation such as `mkstemp` or `open(O_CREAT|O_EXCL)` plus restrictive modes.
     - Batch 2: ensure parser temp directories have strict ownership/permissions and are configurable separately from general storage.
     - Batch 3: add tests for cleanup, collision handling, and refusal to follow pre-existing symlinks.
+  - Done: added `CDSE_PARSER_TMP_FILE_PATH` and shared filehandling helpers
+    that create parser temp files atomically with `mkstemp()`, verify the
+    parser temp directory is a service-owned `0700` real directory, verify
+    created files are single-link regular files, and force `0600` file mode.
+    Parser input/output, Perl runner, and decrypted script temp files now use
+    the exclusive helper. Added DEBUG verifier coverage for cleanup, collision
+    handling, strict modes, and refusal to use a symlink temp directory.
 
 - [ ] #76 Add optional network and filesystem isolation for parser child processes.
   - Source: parser child launcher, deployment docs, verifier environment.

@@ -116,6 +116,9 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeDefaultCACertFile "/opt/cdse/ca.pem"             //Default file with PEM cert file for CA to validate client certificates.
 #define cmeAdminDefaultStoragePath "/opt/cdse/"             //Default storage path for first organization { = cmeDefaultFilePath}.
 #endif /*PATH_DATADIR*/
+#ifndef CDSE_PARSER_TMP_FILE_PATH
+#define CDSE_PARSER_TMP_FILE_PATH cmeDefaultSecureTmpFilePath "parser/"
+#endif
 
 #define cmeDefaultResourcesDBName "ResourcesDB"     //Default filename for ResourcesDB sqlite3 filename.
 #define cmeDefaultRolesDBName "RolesDB"             //Default filename for ResourcesDB sqlite3 filename.
@@ -482,6 +485,7 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #if HAVE_STDINT_H
 #include <stdint.h>
 #endif
+#include <errno.h>
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
