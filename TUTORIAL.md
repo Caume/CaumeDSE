@@ -375,9 +375,12 @@ Security considerations:
   an output-file size cap,
   and OS resource limits for CPU time, file size, address space, open files,
   and process count where supported. Perl and Python parser outputs share the
-  parser result-table cap. The child processes still inherit the service
-  user's filesystem and network privileges, so stricter filesystem and network
-  sandboxing remain separate hardening work.
+  parser result-table cap. Deployments can opt into fail-closed parser child
+  isolation with `CDSE_PARSER_NO_NEW_PRIVS=1`,
+  `CDSE_PARSER_ISOLATE_NETWORK=1`, and `CDSE_PARSER_CHROOT_PATH=/path/to/jail`.
+  Network isolation requires Linux network namespaces. Chroot filesystem
+  isolation requires a prepared jail containing the configured interpreters,
+  parser temp paths, and runtime libraries.
 
 Prompt-injection boundary:
 

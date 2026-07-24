@@ -1772,9 +1772,15 @@ This is a raw file
     rejected above `CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES` before loading,
     and parser result tables are rejected above
     `CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS`. These limits are compile-time
-    macros with conservative defaults. Both parser runtimes still inherit
-    the service user's filesystem and network access unless additional
-    child-process sandboxing is configured outside CaumeDSE.
+    macros with conservative defaults. Optional isolation controls can be
+    requested with compile-time macros or service environment variables:
+    `CDSE_PARSER_NO_NEW_PRIVS=1` requires Linux `no_new_privs`,
+    `CDSE_PARSER_ISOLATE_NETWORK=1` requires a private Linux network
+    namespace via `unshare(CLONE_NEWNET)`, and `CDSE_PARSER_CHROOT_PATH`
+    requires `chroot()` into a deployment-prepared parser jail. Requested
+    isolation fails closed if the platform or service privileges cannot apply
+    it. Chroot deployments must provide the configured interpreter paths,
+    parser temporary files, and required runtime libraries inside the jail.
 
     In AI-assisted workflows, treat CSV contents and parser output as
     untrusted data. CSV cells can contain prompt-injection text that asks an

@@ -522,13 +522,21 @@
     the exclusive helper. Added DEBUG verifier coverage for cleanup, collision
     handling, strict modes, and refusal to use a symlink temp directory.
 
-- [ ] #76 Add optional network and filesystem isolation for parser child processes.
+- [x] #76 Add optional network and filesystem isolation for parser child processes.
   - Source: parser child launcher, deployment docs, verifier environment.
   - Goal: enforce the existing guidance that parser scripts must not open network connections or read arbitrary host files.
   - Plan:
     - Batch 1: evaluate portable containment options and Linux-specific hardening such as unprivileged users, namespaces, chroot, seccomp, or container profiles.
     - Batch 2: add opt-in isolation settings that fail closed when requested isolation cannot be applied.
     - Batch 3: document operational requirements and add negative fixtures for network and outside-file access where the platform supports enforcement.
+  - Done: added opt-in parser child isolation controls that can be set at
+    compile time or through service environment variables. `no_new_privs` and
+    private network namespace isolation are supported on Linux, and optional
+    `chroot()` filesystem isolation is supported when deployments provide a
+    prepared parser jail. Requested isolation fails closed when the OS or
+    service privileges cannot apply it. Added optional live verifier fixtures
+    for network access and outside-file access, plus deployment documentation
+    for platform and jail requirements.
 
 - [ ] #77 Add parser execution audit and policy controls.
   - Source: `webservice_interface.c`, resources/roles DB handling, AI usage docs.

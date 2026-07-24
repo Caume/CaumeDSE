@@ -95,6 +95,15 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #ifndef CDSE_PARSER_SCRIPT_MAX_PROCESSES
 #define CDSE_PARSER_SCRIPT_MAX_PROCESSES 16 //Max parser child process count where RLIMIT_NPROC is available.
 #endif
+#ifndef CDSE_PARSER_SCRIPT_NO_NEW_PRIVS
+#define CDSE_PARSER_SCRIPT_NO_NEW_PRIVS 0 //Set to 1 to require Linux no_new_privs for parser children.
+#endif
+#ifndef CDSE_PARSER_SCRIPT_ISOLATE_NETWORK
+#define CDSE_PARSER_SCRIPT_ISOLATE_NETWORK 0 //Set to 1 to require a private Linux network namespace for parser children.
+#endif
+#ifndef CDSE_PARSER_SCRIPT_CHROOT_PATH
+#define CDSE_PARSER_SCRIPT_CHROOT_PATH "" //Set to a prepared parser jail path to chroot parser children.
+#endif
 #define cmeDefaultContentReaderCallbackPageSize (1024*64)   //Default Page size for ContentReaderCallback functions.
 #ifndef CDSE_SECURE_OVERWRITE_PASSES
 #define CDSE_SECURE_OVERWRITE_PASSES 1  //Compile-time overwrite passes for temporary file deletion. Set >1 to enable multi-round overwrites.
