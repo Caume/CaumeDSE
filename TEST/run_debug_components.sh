@@ -16,6 +16,9 @@ WEB_PROTOCOL_SET=0
 CI_SMOKE=0
 LIVE_FLOW_ID="liveflow$$"
 REDACT_OUTPUT="${CDSE_VERIFY_REDACT:-0}"
+VERIFY_PARSER_NETWORK_ISOLATION="${CDSE_VERIFY_PARSER_NETWORK_ISOLATION:-0}"
+VERIFY_PARSER_CHROOT_ISOLATION="${CDSE_VERIFY_PARSER_CHROOT_ISOLATION:-0}"
+VERIFY_PARSER_NO_NEW_PRIVS="${CDSE_VERIFY_PARSER_NO_NEW_PRIVS:-0}"
 
 PASSED=0
 FAILED=0
@@ -43,6 +46,9 @@ usage() {
     printf '  CDSE_DEBUG_TEST_HTTPS_PORT HTTPS test port, default 18443\n'
     printf '  CDSE_DEBUG_TEST_TIMEOUT    executable timeout, default 120s\n'
     printf '  CDSE_VERIFY_REDACT         redact live verifier secrets from summaries and artifacts when set to 1/true/on\n'
+    printf '  CDSE_VERIFY_PARSER_NO_NEW_PRIVS       run live parser children with Linux no_new_privs when set to 1/true/on\n'
+    printf '  CDSE_VERIFY_PARSER_NETWORK_ISOLATION run optional network-isolation parser check when set to 1/true/on\n'
+    printf '  CDSE_VERIFY_PARSER_CHROOT_ISOLATION  run optional chroot parser filesystem check when set to 1/true/on\n'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -131,6 +137,24 @@ csv_escape() {
 
 redaction_enabled() {
     case "$REDACT_OUTPUT" in
+        1|true|TRUE|yes|YES|on|ON)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+parser_network_isolation_enabled() {
+    case "$VERIFY_PARSER_NETWORK_ISOLATION" in
+        1|true|TRUE|yes|YES|on|ON)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+parser_chroot_isolation_enabled() {
+    case "$VERIFY_PARSER_CHROOT_ISOLATION" in
         1|true|TRUE|yes|YES|on|ON)
             return 0
             ;;
@@ -537,6 +561,8 @@ run_live_web_flow() {
     local python_script_name="${LIVE_FLOW_ID}_${protocol}.py"
     local python_timeout_script_name="${LIVE_FLOW_ID}_${protocol}_timeout.py"
     local python_oversize_script_name="${LIVE_FLOW_ID}_${protocol}_oversize.py"
+    local python_network_script_name="${LIVE_FLOW_ID}_${protocol}_network.py"
+    local python_outside_file_script_name="${LIVE_FLOW_ID}_${protocol}_outside_file.py"
     local user_id="User123"
     local role_user="${LIVE_FLOW_ID}_${protocol}_user"
     local auth="userId=$user_id&orgId=$org_name&orgKey=$org_key"
@@ -565,6 +591,9 @@ run_live_web_flow() {
         env CDSE_DEBUG_TEST_SKIP_AUTHZ=1 \
             CDSE_DEBUG_TEST_HTTP_PORT="$HTTP_PORT" \
             CDSE_DEBUG_TEST_HTTPS_PORT="$HTTPS_PORT" \
+            CDSE_PARSER_NO_NEW_PRIVS="$VERIFY_PARSER_NO_NEW_PRIVS" \
+            CDSE_PARSER_ISOLATE_NETWORK="$VERIFY_PARSER_NETWORK_ISOLATION" \
+            CDSE_PARSER_CHROOT_PATH="${CDSE_VERIFY_PARSER_CHROOT_PATH:-}" \
             "$PREFIX/cdse/bin/CaumeDSE-debug-tests" --web-service "$protocol"
     ) > "$service_log" 2>&1 &
     service_pid=$!
@@ -678,6 +707,30 @@ run_live_web_flow() {
         -F "newOrgKey=$org_key" \
         -F "*resourceInfo=live $protocol oversize Python script"
     live_api_check "$protocol" python_parser_oversize 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_oversize_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
+    if parser_network_isolation_enabled; then
+        if [ "$protocol" = "http" ]; then
+            live_api_check "$protocol" upload_python_network_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_network_script_name" "" "${curl_tls_args[@]}" \
+                -F "file=@$ROOT_DIR/TEST/testfiles/test_network_access.py" \
+                -F "userId=$user_id" \
+                -F "orgId=$org_name" \
+                -F "orgKey=$org_key" \
+                -F "newOrgKey=$org_key" \
+                -F "*resourceInfo=live $protocol network isolation Python script"
+            live_api_check "$protocol" python_parser_network_isolation 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_network_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
+        else
+            record_skip "live_${protocol}_python_parser_network_isolation" "network fixture targets HTTP port $HTTP_PORT"
+        fi
+    fi
+    if parser_chroot_isolation_enabled; then
+        live_api_check "$protocol" upload_python_outside_file_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_outside_file_script_name" "" "${curl_tls_args[@]}" \
+            -F "file=@$ROOT_DIR/TEST/testfiles/test_outside_file_access.py" \
+            -F "userId=$user_id" \
+            -F "orgId=$org_name" \
+            -F "orgKey=$org_key" \
+            -F "newOrgKey=$org_key" \
+            -F "*resourceInfo=live $protocol chroot isolation Python script"
+        live_api_check "$protocol" python_parser_chroot_isolation 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_outside_file_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
+    fi
     live_api_check "$protocol" document_delete 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
     live_api_check "$protocol" role_table_delete 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
     live_api_check "$protocol" filter_whitelist_delete 200 "$base_url/organizations/$org_name/users/$role_user/filterWhitelist/$role_user?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE

@@ -50,6 +50,10 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #if defined(__unix__) || defined(__APPLE__)
 #include <sys/resource.h>
 #endif
+#ifdef __linux__
+#include <sched.h>
+#include <sys/prctl.h>
+#endif
 
 static void cmeWebServiceSetThreadStatus(struct cmeWebServiceConnectionInfoStruct *con_info, int threadStatus)
 {
@@ -878,6 +882,88 @@ static int cmeWebServiceApplyParserChildLimits(void)
     return(0);
 }
 
+static int cmeWebServiceParserEnvFlag(const char *envName, int defaultValue)
+{
+    const char *value;
+
+    value=getenv(envName);
+    if ((!value)||(!value[0]))
+    {
+        return(defaultValue?1:0);
+    }
+    if ((!strcmp(value,"1"))||(!strcmp(value,"true"))||(!strcmp(value,"TRUE"))||
+        (!strcmp(value,"on"))||(!strcmp(value,"ON"))||(!strcmp(value,"yes"))||
+        (!strcmp(value,"YES")))
+    {
+        return(1);
+    }
+    if ((!strcmp(value,"0"))||(!strcmp(value,"false"))||(!strcmp(value,"FALSE"))||
+        (!strcmp(value,"off"))||(!strcmp(value,"OFF"))||(!strcmp(value,"no"))||
+        (!strcmp(value,"NO")))
+    {
+        return(0);
+    }
+    return(defaultValue?1:0);
+}
+
+static const char *cmeWebServiceParserChrootPath(void)
+{
+    const char *envPath=getenv("CDSE_PARSER_CHROOT_PATH");
+
+    if (envPath&&envPath[0])
+    {
+        return(envPath);
+    }
+    if (CDSE_PARSER_SCRIPT_CHROOT_PATH[0])
+    {
+        return(CDSE_PARSER_SCRIPT_CHROOT_PATH);
+    }
+    return(NULL);
+}
+
+static int cmeWebServiceApplyParserChildIsolation(void)
+{
+    const char *chrootPath;
+
+    if (cmeWebServiceParserEnvFlag("CDSE_PARSER_NO_NEW_PRIVS",
+                                   CDSE_PARSER_SCRIPT_NO_NEW_PRIVS))
+    {
+#ifdef __linux__
+        if (prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0))
+        {
+            return(1);
+        }
+#else
+        return(1);
+#endif
+    }
+    if (cmeWebServiceParserEnvFlag("CDSE_PARSER_ISOLATE_NETWORK",
+                                   CDSE_PARSER_SCRIPT_ISOLATE_NETWORK))
+    {
+#if defined(__linux__) && defined(CLONE_NEWNET)
+        if (unshare(CLONE_NEWNET))
+        {
+            return(2);
+        }
+#else
+        return(2);
+#endif
+    }
+    chrootPath=cmeWebServiceParserChrootPath();
+    if (chrootPath)
+    {
+#if defined(__unix__) || defined(__APPLE__)
+        if ((chroot(chrootPath))||(chdir("/")))
+        {
+            return(3);
+        }
+#else
+        return(3);
+#endif
+    }
+    return(0);
+}
+
 static void cmeWebServiceCloseParserChildFds(void)
 {
     long maxFd=sysconf(_SC_OPEN_MAX);
@@ -934,6 +1020,10 @@ static void cmeWebServiceExecParserChild(const char *interpreterPath, char *cons
         _exit(126);
     }
     cmeWebServiceCloseParserChildFds();
+    if (cmeWebServiceApplyParserChildIsolation())
+    {
+        _exit(126);
+    }
     if (cmeWebServiceApplyParserChildLimits())
     {
         _exit(126);
