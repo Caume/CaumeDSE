@@ -88,6 +88,104 @@ FILE *cmeStorageFileOpen (const char *filePath, const char *mode)
     }
 }
 
+int cmeCreateSecureTmpFileInDir (char **tmpFilePath, FILE **tmpFile, const char *tmpDirPath, const char *prefix)
+{
+    int fd=-1;
+    struct stat dirStat;
+    struct stat fileStat;
+    char *dirPath=NULL;
+    char *templatePath=NULL;
+    FILE *fp=NULL;
+    size_t dirPathLen;
+
+    if ((!tmpFilePath)||(!tmpFile)||(!tmpDirPath)||(!tmpDirPath[0]))
+    {
+        return(1);
+    }
+    *tmpFilePath=NULL;
+    *tmpFile=NULL;
+    if ((!prefix)||(!prefix[0]))
+    {
+        prefix="parser";
+    }
+    cmeStrConstrAppend(&dirPath,"%s",tmpDirPath);
+    if (!dirPath)
+    {
+        return(2);
+    }
+    dirPathLen=strlen(dirPath);
+    while ((dirPathLen>1)&&(dirPath[dirPathLen-1]=='/'))
+    {
+        dirPath[dirPathLen-1]='\0';
+        dirPathLen--;
+    }
+    if ((mkdir(dirPath,0700))&&(errno!=EEXIST))
+    {
+        cmeFree(dirPath);
+        return(3);
+    }
+    if ((lstat(dirPath,&dirStat))||(!S_ISDIR(dirStat.st_mode)))
+    {
+        cmeFree(dirPath);
+        return(4);
+    }
+    if (dirStat.st_uid!=geteuid())
+    {
+        cmeFree(dirPath);
+        return(5);
+    }
+    if ((dirStat.st_mode&0777)!=0700)
+    {
+        if (chmod(dirPath,0700))
+        {
+            cmeFree(dirPath);
+            return(6);
+        }
+    }
+    cmeStrConstrAppend(&templatePath,"%s/%s.XXXXXX",dirPath,prefix);
+    cmeFree(dirPath);
+    if (!templatePath)
+    {
+        return(7);
+    }
+    fd=mkstemp(templatePath);
+    if (fd<0)
+    {
+        cmeFree(templatePath);
+        return(8);
+    }
+    if ((fstat(fd,&fileStat))||(!S_ISREG(fileStat.st_mode))||(fileStat.st_nlink!=1))
+    {
+        close(fd);
+        cmeStorageFileRemove(templatePath);
+        cmeFree(templatePath);
+        return(9);
+    }
+    if (fchmod(fd,0600))
+    {
+        close(fd);
+        cmeStorageFileRemove(templatePath);
+        cmeFree(templatePath);
+        return(10);
+    }
+    fp=fdopen(fd,"w+b");
+    if (!fp)
+    {
+        close(fd);
+        cmeStorageFileRemove(templatePath);
+        cmeFree(templatePath);
+        return(11);
+    }
+    *tmpFilePath=templatePath;
+    *tmpFile=fp;
+    return(0);
+}
+
+int cmeCreateParserSecureTmpFile (char **tmpFilePath, FILE **tmpFile, const char *prefix)
+{
+    return(cmeCreateSecureTmpFileInDir(tmpFilePath,tmpFile,CDSE_PARSER_TMP_FILE_PATH,prefix));
+}
+
 int cmeStorageFileClose (FILE *fp)
 {
     if (!fp)
@@ -1285,9 +1383,9 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
     return (0);
 }
 
-int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
-                               const char *documentType, const char *documentPath, const char *orgId,
-                               const char *storageId, const char *orgKey)
+int cmeSecureFileToTmpRAWFileInDir (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
+                                    const char *documentType, const char *documentPath, const char *orgId,
+                                    const char *storageId, const char *orgKey, const char *tmpDirPath)
 {   //IDD v.1.0.21
     int cont,cont2,result,written,written2,MACLen;
     int numRows=0;
@@ -1643,14 +1741,10 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
     *tmpRAWFile=NULL;
     if(dbNumCols && (!partMACmismatch)) //If we found at least 1 column part and no MAC mismatch, process the file...
     {
-        cmeGetRndSalt(tmpRAWFile); //Get random HEX byte string for temporary file. Note that caller is responsible for freeing *tmpRAWFile
-        cmeStrConstrAppend(&bkpFName,"%s%s",cmeDefaultSecureTmpFilePath,*tmpRAWFile); //Set full path for temporal, unencrypted RAWFile.
-        cmeFree(*tmpRAWFile);
-        cmeStrConstrAppend(tmpRAWFile,"%s",bkpFName); //Set tmpRAWFile to the full path of the file.
-        fpTmpRAWFile=cmeStorageFileOpen(bkpFName,"wb");
-        memset(bkpFName,0,strlen(bkpFName));   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
-        cmeFree(bkpFName);  //Free bkpFName for next cycle.
-        if (!fpTmpRAWFile)  //Error
+        result=cmeCreateSecureTmpFileInDir(tmpRAWFile,&fpTmpRAWFile,
+                                           tmpDirPath?tmpDirPath:cmeDefaultSecureTmpFilePath,
+                                           "raw");
+        if (result)  //Error
         {
             cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
             return(10);
@@ -1680,6 +1774,15 @@ int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const ch
         cmeSecureFileToTmpRAWFileFree(); //CLEANUP.
         return(11);
     }
+}
+
+int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
+                               const char *documentType, const char *documentPath, const char *orgId,
+                               const char *storageId, const char *orgKey)
+{
+    return(cmeSecureFileToTmpRAWFileInDir(tmpRAWFile,pResourcesDB,documentId,documentType,
+                                          documentPath,orgId,storageId,orgKey,
+                                          cmeDefaultSecureTmpFilePath));
 }
 
 static int cmeFileOverwritePass(FILE *fp, long int fileLen, int pass)

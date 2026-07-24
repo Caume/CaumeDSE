@@ -64,6 +64,10 @@ int cmeCSVFileRowsToMemTableFinal (char ***elements, int numCols,int processedRo
 int cmeLoadStrFromFile (char **pDstStr, const char *filePath, int *dstStrLen);
 // Function to write to a file from a char array.
 int cmeWriteStrToFile (char *pSrcStr, const char *filePath, int srcStrLen);
+// Function to create an exclusive temporary file in a strict private directory.
+int cmeCreateSecureTmpFileInDir (char **tmpFilePath, FILE **tmpFile, const char *dirPath, const char *prefix);
+// Function to create an exclusive parser temporary file with restrictive permissions.
+int cmeCreateParserSecureTmpFile (char **tmpFilePath, FILE **tmpFile, const char *prefix);
 // Function that imports a CSV file into several, security preprocessed, SQLite Databases.
 // ~ POST file.csv
 int cmeCSVFileToSecureDB (const char *CSVfName,const int hasColNames,int *numCols,int *processedRows,
@@ -89,6 +93,9 @@ int cmeRAWFileToSecureFile (const char *rawFileName, const char *userId,const ch
 int cmeSecureFileToTmpRAWFile (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
                                const char *documentType, const char *documentPath, const char *orgId,
                                const char *storageId, const char *orgKey);
+int cmeSecureFileToTmpRAWFileInDir (char **tmpRAWFile, sqlite3 *pResourcesDB,const char *documentId,
+                                    const char *documentType, const char *documentPath, const char *orgId,
+                                    const char *storageId, const char *orgKey, const char *tmpDirPath);
 // Function to overwrite and delete a file (meant for temporal files in restricted/memory storage).
 // Define CDSE_SECURE_OVERWRITE_PASSES at compile time to use multiple overwrite passes.
 int cmeFileOverwriteAndDelete (const char *filePath);

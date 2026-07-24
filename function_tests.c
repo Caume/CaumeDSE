@@ -47,6 +47,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 void testContentRows(void);
 void testContentColumns(void);
 void testDBBrowsing(void);
+void testParserTempFiles(void);
 
 static int cmeDebugTestsNonInteractiveEnabled(void)
 {
@@ -1771,6 +1772,151 @@ void testParserScripts ()
     }
 }
 
+void testParserTempFiles(void)
+{
+    int errors=0;
+    int result;
+    char *path1=NULL;
+    char *path2=NULL;
+    char *targetDir=NULL;
+    char *linkDir=NULL;
+    char *badPath=NULL;
+    FILE *fp1=NULL;
+    FILE *fp2=NULL;
+    FILE *badFile=NULL;
+    struct stat st;
+
+    printf("--- Testing parser temporary file hardening:\n");
+    result=cmeCreateParserSecureTmpFile(&path1,&fp1,"debug-parser");
+    if (result)
+    {
+        printf("TESTS: testParserTempFiles(), FAIL: first parser temp create result=%d.\n",result);
+        errors++;
+    }
+    else
+    {
+        fwrite("x",1,1,fp1);
+        cmeStorageFileClose(fp1);
+        fp1=NULL;
+        if ((lstat(path1,&st))||(!S_ISREG(st.st_mode))||((st.st_mode&0777)!=0600)||(st.st_nlink!=1))
+        {
+            printf("TESTS: testParserTempFiles(), FAIL: parser temp file mode/type/link check failed.\n");
+            errors++;
+        }
+        else
+        {
+            printf("TESTS: testParserTempFiles(), PASS: parser temp file created as 0600 regular file.\n");
+        }
+    }
+    if ((stat(CDSE_PARSER_TMP_FILE_PATH,&st))||(!S_ISDIR(st.st_mode))||((st.st_mode&0777)!=0700))
+    {
+        printf("TESTS: testParserTempFiles(), FAIL: parser temp directory mode check failed.\n");
+        errors++;
+    }
+    else
+    {
+        printf("TESTS: testParserTempFiles(), PASS: parser temp directory is private.\n");
+    }
+    result=cmeCreateParserSecureTmpFile(&path2,&fp2,"debug-parser");
+    if (result)
+    {
+        printf("TESTS: testParserTempFiles(), FAIL: second parser temp create result=%d.\n",result);
+        errors++;
+    }
+    else
+    {
+        cmeStorageFileClose(fp2);
+        fp2=NULL;
+        if ((!path1)||(!path2)||(!strcmp(path1,path2)))
+        {
+            printf("TESTS: testParserTempFiles(), FAIL: exclusive temp names collided.\n");
+            errors++;
+        }
+        else
+        {
+            printf("TESTS: testParserTempFiles(), PASS: exclusive parser temp creation avoided collision.\n");
+        }
+    }
+    cmeStrConstrAppend(&targetDir,"%sparser-symlink-target",cmeDefaultSecureTmpFilePath);
+    cmeStrConstrAppend(&linkDir,"%sparser-symlink-link",cmeDefaultSecureTmpFilePath);
+    if (targetDir&&linkDir)
+    {
+        unlink(linkDir);
+        rmdir(targetDir);
+        if ((!mkdir(targetDir,0700))&&(!symlink(targetDir,linkDir)))
+        {
+            result=cmeCreateSecureTmpFileInDir(&badPath,&badFile,linkDir,"bad-parser");
+            if (!result)
+            {
+                printf("TESTS: testParserTempFiles(), FAIL: symlink temp directory was accepted.\n");
+                errors++;
+                cmeStorageFileClose(badFile);
+                badFile=NULL;
+                cmeFileOverwriteAndDelete(badPath);
+            }
+            else
+            {
+                printf("TESTS: testParserTempFiles(), PASS: symlink temp directory was refused.\n");
+            }
+        }
+        else
+        {
+            printf("TESTS: testParserTempFiles(), FAIL: symlink refusal setup failed.\n");
+            errors++;
+        }
+    }
+    else
+    {
+        printf("TESTS: testParserTempFiles(), FAIL: symlink refusal path allocation failed.\n");
+        errors++;
+    }
+    if (fp1)
+    {
+        cmeStorageFileClose(fp1);
+    }
+    if (fp2)
+    {
+        cmeStorageFileClose(fp2);
+    }
+    if (badFile)
+    {
+        cmeStorageFileClose(badFile);
+    }
+    if (path1)
+    {
+        cmeFileOverwriteAndDelete(path1);
+    }
+    if (path2)
+    {
+        cmeFileOverwriteAndDelete(path2);
+    }
+    if (badPath)
+    {
+        cmeFileOverwriteAndDelete(badPath);
+    }
+    if (linkDir)
+    {
+        unlink(linkDir);
+    }
+    if (targetDir)
+    {
+        rmdir(targetDir);
+    }
+    cmeFree(path1);
+    cmeFree(path2);
+    cmeFree(targetDir);
+    cmeFree(linkDir);
+    cmeFree(badPath);
+    if (errors)
+    {
+        printf("TESTS: testParserTempFiles(), FAIL: %d errors.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testParserTempFiles(), PASS: cleanup, collision handling, and symlink refusal verified.\n");
+    }
+}
+
 static int cmeTestContentRowsRequest(const char *method, const char *url,
                                      const char **urlElements, int numUrlElements,
                                      const char **argumentElements, int expectedCode,
@@ -2081,6 +2227,7 @@ void testEngMgmnt ()
     testDocumentTypes();
     testStorageDocumentTree();
     testParserScripts();
+    testParserTempFiles();
 }
 
 void testWebServices ()

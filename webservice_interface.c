@@ -656,30 +656,13 @@ static int cmeWebServiceIsRawFileDocumentType(const char *documentType)
            (!strcmp(documentType,"file.bin")));
 }
 
-static int cmeWebServiceCreateSecureTmpPath(char **tmpPath)
-{
-    char *tmpName=NULL;
-
-    if (!tmpPath)
-    {
-        return(1);
-    }
-    *tmpPath=NULL;
-    if (cmeGetRndSalt(&tmpName))
-    {
-        return(2);
-    }
-    cmeStrConstrAppend(tmpPath,"%s%s",cmeDefaultSecureTmpFilePath,tmpName);
-    cmeFree(tmpName);
-    return((*tmpPath)?0:3);
-}
-
-static int cmeWebServiceWriteResultMemTableCSV(const char *filePath)
+static int cmeWebServiceWriteResultMemTableCSV(FILE *fp)
 {
     int result;
+    int written;
     char *csvTable=NULL;
 
-    if ((!filePath)||(!cmeResultMemTable)||(cmeResultMemTableCols<=0))
+    if ((!fp)||(!cmeResultMemTable)||(cmeResultMemTableCols<=0))
     {
         return(1);
     }
@@ -690,7 +673,8 @@ static int cmeWebServiceWriteResultMemTableCSV(const char *filePath)
         cmeFree(csvTable);
         return(2);
     }
-    result=cmeWriteStrToFile(csvTable,filePath,(int)strlen(csvTable));
+    written=(int)fwrite(csvTable,1,strlen(csvTable),fp);
+    result=((int)strlen(csvTable)==written)?0:1;
     cmeFree(csvTable);
     return(result?3:0);
 }
@@ -944,7 +928,7 @@ static void cmeWebServiceExecParserChild(const char *interpreterPath, char *cons
     };
 
     if ((!interpreterPath)||(!argv)||(!argv[0])||
-        (chdir(cmeDefaultSecureTmpFilePath))||
+        (chdir(CDSE_PARSER_TMP_FILE_PATH))||
         (cmeWebServiceRedirectParserChildStdio()))
     {
         _exit(126);
@@ -983,20 +967,32 @@ static int cmeWebServiceRunPythonParserScript(const char *scriptPath)
     int result=0;
     char *inputPath=NULL;
     char *outputPath=NULL;
+    FILE *inputFile=NULL;
+    FILE *outputFile=NULL;
     char *argv[5];
 
     if (!scriptPath)
     {
         return(1);
     }
-    result=cmeWebServiceCreateSecureTmpPath(&inputPath);
+    result=cmeCreateParserSecureTmpFile(&inputPath,&inputFile,"python-input");
     if (!result)
     {
-        result=cmeWebServiceCreateSecureTmpPath(&outputPath);
+        result=cmeCreateParserSecureTmpFile(&outputPath,&outputFile,"python-output");
     }
     if (!result)
     {
-        result=cmeWebServiceWriteResultMemTableCSV(inputPath);
+        result=cmeWebServiceWriteResultMemTableCSV(inputFile);
+    }
+    if (inputFile)
+    {
+        cmeStorageFileClose(inputFile);
+        inputFile=NULL;
+    }
+    if (outputFile)
+    {
+        cmeStorageFileClose(outputFile);
+        outputFile=NULL;
     }
     if (!result)
     {
@@ -1123,33 +1119,51 @@ static int cmeWebServiceRunPerlParserScript(const char *scriptPath)
     char *inputPath=NULL;
     char *outputPath=NULL;
     char *runnerPath=NULL;
+    FILE *inputFile=NULL;
+    FILE *outputFile=NULL;
+    FILE *runnerFile=NULL;
     char *argv[6];
 
     if (!scriptPath)
     {
         return(1);
     }
-    result=cmeWebServiceCreateSecureTmpPath(&inputPath);
+    result=cmeCreateParserSecureTmpFile(&inputPath,&inputFile,"perl-input");
     if (!result)
     {
-        result=cmeWebServiceCreateSecureTmpPath(&outputPath);
+        result=cmeCreateParserSecureTmpFile(&outputPath,&outputFile,"perl-output");
     }
     if (!result)
     {
-        result=cmeWebServiceCreateSecureTmpPath(&runnerPath);
+        result=cmeCreateParserSecureTmpFile(&runnerPath,&runnerFile,"perl-runner");
     }
     if (!result)
     {
-        result=cmeWebServiceWriteResultMemTableCSV(inputPath);
+        result=cmeWebServiceWriteResultMemTableCSV(inputFile);
     }
     if (!result)
     {
-        result=cmeWriteStrToFile((char *)cmePerlParserChildRunner,runnerPath,
-                                 (int)strlen(cmePerlParserChildRunner));
+        result=(fwrite(cmePerlParserChildRunner,1,strlen(cmePerlParserChildRunner),runnerFile)==
+                strlen(cmePerlParserChildRunner))?0:1;
         if (result)
         {
             result=3;
         }
+    }
+    if (inputFile)
+    {
+        cmeStorageFileClose(inputFile);
+        inputFile=NULL;
+    }
+    if (outputFile)
+    {
+        cmeStorageFileClose(outputFile);
+        outputFile=NULL;
+    }
+    if (runnerFile)
+    {
+        cmeStorageFileClose(runnerFile);
+        runnerFile=NULL;
     }
     if (!result)
     {
@@ -9355,9 +9369,10 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                 {
                     if (numResultRegisters) // Found >0
                     {
-                        result=cmeSecureFileToTmpRAWFile (&tmpRAWFile,pDB,scriptNameValues[0],resultRegisterCols
-                                                          [cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
-                                                          storagePath,urlElements[1],urlElements[3],orgKey);
+                        result=cmeSecureFileToTmpRAWFileInDir (&tmpRAWFile,pDB,scriptNameValues[0],resultRegisterCols
+                                                               [cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
+                                                               storagePath,urlElements[1],urlElements[3],orgKey,
+                                                               CDSE_PARSER_TMP_FILE_PATH);
                         if (result)//Error
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -9591,9 +9606,10 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                 {
                     if (numResultRegisters) // Found >0
                     {
-                        result=cmeSecureFileToTmpRAWFile (&tmpRAWFile,pDB,scriptNameValues[0],resultRegisterCols
-                                                          [cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
-                                                          storagePath,urlElements[1],urlElements[3],orgKey);
+                        result=cmeSecureFileToTmpRAWFileInDir (&tmpRAWFile,pDB,scriptNameValues[0],resultRegisterCols
+                                                               [cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
+                                                               storagePath,urlElements[1],urlElements[3],orgKey,
+                                                               CDSE_PARSER_TMP_FILE_PATH);
                         if (result)//Error
                         {
 #ifdef ERROR_LOG

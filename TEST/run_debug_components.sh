@@ -861,6 +861,14 @@ check_component parser_scripts_resource 'Testing parserScripts resource handlers
     'TESTS: testParserScripts(), PASS: parserScripts missing script HEAD responseCode=404' \
     'TESTS: testParserScripts(), PASS: class options and missing script handling verified.'
 
+check_component parser_temp_files 'Testing parser temporary file hardening|testParserTempFiles|parser temp' "$FULL_LOG" \
+    '--- Testing parser temporary file hardening:' \
+    'TESTS: testParserTempFiles(), PASS: parser temp file created as 0600 regular file.' \
+    'TESTS: testParserTempFiles(), PASS: parser temp directory is private.' \
+    'TESTS: testParserTempFiles(), PASS: exclusive parser temp creation avoided collision.' \
+    'TESTS: testParserTempFiles(), PASS: symlink temp directory was refused.' \
+    'TESTS: testParserTempFiles(), PASS: cleanup, collision handling, and symlink refusal verified.'
+
 check_component content_rows_resource 'Testing contentRows resource handlers|testContentRows|contentRows' "$FULL_LOG" \
     '--- Testing contentRows resource handlers:' \
     'TESTS: testContentRows(), PASS: contentRows class OPTIONS responseCode=200' \

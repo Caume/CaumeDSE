@@ -1757,10 +1757,14 @@ This is a raw file
     command-line arguments: an input CSV file path and an output CSV file
     path. Parser child processes use absolute interpreter paths from
     `CDSE_PARSER_PERL_PATH` and `CDSE_PARSER_PYTHON_PATH`, run from the
-    secure temporary directory, receive a minimal `PATH`/locale
-    environment, redirect stdin/stdout/stderr to `/dev/null`, and close
-    inherited file descriptors above stderr before `execve()`. Children are
-    bounded by `CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS`; where supported, CaumeDSE also
+    parser temporary directory configured by `CDSE_PARSER_TMP_FILE_PATH`,
+    receive a minimal `PATH`/locale environment, redirect stdin/stdout/stderr
+    to `/dev/null`, and close inherited file descriptors above stderr before
+    `execve()`. Parser input/output and Perl runner files are created with
+    `mkstemp()` as `0600` regular files in a service-owned `0700` parser
+    temporary directory; existing symlink directories are refused before file
+    creation. Children are bounded by `CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS`;
+    where supported, CaumeDSE also
     applies `RLIMIT_CPU`, `RLIMIT_FSIZE`,
     `CDSE_PARSER_SCRIPT_MAX_ADDRESS_SPACE_BYTES`,
     `CDSE_PARSER_SCRIPT_MAX_OPEN_FILES`, and
