@@ -538,10 +538,20 @@
     for network access and outside-file access, plus deployment documentation
     for platform and jail requirements.
 
-- [ ] #77 Add parser execution audit and policy controls.
+- [x] #77 Add parser execution audit and policy controls.
   - Source: `webservice_interface.c`, resources/roles DB handling, AI usage docs.
   - Goal: make parser execution decisions visible and policy-driven so deployments can restrict high-risk scripts before runtime.
   - Plan:
     - Batch 1: add parser policy metadata for allowed script types, reviewed status, interpreter path, timeout profile, and isolation profile.
     - Batch 2: record structured audit events for parser upload, execution, timeout, limit rejection, and cleanup failure without logging secrets or raw CSV contents.
     - Batch 3: document least-privilege parser roles and extend verifier checks for policy allow/deny behavior.
+  - Done: parser execution now evaluates policy metadata from the script
+    document `resourceInfo` before decrypting or running the script. Deployments
+    can restrict allowed parser document types, require `parser.reviewed:true`,
+    and require interpreter, timeout, and isolation profile metadata to match
+    runtime settings. Parser upload, policy allow/deny, execution success,
+    timeout, limit rejection, and decrypted-temp cleanup failure audit lines
+    include IDs, script type, method, and result status without org keys, raw
+    scripts, or CSV content. Live verifier uploads reviewed metadata, checks
+    audit markers, and can run a reviewed-policy deny case for unreviewed
+    scripts.

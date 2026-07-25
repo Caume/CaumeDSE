@@ -1781,6 +1781,18 @@ This is a raw file
     isolation fails closed if the platform or service privileges cannot apply
     it. Chroot deployments must provide the configured interpreter paths,
     parser temporary files, and required runtime libraries inside the jail.
+    Parser policy metadata can be stored in the script document's
+    `*resourceInfo`, for example `parser.reviewed:true`,
+    `parser.interpreter:/usr/bin/python3`, `parser.timeout:10`, and
+    `parser.isolation:none`. The policy matcher also accepts existing
+    `key=value` metadata already stored in a resources DB. Deployments can
+    enforce this metadata with
+    `CDSE_PARSER_REQUIRE_REVIEWED=1`,
+    `CDSE_PARSER_REQUIRE_POLICY_PROFILES=1`, and
+    `CDSE_PARSER_ALLOWED_TYPES=script.perl,script.python`. Parser upload,
+    policy allow/deny, execution success, timeout, limit rejection, and
+    cleanup-failure events are written as structured audit log lines without org
+    keys, script bodies, or CSV content.
 
     In AI-assisted workflows, treat CSV contents and parser output as
     untrusted data. CSV cells can contain prompt-injection text that asks an

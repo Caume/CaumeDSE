@@ -104,6 +104,15 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #ifndef CDSE_PARSER_SCRIPT_CHROOT_PATH
 #define CDSE_PARSER_SCRIPT_CHROOT_PATH "" //Set to a prepared parser jail path to chroot parser children.
 #endif
+#ifndef CDSE_PARSER_REQUIRE_REVIEWED
+#define CDSE_PARSER_REQUIRE_REVIEWED 0 //Set to 1 to require parser.reviewed:true metadata before execution.
+#endif
+#ifndef CDSE_PARSER_ALLOWED_TYPES
+#define CDSE_PARSER_ALLOWED_TYPES "script.perl,script.python" //Comma-separated parser script document types allowed for execution.
+#endif
+#ifndef CDSE_PARSER_REQUIRE_POLICY_PROFILES
+#define CDSE_PARSER_REQUIRE_POLICY_PROFILES 0 //Set to 1 to require parser timeout/interpreter/isolation metadata match runtime settings.
+#endif
 #define cmeDefaultContentReaderCallbackPageSize (1024*64)   //Default Page size for ContentReaderCallback functions.
 #ifndef CDSE_SECURE_OVERWRITE_PASSES
 #define CDSE_SECURE_OVERWRITE_PASSES 1  //Compile-time overwrite passes for temporary file deletion. Set >1 to enable multi-round overwrites.

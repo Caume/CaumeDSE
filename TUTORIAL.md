@@ -381,6 +381,18 @@ Security considerations:
   Network isolation requires Linux network namespaces. Chroot filesystem
   isolation requires a prepared jail containing the configured interpreters,
   parser temp paths, and runtime libraries.
+- Parser policy metadata can be stored in the script document `*resourceInfo`.
+  Use `parser.reviewed:true`, `parser.interpreter:/usr/bin/python3` or
+  `/usr/bin/perl`, `parser.timeout:10`, and `parser.isolation:none` or the
+  enabled isolation profile. The policy matcher also accepts existing
+  `key=value` metadata already stored in a resources DB. Deployments can
+  enforce reviewed scripts and exact profiles with `CDSE_PARSER_REQUIRE_REVIEWED=1`,
+  `CDSE_PARSER_REQUIRE_POLICY_PROFILES=1`, and
+  `CDSE_PARSER_ALLOWED_TYPES=script.perl,script.python`.
+- Parser upload, policy allow/deny, execution success, timeout, limit rejection,
+  and cleanup-failure audit lines identify user, organization, storage,
+  document, script, type, method, and result status without logging org keys,
+  script bodies, or CSV content.
 
 Prompt-injection boundary:
 
