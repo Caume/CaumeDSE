@@ -70,7 +70,7 @@ curl -i $TLS_ARGS \
   -F "orgId=$ORG" \
   -F "orgKey=$ORG_KEY" \
   -F "newOrgKey=$ORG_KEY" \
-  -F "*resourceInfo=reviewed Python parser" \
+  -F "*resourceInfo=reviewed Python parser parser.reviewed:true parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none" \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/script.python/documents/$SCRIPT_PYTHON"
 ```
 

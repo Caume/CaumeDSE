@@ -964,6 +964,259 @@ static int cmeWebServiceApplyParserChildIsolation(void)
     return(0);
 }
 
+static const char *cmeWebServiceParserEnvString(const char *envName, const char *defaultValue)
+{
+    const char *value=getenv(envName);
+
+    if (value&&value[0])
+    {
+        return(value);
+    }
+    return(defaultValue);
+}
+
+static int cmeWebServiceParserListHasValue(const char *list, const char *value)
+{
+    const char *start;
+    const char *end;
+    size_t valueLen;
+
+    if ((!list)||(!value))
+    {
+        return(0);
+    }
+    valueLen=strlen(value);
+    start=list;
+    while (*start)
+    {
+        while ((*start==',')||(*start==' ')||(*start=='\t'))
+        {
+            start++;
+        }
+        end=start;
+        while ((*end)&&(*end!=','))
+        {
+            end++;
+        }
+        while ((end>start)&&((end[-1]==' ')||(end[-1]=='\t')))
+        {
+            end--;
+        }
+        if (((size_t)(end-start)==valueLen)&&(!strncmp(start,value,valueLen)))
+        {
+            return(1);
+        }
+        start=(*end)?end+1:end;
+    }
+    return(0);
+}
+
+static int cmeWebServiceParserMetadataHasToken(const char *metadata, const char *token)
+{
+    const char *match;
+    size_t tokenLen;
+
+    if ((!metadata)||(!token)||(!token[0]))
+    {
+        return(0);
+    }
+    tokenLen=strlen(token);
+    match=metadata;
+    while ((match=strstr(match,token)))
+    {
+        if (((match==metadata)||(match[-1]==' ')||(match[-1]=='\t')||
+             (match[-1]==',')||(match[-1]==';'))&&
+            ((!match[tokenLen])||(match[tokenLen]==' ')||(match[tokenLen]=='\t')||
+             (match[tokenLen]==',')||(match[tokenLen]==';')))
+        {
+            return(1);
+        }
+        match+=tokenLen;
+    }
+    return(0);
+}
+
+static int cmeWebServiceParserMetadataKeyMatches(const char *metadata, const char *key, const char *value)
+{
+    char *token=NULL;
+    int result=0;
+
+    if ((!key)||(!value))
+    {
+        return(0);
+    }
+    cmeStrConstrAppend(&token,"%s=%s",key,value);
+    if (token)
+    {
+        result=cmeWebServiceParserMetadataHasToken(metadata,token);
+    }
+    cmeFree(token);
+    if (!result)
+    {
+        cmeStrConstrAppend(&token,"%s:%s",key,value);
+        if (token)
+        {
+            result=cmeWebServiceParserMetadataHasToken(metadata,token);
+        }
+        cmeFree(token);
+    }
+    return(result);
+}
+
+static const char *cmeWebServiceParserInterpreterForType(const char *scriptType)
+{
+    if (!scriptType)
+    {
+        return("");
+    }
+    if (!strcmp(scriptType,"script.perl"))
+    {
+        return(CDSE_PARSER_PERL_PATH);
+    }
+    if (!strcmp(scriptType,"script.python"))
+    {
+        return(CDSE_PARSER_PYTHON_PATH);
+    }
+    return("");
+}
+
+static void cmeWebServiceParserIsolationProfile(char *profile, size_t profileLen)
+{
+    int added=0;
+
+    if ((!profile)||(!profileLen))
+    {
+        return;
+    }
+    profile[0]='\0';
+    if (cmeWebServiceParserEnvFlag("CDSE_PARSER_NO_NEW_PRIVS",
+                                   CDSE_PARSER_SCRIPT_NO_NEW_PRIVS))
+    {
+        strncat(profile,"no_new_privs",profileLen-strlen(profile)-1);
+        added=1;
+    }
+    if (cmeWebServiceParserEnvFlag("CDSE_PARSER_ISOLATE_NETWORK",
+                                   CDSE_PARSER_SCRIPT_ISOLATE_NETWORK))
+    {
+        if (added)
+        {
+            strncat(profile,"+",profileLen-strlen(profile)-1);
+        }
+        strncat(profile,"network",profileLen-strlen(profile)-1);
+        added=1;
+    }
+    if (cmeWebServiceParserChrootPath())
+    {
+        if (added)
+        {
+            strncat(profile,"+",profileLen-strlen(profile)-1);
+        }
+        strncat(profile,"chroot",profileLen-strlen(profile)-1);
+        added=1;
+    }
+    if (!added)
+    {
+        strncat(profile,"none",profileLen-strlen(profile)-1);
+    }
+}
+
+static int cmeWebServiceParserPolicyAllows(const char *metadata, const char *scriptType, const char *userId,
+                                           const char *orgId, const char *storageId, const char *documentId,
+                                           const char *scriptId, const char *method)
+{
+    char isolationProfile[128];
+    char timeoutProfile[32];
+    const char *allowedTypes;
+    const char *interpreterPath;
+    int reviewed;
+    int requireReviewed;
+    int requireProfiles;
+
+    allowedTypes=cmeWebServiceParserEnvString("CDSE_PARSER_ALLOWED_TYPES",CDSE_PARSER_ALLOWED_TYPES);
+    interpreterPath=cmeWebServiceParserInterpreterForType(scriptType);
+    reviewed=(cmeWebServiceParserMetadataHasToken(metadata,"parser.reviewed=true")||
+              cmeWebServiceParserMetadataHasToken(metadata,"parser.reviewed:true"));
+    requireReviewed=cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_REVIEWED",CDSE_PARSER_REQUIRE_REVIEWED);
+    requireProfiles=cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_POLICY_PROFILES",
+                                               CDSE_PARSER_REQUIRE_POLICY_PROFILES);
+    cmeWebServiceParserIsolationProfile(isolationProfile,sizeof(isolationProfile));
+    snprintf(timeoutProfile,sizeof(timeoutProfile),"%d",CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS);
+    if (!cmeWebServiceParserListHasValue(allowedTypes,scriptType))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-deny reason=type userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s'\n",
+                userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
+                scriptId?scriptId:"",scriptType?scriptType:"",method?method:"");
+#endif
+        return(1);
+    }
+    if (requireReviewed&&(!reviewed))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-deny reason=unreviewed userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s'\n",
+                userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
+                scriptId?scriptId:"",scriptType?scriptType:"",method?method:"");
+#endif
+        return(2);
+    }
+    if (requireProfiles&&
+        ((!cmeWebServiceParserMetadataKeyMatches(metadata,"parser.interpreter",interpreterPath))||
+         (!cmeWebServiceParserMetadataKeyMatches(metadata,"parser.timeout",timeoutProfile))||
+         (!cmeWebServiceParserMetadataKeyMatches(metadata,"parser.isolation",isolationProfile))))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-deny reason=profile userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s' isolationProfile='%s'\n",
+                userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
+                scriptId?scriptId:"",scriptType?scriptType:"",method?method:"",isolationProfile);
+#endif
+        return(3);
+    }
+#ifdef ERROR_LOG
+    fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-allow userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s' reviewed='%d' isolationProfile='%s'\n",
+            userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
+            scriptId?scriptId:"",scriptType?scriptType:"",method?method:"",reviewed,isolationProfile);
+#endif
+    return(0);
+}
+
+static void cmeWebServiceParserAuditResult(const char *event, int result, const char *scriptType,
+                                           const char *userId, const char *orgId, const char *storageId,
+                                           const char *documentId, const char *scriptId, const char *method)
+{
+#ifdef ERROR_LOG
+    fprintf(stderr,"CaumeDSE Audit: parserExecution event=%s result=%d userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s'\n",
+            event?event:"unknown",result,userId?userId:"",orgId?orgId:"",storageId?storageId:"",
+            documentId?documentId:"",scriptId?scriptId:"",scriptType?scriptType:"",method?method:"");
+#else
+    (void)event;
+    (void)result;
+    (void)scriptType;
+    (void)userId;
+    (void)orgId;
+    (void)storageId;
+    (void)documentId;
+    (void)scriptId;
+    (void)method;
+#endif
+}
+
+static const char *cmeWebServiceParserAuditExecutionEvent(int result)
+{
+    if (!result)
+    {
+        return("execute-success");
+    }
+    if (result==6)
+    {
+        return("timeout");
+    }
+    if ((result==7)||(result==8))
+    {
+        return("limit-reject");
+    }
+    return("execute-fail");
+}
+
 static void cmeWebServiceCloseParserChildFds(void)
 {
     long maxFd=sysconf(_SC_OPEN_MAX);
@@ -7880,6 +8133,11 @@ int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseH
                                                             urlElements[3], //storageId
                                                             storagePath);   //storagePath
                         }
+                        if (cmeWebServiceIsParserScriptDocumentType(urlElements[5]))
+                        {
+                            cmeWebServiceParserAuditResult(result?"upload-fail":"upload-success",result,urlElements[5],
+                                                           userId,orgId,urlElements[3],NULL,urlElements[7],method);
+                        }
                         if (result) //Error, File couldn't be imported
                         {
                             cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
@@ -9334,6 +9592,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     char *tmpRAWFile=NULL;              //Full path to temporal, unencrypted script file.
     char *dbFilePath=NULL;
     char **resultRegisterCols=NULL;
+    const char *scriptType=NULL;
+    const char *scriptResourceInfo=NULL;
     const int numColumns=15;            //Number of columns in corresponding resource table.
     const int numValidGETALLMatch=9;    //9 parameters + 4 (storageId,orgResourceId,documentId,type) from URL
     const char *tableName="documents";
@@ -9350,7 +9610,12 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
             cmeFree(dbFilePath); \
             if(tmpRAWFile) \
             { \
-                cmeFileOverwriteAndDelete(tmpRAWFile); \
+                int parserCleanupResult=cmeFileOverwriteAndDelete(tmpRAWFile); \
+                if (parserCleanupResult) \
+                { \
+                    cmeWebServiceParserAuditResult("cleanup-fail",parserCleanupResult,scriptType, \
+                                                   userId,orgId,urlElements[3],urlElements[7],urlElements[9],method); \
+                } \
             } \
             cmeFree(tmpRAWFile); \
             if (resultRegisterCols) \
@@ -9459,6 +9724,22 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                 {
                     if (numResultRegisters) // Found >0
                     {
+                        scriptType=resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type];
+                        scriptResourceInfo=resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_resourceInfo];
+                        if ((!cmeWebServiceIsParserScriptDocumentType(scriptType))||
+                            (cmeWebServiceParserPolicyAllows(scriptResourceInfo,scriptType,userId,orgId,urlElements[3],
+                                                             urlElements[7],urlElements[9],method)))
+                        {
+                            cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN parser policy denied execution.</b><br>"
+                                               "METHOD: '%s' URL: '%s'."
+                                                "%sLatest IDD version: <code>%s</code>",method,url,cmeWSMsgParserScriptResourceOptions,
+                                                cmeInternalDBDefinitionsVersion);
+                            cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                            cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                            cmeWebServiceProcessParserScriptResourceFree();
+                            *responseCode=403;
+                            return(0);
+                        }
                         result=cmeSecureFileToTmpRAWFileInDir (&tmpRAWFile,pDB,scriptNameValues[0],resultRegisterCols
                                                                [cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
                                                                storagePath,urlElements[1],urlElements[3],orgKey,
@@ -9493,6 +9774,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
                         cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
                         cmeFileOverwriteAndDelete(tmpRAWFile);
+                        tmpRAWFile=NULL;
                         cmeWebServiceProcessParserScriptResourceFree();
                         *responseCode=404;
                         return(0);
@@ -9565,6 +9847,9 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                             result=cmeWebServiceRunPythonParserScript(tmpRAWFile);
                         }
                     }
+                    cmeWebServiceParserAuditResult(cmeWebServiceParserAuditExecutionEvent(result),result,
+                                                   resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
+                                                   userId,orgId,urlElements[3],urlElements[7],urlElements[9],method);
                     if (!result) //OK
                     {
                         //Construct responseText and create response headers according to the user's outputType (optional) request:
@@ -9696,6 +9981,16 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                 {
                     if (numResultRegisters) // Found >0
                     {
+                        scriptType=resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type];
+                        scriptResourceInfo=resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_resourceInfo];
+                        if ((!cmeWebServiceIsParserScriptDocumentType(scriptType))||
+                            (cmeWebServiceParserPolicyAllows(scriptResourceInfo,scriptType,userId,orgId,urlElements[3],
+                                                             urlElements[7],urlElements[9],method)))
+                        {
+                            cmeWebServiceProcessParserScriptResourceFree();
+                            *responseCode=403; //No responseText in HEAD!
+                            return(0);
+                        }
                         result=cmeSecureFileToTmpRAWFileInDir (&tmpRAWFile,pDB,scriptNameValues[0],resultRegisterCols
                                                                [cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
                                                                storagePath,urlElements[1],urlElements[3],orgKey,
@@ -9772,6 +10067,9 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                             result=cmeWebServiceRunPythonParserScript(tmpRAWFile);
                         }
                     }
+                    cmeWebServiceParserAuditResult(cmeWebServiceParserAuditExecutionEvent(result),result,
+                                                   resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],
+                                                   userId,orgId,urlElements[3],urlElements[7],urlElements[9],method);
                     if (!result) //OK
                     {
                         if (cmeResultMemTableRows) // Found >0 rows.
@@ -9793,6 +10091,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
                         cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",cmeResultMemTableRows);
                         cmeFileOverwriteAndDelete(tmpRAWFile);
+                        tmpRAWFile=NULL;
                         cmeWebServiceProcessParserScriptResourceFree();
                         return(0);  //No responseText in HEAD!
                     }

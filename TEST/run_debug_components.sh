@@ -19,6 +19,8 @@ REDACT_OUTPUT="${CDSE_VERIFY_REDACT:-0}"
 VERIFY_PARSER_NETWORK_ISOLATION="${CDSE_VERIFY_PARSER_NETWORK_ISOLATION:-0}"
 VERIFY_PARSER_CHROOT_ISOLATION="${CDSE_VERIFY_PARSER_CHROOT_ISOLATION:-0}"
 VERIFY_PARSER_NO_NEW_PRIVS="${CDSE_VERIFY_PARSER_NO_NEW_PRIVS:-0}"
+VERIFY_PARSER_REQUIRE_REVIEWED="${CDSE_VERIFY_PARSER_REQUIRE_REVIEWED:-0}"
+VERIFY_PARSER_REQUIRE_POLICY_PROFILES="${CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES:-0}"
 
 PASSED=0
 FAILED=0
@@ -49,6 +51,8 @@ usage() {
     printf '  CDSE_VERIFY_PARSER_NO_NEW_PRIVS       run live parser children with Linux no_new_privs when set to 1/true/on\n'
     printf '  CDSE_VERIFY_PARSER_NETWORK_ISOLATION run optional network-isolation parser check when set to 1/true/on\n'
     printf '  CDSE_VERIFY_PARSER_CHROOT_ISOLATION  run optional chroot parser filesystem check when set to 1/true/on\n'
+    printf '  CDSE_VERIFY_PARSER_REQUIRE_REVIEWED  require parser.reviewed:true metadata in live parser checks\n'
+    printf '  CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES require parser interpreter/timeout/isolation metadata in live parser checks\n'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -155,6 +159,15 @@ parser_network_isolation_enabled() {
 
 parser_chroot_isolation_enabled() {
     case "$VERIFY_PARSER_CHROOT_ISOLATION" in
+        1|true|TRUE|yes|YES|on|ON)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+parser_review_policy_enabled() {
+    case "$VERIFY_PARSER_REQUIRE_REVIEWED" in
         1|true|TRUE|yes|YES|on|ON)
             return 0
             ;;
@@ -563,6 +576,9 @@ run_live_web_flow() {
     local python_oversize_script_name="${LIVE_FLOW_ID}_${protocol}_oversize.py"
     local python_network_script_name="${LIVE_FLOW_ID}_${protocol}_network.py"
     local python_outside_file_script_name="${LIVE_FLOW_ID}_${protocol}_outside_file.py"
+    local python_unreviewed_script_name="${LIVE_FLOW_ID}_${protocol}_unreviewed.py"
+    local perl_policy_meta="parser.reviewed:true parser.interpreter:/usr/bin/perl parser.timeout:10 parser.isolation:none"
+    local python_policy_meta="parser.reviewed:true parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none"
     local user_id="User123"
     local role_user="${LIVE_FLOW_ID}_${protocol}_user"
     local auth="userId=$user_id&orgId=$org_name&orgKey=$org_key"
@@ -594,6 +610,8 @@ run_live_web_flow() {
             CDSE_PARSER_NO_NEW_PRIVS="$VERIFY_PARSER_NO_NEW_PRIVS" \
             CDSE_PARSER_ISOLATE_NETWORK="$VERIFY_PARSER_NETWORK_ISOLATION" \
             CDSE_PARSER_CHROOT_PATH="${CDSE_VERIFY_PARSER_CHROOT_PATH:-}" \
+            CDSE_PARSER_REQUIRE_REVIEWED="$VERIFY_PARSER_REQUIRE_REVIEWED" \
+            CDSE_PARSER_REQUIRE_POLICY_PROFILES="$VERIFY_PARSER_REQUIRE_POLICY_PROFILES" \
             "$PREFIX/cdse/bin/CaumeDSE-debug-tests" --web-service "$protocol"
     ) > "$service_log" 2>&1 &
     service_pid=$!
@@ -662,7 +680,7 @@ run_live_web_flow() {
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
-        -F "*resourceInfo=live $protocol Perl script"
+        -F "*resourceInfo=live $protocol Perl script $perl_policy_meta"
     live_api_check "$protocol" parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=csv" "82400" "${curl_tls_args[@]}"
     live_api_check "$protocol" parser_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$script_name?$auth&newOrgKey=$org_key&outputType=json" '"salary":"82400"' "${curl_tls_args[@]}"
     live_api_check "$protocol" parser_missing_head 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/missing.pl?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}" -I
@@ -672,7 +690,7 @@ run_live_web_flow() {
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
-        -F "*resourceInfo=live $protocol timeout Perl script"
+        -F "*resourceInfo=live $protocol timeout Perl script $perl_policy_meta"
     live_api_check "$protocol" perl_parser_timeout 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$perl_timeout_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_perl_oversize_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$perl_oversize_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test_oversize.pl" \
@@ -680,7 +698,7 @@ run_live_web_flow() {
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
-        -F "*resourceInfo=live $protocol oversize Perl script"
+        -F "*resourceInfo=live $protocol oversize Perl script $perl_policy_meta"
     live_api_check "$protocol" perl_parser_oversize 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$perl_oversize_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_python_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test.py" \
@@ -688,7 +706,7 @@ run_live_web_flow() {
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
-        -F "*resourceInfo=live $protocol Python script"
+        -F "*resourceInfo=live $protocol Python script $python_policy_meta"
     live_api_check "$protocol" python_parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=csv" "82400" "${curl_tls_args[@]}"
     live_api_check "$protocol" python_parser_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=json" '"salary":"82400"' "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_python_timeout_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_timeout_script_name" "" "${curl_tls_args[@]}" \
@@ -697,7 +715,7 @@ run_live_web_flow() {
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
-        -F "*resourceInfo=live $protocol timeout Python script"
+        -F "*resourceInfo=live $protocol timeout Python script $python_policy_meta"
     live_api_check "$protocol" python_parser_timeout 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_timeout_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_python_oversize_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_oversize_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test_oversize.py" \
@@ -705,7 +723,7 @@ run_live_web_flow() {
         -F "orgId=$org_name" \
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
-        -F "*resourceInfo=live $protocol oversize Python script"
+        -F "*resourceInfo=live $protocol oversize Python script $python_policy_meta"
     live_api_check "$protocol" python_parser_oversize 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_oversize_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
     if parser_network_isolation_enabled; then
         if [ "$protocol" = "http" ]; then
@@ -715,7 +733,7 @@ run_live_web_flow() {
                 -F "orgId=$org_name" \
                 -F "orgKey=$org_key" \
                 -F "newOrgKey=$org_key" \
-                -F "*resourceInfo=live $protocol network isolation Python script"
+                -F "*resourceInfo=live $protocol network isolation Python script $python_policy_meta"
             live_api_check "$protocol" python_parser_network_isolation 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_network_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
         else
             record_skip "live_${protocol}_python_parser_network_isolation" "network fixture targets HTTP port $HTTP_PORT"
@@ -728,8 +746,18 @@ run_live_web_flow() {
             -F "orgId=$org_name" \
             -F "orgKey=$org_key" \
             -F "newOrgKey=$org_key" \
-            -F "*resourceInfo=live $protocol chroot isolation Python script"
+            -F "*resourceInfo=live $protocol chroot isolation Python script $python_policy_meta"
         live_api_check "$protocol" python_parser_chroot_isolation 500 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_outside_file_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
+    fi
+    if parser_review_policy_enabled; then
+        live_api_check "$protocol" upload_python_unreviewed_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_unreviewed_script_name" "" "${curl_tls_args[@]}" \
+            -F "file=@$ROOT_DIR/TEST/testfiles/test.py" \
+            -F "userId=$user_id" \
+            -F "orgId=$org_name" \
+            -F "orgKey=$org_key" \
+            -F "newOrgKey=$org_key" \
+            -F "*resourceInfo=live $protocol unreviewed Python script"
+        live_api_check "$protocol" python_parser_policy_unreviewed 403 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_unreviewed_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
     fi
     live_api_check "$protocol" document_delete 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
     live_api_check "$protocol" role_table_delete 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
@@ -739,6 +767,12 @@ run_live_web_flow() {
 
     stop_live_service "$service_pid"
     redact_file_in_place "$service_log"
+    if grep -Fq "CaumeDSE Audit: parserExecution event=policy-allow" "$service_log" &&
+       grep -Fq "CaumeDSE Audit: parserExecution event=execute-success" "$service_log"; then
+        record_pass "live_${protocol}_parser_audit"
+    else
+        record_fail "live_${protocol}_parser_audit" "missing parser audit markers log=$service_log"
+    fi
 
     if [ "$LIVE_FLOW_FAILED" -eq 0 ]; then
         record_pass "live_${protocol}_api_flow"
