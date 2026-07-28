@@ -1368,8 +1368,8 @@ int cmeProcessURLMatchSaveParameters (const char *urlMethod, const char **argume
         {
             cmeStrConstrAppend(orgKey,"%s",argumentElements[cont+1]); //special case; we pass it as a function parameter; not in columnValues.
 #ifdef DEBUG
-            fprintf(stdout,"CaumeDSE Debug: cmeProcessURLMatchSaveParameters(), %s, parameter orgKey: '%s'.\n",
-                    urlMethod, argumentElements[cont+1]);
+            fprintf(stdout,"CaumeDSE Debug: cmeProcessURLMatchSaveParameters(), %s, parameter orgKey: <redacted>.\n",
+                    urlMethod);
 #endif
             *keyArg=1;
         }
@@ -1377,8 +1377,8 @@ int cmeProcessURLMatchSaveParameters (const char *urlMethod, const char **argume
         {
             cmeStrConstrAppend(newOrgKey,"%s",argumentElements[cont+1]); //special case; we pass it as a function parameter; not in columnValues.
 #ifdef DEBUG
-            fprintf(stdout,"CaumeDSE Debug: cmeProcessURLMatchSaveParameters(), %s, parameter newOrgKey: '%s'.\n",
-                    urlMethod, argumentElements[cont+1]);
+            fprintf(stdout,"CaumeDSE Debug: cmeProcessURLMatchSaveParameters(), %s, parameter newOrgKey: <redacted>.\n",
+                    urlMethod);
 #endif
             *newKeyArg=1;
         }

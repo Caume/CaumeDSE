@@ -55,6 +55,83 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #include <sys/prctl.h>
 #endif
 
+#define cmeWSLogMaxURLLen 2048
+#define cmeWSLogMaxHeaderBlockLen 4096
+#define cmeWSLogMaxValueLen 512
+#define cmeWSLogRedactedValue "<redacted>"
+#define cmeWSLogTruncatedMarker "...<truncated>"
+
+static int cmeWebServiceLogIsSensitiveField(const char *name)
+{
+    const char *fieldName=name;
+
+    if (!fieldName)
+    {
+        return(0);
+    }
+    if (*fieldName=='*')
+    {
+        fieldName++;
+    }
+    return((!strcasecmp(fieldName,"orgKey")) ||
+           (!strcasecmp(fieldName,"newOrgKey")) ||
+           (!strcasecmp(fieldName,"accessPath")) ||
+           (!strcasecmp(fieldName,"accessUser")) ||
+           (!strcasecmp(fieldName,"accessPassword")) ||
+           (!strcasecmp(fieldName,"basicAuthPwdHash")) ||
+           (!strcasecmp(fieldName,"oauthConsumerKey")) ||
+           (!strcasecmp(fieldName,"oauthConsumerSecret")) ||
+           (!strcasecmp(fieldName,"certificate")) ||
+           (!strcasecmp(fieldName,"publicKey")) ||
+           (!strcasecmp(fieldName,"authorization")) ||
+           (!strcasecmp(fieldName,"proxy-authorization")) ||
+           (!strcasecmp(fieldName,"cookie")) ||
+           (!strcasecmp(fieldName,"set-cookie")) ||
+           (!strcasecmp(fieldName,"x-api-key")));
+}
+
+static int cmeWebServiceLogAppendBoundedValue(char **resultStr, const char *value, size_t maxLen)
+{
+    const char *safeValue=value?value:"";
+    size_t valueLen=strlen(safeValue);
+
+    if (valueLen<=maxLen)
+    {
+        return(cmeStrConstrAppend(resultStr,"%s",safeValue));
+    }
+    return(cmeStrConstrAppend(resultStr,"%.*s%s",(int)maxLen,safeValue,cmeWSLogTruncatedMarker));
+}
+
+static int cmeWebServiceLogAppendFieldValue(char **resultStr, const char *name, const char *value)
+{
+    if (cmeWebServiceLogIsSensitiveField(name))
+    {
+        return(cmeStrConstrAppend(resultStr,"%s",cmeWSLogRedactedValue));
+    }
+    return(cmeWebServiceLogAppendBoundedValue(resultStr,value,cmeWSLogMaxValueLen));
+}
+
+static void cmeWebServiceLogTruncateInPlace(char *value, size_t maxLen)
+{
+    size_t valueLen;
+    size_t markerLen=strlen(cmeWSLogTruncatedMarker);
+
+    if (!value)
+    {
+        return;
+    }
+    valueLen=strlen(value);
+    if (valueLen<=maxLen)
+    {
+        return;
+    }
+    if (maxLen>markerLen)
+    {
+        memcpy(value+maxLen-markerLen,cmeWSLogTruncatedMarker,markerLen);
+    }
+    value[maxLen]='\0';
+}
+
 static void cmeWebServiceSetThreadStatus(struct cmeWebServiceConnectionInfoStruct *con_info, int threadStatus)
 {
     pthread_mutex_lock(&(con_info->threadStatusMutex));
@@ -6013,8 +6090,7 @@ int cmeWebServiceProcessOrgClass (char **responseText, char **responseFilePath, 
             {
                 cmeStrConstrAppend(&orgKey,"%s",argumentElements[cont+1]); //special case; we pass it as a function parameter; not in columnValues.
 #ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessOrgClass(), OPTIONS, parameter orgKey: '%s'.\n",
-                        argumentElements[cont+1]);
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessOrgClass(), OPTIONS, parameter orgKey: <redacted>.\n");
 #endif
                 keyArg=1;
             }
@@ -7251,8 +7327,7 @@ int cmeWebServiceProcessStorageClass (char **responseText, char ***responseHeade
             {
                 cmeStrConstrAppend(&orgKey,"%s",argumentElements[cont+1]); //special case; we pass it as a function parameter; not in columnValues.
 #ifdef DEBUG
-                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessStorageClass(), OPTIONS, parameter orgKey: '%s'.\n",
-                        argumentElements[cont+1]);
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessStorageClass(), OPTIONS, parameter orgKey: <redacted>.\n");
 #endif
                 keyArg=1;
             }
@@ -14369,7 +14444,8 @@ int cmeWebServiceLogConnection (struct MHD_Connection *connection, void *con_cls
             cmeStrConstrAppend(&requestUrl,"?");
             while ((requestArgumentsList[cont])&&(cont<cmeWSURIMaxArguments))
             {
-                cmeStrConstrAppend(&requestUrl,"%s=%s",requestArgumentsList[cont],requestArgumentsList[cont+1]);
+                cmeStrConstrAppend(&requestUrl,"%s=",requestArgumentsList[cont]);
+                cmeWebServiceLogAppendFieldValue(&requestUrl,requestArgumentsList[cont],requestArgumentsList[cont+1]);
                 cont+=2;
                 if (cont<cmeWSURIMaxArguments)
                 {
@@ -14379,12 +14455,14 @@ int cmeWebServiceLogConnection (struct MHD_Connection *connection, void *con_cls
                     }
                 }
             }
+            cmeWebServiceLogTruncateInPlace(requestUrl,cmeWSLogMaxURLLen);
         }
     }
     else //If undefined, set to empty.
     {
         cmeStrConstrAppend(&requestUrl,"");
     }
+    cmeWebServiceLogTruncateInPlace(requestUrl,cmeWSLogMaxURLLen);
     //Set orgResourceId:
     cmeStrConstrAppend(&orgResourceId,"");
     if ((numUrlElements>2)&&(strcmp(urlElements[0],"organizations")==0)) //We have an organization in the URL
@@ -14437,17 +14515,23 @@ int cmeWebServiceLogConnection (struct MHD_Connection *connection, void *con_cls
     cont=0;
     while ((responseHeadersList[cont])&&(cont<cmeWSHTTPMaxResponseHeaders))
     {
-        cmeStrConstrAppend(&responseHeaders,"%s=%s\n",responseHeadersList[cont],responseHeadersList[cont+1]);
+        cmeStrConstrAppend(&responseHeaders,"%s=",responseHeadersList[cont]);
+        cmeWebServiceLogAppendFieldValue(&responseHeaders,responseHeadersList[cont],responseHeadersList[cont+1]);
+        cmeStrConstrAppend(&responseHeaders,"\n");
         cont+=2;
     }
+    cmeWebServiceLogTruncateInPlace(responseHeaders,cmeWSLogMaxHeaderBlockLen);
     //Set requestHeaders:
     cmeStrConstrAppend(&requestHeaders,""); //Start with an empty string.
     cont=0;
     while ((requestHeadersList[cont])&&(cont<cmeWSHTTPMaxHeaders))
     {
-        cmeStrConstrAppend(&requestHeaders,"%s=%s\n",requestHeadersList[cont],requestHeadersList[cont+1]);
+        cmeStrConstrAppend(&requestHeaders,"%s=",requestHeadersList[cont]);
+        cmeWebServiceLogAppendFieldValue(&requestHeaders,requestHeadersList[cont],requestHeadersList[cont+1]);
+        cmeStrConstrAppend(&requestHeaders,"\n");
         cont+=2;
     }
+    cmeWebServiceLogTruncateInPlace(requestHeaders,cmeWSLogMaxHeaderBlockLen);
     //Log transaction:
     result= cmeWebServiceLogRequest (userId, orgId, requestMethod, requestUrl, requestHeaders,
                                      startTimestamp, endTimestamp, requestDataSize, responseDataSize,

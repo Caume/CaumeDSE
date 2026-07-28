@@ -555,3 +555,42 @@
     scripts, or CSV content. Live verifier uploads reviewed metadata, checks
     audit markers, and can run a reviewed-policy deny case for unreviewed
     scripts.
+
+- [x] #78 Stop HTTPS startup failures from logging TLS private keys.
+  - Source: `engine_admin.c`, DEBUG verifier startup checks.
+  - Goal: ensure web-service startup failures never print PEM certificate/key contents or other TLS key material.
+  - Done:
+    - Replaced PEM-body error logging with file path/context-only diagnostics.
+    - Added a verifier check that forces an HTTPS startup failure and asserts no private-key PEM markers are emitted.
+
+- [x] #79 Redact DEBUG logs that expose org keys and decrypted values.
+  - Source: `engine_interface.c`, `crypto.c`, shared redaction helpers.
+  - Goal: make DEBUG/ERROR diagnostics safe to retain by default.
+  - Done:
+    - Replaced plaintext `orgKey` and `newOrgKey` DEBUG parameter prints with redacted markers.
+    - Replaced protected-value, decrypted-value, and key diagnostics in crypto and secure DB helpers with length-only context.
+    - Added live verifier checks that fail on secret-bearing DEBUG diagnostics.
+
+- [x] #80 Redact request URLs and cap logged request values.
+  - Source: `webservice_interface.c`, transaction logging, live verifier redaction.
+  - Goal: prevent request logs from storing credentials or unbounded user-controlled strings.
+  - Done:
+    - Redacted credential-like query parameters and HTTP headers before constructing transaction log entries.
+    - Added per-value and whole-field caps for logged request URLs, request headers, and response headers.
+    - Added a live unauthenticated LogsDB probe that verifies secret redaction and long-value truncation.
+
+- [ ] #81 Modernize password-based key derivation defaults.
+  - Source: `common.h`, `crypto.c`, storage metadata/version handling.
+  - Goal: replace outdated KDF settings with migration-safe modern defaults.
+  - Plan:
+    - Batch 1: define versioned KDF metadata and select stronger defaults for new data.
+    - Batch 2: preserve read compatibility for existing protected values.
+    - Batch 3: add crypto tests for old/new KDF vectors and upgrade behavior.
+
+- [ ] #82 Harden HTTP TLS-auth bypass controls.
+  - Source: `configure.ac`, `common.h`, `webservice_interface.c`, verifier profiles.
+  - Goal: prevent test-only HTTP TLS-auth bypass from being accidentally enabled in deployable builds.
+  - Plan:
+    - Batch 1: fail startup or emit a hard error when bypass is enabled outside DEBUG/test profiles.
+    - Batch 2: make the bypass setting visible in startup diagnostics without exposing secrets.
+    - Batch 3: add verifier checks for bypass-on and bypass-off HTTP authentication behavior.

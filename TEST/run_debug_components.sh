@@ -407,6 +407,169 @@ wait_for_log_marker() {
     return 1
 }
 
+run_https_startup_failure_redaction_check() {
+    local probe_log="$LOG_ROOT/https-startup-failure.log"
+    local holder_log="$LOG_ROOT/https-port-holder.log"
+    local listener_pid=""
+
+    : > "$probe_log"
+    : > "$holder_log"
+
+    python3 - "$HTTPS_PORT" > "$holder_log" 2>&1 <<'PY' &
+import socket
+import sys
+import time
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(("127.0.0.1", int(sys.argv[1])))
+sock.listen(1)
+print("ready", flush=True)
+time.sleep(30)
+PY
+    listener_pid=$!
+
+    if ! wait_for_log_marker "$holder_log" "ready" 10; then
+        stop_live_service "$listener_pid"
+        record_fail https_startup_failure_redaction "could not reserve HTTPS test port $HTTPS_PORT log=$holder_log"
+        return
+    fi
+
+    (
+        cd "$ROOT_DIR" || exit 1
+        CDSE_DEBUG_TEST_HTTPS_PORT="$HTTPS_PORT" timeout 20s "$PREFIX/cdse/bin/CaumeDSE-debug-tests" --web-service https
+    ) > "$probe_log" 2>&1 || true
+
+    stop_live_service "$listener_pid"
+
+    if grep -Fq "can't start HTTPS server" "$probe_log"; then
+        :
+    else
+        record_fail https_startup_failure_redaction "missing HTTPS startup failure marker log=$probe_log"
+        return
+    fi
+
+    if grep -Eq 'BEGIN (RSA |EC |)PRIVATE KEY|END (RSA |EC |)PRIVATE KEY' "$probe_log"; then
+        record_fail https_startup_failure_redaction "private key PEM marker leaked in $probe_log"
+    else
+        record_pass https_startup_failure_redaction
+    fi
+}
+
+check_live_debug_secret_redaction() {
+    local protocol="$1"
+    local service_log="$2"
+    local org_key="$3"
+    local leak_log="$LOG_ROOT/live_${protocol}_debug_secret_leaks.log"
+    local leaked=0
+
+    : > "$leak_log"
+
+    if grep -F "parameter orgKey: '" "$service_log" >> "$leak_log" 2>/dev/null; then
+        leaked=1
+    fi
+    if grep -F "parameter newOrgKey: '" "$service_log" >> "$leak_log" 2>/dev/null; then
+        leaked=1
+    fi
+    if grep -F " key $org_key" "$service_log" >> "$leak_log" 2>/dev/null; then
+        leaked=1
+    fi
+    if grep -F " the key $org_key" "$service_log" >> "$leak_log" 2>/dev/null; then
+        leaked=1
+    fi
+    if grep -E "cmeUnprotect(ByteString|DBValue|DBSaltedValue).* -> [^v]" "$service_log" >> "$leak_log" 2>/dev/null; then
+        leaked=1
+    fi
+    if grep -E "cmeProtect(ByteString|DBSaltedValue).*: [^v]" "$service_log" >> "$leak_log" 2>/dev/null; then
+        leaked=1
+    fi
+    if grep -F "Result: " "$service_log" >> "$leak_log" 2>/dev/null; then
+        leaked=1
+    fi
+
+    if [ "$leaked" -eq 0 ]; then
+        record_pass "live_${protocol}_debug_secret_redaction"
+        rm -f "$leak_log"
+    else
+        redact_file_in_place "$leak_log"
+        record_fail "live_${protocol}_debug_secret_redaction" "secret-bearing DEBUG diagnostic found log=$leak_log"
+    fi
+}
+
+check_live_transaction_log_redaction() {
+    local protocol="$1"
+    local org_key="$2"
+    local long_value="$3"
+    local db_path="$PREFIX/cdse/LogsDB"
+    local query_log="$LOG_ROOT/live_${protocol}_transaction_log_redaction.log"
+    local leaked=0
+
+    : > "$query_log"
+
+    if [ ! -f "$db_path" ]; then
+        record_fail "live_${protocol}_transaction_log_redaction" "LogsDB not found at $db_path"
+        return
+    fi
+    if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$db_path" "SELECT requestUrl, requestHeaders FROM transactions WHERE authenticated='0' AND requestUrl LIKE '%logProbe%';" > "$query_log" 2>&1
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 - "$db_path" > "$query_log" 2>&1 <<'PY'
+import sqlite3
+import sys
+
+conn = sqlite3.connect(sys.argv[1])
+try:
+    for request_url, request_headers in conn.execute(
+        "SELECT requestUrl, requestHeaders FROM transactions "
+        "WHERE authenticated='0' AND requestUrl LIKE '%logProbe%'"
+    ):
+        print(request_url or "")
+        print(request_headers or "")
+finally:
+    conn.close()
+PY
+    else
+        record_skip "live_${protocol}_transaction_log_redaction" "sqlite3 CLI or python3 is required to inspect LogsDB"
+        return
+    fi
+    if [ "$?" -ne 0 ]; then
+        redact_file_in_place "$query_log"
+        record_fail "live_${protocol}_transaction_log_redaction" "could not query LogsDB log=$query_log"
+        return
+    fi
+    if [ ! -s "$query_log" ]; then
+        record_fail "live_${protocol}_transaction_log_redaction" "missing log redaction probe row in LogsDB"
+        return
+    fi
+
+    if grep -F "$org_key" "$query_log" >/dev/null 2>&1; then
+        leaked=1
+    fi
+    if grep -F "$long_value" "$query_log" >/dev/null 2>&1; then
+        leaked=1
+    fi
+    if ! grep -Fq "orgKey=<redacted>" "$query_log"; then
+        leaked=1
+    fi
+    if ! grep -Fq "newOrgKey=<redacted>" "$query_log"; then
+        leaked=1
+    fi
+    if ! grep -Fq "accessPassword=<redacted>" "$query_log"; then
+        leaked=1
+    fi
+    if ! grep -Fq "...<truncated>" "$query_log"; then
+        leaked=1
+    fi
+
+    if [ "$leaked" -eq 0 ]; then
+        record_pass "live_${protocol}_transaction_log_redaction"
+        rm -f "$query_log"
+    else
+        redact_file_in_place "$query_log"
+        record_fail "live_${protocol}_transaction_log_redaction" "request log secret redaction or truncation check failed log=$query_log"
+    fi
+}
+
 stop_live_service() {
     local pid="$1"
 
@@ -582,6 +745,7 @@ run_live_web_flow() {
     local user_id="User123"
     local role_user="${LIVE_FLOW_ID}_${protocol}_user"
     local auth="userId=$user_id&orgId=$org_name&orgKey=$org_key"
+    local long_query_value=""
     local curl_tls_args=()
     local client_chain
     local client_key
@@ -625,6 +789,8 @@ run_live_web_flow() {
 
     live_api_check "$protocol" auth_missing_all 401 "$base_url/organizations/$org_name" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_org_key 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name" "" "${curl_tls_args[@]}"
+    long_query_value="$(printf '%*s' 1500 '' | tr ' ' 'x')"
+    live_api_check "$protocol" transaction_log_redaction_probe 401 "$base_url/organizations/${org_name}_logProbe?orgId=$org_name&orgKey=$org_key&newOrgKey=$org_key&accessPassword=$org_key&longParam=$long_query_value" "" "${curl_tls_args[@]}" -H "Authorization: Bearer $org_key"
     if [ "$protocol" = "https" ]; then
         live_api_check "$protocol" auth_missing_client_cert 401 "$base_url/organizations/$org_name?$auth" "" --cacert "$PREFIX/cdse/ca.pem"
         live_api_check "$protocol" auth_client_cert_user_mismatch 401 "$base_url/organizations/$org_name?userId=${user_id}_mismatch&orgId=$org_name&orgKey=$org_key" "" "${curl_tls_args[@]}"
@@ -766,6 +932,8 @@ run_live_web_flow() {
     live_api_check "$protocol" delete_user 200 "$base_url/organizations/$org_name/users/$role_user?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
 
     stop_live_service "$service_pid"
+    check_live_debug_secret_redaction "$protocol" "$service_log" "$org_key"
+    check_live_transaction_log_redaction "$protocol" "$org_key" "$long_query_value"
     redact_file_in_place "$service_log"
     if grep -Fq "CaumeDSE Audit: parserExecution event=policy-allow" "$service_log" &&
        grep -Fq "CaumeDSE Audit: parserExecution event=execute-success" "$service_log"; then
@@ -950,7 +1118,7 @@ check_component parser_scripts_resource 'Testing parserScripts resource handlers
 
 check_component parser_temp_files 'Testing parser temporary file hardening|testParserTempFiles|parser temp' "$FULL_LOG" \
     '--- Testing parser temporary file hardening:' \
-    'TESTS: testParserTempFiles(), PASS: parser temp file created as 0600 regular file.' \
+    'PASS: parser temp file created as 0600 regular file.' \
     'TESTS: testParserTempFiles(), PASS: parser temp directory is private.' \
     'TESTS: testParserTempFiles(), PASS: exclusive parser temp creation avoided collision.' \
     'TESTS: testParserTempFiles(), PASS: symlink temp directory was refused.' \
@@ -1016,9 +1184,11 @@ if [ "$SKIP_WEB" -eq 0 ]; then
                 record_fail webservice_certificate_loading "missing nonzero read marker for $marker"
             fi
         done
+        run_https_startup_failure_redaction_check
     else
         record_skip webservice_startup "requested --live-only"
         record_skip webservice_certificate_loading "requested --live-only"
+        record_skip https_startup_failure_redaction "requested --live-only"
     fi
     if protocol_enabled http; then
         run_live_web_flow http "$HTTP_PORT"
@@ -1032,6 +1202,7 @@ if [ "$SKIP_WEB" -eq 0 ]; then
     fi
 else
     record_skip webservice_startup "requested --skip-web"
+    record_skip https_startup_failure_redaction "requested --skip-web"
     record_skip live_http_api_flow "requested --skip-web"
     record_skip live_https_api_flow "requested --skip-web"
 fi

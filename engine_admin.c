@@ -1110,7 +1110,8 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
         {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't "
-                "start HTTPS server on port %d. Cert file: %s. Key file: %s.\n",port,cert_pem,key_pem);
+                "start HTTPS server on port %d. Cert path: %s. Key path: %s. "
+                "CA path: %s.\n",port,sslCertFile,sslKeyFile,caCertFile);
 #endif
             cmeWebServiceSetupFree();
             return (2);
