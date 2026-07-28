@@ -315,6 +315,10 @@ Relevant source:
 - `TEST/run_debug_components.sh`: generated client certificate chain for live
   HTTPS verification.
 
+The HTTP TLS-auth bypass exists only for DEBUG/test verification. Configure
+rejects `--enable-BYPASSTLSAUTHINHTTP` unless `--enable-DEBUG` is also used,
+and DEBUG startup diagnostics report whether the bypass is enabled.
+
 Authorization uses protected resource tables:
 
 - `roleTables` define allowed methods for resource types.
@@ -490,6 +494,9 @@ role/filter resources, document routes, secure CSV round trips, MAC-protected
 values, web startup, live API flows, parser execution, DB browsing, and
 negative routes. The live API flow asserts missing-credential failures on HTTP
 and HTTPS plus missing and mismatched client certificate failures on HTTPS.
+It also verifies that the DEBUG-only HTTP TLS-auth bypass is rejected for
+release configure profiles and is explicitly logged when enabled for HTTP
+tests.
 Live API runs write `live-api-coverage.csv` and `live-api-coverage.txt` under
 the verifier log directory so route coverage, expected/actual statuses, marker
 checks, elapsed time, and response log paths can be reviewed without reading

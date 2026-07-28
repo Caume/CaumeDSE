@@ -2340,6 +2340,7 @@ void testWebServices ()
     int httpPort = cmeDefaultWebservicePort;
     int httpsPort = cmeDefaultWebServiceSSLPort;
     int result;
+    char marker[160];
 
     if (skipWebEnv && *skipWebEnv && strcmp(skipWebEnv,"0"))
     {
@@ -2361,9 +2362,10 @@ void testWebServices ()
         httpsPort = atoi(httpsEnv);
     }
 
-    printf("--- Testing Web server HTTP port %d%s (thread pool: %d)\n",httpPort,
-           cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)",
-           cmeDefaultMaxThreads);
+    snprintf(marker,sizeof(marker),"--- Testing Web server HTTP port %d%s (thread pool: %d)\n",httpPort,
+             cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)",
+             cmeDefaultMaxThreads);
+    cmeTestPrintMarker(marker);
     result=cmeWebServiceSetup(httpPort,0,NULL,NULL,NULL,0);
     if (result)
     {
@@ -2371,11 +2373,13 @@ void testWebServices ()
     }
     else
     {
-        printf("TESTS: testWebServices(), PASS: HTTP startup and shutdown verified on port %d\n",httpPort);
+        snprintf(marker,sizeof(marker),"TESTS: testWebServices(), PASS: HTTP startup and shutdown verified on port %d\n",httpPort);
+        cmeTestPrintMarker(marker);
     }
-    printf("--- Testing Web server HTTPS port %d%s (thread pool: %d)\n",httpsPort,
-           cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)",
-           cmeDefaultMaxThreads);
+    snprintf(marker,sizeof(marker),"--- Testing Web server HTTPS port %d%s (thread pool: %d)\n",httpsPort,
+             cmeDebugTestsNonInteractiveEnabled() ? " (non-interactive)" : " (press enter to continue)",
+             cmeDefaultMaxThreads);
+    cmeTestPrintMarker(marker);
     result=cmeWebServiceSetup(httpsPort,1,cmeDefaultHTTPSKeyFile,cmeDefaultHTTPSCertFile,cmeDefaultCACertFile,0);
     if (result)
     {
@@ -2383,6 +2387,7 @@ void testWebServices ()
     }
     else
     {
-        printf("TESTS: testWebServices(), PASS: HTTPS startup and shutdown verified on port %d\n",httpsPort);
+        snprintf(marker,sizeof(marker),"TESTS: testWebServices(), PASS: HTTPS startup and shutdown verified on port %d\n",httpsPort);
+        cmeTestPrintMarker(marker);
     }
 }

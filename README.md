@@ -2279,7 +2279,9 @@ column, upload a `script.perl` document, and execute that parser script
 through both HTTP and HTTPS.  The live flow also asserts negative
 authentication cases for missing credentials on both protocols and missing or
 mismatched client certificates on HTTPS.  HTTPS uses a per-run client
-certificate chain signed by the committed test CA fixture.
+certificate chain signed by the committed test CA fixture.  The verifier also
+checks that HTTP TLS-auth bypass is visible in DEBUG/test startup logs and that
+release configure rejects the bypass flag.
 `CDSE_DEBUG_TEST_TIMEOUT` controls the overall executable timeout and defaults
 to 120s.  Use `--skip-web` only when the local environment cannot bind test
 ports.  Live API runs also write
@@ -2351,10 +2353,14 @@ In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).
 
 If you want to bypass TLS authentication for testing purposes in DEBUG mode
-with HTTP (which will obviously fail), you may enable this feature (FOR
-TESTING PURPOSES ONLY) with:
+with HTTP (where client-certificate authentication cannot run), you may enable
+this feature (FOR TESTING PURPOSES ONLY) with:
 
     --enable-BYPASSTLSAUTHINHTTP
+
+The bypass is rejected unless `--enable-DEBUG` is also present, and DEBUG
+startup logs print whether HTTP TLS-auth bypass is enabled.  Do not use this
+flag for deployable builds.
 
 If you want to enable the use of the old Password Based Key Derivation
 Function `PBKDF1` (i.e.  `PKCS5v1.5`, which is compatible with openssl's command
