@@ -814,14 +814,14 @@ int cmeProtectByteString (const char *value, char **protectedValue, const char *
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeProtectByteString(), cmeCipherByteString() Error, can't "
-                "encrypt 'byte string' %s with algorithm %s!\n",value,encAlg);
+                "encrypt 'byte string' len=%d with algorithm %s!\n",valueLen,encAlg);
 #endif
         cmeProtectByteStringFree();
         return(2);
     }
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeProtectByteString(), encrypted 'byte string': "
-            "%s with algorithm %s.\n",value,encAlg);
+            "valueLen=%d with algorithm %s.\n",valueLen,encAlg);
 #endif
     result=cmeStrToB64((unsigned char *)currentEncData,(unsigned char **)protectedValue,
                        written,protectedValueLen);
@@ -849,7 +849,7 @@ int cmeUnprotectByteString (const char *protectedValue, char **value, const char
         cmeStrConstrAppend(value,"");
 #ifdef DEBUG
         fprintf(stderr,"CaumeDSE Debug: cmeUnprotectByteString(), cmeCipherByteString() Warning, can't "
-                "decrypt 'byte string' = NULL, with algorithm %s and key %s!\n",encAlg,orgKey);
+                "decrypt 'byte string' = NULL, with algorithm %s and key <redacted>!\n",encAlg);
 #endif
         return(0); //Not an error, just a warning!
     }
@@ -865,15 +865,15 @@ int cmeUnprotectByteString (const char *protectedValue, char **value, const char
         cmeStrConstrAppend(value,"");
 #ifdef DEBUG
         fprintf(stderr,"CaumeDSE Debug: cmeUnprotectByteString(), cmeCipherByteString() Warning, can't "
-                "decrypt 'byte string' %s with algorithm %s and the key %s!\n",
-                protectedValue,encAlg,orgKey);
+                "decrypt 'byte string' len=%d with algorithm %s and key <redacted>!\n",
+                protectedValueLen,encAlg);
 #endif
     }
     else //Decryption successful.
     {
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeUnprotectByteString(), decrypted 'byte string': "
-                "%s with algorithm %s -> %s.\n",protectedValue,encAlg,*value);
+                "protectedLen=%d with algorithm %s -> valueLen=%d.\n",protectedValueLen,encAlg,*valueLen);
 #endif
     }
     cmeUnProtectByteStringFree();
