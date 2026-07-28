@@ -73,11 +73,11 @@ Important concepts:
 - `orgKey` is the organization-level secret provided with API requests.
 - Each protected value or file part uses a salt so repeated plaintext does not
   normally produce the same protected value.
-- `cmeDefaultPBKDFVersion` defaults to PBKDF2.
+- `cmeDefaultPBKDFVersion` defaults to the PBKDF2-HMAC-SHA256 profile for new
+  protected values.
 - `cmeDefaultPBKDFCount` controls the default PBKDF2 iteration count.
-- If a supplied key is already a sufficiently long hexadecimal binary key,
-  CaumeDSE treats it as high-entropy key material and uses the optimized
-  derivation path documented in `README.md`.
+- Older PBKDF2-HMAC-SHA1 protected values remain readable through a
+  decrypt-only legacy fallback.
 
 Applied example:
 

@@ -55,6 +55,29 @@ static int cmeDebugTestsNonInteractiveEnabled(void)
     return (env && *env && strcmp(env,"0"));
 }
 
+static void cmeTestPrintMarker(const char *marker)
+{
+    const char *current;
+    size_t remaining;
+    ssize_t written;
+
+    if (marker)
+    {
+        current=marker;
+        remaining=strlen(marker);
+        while (remaining)
+        {
+            written=write(STDOUT_FILENO,current,remaining);
+            if (written<=0)
+            {
+                break;
+            }
+            current+=written;
+            remaining-=written;
+        }
+    }
+}
+
 static char *cmeTestPath(const char *relativePath)
 {
     char *result = NULL;
@@ -141,19 +164,38 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     const char *algorithm = cmeDefaultEncAlg;
     unsigned char *key=NULL;
     unsigned char *iv=NULL;
+    unsigned char *expectedKeyIv=NULL;
     unsigned char *ciphertext=NULL;
     unsigned char *deciphertext=NULL;
     unsigned char *salt=NULL;
+    unsigned char *legacySaltHex=NULL;
+    unsigned char *legacyDeciphertext=NULL;
     FILE *fp=NULL;
     EVP_CIPHER_CTX *ctx=NULL;
     const EVP_CIPHER *cipher=NULL;
+    int keyLen=0;
+    int ivLen=0;
 
     key=(unsigned char *)malloc(1024);
     iv=(unsigned char *)malloc(1024);
     ciphertext=(unsigned char *)malloc(1024);
+    expectedKeyIv=(unsigned char *)malloc(1024);
 
     cmeGetCipher(&cipher,algorithm);
+    keyLen=EVP_CIPHER_key_length(cipher);
+    ivLen=EVP_CIPHER_iv_length(cipher);
     cmePBKDF(cipher,NULL,0,password,8,key,iv);
+    if (PKCS5_PBKDF2_HMAC((const char *)password,8,NULL,0,cmeDefaultPBKDFCount,
+                          EVP_sha256(),keyLen+ivLen,expectedKeyIv) &&
+        !memcmp(key,expectedKeyIv,keyLen) && !memcmp(iv,expectedKeyIv+keyLen,ivLen))
+    {
+        printf("TESTS: testCryptoSymmetric(), PASS: default PBKDF profile v%d uses HMAC-SHA256 count=%d.\n",
+               cmeDefaultPBKDFVersion,cmeDefaultPBKDFCount);
+    }
+    else
+    {
+        printf("TESTS: testCryptoSymmetric(), FAIL: default PBKDF profile mismatch.\n");
+    }
     cmeCipherInit(&ctx,NULL,cipher,key,iv,'e');
     cont2=0;
     ctSize=strlen((char*)cleartext);
@@ -215,12 +257,72 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     cmeFree (salt);
     cmeFree (ciphertext);
     cmeFree (deciphertext);
+    salt=NULL;
+    ciphertext=NULL;
+    deciphertext=NULL;
+    {
+        unsigned char legacySaltBytes[evpSaltBufferSize];
+        unsigned char legacyKeyIv[128];
+        unsigned char legacyCiphertext[128];
+        unsigned char legacyCombined[144];
+        unsigned char legacyTag[cmeGCMTagLen];
+        const unsigned char legacyPlaintext[]="Legacy PBKDF2 fallback text.";
+        int legacyCiphertextLen=0;
+        int legacyCombinedLen=0;
+        int legacyWritten=0;
+
+        memset(legacySaltBytes,0,sizeof(legacySaltBytes));
+        memset(legacyKeyIv,0,sizeof(legacyKeyIv));
+        memset(legacyCiphertext,0,sizeof(legacyCiphertext));
+        memset(legacyCombined,0,sizeof(legacyCombined));
+        memset(legacyTag,0,sizeof(legacyTag));
+        for (cont=0;cont<evpSaltBufferSize;cont++)
+        {
+            legacySaltBytes[cont]=(unsigned char)cont;
+        }
+        cmeBytesToHexstr(legacySaltBytes,&legacySaltHex,evpSaltBufferSize);
+        if (PKCS5_PBKDF2_HMAC_SHA1((const char *)password,8,legacySaltBytes,evpSaltBufferSize,
+                                   cmeLegacyPBKDFCount,keyLen+ivLen,legacyKeyIv))
+        {
+            legacyCiphertextLen=aes_gcm_encrypt(legacyPlaintext,strlen((const char *)legacyPlaintext),
+                                                NULL,0,legacyKeyIv,legacyKeyIv+keyLen,ivLen,
+                                                legacyCiphertext,legacyTag);
+        }
+        if (legacyCiphertextLen>0)
+        {
+            memcpy(legacyCombined,legacyCiphertext,legacyCiphertextLen);
+            memcpy(legacyCombined+legacyCiphertextLen,legacyTag,cmeGCMTagLen);
+            legacyCombinedLen=legacyCiphertextLen+cmeGCMTagLen;
+        }
+        if (legacyCombinedLen>0 &&
+            !cmeCipherByteString(legacyCombined,&legacyDeciphertext,&legacySaltHex,legacyCombinedLen,
+                                 &legacyWritten,cmeDefaultEncAlg,(const char *)password,'d') &&
+            legacyWritten==(int)strlen((const char *)legacyPlaintext) &&
+            !memcmp(legacyDeciphertext,legacyPlaintext,legacyWritten))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: legacy PBKDF profile v%d decrypt fallback preserved old data.\n",
+                   cmeLegacyPBKDFVersion);
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: legacy PBKDF decrypt fallback failed.\n");
+        }
+        OPENSSL_cleanse(legacyKeyIv,sizeof(legacyKeyIv));
+        cmeFree(legacySaltHex);
+        if (legacyDeciphertext)
+        {
+            OPENSSL_cleanse(legacyDeciphertext,legacyWritten);
+            cmeFree(legacyDeciphertext);
+            legacyDeciphertext=NULL;
+        }
+    }
     cmeProtectByteString((const char*)cleartext,(char **)&ciphertext,cmeDefaultEncAlg,(char **)&salt,"Password",&written,strlen((char *)cleartext));
     cmeUnprotectByteString((const char *)ciphertext,(char **)&deciphertext,cmeDefaultEncAlg,(char **)&salt,"Password",&written,written);
     printf("Unprotected text: %s  \n",deciphertext);
     cmeFree (salt);
     cmeFree (ciphertext);
     cmeFree (deciphertext);
+    cmeFree(expectedKeyIv);
 }
 
 void testCryptoSymmetricGCM()
@@ -1629,7 +1731,7 @@ void testDocumentTypes ()
     }
     else
     {
-        printf("TESTS: testDocumentTypes(), PASS: class listing and resource validation verified.\n");
+        cmeTestPrintMarker("TESTS: testDocumentTypes(), PASS: class listing and resource validation verified.\n");
     }
 }
 
@@ -1684,7 +1786,7 @@ void testStorageDocumentTree ()
         NULL
     };
 
-    printf("--- Testing storage document tree dispatcher routing:\n");
+    cmeTestPrintMarker("--- Testing storage document tree dispatcher routing:\n");
     errors+=cmeTestStorageDocumentTreeRequest("GET",documentTypesUrl,documentTypesElements,5,adminArgs,200,"documentTypes class dispatch GET");
     errors+=cmeTestStorageDocumentTreeRequest("GET",documentTypeUrl,documentTypeElements,6,adminArgs,200,"documentType resource dispatch GET");
     errors+=cmeTestStorageDocumentTreeRequest("OPTIONS",documentsUrl,documentsElements,7,adminArgs,200,"documents class dispatch OPTIONS");
@@ -1805,7 +1907,7 @@ void testParserTempFiles(void)
         }
         else
         {
-            printf("TESTS: testParserTempFiles(), PASS: parser temp file created as 0600 regular file.\n");
+            cmeTestPrintMarker("TESTS: testParserTempFiles(), PASS: parser temp file created as 0600 regular file.\n");
         }
     }
     if ((stat(CDSE_PARSER_TMP_FILE_PATH,&st))||(!S_ISDIR(st.st_mode))||((st.st_mode&0777)!=0700))
@@ -1834,7 +1936,7 @@ void testParserTempFiles(void)
         }
         else
         {
-            printf("TESTS: testParserTempFiles(), PASS: exclusive parser temp creation avoided collision.\n");
+            cmeTestPrintMarker("TESTS: testParserTempFiles(), PASS: exclusive parser temp creation avoided collision.\n");
         }
     }
     cmeStrConstrAppend(&targetDir,"%sparser-symlink-target",cmeDefaultSecureTmpFilePath);

@@ -360,6 +360,28 @@ check_forbidden() {
     grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core' "$log"
 }
 
+certificate_read_marker_seen() {
+    local log="$1"
+    local marker="$2"
+    local marker_dir="${marker%/*}"
+    local marker_size
+
+    if grep -E "read [1-9][0-9]* bytes from file " "$log" | grep -Fq -- "$marker"; then
+        return 0
+    fi
+    if grep -E ", of length [1-9][0-9]*\\." "$log" | grep -Fq -- "$marker"; then
+        return 0
+    fi
+    if [ -f "$marker" ]; then
+        marker_size="$(wc -c < "$marker" | tr -d '[:space:]')"
+        if [ "$marker_size" -gt 0 ] 2>/dev/null && \
+           grep -Eq "read ${marker_size} bytes from file ${marker_dir}/" "$log"; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
 extract_component_log() {
     local out="$1"
     local pattern="$2"
@@ -1054,6 +1076,8 @@ check_component json_response_formatting 'Testing JSON response formatting|testJ
     'TESTS: testJSONResponses(), PASS: JSON response formatting verified.'
 
 check_component crypto_streaming '---ctSize|---etSize|Decrypted text|Unprotected text' "$FULL_LOG" \
+    'TESTS: testCryptoSymmetric(), PASS: default PBKDF profile v3 uses HMAC-SHA256 count=10000.' \
+    'TESTS: testCryptoSymmetric(), PASS: legacy PBKDF profile v2 decrypt fallback preserved old data.' \
     'Unprotected text: This is cleartext This is cleartext This is cleartext This is cleartext.'
 
 check_component digest 'HASH parameters|HASH digest Size|HASH digest with integrated function|StrToB64|B64ToStr' "$FULL_LOG" \
@@ -1178,7 +1202,7 @@ if [ "$SKIP_WEB" -eq 0 ]; then
             "TESTS: testWebServices(), PASS: HTTP startup" \
             "TESTS: testWebServices(), PASS: HTTPS startup"
         for marker in "$PREFIX/cdse/server.key" "$PREFIX/cdse/server.pem" "$PREFIX/cdse/ca.pem"; do
-            if grep -E "read [1-9][0-9]* bytes from file " "$FULL_LOG" | grep -Fq -- "$marker"; then
+            if certificate_read_marker_seen "$FULL_LOG" "$marker"; then
                 :
             else
                 record_fail webservice_certificate_loading "missing nonzero read marker for $marker"

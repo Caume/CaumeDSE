@@ -579,13 +579,13 @@
     - Added per-value and whole-field caps for logged request URLs, request headers, and response headers.
     - Added a live unauthenticated LogsDB probe that verifies secret redaction and long-value truncation.
 
-- [ ] #81 Modernize password-based key derivation defaults.
+- [x] #81 Modernize password-based key derivation defaults.
   - Source: `common.h`, `crypto.c`, storage metadata/version handling.
   - Goal: replace outdated KDF settings with migration-safe modern defaults.
-  - Plan:
-    - Batch 1: define versioned KDF metadata and select stronger defaults for new data.
-    - Batch 2: preserve read compatibility for existing protected values.
-    - Batch 3: add crypto tests for old/new KDF vectors and upgrade behavior.
+  - Done:
+    - Added KDF profile constants and changed the default PBKDF2 profile for new protected data to HMAC-SHA256 with 10,000 iterations.
+    - Preserved read compatibility by retrying decrypt operations with the legacy PBKDF2-HMAC-SHA1/2,000 profile when the default profile fails.
+    - Added DEBUG verifier coverage for the new default profile and legacy decrypt fallback, and updated PBKDF documentation.
 
 - [ ] #82 Harden HTTP TLS-auth bypass controls.
   - Source: `configure.ac`, `common.h`, `webservice_interface.c`, verifier profiles.
