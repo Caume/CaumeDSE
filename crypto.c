@@ -371,22 +371,18 @@ int cmeCipherFinal(EVP_CIPHER_CTX **ctx, unsigned char *out, int *outl, const ch
     return (0);
 }
 
-int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
-              const unsigned char *password,int passwordLen,unsigned char *key,unsigned char *iv)
+static int cmePBKDFProfile (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
+                            const unsigned char *password,int passwordLen,unsigned char *key,unsigned char *iv,
+                            int profileVersion)
 {
     int result;
     EVP_MD *md=NULL;
-    unsigned char *HexStrToByteBuffer=NULL;
     unsigned char *buf=NULL;        //Max. size of key+IV buffer = 2 * max. length for symmetric key or IV.
     int keyLen=EVP_CIPHER_key_length(cipher);   //Get cipher key length.
     int ivLen=EVP_CIPHER_iv_length(cipher);     //Get cipher iv length.
+    int kdfCount=cmeDefaultPBKDFCount;
     #define cmePBKDFFree() \
         { \
-                if (HexStrToByteBuffer) \
-                { \
-                    memset(HexStrToByteBuffer,0,strlen((const char *)password)/2); \
-                    cmeFree(HexStrToByteBuffer); \
-                } \
                 if (buf) \
                 { \
                     memset(buf,0,keyLen+ivLen); \
@@ -395,30 +391,45 @@ int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
         } //Local free() macro
 
 
-    if (cmeDefaultPBKDFVersion==1) //PBKDF1
+    if (profileVersion==1) //PBKDF1
     {   //Use PBKDF1 with cipher=cmeDefaultEncAlg + MD5 + count=1 (compatible with command line password KDF from OpenSSL):
         md = (EVP_MD *)EVP_get_digestbyname("md5");
         result=EVP_BytesToKey(cipher,md,salt,password,passwordLen,1,key,iv);
     }
     else //PBKDF2
     {
-        if (cmeIsHexString((const char *)password) && passwordLen/2 >= keyLen)
+        buf=(unsigned char*)malloc(sizeof(unsigned char)*(keyLen+ivLen));
+        if (!buf)
         {
-            buf=(unsigned char*)malloc(sizeof(unsigned char)*(keyLen+ivLen));
-            result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,1,keyLen+ivLen,buf);
+            return(2);
+        }
+        if (profileVersion==cmeLegacyPBKDFVersion)
+        {
+            if (cmeIsHexString((const char *)password) && passwordLen/2 >= keyLen)
+            {
+                kdfCount=1;
+            }
+            else
+            {
+                kdfCount=cmeLegacyPBKDFCount;
+            }
+            result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,kdfCount,keyLen+ivLen,buf);
         }
         else
         {
-            buf=(unsigned char*)malloc(sizeof(unsigned char)*(keyLen+ivLen));
-            result=PKCS5_PBKDF2_HMAC_SHA1((const char *)password,passwordLen,salt,saltLen,cmeDefaultPBKDFCount,keyLen+ivLen,buf);
+            result=PKCS5_PBKDF2_HMAC((const char *)password,passwordLen,salt,saltLen,
+                                     cmeDefaultPBKDFCount,EVP_sha256(),keyLen+ivLen,buf);
         }
-        memcpy(key,buf,keyLen);
-        memcpy(iv,buf+keyLen,ivLen);
+        if (result)
+        {
+            memcpy(key,buf,keyLen);
+            memcpy(iv,buf+keyLen,ivLen);
+        }
     }
     if (result==0)  //0= failure, n=size of generated key (success)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmePBKDF(), PBKDF ver. %d -> 0 length key!\n",cmeDefaultPBKDFVersion);
+        fprintf(stderr,"CaumeDSE Error: cmePBKDF(), PBKDF profile %d -> 0 length key!\n",profileVersion);
 #endif
         cmePBKDFFree();
         return (1);
@@ -426,11 +437,17 @@ int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
     else
     {
 #ifdef DEBUG
-        fprintf(stdout,"CaumeDSE Debug: cmePBKDF(), PBKDF ver. %d -> %d bytes key, %d bytes iv.\n",cmeDefaultPBKDFVersion,keyLen,ivLen);
+        fprintf(stdout,"CaumeDSE Debug: cmePBKDF(), PBKDF profile %d -> %d bytes key, %d bytes iv.\n",profileVersion,keyLen,ivLen);
 #endif
         cmePBKDFFree();
         return(0);
     }
+}
+
+int cmePBKDF (const EVP_CIPHER *cipher, const unsigned char *salt, int saltLen,
+              const unsigned char *password,int passwordLen,unsigned char *key,unsigned char *iv)
+{
+    return(cmePBKDFProfile(cipher,salt,saltLen,password,passwordLen,key,iv,cmeDefaultPBKDFVersion));
 }
 
 int cmeSeedPrng ()
@@ -711,75 +728,112 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
     }
     key=(unsigned char *)malloc(keyLen);
     iv=(unsigned char *)malloc(ivLen);
-    if ((cmePBKDF(cipher,byteSalt,evpSaltBufferSize,(unsigned char *)ctPassword,strlen(ctPassword),key,iv))) //Error setting key & IV.
     {
-        cmeCipherByteStringFree();
-        return(7);
-    }
-    else //Key & IV set; proceed.
-    {
-        result=cmeCipherInit(&ctx,NULL,cipher,key,iv,mode);
-        if (result)
+        int kdfProfiles[2];
+        int numKDFProfiles=1;
+        int profileIndex=0;
+        int attemptExitcode=0;
+
+        kdfProfiles[0]=cmeDefaultPBKDFVersion;
+        if ((mode=='d')&&(cmeDefaultPBKDFVersion!=cmeLegacyPBKDFVersion))
         {
-            exitcode+=result;
-            *dstWritten=0;
+            kdfProfiles[1]=cmeLegacyPBKDFVersion;
+            numKDFProfiles=2;
         }
-        else
+
+        for (profileIndex=0;profileIndex<numKDFProfiles;profileIndex++)
         {
-            cont=0;
+            if (ctx)
             {
-                int updateLen=(mode=='d' && isGCM) ? processedSrcLen : srcLen;
-                cmeCipherUpdate(ctx,(*dstBuf),&written,(unsigned char *)srcBuf,updateLen,mode);
+                EVP_CIPHER_CTX_free(ctx);
+                ctx=NULL;
             }
-            cont+=written;
-            if (isGCM)
+            memset(key,0,keyLen);
+            memset(iv,0,ivLen);
+            memset(*dstBuf,0,processedSrcLen+cipherBlockLen+1+(isGCM && mode=='e' ? gcmTagLen : 0));
+            attemptExitcode=0;
+            cont=0;
+            *dstWritten=0;
+            if ((cmePBKDFProfile(cipher,byteSalt,evpSaltBufferSize,(unsigned char *)ctPassword,strlen(ctPassword),
+                                 key,iv,kdfProfiles[profileIndex]))) //Error setting key & IV.
             {
-                if (mode=='e')
-                {
-                    if (!EVP_EncryptFinal_ex(ctx,((*dstBuf)+cont),&written))
-                    {
-                        exitcode+=2;
-                    }
-                    else
-                    {
-                        cont+=written;
-                        if (!EVP_CIPHER_CTX_ctrl(ctx,EVP_CTRL_GCM_GET_TAG,gcmTagLen,gcmTag))
-                        {
-                            exitcode+=4;
-                        }
-                        else
-                        {
-                            memcpy((*dstBuf)+cont,gcmTag,gcmTagLen);
-                            cont+=gcmTagLen;
-                        }
-                    }
-                }
-                else
-                {
-                    if (!EVP_CIPHER_CTX_ctrl(ctx,EVP_CTRL_GCM_SET_TAG,gcmTagLen,gcmTag))
-                    {
-                        exitcode+=4;
-                    }
-                    else if (!EVP_DecryptFinal_ex(ctx,((*dstBuf)+cont),&written))
-                    {
-                        exitcode+=3;
-                    }
-                    else
-                    {
-                        cont+=written;
-                    }
-                }
-                *dstWritten=cont;
-                (*dstBuf)[cont]='\0';
+                cmeCipherByteStringFree();
+                return(7);
+            }
+            result=cmeCipherInit(&ctx,NULL,cipher,key,iv,mode);
+            if (result)
+            {
+                attemptExitcode+=result;
+                *dstWritten=0;
             }
             else
             {
-                result=cmeCipherFinal(&ctx,((*dstBuf)+cont),&written,mode);
-                exitcode+=result;
+                {
+                    int updateLen=(mode=='d' && isGCM) ? processedSrcLen : srcLen;
+                    cmeCipherUpdate(ctx,(*dstBuf),&written,(unsigned char *)srcBuf,updateLen,mode);
+                }
                 cont+=written;
-                *dstWritten=cont;
-                (*dstBuf)[cont]='\0'; //Decryption does not guarantee that an unencrypted string will be null terminated.
+                if (isGCM)
+                {
+                    if (mode=='e')
+                    {
+                        if (!EVP_EncryptFinal_ex(ctx,((*dstBuf)+cont),&written))
+                        {
+                            attemptExitcode+=2;
+                        }
+                        else
+                        {
+                            cont+=written;
+                            if (!EVP_CIPHER_CTX_ctrl(ctx,EVP_CTRL_GCM_GET_TAG,gcmTagLen,gcmTag))
+                            {
+                                attemptExitcode+=4;
+                            }
+                            else
+                            {
+                                memcpy((*dstBuf)+cont,gcmTag,gcmTagLen);
+                                cont+=gcmTagLen;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (!EVP_CIPHER_CTX_ctrl(ctx,EVP_CTRL_GCM_SET_TAG,gcmTagLen,gcmTag))
+                        {
+                            attemptExitcode+=4;
+                        }
+                        else if (!EVP_DecryptFinal_ex(ctx,((*dstBuf)+cont),&written))
+                        {
+                            attemptExitcode+=3;
+                        }
+                        else
+                        {
+                            cont+=written;
+                        }
+                    }
+                    *dstWritten=cont;
+                    (*dstBuf)[cont]='\0';
+                }
+                else
+                {
+                    result=cmeCipherFinal(&ctx,((*dstBuf)+cont),&written,mode);
+                    attemptExitcode+=result;
+                    cont+=written;
+                    *dstWritten=cont;
+                    (*dstBuf)[cont]='\0'; //Decryption does not guarantee that an unencrypted string will be null terminated.
+                }
             }
+            exitcode=attemptExitcode;
+            if (!exitcode)
+            {
+                break;
+            }
+#ifdef DEBUG
+            if ((mode=='d')&&(profileIndex+1<numKDFProfiles))
+            {
+                fprintf(stdout,"CaumeDSE Debug: cmeCipherByteString(), retrying decrypt with legacy PBKDF profile %d.\n",
+                        kdfProfiles[profileIndex+1]);
+            }
+#endif
         }
     }
     memset(gcmTag,0,sizeof(gcmTag));

@@ -168,11 +168,13 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
 #define cmeDefaultMaxConnections (cmeDefaultMaxThreads * 4) //Maximum number of queued connections (4x threads allows short bursts beyond pool capacity).
 #define cmeDefaultPerlIterationFunction     "cmePERLProcessRow"               //Name for the perl iteration function to be called when parsing SQL results with PERL
 #define cmeDefaultPerlColNameSetupFunction  "cmePERLProcessColumnNames"       //Name for the perl iteration function to be called when parsing SQL results with PERL
-#define cmeDefaultPBKDFCount 2000           //Default count for the key derivation function, cmePBKDF. {Recommended: 2,000. Note: 10,000 = iOS4; iOS3 uses 2,000, RFC 2898 recommends at least 1,000, but note that high values hava a huge impact on performance since we use a different key - different salt with same organization key- for each element!}.
-#ifdef PBKDF1_OPENSSL_CLI_COMPATIBILITY
-#define cmeDefaultPBKDFVersion PBKDF1_OPENSSL_CLI_COMPATIBILITY //Enable use of old PBKDF1 that is compatible with Openssl command line password KDF {i.e. PKCS5v1.5: MD5 + count=1}. NOT RECOMMENDED!
+#define cmeLegacyPBKDFCount 2000            //Legacy PBKDF2-HMAC-SHA1 count used by protected data written before KDF profile v3.
+#define cmeDefaultPBKDFCount 10000          //Default PBKDF2 count for new protected data. Keep this migration-safe: old data is read through the legacy fallback path.
+#define cmeLegacyPBKDFVersion 2             //Legacy PBKDF2-HMAC-SHA1 profile.
+#if defined(PBKDF1_OPENSSL_CLI_COMPATIBILITY) && (PBKDF1_OPENSSL_CLI_COMPATIBILITY == 1)
+#define cmeDefaultPBKDFVersion 1 //Enable use of old PBKDF1 that is compatible with Openssl command line password KDF {i.e. PKCS5v1.5: MD5 + count=1}. NOT RECOMMENDED!
 #else
-#define cmeDefaultPBKDFVersion 2 //Default PBKDF2 (PKCS5 v2: HMAC-SHA1 + count=cmeDefaultPBKDFCount) {Recommended setting}.
+#define cmeDefaultPBKDFVersion 3 //Default PBKDF2 profile for new data: HMAC-SHA256 + count=cmeDefaultPBKDFCount.
 #endif /*PBKDF1_OPENSSL_CLI_COMPATIBILITY*/
 
 #define cmeAdminDefaultUserId "EngineAdmin"            //Default userId for first administrator account.

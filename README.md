@@ -292,7 +292,7 @@ The architecture of CaumeDSE is composed of several layers:
        before being encrypted with one salt per register, and a second
        salt per value (salts per register are not encrypted).  Since
        encryption keys are rather handled as passwords, internally these
-       keys are processed using PBKDF2 (PKCS5v2.0 with HMAC-SHA1 + a
+       keys are processed using PBKDF2 (PKCS5v2.0 with HMAC-SHA256 + a
        counter greater than 1) to generate a temporary key and its
        corresponding initialization vector (iv) that are the ones
        actually being used by the encryption/decryption algorithms.
@@ -2364,16 +2364,14 @@ and a counter = 1) use the following configure switch.
     --enable-OLDPBKDF1
 
 The default Password Based Key Derivation Function standard is now `PBKDF2`
-(`PKCS5v2.0`, which uses `HMAC-SHA1` + a default counter much greater than 1).
+(`PKCS5v2.0`, using `HMAC-SHA256` and `cmeDefaultPBKDFCount` iterations) for
+newly protected data.
 
-Note that there is now an exception where `PBKDF2` runs a using a single
-iteration.  This happens when the key is an hexadecimal representation of a
-binary key that has a length greater or equal than the default cipher key
-length.  We assume that in this case the key was generated with a robust
-PRNG, and since the key length are the same, key expansion is unnecessary
-(actually, we just need one iteration to perform a single permitation within
-the whole keyspace to take into account the provided salt).  Using this kind
-of keys improves performance considerably.
+Data written with the earlier `PBKDF2-HMAC-SHA1` profile and 2,000 iterations
+remains readable through a decrypt-only legacy fallback.  The older optimized
+single-iteration path for sufficiently long hexadecimal binary keys is also
+limited to that legacy fallback path so existing protected values can be read
+without using it for new writes.
 
 The default symmetric encryption algorithm used by CaumeDSE is `AES-256-GCM`.
 You may override this at runtime with a configuration file, or by setting the
