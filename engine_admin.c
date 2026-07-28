@@ -1141,6 +1141,13 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
     }
     cmeWebServiceStopRequested=0;
 #ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: cmeWebServiceSetup(), auth profile: tlsAuthentication=%s httpTlsAuthBypass=%s build=DEBUG.\n",
+            cmeUseTLSAuthentication ? "enabled" : "disabled",
+            cmeBypassTLSAuthenticationInHTTP ? "enabled" : "disabled");
+    if ((!useSSL)&&(cmeUseTLSAuthentication)&&(cmeBypassTLSAuthenticationInHTTP))
+    {
+        fprintf(stdout,"CaumeDSE Debug: cmeWebServiceSetup(), WARNING: HTTP TLS authentication bypass active for DEBUG/test profile only.\n");
+    }
     fprintf(stdout,"CaumeDSE Debug: cmeWebServiceSetup(), %s server started on port %d.\n",
             useSSL ? "HTTPS" : "HTTP",port);
 #endif

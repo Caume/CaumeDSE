@@ -58,8 +58,11 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #ifdef BYPASS_TLS_IN_HTTP
 #define cmeBypassTLSAuthenticationInHTTP BYPASS_TLS_IN_HTTP //Enable/disable bypassing TLS authentication with non TLS sessions {i.e. HTTP} with config. script {1=ON, 0=OFF}.
 #else
-#define cmeBypassTLSAuthenticationInHTTP 1 //Allows bypassing TLS authentication with non TLS sessions {e.g. when testing HTTP connections with TLS auth. enabled, where TLS authentication would allways fail obvoiusly}.
+#define cmeBypassTLSAuthenticationInHTTP 0 //Safe default: do not bypass TLS authentication for HTTP sessions unless configure explicitly enables the DEBUG/test profile.
 #endif /*BYPASS_TLS_IN_HTTP*/
+#if (cmeBypassTLSAuthenticationInHTTP == 1) && !defined(DEBUG)
+#error "HTTP TLS authentication bypass requires a DEBUG/test build profile"
+#endif
 #define cmeUseTLSAuthentication 1       //TLS user authentication module {1=ON, 0=OFF}.
 #define cmeUseOAUTHAuthentication 0     //OAuth is delegated to an external engine manager; no internal OAuth module is enabled.
 #define cmeCSVRowBuffer 5000            //Buffer for processing CSV files - reads at most this # of rows at a time {RECOMMENDED: 5000} and processes them before reading more.

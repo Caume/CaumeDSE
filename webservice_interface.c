@@ -1921,7 +1921,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             if ((cmeBypassTLSAuthenticationInHTTP)&&(cmeUseTLSAuthentication))
             {
 #ifdef DEBUG
-            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), WARNING: bypassing TLS authentication in an HTTP session.\n");
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), WARNING: bypassing TLS authentication in an HTTP session (DEBUG/test profile only).\n");
 #endif
                 authentication+=4; //If TLS authentication is required but session is not HTTPS/TLS, assume authentication is correct. (For testing purposes only, e.g. HTTP in DEBUG mode)
             }

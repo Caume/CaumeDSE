@@ -192,6 +192,9 @@ AC_ARG_ENABLE([BYPASSTLSAUTHINHTTP],
 	[  --enable-BYPASSTLSAUTHINHTTP		Accepts sessions in HTTP when TLS authentication is used (for testing; NOT RECOMMENDED!)],
 	[BYTLS=1],
 	[BYTLS=0])
+if test "$BYTLS" = "1" && test "$compile_mode" != "DEBUG"; then
+	AC_MSG_ERROR([--enable-BYPASSTLSAUTHINHTTP requires --enable-DEBUG; HTTP TLS-auth bypass is test-only])
+fi
 AC_ARG_ENABLE([OLDPBKDF1],
 	[  --enable-OLDPBKDF1			Uses PBKDF1 (i.e. PKCS5v1.5, compatible with openssl's command line tool) instead of PBKDF2 (for testing; NOT RECOMMENDED!)],
 	[PBKDF=1],

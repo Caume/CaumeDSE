@@ -587,10 +587,10 @@
     - Preserved read compatibility by retrying decrypt operations with the legacy PBKDF2-HMAC-SHA1/2,000 profile when the default profile fails.
     - Added DEBUG verifier coverage for the new default profile and legacy decrypt fallback, and updated PBKDF documentation.
 
-- [ ] #82 Harden HTTP TLS-auth bypass controls.
+- [x] #82 Harden HTTP TLS-auth bypass controls.
   - Source: `configure.ac`, `common.h`, `webservice_interface.c`, verifier profiles.
   - Goal: prevent test-only HTTP TLS-auth bypass from being accidentally enabled in deployable builds.
-  - Plan:
-    - Batch 1: fail startup or emit a hard error when bypass is enabled outside DEBUG/test profiles.
-    - Batch 2: make the bypass setting visible in startup diagnostics without exposing secrets.
-    - Batch 3: add verifier checks for bypass-on and bypass-off HTTP authentication behavior.
+  - Done:
+    - Added configure and compile-time guards so `--enable-BYPASSTLSAUTHINHTTP` is accepted only with DEBUG/test builds.
+    - Made HTTP TLS-auth bypass state visible in DEBUG startup and request diagnostics without logging secrets.
+    - Added verifier checks for release-profile bypass rejection and DEBUG HTTP bypass diagnostics.

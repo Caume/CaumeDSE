@@ -325,6 +325,27 @@ run_step() {
     return "$rc"
 }
 
+run_release_bypass_config_guard() {
+    local log="$LOG_ROOT/configure_release_bypass_guard.log"
+    local start
+    local rc
+
+    note "RUN  configure_release_bypass_guard"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        ./configure --prefix="$PREFIX-release-bypass-guard" --enable-BYPASSTLSAUTHINHTTP
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -ne 0 ] && grep -Fq -- "--enable-BYPASSTLSAUTHINHTTP requires --enable-DEBUG" "$log"; then
+        record_pass "configure_release_bypass_guard ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail configure_release_bypass_guard "expected release configure to reject --enable-BYPASSTLSAUTHINHTTP rc=$rc log=$log"
+    return 1
+}
+
 protocol_enabled() {
     local protocol="$1"
 
@@ -957,6 +978,14 @@ run_live_web_flow() {
     check_live_debug_secret_redaction "$protocol" "$service_log" "$org_key"
     check_live_transaction_log_redaction "$protocol" "$org_key" "$long_query_value"
     redact_file_in_place "$service_log"
+    if [ "$protocol" = "http" ]; then
+        if grep -Fq "HTTP TLS authentication bypass active for DEBUG/test profile only." "$service_log" &&
+           grep -Fq "bypassing TLS authentication in an HTTP session (DEBUG/test profile only)." "$service_log"; then
+            record_pass "live_http_tls_auth_bypass_diagnostic"
+        else
+            record_fail "live_http_tls_auth_bypass_diagnostic" "missing DEBUG/test bypass startup or request marker log=$service_log"
+        fi
+    fi
     if grep -Fq "CaumeDSE Audit: parserExecution event=policy-allow" "$service_log" &&
        grep -Fq "CaumeDSE Audit: parserExecution event=execute-success" "$service_log"; then
         record_pass "live_${protocol}_parser_audit"
@@ -979,6 +1008,7 @@ note "logs=$LOG_ROOT"
 note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_protocol=$WEB_PROTOCOL live_only=$LIVE_ONLY ci_smoke=$CI_SMOKE redact=$REDACT_OUTPUT"
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
+    run_release_bypass_config_guard || exit 1
     run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP || exit 1
     run_step make_clean make clean || exit 1
     run_step make make || exit 1

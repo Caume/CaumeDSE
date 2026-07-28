@@ -8056,6 +8056,9 @@ else case e in #(
 esac
 fi
 
+if test "$BYTLS" = "1" && test "$compile_mode" != "DEBUG"; then
+	as_fn_error $? "--enable-BYPASSTLSAUTHINHTTP requires --enable-DEBUG; HTTP TLS-auth bypass is test-only" "$LINENO" 5
+fi
 # Check whether --enable-OLDPBKDF1 was given.
 if test ${enable_OLDPBKDF1+y}
 then :
