@@ -854,6 +854,8 @@ run_live_web_flow() {
     live_api_check "$protocol" agent_capabilities 200 "$base_url/agentCapabilities" '"capabilityManifestVersion":1' "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_all 401 "$base_url/organizations/$org_name" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_org_key 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" json_error_auth_missing_org_key 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name&outputType=json" '"code":"authentication_required"' "${curl_tls_args[@]}"
+    live_api_check "$protocol" json_error_auth_request_id 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name&outputType=json" '"requestId":"cdse-' "${curl_tls_args[@]}"
     long_query_value="$(printf '%*s' 1500 '' | tr ' ' 'x')"
     live_api_check "$protocol" transaction_log_redaction_probe 401 "$base_url/organizations/${org_name}_logProbe?orgId=$org_name&orgKey=$org_key&newOrgKey=$org_key&accessPassword=$org_key&longParam=$long_query_value" "" "${curl_tls_args[@]}" -H "Authorization: Bearer $org_key"
     if [ "$protocol" = "https" ]; then
@@ -868,6 +870,7 @@ run_live_web_flow() {
     live_api_check "$protocol" document_types_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" document_type_csv_head 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -I
     live_api_check "$protocol" document_type_unsupported 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/unsupported.type?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" json_error_not_found 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/unsupported.type?$auth&newOrgKey=$org_key&outputType=json" '"code":"not_found"' "${curl_tls_args[@]}"
     live_api_check "$protocol" role_table_post 201 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key&*_get=1&*_post=0&*_put=1&*_delete=0&*_head=1&*_options=1" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" role_table_get 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
     live_api_check "$protocol" role_table_json_get 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
@@ -889,6 +892,7 @@ run_live_web_flow() {
     live_api_check "$protocol" document_head 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -I
     live_api_check "$protocol" content_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/content?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
     live_api_check "$protocol" content_rows_options 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X OPTIONS
+    live_api_check "$protocol" json_error_method_not_allowed 405 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows?$auth&newOrgKey=$org_key&outputType=json" '"code":"method_not_allowed"' "${curl_tls_args[@]}"
     live_api_check "$protocol" row_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
     live_api_check "$protocol" row_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
     live_api_check "$protocol" content_columns_options 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentColumns?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X OPTIONS
@@ -905,6 +909,7 @@ run_live_web_flow() {
     live_api_check "$protocol" table_column_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableColumns/name?$auth&newOrgKey=$org_key" "Jacob" "${curl_tls_args[@]}"
     live_api_check "$protocol" table_column_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableColumns/name?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
     live_api_check "$protocol" db_browse_bad_row 403 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/0?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" json_error_forbidden 403 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/0?$auth&newOrgKey=$org_key&outputType=json" '"code":"forbidden"' "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test.pl" \
         -F "userId=$user_id" \

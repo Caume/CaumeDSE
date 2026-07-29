@@ -51,6 +51,28 @@ curl -s "$BASE_URL/agentCapabilities"
 Useful fields include `authentication.requiredParameters`,
 `formats.preferred`, `parserPolicy`, and each entry in `routes`.
 
+Every response includes `X-Request-Id` for correlation with LogsDB response
+headers. For parseable failures, request JSON:
+
+```sh
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG?userId=$USER&orgId=$ORG&outputType=json"
+```
+
+The body uses this shape:
+
+```json
+{
+  "error": {
+    "code": "authentication_required",
+    "message": "Authentication is required.",
+    "httpStatus": 401,
+    "requestId": "cdse-...",
+    "safeForAgent": true
+  }
+}
+```
+
 ## Negative Authentication Checks
 
 Missing credentials return `401`.

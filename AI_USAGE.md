@@ -43,6 +43,11 @@ Use the same shape as the live verifier:
 8. Delete temporary documents, role/filter rows, users, and storage artifacts.
 9. Review `summary.txt` and `live-api-coverage.csv` with redaction enabled.
 
+For failures that an agent must parse, include `outputType=json`. Non-HEAD
+error responses include `error.code`, `error.message`, `error.httpStatus`,
+`error.requestId`, and `error.safeForAgent`; the same request ID is returned in
+the `X-Request-Id` response header and recorded in LogsDB response headers.
+
 Example shell setup:
 
 ```sh
@@ -159,6 +164,8 @@ Do not:
 - Paste expanded `curl` URLs containing `orgKey` or `newOrgKey`.
 - Let an agent invent parser scripts and upload them without human review.
 - Use a manager or admin user when a narrow test user is sufficient.
+- Ignore `X-Request-Id` when reporting failures; keep it with status and route
+  context so operators can find the matching LogsDB row.
 - Keep temporary AI-created organizations, users, documents, or parser scripts
   after the task is complete.
 - Share raw DEBUG logs or live request artifacts without redaction.

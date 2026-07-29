@@ -47,6 +47,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #if defined(__unix__) || defined(__APPLE__)
 #include <sys/resource.h>
 #endif
@@ -60,6 +61,141 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeWSLogMaxValueLen 512
 #define cmeWSLogRedactedValue "<redacted>"
 #define cmeWSLogTruncatedMarker "...<truncated>"
+
+static void cmeWebServiceGenerateRequestId(char **requestId)
+{
+    struct timespec ts;
+    char *rndHex=NULL;
+
+    if (!requestId)
+    {
+        return;
+    }
+    clock_gettime(CLOCK_REALTIME,&ts);
+    if (!cmeGetRndSaltAnySize(&rndHex,8))
+    {
+        cmeStrConstrAppend(requestId,"cdse-%lld-%ld-%s",
+                           (long long)ts.tv_sec,ts.tv_nsec,rndHex);
+        cmeFree(rndHex);
+        return;
+    }
+    cmeStrConstrAppend(requestId,"cdse-%lld-%ld", (long long)ts.tv_sec,ts.tv_nsec);
+}
+
+static int cmeWebServiceSetResponseHeader(char ***responseHeaders,
+                                          const char *name, const char *value)
+{
+    int cont;
+
+    if ((!responseHeaders)||(!(*responseHeaders))||(!name)||(!value))
+    {
+        return(1);
+    }
+    for (cont=0;cont<(cmeWSHTTPMaxResponseHeaders*2);cont+=2)
+    {
+        if ((*responseHeaders)[cont]&&(!strcasecmp((*responseHeaders)[cont],name)))
+        {
+            cmeFree((*responseHeaders)[cont+1]);
+            (*responseHeaders)[cont+1]=NULL;
+            cmeStrConstrAppend(&((*responseHeaders)[cont+1]),"%s",value);
+            return(0);
+        }
+        if (!(*responseHeaders)[cont])
+        {
+            cmeStrConstrAppend(&((*responseHeaders)[cont]),"%s",name);
+            cmeStrConstrAppend(&((*responseHeaders)[cont+1]),"%s",value);
+            return(0);
+        }
+    }
+    return(2);
+}
+
+static int cmeWebServiceRequestWantsJSON(const char **argumentElements)
+{
+    const char *outputType=NULL;
+
+    return((argumentElements)&&
+           (!cmeFindInArgPairList(argumentElements,"outputType",&outputType))&&
+           outputType&&(!strcmp(outputType,"json")));
+}
+
+static const char *cmeWebServiceErrorCodeForStatus(int responseCode)
+{
+    switch (responseCode)
+    {
+        case 400:
+            return("bad_request");
+        case 401:
+            return("authentication_required");
+        case 403:
+            return("forbidden");
+        case 404:
+            return("not_found");
+        case 405:
+            return("method_not_allowed");
+        case 409:
+            return("conflict");
+        case 501:
+            return("not_implemented");
+        default:
+            if (responseCode>=500)
+            {
+                return("internal_error");
+            }
+            return("request_failed");
+    }
+}
+
+static const char *cmeWebServiceErrorMessageForStatus(int responseCode)
+{
+    switch (responseCode)
+    {
+        case 400:
+            return("The request is invalid.");
+        case 401:
+            return("Authentication is required.");
+        case 403:
+            return("The request is forbidden.");
+        case 404:
+            return("The requested resource was not found.");
+        case 405:
+            return("The HTTP method is not allowed for this resource.");
+        case 409:
+            return("The request conflicts with the current resource state or required arguments.");
+        case 501:
+            return("The requested functionality is not implemented.");
+        default:
+            if (responseCode>=500)
+            {
+                return("An internal server error occurred.");
+            }
+            return("The request failed.");
+    }
+}
+
+static int cmeWebServiceApplyJSONErrorEnvelope(char **responseText,
+                                               char ***responseHeaders,
+                                               int responseCode,
+                                               const char *requestId)
+{
+    char *jsonError=NULL;
+
+    if ((!responseText)||(responseCode<400))
+    {
+        return(0);
+    }
+    cmeStrConstrAppend(&jsonError,
+                       "{\"error\":{\"code\":\"%s\",\"message\":\"%s\",\"httpStatus\":%d,"
+                       "\"requestId\":\"%s\",\"safeForAgent\":true}}",
+                       cmeWebServiceErrorCodeForStatus(responseCode),
+                       cmeWebServiceErrorMessageForStatus(responseCode),
+                       responseCode,
+                       requestId?requestId:"");
+    cmeFree(*responseText);
+    *responseText=jsonError;
+    cmeWebServiceSetResponseHeader(responseHeaders,"Content-Type","application/json");
+    return(0);
+}
 
 static int cmeWebServiceLogIsSensitiveField(const char *name)
 {
@@ -299,6 +435,8 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         }
         con_info->answerString=NULL;
         con_info->answerCode=0;
+        con_info->requestId=NULL;
+        cmeWebServiceGenerateRequestId(&(con_info->requestId));
         con_info->filePointer=NULL;
         con_info->fileName=NULL;
         con_info->connectionType=0;
@@ -401,6 +539,11 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
                                         url,(const char **)urlElements,numUrlElements,
                                         (const char **)headerElements,(const char **)argumentElements,method,connection);
     con_info->answerCode=responseCode;
+    cmeWebServiceSetResponseHeader(&responseHeaders,"X-Request-Id",con_info->requestId?con_info->requestId:"");
+    if (strcmp(method,"HEAD")&&cmeWebServiceRequestWantsJSON((const char **)argumentElements))
+    {
+        cmeWebServiceApplyJSONErrorEnvelope(&responseText,&responseHeaders,responseCode,con_info->requestId);
+    }
     if (responseFilePath) //We have a response File.
     {
         cr_info=(struct cmeWebServiceContentReaderStruct *) malloc (sizeof (struct cmeWebServiceContentReaderStruct)); //Create structure to pass among ContentReader iterations.
@@ -9056,6 +9199,7 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
         }
     }
     cmeFree(con_info->answerString);
+    cmeFree(con_info->requestId);
     pthread_cond_destroy(&(con_info->threadStatusCond));
     pthread_mutex_destroy(&(con_info->threadStatusMutex));
     cmeFree(con_info);

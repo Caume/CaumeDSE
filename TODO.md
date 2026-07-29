@@ -620,13 +620,22 @@
     revocation, and linked the sample from README, AI usage, AI-agent, and MCP
     docs.
 
-- [ ] #85 Add JSON error envelopes and request IDs.
+- [x] #85 Add JSON error envelopes and request IDs.
   - Source: `webservice_interface.c`, transaction logging, OpenAPI.
   - Goal: make API failures easy for agents to parse and correlate with audit logs.
   - Plan:
     - Batch 1: define stable `error.code`, `error.message`, `httpStatus`, `requestId`, and `safeForAgent` fields.
     - Batch 2: add request-id generation/propagation to response headers and transaction logs.
     - Batch 3: convert common authentication, authorization, not-found, and method errors to JSON when `outputType=json`.
+  - Done: added per-connection `X-Request-Id` generation in the web-service
+    response path and included the header in the same response-header list
+    logged to LogsDB. Added centralized JSON error envelopes for non-HEAD
+    failures when `outputType=json` is requested, mapping common status codes
+    to stable `error.code`, `error.message`, `httpStatus`, `requestId`, and
+    `safeForAgent` fields. Extended live verifier coverage for JSON
+    authentication, not-found, method-not-allowed, forbidden, and request-id
+    markers, and documented the contract in README, API examples, AI usage,
+    and OpenAPI.
 
 - [ ] #86 Add agent-safe paginated read and schema metadata endpoints.
   - Source: resource handlers, `openapi.yaml`, AI/MCP samples.

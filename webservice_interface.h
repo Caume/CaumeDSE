@@ -57,6 +57,7 @@ struct cmeWebServiceConnectionInfoStruct
     char **postArglist;        //Note: this will be dynamically allocated! cmeWebServicePOSTIterationCompleted must free it.
     int postArgCont;
     int answerCode;
+    char *requestId;           //Per-connection request correlation id, returned in X-Request-Id and LogsDB response headers.
     int threadStatus;          //signal to the thread that it is ok to clean stuff here. 0=in progress, 1=thread done,waiting, 2=thread done, closing.
     pthread_mutex_t threadStatusMutex;
     pthread_cond_t threadStatusCond;

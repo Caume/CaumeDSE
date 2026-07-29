@@ -28,6 +28,26 @@ AI agents and MCP clients can discover safe automation capabilities with
 `GET /agentCapabilities`, which returns public JSON metadata without requiring
 or exposing CaumeDSE credentials.
 
+API responses include an `X-Request-Id` header. When `outputType=json` is
+requested and a non-HEAD request fails with common authentication,
+authorization, not-found, method, conflict, not-implemented, or server errors,
+CaumeDSE returns a JSON envelope:
+
+```json
+{
+  "error": {
+    "code": "authentication_required",
+    "message": "Authentication is required.",
+    "httpStatus": 401,
+    "requestId": "cdse-...",
+    "safeForAgent": true
+  }
+}
+```
+
+Use `requestId` to correlate client-side failures with LogsDB response-header
+entries and retained verifier artifacts.
+
 
 ## Contents
 
