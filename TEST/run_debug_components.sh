@@ -830,6 +830,7 @@ run_live_web_flow() {
         return 1
     fi
 
+    live_api_check "$protocol" agent_capabilities 200 "$base_url/agentCapabilities" '"capabilityManifestVersion":1' "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_all 401 "$base_url/organizations/$org_name" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_org_key 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name" "" "${curl_tls_args[@]}"
     long_query_value="$(printf '%*s' 1500 '' | tr ' ' 'x')"

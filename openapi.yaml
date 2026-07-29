@@ -13,6 +13,7 @@ servers:
   - url: https://localhost:18443
     description: DEBUG HTTPS verifier server
 tags:
+  - name: Agent capabilities
   - name: Authentication
   - name: Organizations
   - name: Users
@@ -25,6 +26,54 @@ tags:
   - name: Secure DB browsing
 
 paths:
+  /agentCapabilities:
+    get:
+      tags: [Agent capabilities]
+      summary: Return a public machine-readable manifest for AI agents and MCP clients.
+      description: |
+        Describes safe automation guidance, supported auth modes, preferred
+        response formats, parser policy settings, documentation links, and core
+        data routes. This route is intentionally public and does not expose
+        organization data or secrets.
+      responses:
+        "200":
+          description: JSON capability manifest.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [capabilityManifestVersion, engine, safeForAgents, authentication, routes]
+                properties:
+                  capabilityManifestVersion:
+                    type: integer
+                    example: 1
+                  engine:
+                    type: string
+                    example: CaumeDSE
+                  safeForAgents:
+                    type: boolean
+                    example: true
+                  authentication:
+                    type: object
+                  formats:
+                    type: object
+                  parserPolicy:
+                    type: object
+                  routes:
+                    type: array
+                    items:
+                      type: object
+                  docs:
+                    type: array
+                    items:
+                      type: string
+    options:
+      tags: [Agent capabilities]
+      summary: Return supported methods for the agent capability manifest.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonResponse"
+
   /organizations:
     get:
       tags: [Organizations]
@@ -1459,6 +1508,12 @@ components:
           description: Optional secure CSV import flag.
 
   responses:
+    JsonResponse:
+      description: JSON response.
+      content:
+        application/json:
+          schema:
+            type: object
     TableResponse:
       description: Matching resources as an HTML or CSV-style table.
       headers:

@@ -9,6 +9,7 @@ environment variables and are never part of MCP tool arguments or tool results.
 
 ## Tools
 
+- `get_agent_capabilities`: reads the public `/agentCapabilities` manifest.
 - `create_workspace`: creates the configured disposable organization, storage,
   and user.
 - `list_document_types`: lists document types in the configured storage.
@@ -76,13 +77,16 @@ Configure an MCP client to launch the stdio server:
 
 A typical local flow is:
 
-1. `create_workspace`
-2. `upload_csv`
-3. `upload_parser`
-4. `list_document_types`
-5. `query_column`
-6. `run_parser`
-7. `cleanup_workspace`
+1. Read `GET /agentCapabilities` from `CDSE_MCP_BASE_URL` so the host can
+   confirm supported routes, JSON preference, and parser policy before
+   exposing tools.
+2. `create_workspace`
+3. `upload_csv`
+4. `upload_parser`
+5. `list_document_types`
+6. `query_column`
+7. `run_parser`
+8. `cleanup_workspace`
 
 ## Security Boundaries
 

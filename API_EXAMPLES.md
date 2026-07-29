@@ -38,6 +38,19 @@ The examples use committed verifier fixtures:
 - `TEST/testfiles/test.pl`
 - `TEST/testfiles/test.py`
 
+## Agent Capability Discovery
+
+Agents and MCP clients should discover supported safe automation behavior before
+calling data routes. This public endpoint does not require credentials and does
+not return organization data.
+
+```sh
+curl -s "$BASE_URL/agentCapabilities"
+```
+
+Useful fields include `authentication.requiredParameters`,
+`formats.preferred`, `parserPolicy`, and each entry in `routes`.
+
 ## Negative Authentication Checks
 
 Missing credentials return `401`.

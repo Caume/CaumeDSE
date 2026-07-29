@@ -26,13 +26,15 @@ Recommended boundaries:
 
 Use the same shape as the live verifier:
 
-1. Create a temporary organization, storage resource, and least-privilege user.
-2. Add only the role/filter resources needed for the task.
-3. Upload test CSV or script fixtures from known local paths.
-4. Query narrow resources such as a specific row, column, table, or parser
+1. Call `GET /agentCapabilities` to discover supported formats, auth
+   requirements, parser policy, documentation links, and route templates.
+2. Create a temporary organization, storage resource, and least-privilege user.
+3. Add only the role/filter resources needed for the task.
+4. Upload test CSV or script fixtures from known local paths.
+5. Query narrow resources such as a specific row, column, table, or parser
    output.
-5. Delete temporary documents, role/filter rows, users, and storage artifacts.
-6. Review `summary.txt` and `live-api-coverage.csv` with redaction enabled.
+6. Delete temporary documents, role/filter rows, users, and storage artifacts.
+7. Review `summary.txt` and `live-api-coverage.csv` with redaction enabled.
 
 Example shell setup:
 

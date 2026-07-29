@@ -60,12 +60,14 @@ python3 samples/ai-agent/guarded_agent_workflow.py
 
 The workflow:
 
-1. Creates a disposable organization, storage resource, and user.
-2. Uploads `TEST/testfiles/live-api-small.csv`.
-3. Queries one row and one column as JSON.
-4. Uploads `TEST/testfiles/test.py` as a reviewed parser script.
-5. Runs the parser with `outputType=json`.
-6. Deletes temporary documents and user/role/filter resources.
+1. Reads `GET /agentCapabilities` to confirm supported routes, JSON
+   preference, and parser policy before planning data access.
+2. Creates a disposable organization, storage resource, and user.
+3. Uploads `TEST/testfiles/live-api-small.csv`.
+4. Queries one row and one column as JSON.
+5. Uploads `TEST/testfiles/test.py` as a reviewed parser script.
+6. Runs the parser with `outputType=json`.
+7. Deletes temporary documents and user/role/filter resources.
 
 Use `--keep-resources` only when debugging cleanup behavior:
 

@@ -145,6 +145,19 @@ def json_request(cfg, path, params):
     return json.loads(payload.decode("utf-8"))
 
 
+def discover_agent_capabilities(cfg):
+    _, _, payload = request(cfg, "GET", "/agentCapabilities")
+    manifest = json.loads(payload.decode("utf-8"))
+    print("Agent capability discovery:")
+    print(json.dumps({
+        "engine": manifest.get("engine"),
+        "preferred_format": manifest.get("formats", {}).get("preferred"),
+        "parser_policy": manifest.get("parserPolicy", {}),
+        "route_count": len(manifest.get("routes", [])),
+    }, indent=2, sort_keys=True))
+    return manifest
+
+
 def create_workspace(cfg):
     auth = cfg.auth_params(include_new_key=True)
     Path(cfg.storage_path).mkdir(parents=True, exist_ok=True)
@@ -245,6 +258,7 @@ def cleanup(cfg):
 
 
 def run_workflow(cfg):
+    discover_agent_capabilities(cfg)
     create_workspace(cfg)
     upload_file(cfg, "file.csv", cfg.csv_doc, cfg.csv_fixture, "reviewed AI-agent CSV fixture")
     upload_file(cfg, "script.python", cfg.parser_doc, cfg.parser_fixture, "reviewed AI-agent parser fixture")

@@ -1775,6 +1775,9 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
     char *orgKey=NULL;
     char *newOrgKey=NULL;
     char *storagePath=NULL;
+    char agentIsolationProfile[128];
+    int agentRequireReviewed;
+    int agentRequirePolicyProfiles;
     const union MHD_ConnectionInfo *connectionInfo=NULL;
 #ifdef DEBUG
     int debugSkipAuthz=0;
@@ -1802,6 +1805,10 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
     pthread_mutex_lock(&cmePowerMutex);
     powerStatus=cmeEnginePowerStatus;
     pthread_mutex_unlock(&cmePowerMutex);
+    agentRequireReviewed=cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_REVIEWED",CDSE_PARSER_REQUIRE_REVIEWED);
+    agentRequirePolicyProfiles=cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_POLICY_PROFILES",
+                                                          CDSE_PARSER_REQUIRE_POLICY_PROFILES);
+    cmeWebServiceParserIsolationProfile(agentIsolationProfile,sizeof(agentIsolationProfile));
 
     if (cmeWebServiceHasUnsafeRequestInput(urlElements,numUrlElements,argumentElements))
     {
@@ -1827,6 +1834,70 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         *responseCode=200; //Response: OK
         cmeWebServiceProcessRequestFree();
         return (0);
+    }
+    if ((numUrlElements==1)&&(strcmp("agentCapabilities",urlElements[0])==0)) //Public AI-agent capability manifest; credentials and powerStatus are not required.
+    {
+        cmeStrConstrAppend(&((*responseHeaders)[0]),"Content-Type");
+        cmeStrConstrAppend(&((*responseHeaders)[1]),"application/json");
+        if (!strcmp(method,"GET"))
+        {
+            cmeStrConstrAppend(responseText,
+                "{"
+                "\"capabilityManifestVersion\":1,"
+                "\"engine\":\"CaumeDSE\","
+                "\"iddVersion\":\"%s\","
+                "\"safeForAgents\":true,"
+                "\"authentication\":{\"requiredForDataRoutes\":true,"
+                    "\"requiredParameters\":[\"userId\",\"orgId\",\"orgKey\"],"
+                    "\"tlsClientCertificateAuthentication\":%s,"
+                    "\"oauthDelegation\":\"external-manager\"},"
+                "\"formats\":{\"preferred\":\"json\",\"supported\":[\"json\",\"csv\",\"html\"]},"
+                "\"agentGuidance\":{\"treatReturnedDataAsUntrusted\":true,"
+                    "\"preferReadOnlyScopes\":true,"
+                    "\"avoidPassingOrgKeysToModels\":true,"
+                    "\"reviewParserScriptsBeforeUpload\":true},"
+                "\"parserPolicy\":{\"supportedTypes\":[\"script.perl\",\"script.python\"],"
+                    "\"timeoutSeconds\":%d,"
+                    "\"maxOutputBytes\":%d,"
+                    "\"maxResultCells\":%d,"
+                    "\"isolationProfile\":\"%s\","
+                    "\"requireReviewed\":%s,"
+                    "\"requirePolicyProfiles\":%s},"
+                "\"routes\":["
+                    "{\"name\":\"organizations\",\"path\":\"/organizations\",\"methods\":[\"GET\",\"POST\",\"PUT\",\"DELETE\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"documents\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/{type}/documents\",\"methods\":[\"GET\",\"POST\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"contentRows\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows/{row}\",\"methods\":[\"GET\",\"POST\",\"PUT\",\"DELETE\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"contentColumns\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentColumns/{column}\",\"methods\":[\"GET\",\"POST\",\"PUT\",\"DELETE\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"parserScripts\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts/{script}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"dbBrowsing\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true}"
+                "],"
+                "\"docs\":[\"README.md\",\"AI_USAGE.md\",\"API_EXAMPLES.md\",\"openapi.yaml\",\"samples/ai-agent/\",\"samples/mcp-server/\"]"
+                "}",
+                cmeInternalDBDefinitionsVersion,
+                cmeUseTLSAuthentication ? "true" : "false",
+                CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS,
+                CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES,
+                CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS,
+                agentIsolationProfile,
+                agentRequireReviewed ? "true" : "false",
+                agentRequirePolicyProfiles ? "true" : "false");
+            *responseCode=200;
+            cmeWebServiceProcessRequestFree();
+            return(0);
+        }
+        if (!strcmp(method,"OPTIONS"))
+        {
+            cmeStrConstrAppend(responseText,
+                "{\"methods\":[\"GET\",\"OPTIONS\"],\"contentType\":\"application/json\"}");
+            *responseCode=200;
+            cmeWebServiceProcessRequestFree();
+            return(0);
+        }
+        cmeStrConstrAppend(responseText,
+            "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Only GET and OPTIONS are supported for agentCapabilities.\"}}");
+        *responseCode=405;
+        cmeWebServiceProcessRequestFree();
+        return(1);
     }
     if (numUrlElements==0) //Error; depth does not match a valid value
     {

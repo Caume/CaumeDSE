@@ -594,3 +594,67 @@
     - Added configure and compile-time guards so `--enable-BYPASSTLSAUTHINHTTP` is accepted only with DEBUG/test builds.
     - Made HTTP TLS-auth bypass state visible in DEBUG startup and request diagnostics without logging secrets.
     - Added verifier checks for release-profile bypass rejection and DEBUG HTTP bypass diagnostics.
+
+- [x] #83 Add a machine-readable AI agent capability manifest.
+  - Source: `webservice_interface.c`, `openapi.yaml`, AI/MCP docs, live verifier.
+  - Goal: let AI agents and MCP clients discover safe CaumeDSE capabilities before sending credentials or invoking data routes.
+  - Done:
+    - Added public `GET /agentCapabilities` and `OPTIONS /agentCapabilities` JSON responses with auth requirements, preferred formats, parser policy state, route summaries, and documentation links.
+    - Documented the manifest in README/API examples and OpenAPI.
+    - Added live verifier and OpenAPI route validation coverage for the manifest.
+
+- [ ] #84 Add delegated scoped agent tokens.
+  - Source: auth boundary docs, external manager integration, roles/filter setup helpers.
+  - Goal: let agents use short-lived least-privilege delegated credentials instead of full organization keys.
+  - Plan:
+    - Batch 1: define delegated-token semantics, scope claims, expiry, revocation, and how external managers map tokens to CaumeDSE delegated users.
+    - Batch 2: add a sample token broker workflow that creates narrow user/role/filter resources and never exposes `orgKey` to the model.
+    - Batch 3: add verifier coverage for allowed and denied delegated scopes.
+
+- [ ] #85 Add JSON error envelopes and request IDs.
+  - Source: `webservice_interface.c`, transaction logging, OpenAPI.
+  - Goal: make API failures easy for agents to parse and correlate with audit logs.
+  - Plan:
+    - Batch 1: define stable `error.code`, `error.message`, `httpStatus`, `requestId`, and `safeForAgent` fields.
+    - Batch 2: add request-id generation/propagation to response headers and transaction logs.
+    - Batch 3: convert common authentication, authorization, not-found, and method errors to JSON when `outputType=json`.
+
+- [ ] #86 Add agent-safe paginated read and schema metadata endpoints.
+  - Source: resource handlers, `openapi.yaml`, AI/MCP samples.
+  - Goal: reduce large unbounded responses and give agents stable schemas before reading data.
+  - Plan:
+    - Batch 1: document and validate pagination parameters for JSON reads.
+    - Batch 2: add document/table schema metadata routes for columns, row counts, document types, and parser policy metadata.
+    - Batch 3: extend MCP and AI-agent samples to use schema discovery before row/column reads.
+
+- [ ] #87 Add an AI-generated parser upload/review workflow.
+  - Source: parser script resources, parser policy metadata, verifier fixtures.
+  - Goal: keep generated parser scripts pending until reviewed and allow safe sample execution before full runs.
+  - Plan:
+    - Batch 1: define pending/reviewed parser metadata and provenance fields such as generator, prompt hash, reviewer, and review time.
+    - Batch 2: add static checks and sample-row preview execution for parser candidates.
+    - Batch 3: add live verifier coverage for pending deny, reviewed allow, and preview-only execution.
+
+- [ ] #88 Add structured JSON audit logs for agent activity.
+  - Source: transaction logging, parser audit lines, docs.
+  - Goal: make agent actions, policy decisions, and parser execution reviewable by machines without scraping text logs.
+  - Plan:
+    - Batch 1: define JSON audit event schemas for auth, authorization, parser policy, parser execution, and cleanup.
+    - Batch 2: emit structured audit events alongside existing text diagnostics.
+    - Batch 3: add an agent-readable recent-audit sample and verifier checks for redaction.
+
+- [ ] #89 Promote the MCP prototype into a supported read-only tool surface.
+  - Source: `samples/mcp-server/`, `AI_USAGE.md`, live verifier.
+  - Goal: provide a stable MCP interface for agents to inspect CaumeDSE data with narrow permissions.
+  - Plan:
+    - Batch 1: align MCP tools with `/agentCapabilities` and OpenAPI route names.
+    - Batch 2: add schema validation, pagination, and safer result truncation to read tools.
+    - Batch 3: add a smoke test that runs MCP initialize/tools/list/tool calls against the live verifier service.
+
+- [ ] #90 Add an AI agent cookbook and operational checklist.
+  - Source: `AI_USAGE.md`, `samples/`, README.
+  - Goal: make safe agent deployments repeatable for integrators.
+  - Plan:
+    - Batch 1: add recipes for read-only document inspection, parser review/upload, audit review, and cleanup.
+    - Batch 2: add deployment checklist entries for HTTPS, scoped delegated users, parser isolation, log redaction, and model prompt boundaries.
+    - Batch 3: cross-link cookbook recipes from README, API examples, MCP docs, and OpenAPI.

@@ -42,6 +42,7 @@ require_pattern "$EXAMPLES" "openapi.yaml" "API examples OpenAPI link"
 require_pattern "$VERIFIER" "validate_openapi_routes.sh" "verifier OpenAPI validation"
 
 required_paths=(
+    "/agentCapabilities:"
     "/organizations:"
     "/organizations/{organization}:"
     "/organizations/{organization}/users/{user}:"
@@ -68,6 +69,7 @@ for path in "${required_paths[@]}"; do
 done
 
 live_markers=(
+    "agent_capabilities"
     "create_org"
     "create_storage"
     "create_user"

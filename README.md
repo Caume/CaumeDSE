@@ -20,6 +20,10 @@ For a guarded Python AI-agent workflow sample, see
 For a prototype MCP stdio server that wraps a safe REST tool surface, see
 [samples/mcp-server/](samples/mcp-server/).
 
+AI agents and MCP clients can discover safe automation capabilities with
+`GET /agentCapabilities`, which returns public JSON metadata without requiring
+or exposing CaumeDSE credentials.
+
 
 ## Contents
 
@@ -29,6 +33,7 @@ For a prototype MCP stdio server that wraps a safe REST tool surface, see
 - [API Examples](API_EXAMPLES.md)
 - [OpenAPI Route Reference](openapi.yaml)
 - [AI-Safe API Usage](AI_USAGE.md)
+- [AI Agent Capability Manifest](#ai-agent-capability-manifest)
 - [AI Agent Sample](samples/ai-agent/)
 - [MCP Server Prototype](samples/mcp-server/)
 - [License](#license)
@@ -1053,6 +1058,28 @@ vacuumDB
     Specifies the value for the specified 'column_name'. The column name
     must match an existing column name within a document resource of
     type file.csv.
+
+## AI Agent Capability Manifest
+
+`GET /agentCapabilities` returns a public JSON manifest for AI agents, MCP
+clients, SDK generators, and automation supervisors. It does not require
+`userId`, `orgId`, or `orgKey`, and it does not include organization data or
+secrets.
+
+The manifest reports:
+
+- required authentication parameters for data routes;
+- preferred and supported response formats;
+- parser policy settings such as timeout, result limits, isolation profile,
+  and reviewed/profile enforcement;
+- core route names, path templates, supported methods, and whether
+  authentication is required;
+- links to `README.md`, `AI_USAGE.md`, `API_EXAMPLES.md`, `openapi.yaml`,
+  `samples/ai-agent/`, and `samples/mcp-server/`.
+
+Use this endpoint before invoking data routes so an agent can choose JSON
+responses, avoid passing organization keys to an LLM, and respect parser-review
+policy before uploading or executing scripts.
 
 ## REST Resource API Reference
 
