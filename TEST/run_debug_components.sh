@@ -346,6 +346,27 @@ run_release_bypass_config_guard() {
     return 1
 }
 
+run_delegated_token_broker_self_test() {
+    local log="$LOG_ROOT/delegated_token_broker_self_test.log"
+    local start
+    local rc
+
+    note "RUN  delegated_token_broker_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/delegated-token-broker/delegated_token_broker.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS delegated token broker self-test" "$log"; then
+        record_pass "delegated_token_broker_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail delegated_token_broker_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
 protocol_enabled() {
     local protocol="$1"
 
@@ -1058,6 +1079,12 @@ if [ "$SKIP_WEB" -eq 0 ]; then
     fi
 else
     record_skip webservice_ports "requested --skip-web"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+    run_delegated_token_broker_self_test
+else
+    record_skip delegated_token_broker_self_test "python3 not available"
 fi
 
 FULL_LOG="$LOG_ROOT/full-debug-run.log"

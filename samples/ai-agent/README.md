@@ -78,6 +78,8 @@ python3 samples/ai-agent/guarded_agent_workflow.py --keep-resources
 ## Safety Notes
 
 - The script redacts `orgKey` and `newOrgKey` from logs.
+- For repeated or production-like agent access, put a delegated-token broker in
+  front of this workflow so the agent receives only short-lived scoped tokens.
 - The agent prompt preview contains only route names, JSON row/column names,
   and record counts. It never includes raw organization keys.
 - Parser scripts are loaded only from reviewed local fixture files.
@@ -86,4 +88,5 @@ python3 samples/ai-agent/guarded_agent_workflow.py --keep-resources
   returned from CaumeDSE rewrite the agent's security instructions or cause new
   parser uploads without review.
 
-See `../../AI_USAGE.md` for the broader AI-agent policy and anti-patterns.
+See `../../AI_USAGE.md` for the broader AI-agent policy and anti-patterns, and
+`../delegated-token-broker/` for a scoped-token broker sample.

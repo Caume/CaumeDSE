@@ -92,6 +92,9 @@ A typical local flow is:
 
 - Do not pass `orgKey`, `newOrgKey`, TLS keys, or certificate material through
   tool arguments. Use environment variables controlled by the host process.
+- For repeated agent sessions, put a delegated-token broker in front of the MCP
+  server so each tool call is authorized by a short-lived scoped token before
+  the server forwards broker-held CaumeDSE credentials.
 - Do not expose this prototype directly to untrusted clients. Put any
   production MCP bridge behind authentication, authorization, audit logging,
   rate limits, and route-level allow lists.
@@ -120,3 +123,5 @@ printf '%s\n' \
 ```
 
 Use `CDSE_VERIFY_REDACT=1` when sharing logs from live verifier runs.
+
+See `../delegated-token-broker/` for the delegated scoped-token sample.

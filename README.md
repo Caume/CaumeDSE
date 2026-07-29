@@ -17,6 +17,10 @@ For safe AI-agent and automation patterns around the API, see
 For a guarded Python AI-agent workflow sample, see
 [samples/ai-agent/](samples/ai-agent/).
 
+For a delegated scoped-token broker sample that keeps CaumeDSE organization
+keys out of agent prompts, see
+[samples/delegated-token-broker/](samples/delegated-token-broker/).
+
 For a prototype MCP stdio server that wraps a safe REST tool surface, see
 [samples/mcp-server/](samples/mcp-server/).
 
@@ -35,6 +39,7 @@ or exposing CaumeDSE credentials.
 - [AI-Safe API Usage](AI_USAGE.md)
 - [AI Agent Capability Manifest](#ai-agent-capability-manifest)
 - [AI Agent Sample](samples/ai-agent/)
+- [Delegated Token Broker Sample](samples/delegated-token-broker/)
 - [MCP Server Prototype](samples/mcp-server/)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)
@@ -2375,6 +2380,17 @@ manager must delete the delegated organization and associated resources.
 CaumeDSE intentionally does not store organization keys or OAuth tokens,
 so the manager must keep its own mapping from OAuth grants to delegated
 CaumeDSE scopes.
+
+For AI-agent integrations, prefer short-lived delegated tokens issued by that
+external manager instead of exposing the CaumeDSE organization key to the
+agent.  A delegated token should be opaque to CaumeDSE and should include, at
+the manager layer, a subject, narrow scopes, expiry, a revocation identifier,
+and the delegated CaumeDSE user/organization binding.  After the manager
+validates the token, it forwards the request to CaumeDSE using the
+manager-held delegated `userId`, `orgId`, and `orgKey`, while role-table and
+filter-list rows enforce the same narrow permissions inside CaumeDSE.  See
+`samples/delegated-token-broker/` for a standard-library Python sample and
+offline allow/deny/expiry/revocation checks.
 
 In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).

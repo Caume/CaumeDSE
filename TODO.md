@@ -603,13 +603,22 @@
     - Documented the manifest in README/API examples and OpenAPI.
     - Added live verifier and OpenAPI route validation coverage for the manifest.
 
-- [ ] #84 Add delegated scoped agent tokens.
+- [x] #84 Add delegated scoped agent tokens.
   - Source: auth boundary docs, external manager integration, roles/filter setup helpers.
   - Goal: let agents use short-lived least-privilege delegated credentials instead of full organization keys.
   - Plan:
     - Batch 1: define delegated-token semantics, scope claims, expiry, revocation, and how external managers map tokens to CaumeDSE delegated users.
     - Batch 2: add a sample token broker workflow that creates narrow user/role/filter resources and never exposes `orgKey` to the model.
     - Batch 3: add verifier coverage for allowed and denied delegated scopes.
+  - Done: documented delegated tokens as an external-manager concern rather
+    than an in-engine bearer-token validator, added
+    `samples/delegated-token-broker/` with a standard-library Python broker
+    sample that mints signed opaque tokens, validates scopes/expiry/revocation,
+    maps them to broker-held delegated CaumeDSE user/org credentials, and can
+    provision read-only role/filter rows. Added verifier coverage through the
+    broker offline self-test for allowed scope, denied scope, expiry, and
+    revocation, and linked the sample from README, AI usage, AI-agent, and MCP
+    docs.
 
 - [ ] #85 Add JSON error envelopes and request IDs.
   - Source: `webservice_interface.c`, transaction logging, OpenAPI.
