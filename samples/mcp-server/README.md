@@ -9,6 +9,7 @@ environment variables and are never part of MCP tool arguments or tool results.
 
 ## Tools
 
+- `get_agent_capabilities`: reads the public `/agentCapabilities` manifest.
 - `create_workspace`: creates the configured disposable organization, storage,
   and user.
 - `list_document_types`: lists document types in the configured storage.
@@ -76,18 +77,24 @@ Configure an MCP client to launch the stdio server:
 
 A typical local flow is:
 
-1. `create_workspace`
-2. `upload_csv`
-3. `upload_parser`
-4. `list_document_types`
-5. `query_column`
-6. `run_parser`
-7. `cleanup_workspace`
+1. Read `GET /agentCapabilities` from `CDSE_MCP_BASE_URL` so the host can
+   confirm supported routes, JSON preference, and parser policy before
+   exposing tools.
+2. `create_workspace`
+3. `upload_csv`
+4. `upload_parser`
+5. `list_document_types`
+6. `query_column`
+7. `run_parser`
+8. `cleanup_workspace`
 
 ## Security Boundaries
 
 - Do not pass `orgKey`, `newOrgKey`, TLS keys, or certificate material through
   tool arguments. Use environment variables controlled by the host process.
+- For repeated agent sessions, put a delegated-token broker in front of the MCP
+  server so each tool call is authorized by a short-lived scoped token before
+  the server forwards broker-held CaumeDSE credentials.
 - Do not expose this prototype directly to untrusted clients. Put any
   production MCP bridge behind authentication, authorization, audit logging,
   rate limits, and route-level allow lists.
@@ -116,3 +123,5 @@ printf '%s\n' \
 ```
 
 Use `CDSE_VERIFY_REDACT=1` when sharing logs from live verifier runs.
+
+See `../delegated-token-broker/` for the delegated scoped-token sample.

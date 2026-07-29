@@ -346,6 +346,27 @@ run_release_bypass_config_guard() {
     return 1
 }
 
+run_delegated_token_broker_self_test() {
+    local log="$LOG_ROOT/delegated_token_broker_self_test.log"
+    local start
+    local rc
+
+    note "RUN  delegated_token_broker_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/delegated-token-broker/delegated_token_broker.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS delegated token broker self-test" "$log"; then
+        record_pass "delegated_token_broker_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail delegated_token_broker_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
 protocol_enabled() {
     local protocol="$1"
 
@@ -830,8 +851,11 @@ run_live_web_flow() {
         return 1
     fi
 
+    live_api_check "$protocol" agent_capabilities 200 "$base_url/agentCapabilities" '"capabilityManifestVersion":1' "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_all 401 "$base_url/organizations/$org_name" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_org_key 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" json_error_auth_missing_org_key 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name&outputType=json" '"code":"authentication_required"' "${curl_tls_args[@]}"
+    live_api_check "$protocol" json_error_auth_request_id 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name&outputType=json" '"requestId":"cdse-' "${curl_tls_args[@]}"
     long_query_value="$(printf '%*s' 1500 '' | tr ' ' 'x')"
     live_api_check "$protocol" transaction_log_redaction_probe 401 "$base_url/organizations/${org_name}_logProbe?orgId=$org_name&orgKey=$org_key&newOrgKey=$org_key&accessPassword=$org_key&longParam=$long_query_value" "" "${curl_tls_args[@]}" -H "Authorization: Bearer $org_key"
     if [ "$protocol" = "https" ]; then
@@ -846,6 +870,7 @@ run_live_web_flow() {
     live_api_check "$protocol" document_types_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" document_type_csv_head 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -I
     live_api_check "$protocol" document_type_unsupported 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/unsupported.type?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" json_error_not_found 404 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/unsupported.type?$auth&newOrgKey=$org_key&outputType=json" '"code":"not_found"' "${curl_tls_args[@]}"
     live_api_check "$protocol" role_table_post 201 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key&*_get=1&*_post=0&*_put=1&*_delete=0&*_head=1&*_options=1" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" role_table_get 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
     live_api_check "$protocol" role_table_json_get 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
@@ -867,6 +892,7 @@ run_live_web_flow() {
     live_api_check "$protocol" document_head 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -I
     live_api_check "$protocol" content_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/content?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
     live_api_check "$protocol" content_rows_options 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X OPTIONS
+    live_api_check "$protocol" json_error_method_not_allowed 405 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows?$auth&newOrgKey=$org_key&outputType=json" '"code":"method_not_allowed"' "${curl_tls_args[@]}"
     live_api_check "$protocol" row_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=csv" "Jacob" "${curl_tls_args[@]}"
     live_api_check "$protocol" row_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
     live_api_check "$protocol" content_columns_options 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/contentColumns?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X OPTIONS
@@ -883,6 +909,7 @@ run_live_web_flow() {
     live_api_check "$protocol" table_column_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableColumns/name?$auth&newOrgKey=$org_key" "Jacob" "${curl_tls_args[@]}"
     live_api_check "$protocol" table_column_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableColumns/name?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
     live_api_check "$protocol" db_browse_bad_row 403 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/0?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}"
+    live_api_check "$protocol" json_error_forbidden 403 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/0?$auth&newOrgKey=$org_key&outputType=json" '"code":"forbidden"' "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test.pl" \
         -F "userId=$user_id" \
@@ -1057,6 +1084,12 @@ if [ "$SKIP_WEB" -eq 0 ]; then
     fi
 else
     record_skip webservice_ports "requested --skip-web"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+    run_delegated_token_broker_self_test
+else
+    record_skip delegated_token_broker_self_test "python3 not available"
 fi
 
 FULL_LOG="$LOG_ROOT/full-debug-run.log"

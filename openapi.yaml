@@ -6,13 +6,18 @@ info:
     Machine-readable reference for the stable CaumeDSE routes documented in
     README.md and exercised by TEST/run_debug_components.sh. Responses are
     currently HTML, CSV, or JSON-oriented text tables unless a route returns
-    only a status code.
+    only a status code. Responses include an `X-Request-Id` header for log
+    correlation. When `outputType=json` is requested and a non-HEAD request
+    fails, common errors return a JSON envelope with `error.code`,
+    `error.message`, `error.httpStatus`, `error.requestId`, and
+    `error.safeForAgent`.
 servers:
   - url: http://localhost:18080
     description: DEBUG HTTP verifier server
   - url: https://localhost:18443
     description: DEBUG HTTPS verifier server
 tags:
+  - name: Agent capabilities
   - name: Authentication
   - name: Organizations
   - name: Users
@@ -25,6 +30,54 @@ tags:
   - name: Secure DB browsing
 
 paths:
+  /agentCapabilities:
+    get:
+      tags: [Agent capabilities]
+      summary: Return a public machine-readable manifest for AI agents and MCP clients.
+      description: |
+        Describes safe automation guidance, supported auth modes, preferred
+        response formats, parser policy settings, documentation links, and core
+        data routes. This route is intentionally public and does not expose
+        organization data or secrets.
+      responses:
+        "200":
+          description: JSON capability manifest.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [capabilityManifestVersion, engine, safeForAgents, authentication, routes]
+                properties:
+                  capabilityManifestVersion:
+                    type: integer
+                    example: 1
+                  engine:
+                    type: string
+                    example: CaumeDSE
+                  safeForAgents:
+                    type: boolean
+                    example: true
+                  authentication:
+                    type: object
+                  formats:
+                    type: object
+                  parserPolicy:
+                    type: object
+                  routes:
+                    type: array
+                    items:
+                      type: object
+                  docs:
+                    type: array
+                    items:
+                      type: string
+    options:
+      tags: [Agent capabilities]
+      summary: Return supported methods for the agent capability manifest.
+      responses:
+        "200":
+          $ref: "#/components/responses/JsonResponse"
+
   /organizations:
     get:
       tags: [Organizations]
@@ -1423,6 +1476,29 @@ components:
       description: Allow or deny OPTIONS depending on role/filter resource type.
 
   schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, httpStatus, requestId, safeForAgent]
+          properties:
+            code:
+              type: string
+              example: authentication_required
+            message:
+              type: string
+              example: Authentication is required.
+            httpStatus:
+              type: integer
+              example: 401
+            requestId:
+              type: string
+              example: cdse-1774470000-123456789-A1B2C3D4E5F60708
+            safeForAgent:
+              type: boolean
+              example: true
     TextTable:
       type: string
       description: HTML or CSV-style table text returned by current handlers.
@@ -1459,9 +1535,24 @@ components:
           description: Optional secure CSV import flag.
 
   responses:
+    JsonResponse:
+      description: JSON response.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Per-request correlation identifier also recorded in LogsDB response headers.
+      content:
+        application/json:
+          schema:
+            type: object
     TableResponse:
       description: Matching resources as an HTML or CSV-style table.
       headers:
+        X-Request-Id:
+          schema:
+            type: string
+          description: Per-request correlation identifier also recorded in LogsDB response headers.
         Engine-results:
           schema:
             type: integer
@@ -1490,6 +1581,9 @@ components:
     CsvResponse:
       description: CSV-formatted response body.
       headers:
+        X-Request-Id:
+          schema:
+            type: string
         Engine-results:
           schema:
             type: integer
@@ -1517,6 +1611,9 @@ components:
     FileContentResponse:
       description: Reconstructed document content.
       headers:
+        X-Request-Id:
+          schema:
+            type: string
         Engine-results:
           schema:
             type: integer
@@ -1538,6 +1635,10 @@ components:
             format: binary
     TextResponse:
       description: Text response.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
       content:
         text/plain:
           schema:
@@ -1548,6 +1649,9 @@ components:
     CountResponse:
       description: Operation result count.
       headers:
+        X-Request-Id:
+          schema:
+            type: string
         Engine-results:
           schema:
             type: integer
@@ -1564,42 +1668,84 @@ components:
     HeaderOnly:
       description: Status and response headers only.
       headers:
+        X-Request-Id:
+          schema:
+            type: string
         Engine-results:
           schema:
             type: integer
     Created:
       description: Resource created.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
       content:
         text/plain:
           schema:
             type: string
     Unauthorized:
       description: Missing or invalid credentials, organization key, or HTTPS client certificate.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
       content:
         text/plain:
           schema:
             type: string
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     Forbidden:
       description: Authenticated caller is not authorized or selector is invalid.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
       content:
         text/plain:
           schema:
             type: string
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     NotFound:
       description: Requested resource was not found.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
       content:
         text/plain:
           schema:
             type: string
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     Conflict:
       description: Request conflicts with current resource state.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
       content:
         text/plain:
           schema:
             type: string
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     ServerError:
       description: Server-side processing failed.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
       content:
         text/plain:
           schema:
             type: string
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"

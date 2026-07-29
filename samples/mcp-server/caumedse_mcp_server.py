@@ -155,6 +155,11 @@ def resolve_file(path_value, default_path):
     return path
 
 
+def get_agent_capabilities(cfg, _args):
+    _, _, payload = request(cfg, "GET", "/agentCapabilities")
+    return json.loads(payload.decode("utf-8"))
+
+
 def clamp_limit(value, default=3, maximum=10):
     try:
         parsed = int(value)
@@ -306,6 +311,7 @@ def cleanup_workspace(cfg, args):
 
 
 TOOLS = {
+    "get_agent_capabilities": get_agent_capabilities,
     "create_workspace": create_workspace,
     "list_document_types": list_document_types,
     "upload_csv": upload_csv,
@@ -317,6 +323,11 @@ TOOLS = {
 
 
 TOOL_SCHEMAS = [
+    {
+        "name": "get_agent_capabilities",
+        "description": "Read the public CaumeDSE AI-agent capability manifest without credentials.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
     {
         "name": "create_workspace",
         "description": "Create the configured disposable organization, storage, and user.",

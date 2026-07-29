@@ -17,8 +17,36 @@ For safe AI-agent and automation patterns around the API, see
 For a guarded Python AI-agent workflow sample, see
 [samples/ai-agent/](samples/ai-agent/).
 
+For a delegated scoped-token broker sample that keeps CaumeDSE organization
+keys out of agent prompts, see
+[samples/delegated-token-broker/](samples/delegated-token-broker/).
+
 For a prototype MCP stdio server that wraps a safe REST tool surface, see
 [samples/mcp-server/](samples/mcp-server/).
+
+AI agents and MCP clients can discover safe automation capabilities with
+`GET /agentCapabilities`, which returns public JSON metadata without requiring
+or exposing CaumeDSE credentials.
+
+API responses include an `X-Request-Id` header. When `outputType=json` is
+requested and a non-HEAD request fails with common authentication,
+authorization, not-found, method, conflict, not-implemented, or server errors,
+CaumeDSE returns a JSON envelope:
+
+```json
+{
+  "error": {
+    "code": "authentication_required",
+    "message": "Authentication is required.",
+    "httpStatus": 401,
+    "requestId": "cdse-...",
+    "safeForAgent": true
+  }
+}
+```
+
+Use `requestId` to correlate client-side failures with LogsDB response-header
+entries and retained verifier artifacts.
 
 
 ## Contents
@@ -29,7 +57,9 @@ For a prototype MCP stdio server that wraps a safe REST tool surface, see
 - [API Examples](API_EXAMPLES.md)
 - [OpenAPI Route Reference](openapi.yaml)
 - [AI-Safe API Usage](AI_USAGE.md)
+- [AI Agent Capability Manifest](#ai-agent-capability-manifest)
 - [AI Agent Sample](samples/ai-agent/)
+- [Delegated Token Broker Sample](samples/delegated-token-broker/)
 - [MCP Server Prototype](samples/mcp-server/)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)
@@ -1053,6 +1083,28 @@ vacuumDB
     Specifies the value for the specified 'column_name'. The column name
     must match an existing column name within a document resource of
     type file.csv.
+
+## AI Agent Capability Manifest
+
+`GET /agentCapabilities` returns a public JSON manifest for AI agents, MCP
+clients, SDK generators, and automation supervisors. It does not require
+`userId`, `orgId`, or `orgKey`, and it does not include organization data or
+secrets.
+
+The manifest reports:
+
+- required authentication parameters for data routes;
+- preferred and supported response formats;
+- parser policy settings such as timeout, result limits, isolation profile,
+  and reviewed/profile enforcement;
+- core route names, path templates, supported methods, and whether
+  authentication is required;
+- links to `README.md`, `AI_USAGE.md`, `API_EXAMPLES.md`, `openapi.yaml`,
+  `samples/ai-agent/`, and `samples/mcp-server/`.
+
+Use this endpoint before invoking data routes so an agent can choose JSON
+responses, avoid passing organization keys to an LLM, and respect parser-review
+policy before uploading or executing scripts.
 
 ## REST Resource API Reference
 
@@ -2348,6 +2400,17 @@ manager must delete the delegated organization and associated resources.
 CaumeDSE intentionally does not store organization keys or OAuth tokens,
 so the manager must keep its own mapping from OAuth grants to delegated
 CaumeDSE scopes.
+
+For AI-agent integrations, prefer short-lived delegated tokens issued by that
+external manager instead of exposing the CaumeDSE organization key to the
+agent.  A delegated token should be opaque to CaumeDSE and should include, at
+the manager layer, a subject, narrow scopes, expiry, a revocation identifier,
+and the delegated CaumeDSE user/organization binding.  After the manager
+validates the token, it forwards the request to CaumeDSE using the
+manager-held delegated `userId`, `orgId`, and `orgKey`, while role-table and
+filter-list rows enforce the same narrow permissions inside CaumeDSE.  See
+`samples/delegated-token-broker/` for a standard-library Python sample and
+offline allow/deny/expiry/revocation checks.
 
 In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).

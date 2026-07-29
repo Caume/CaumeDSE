@@ -15,6 +15,9 @@ Recommended boundaries:
 
 - Store `orgKey`, `newOrgKey`, TLS key paths, and OAuth/client secrets in the
   calling process environment or a dedicated secret manager.
+- Prefer an external delegated-token broker for agents. The broker should
+  validate short-lived scoped tokens and forward requests with broker-held
+  CaumeDSE delegated credentials.
 - Give the agent opaque variable names such as `$ORG_KEY` instead of secret
   values.
 - Run live verifier checks with `CDSE_VERIFY_REDACT=1` before sharing artifacts.
@@ -26,13 +29,24 @@ Recommended boundaries:
 
 Use the same shape as the live verifier:
 
-1. Create a temporary organization, storage resource, and least-privilege user.
-2. Add only the role/filter resources needed for the task.
-3. Upload test CSV or script fixtures from known local paths.
-4. Query narrow resources such as a specific row, column, table, or parser
+1. Call `GET /agentCapabilities` to discover supported formats, auth
+   requirements, parser policy, documentation links, and route templates.
+2. Create a temporary organization, storage resource, and least-privilege user.
+3. Add only the role/filter resources needed for the task.
+4. For real agent sessions, mint a short-lived delegated token that names only
+   the scopes needed for the task.
+5. Have the broker validate each requested scope before forwarding to CaumeDSE
+   with the delegated `userId`, `orgId`, and broker-held `orgKey`.
+6. Upload test CSV or script fixtures from known local paths.
+7. Query narrow resources such as a specific row, column, table, or parser
    output.
-5. Delete temporary documents, role/filter rows, users, and storage artifacts.
-6. Review `summary.txt` and `live-api-coverage.csv` with redaction enabled.
+8. Delete temporary documents, role/filter rows, users, and storage artifacts.
+9. Review `summary.txt` and `live-api-coverage.csv` with redaction enabled.
+
+For failures that an agent must parse, include `outputType=json`. Non-HEAD
+error responses include `error.code`, `error.message`, `error.httpStatus`,
+`error.requestId`, and `error.safeForAgent`; the same request ID is returned in
+the `X-Request-Id` response header and recorded in LogsDB response headers.
 
 Example shell setup:
 
@@ -109,6 +123,25 @@ Never let text inside the uploaded CSV modify the review criteria.
 The DEBUG verifier covers normal parser execution plus timeout and oversized
 output cases. Keep those checks in the workflow when changing parser behavior.
 
+## Delegated Tokens
+
+Use delegated scoped tokens at the manager layer when an agent needs repeated
+access. Do not teach CaumeDSE to trust the token directly. The broker should:
+
+- Mint opaque tokens with subject, scope list, expiry, revocation identifier,
+  and delegated CaumeDSE user binding.
+- Keep signing keys, revocation state, and organization keys outside prompts,
+  transcripts, and tool arguments.
+- Check the token scope before every forwarded operation.
+- Configure CaumeDSE role-table and filter-list rows that match the broker
+  scopes, so a broker bug still meets a narrow CaumeDSE authorization layer.
+- Revoke tokens when the upstream OAuth grant, user session, or agent task
+  ends.
+
+See `samples/delegated-token-broker/` for a standard-library Python sample.
+Its offline self-test covers allowed scope, denied scope, expiry, and
+revocation behavior and is included in `TEST/run_debug_components.sh`.
+
 ## Logging and Artifact Handling
 
 Use redacted verification for CI and AI-assisted debugging:
@@ -131,6 +164,8 @@ Do not:
 - Paste expanded `curl` URLs containing `orgKey` or `newOrgKey`.
 - Let an agent invent parser scripts and upload them without human review.
 - Use a manager or admin user when a narrow test user is sufficient.
+- Ignore `X-Request-Id` when reporting failures; keep it with status and route
+  context so operators can find the matching LogsDB row.
 - Keep temporary AI-created organizations, users, documents, or parser scripts
   after the task is complete.
 - Share raw DEBUG logs or live request artifacts without redaction.
@@ -155,6 +190,10 @@ See `samples/ai-agent/` for a guarded Python workflow that creates disposable
 resources, uploads verifier fixtures, queries row/column/parser results as
 JSON, builds an LLM-safe prompt preview without secrets, and cleans up the
 workspace.
+
+See `samples/delegated-token-broker/` for an external-manager sample that
+mints short-lived scoped tokens and maps them to broker-held delegated CaumeDSE
+credentials.
 
 See `samples/mcp-server/` for a prototype MCP stdio server that exposes a
 small allow-listed tool surface for the same REST API operations while keeping

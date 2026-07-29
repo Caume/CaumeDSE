@@ -47,6 +47,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #if defined(__unix__) || defined(__APPLE__)
 #include <sys/resource.h>
 #endif
@@ -60,6 +61,141 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeWSLogMaxValueLen 512
 #define cmeWSLogRedactedValue "<redacted>"
 #define cmeWSLogTruncatedMarker "...<truncated>"
+
+static void cmeWebServiceGenerateRequestId(char **requestId)
+{
+    struct timespec ts;
+    char *rndHex=NULL;
+
+    if (!requestId)
+    {
+        return;
+    }
+    clock_gettime(CLOCK_REALTIME,&ts);
+    if (!cmeGetRndSaltAnySize(&rndHex,8))
+    {
+        cmeStrConstrAppend(requestId,"cdse-%lld-%ld-%s",
+                           (long long)ts.tv_sec,ts.tv_nsec,rndHex);
+        cmeFree(rndHex);
+        return;
+    }
+    cmeStrConstrAppend(requestId,"cdse-%lld-%ld", (long long)ts.tv_sec,ts.tv_nsec);
+}
+
+static int cmeWebServiceSetResponseHeader(char ***responseHeaders,
+                                          const char *name, const char *value)
+{
+    int cont;
+
+    if ((!responseHeaders)||(!(*responseHeaders))||(!name)||(!value))
+    {
+        return(1);
+    }
+    for (cont=0;cont<(cmeWSHTTPMaxResponseHeaders*2);cont+=2)
+    {
+        if ((*responseHeaders)[cont]&&(!strcasecmp((*responseHeaders)[cont],name)))
+        {
+            cmeFree((*responseHeaders)[cont+1]);
+            (*responseHeaders)[cont+1]=NULL;
+            cmeStrConstrAppend(&((*responseHeaders)[cont+1]),"%s",value);
+            return(0);
+        }
+        if (!(*responseHeaders)[cont])
+        {
+            cmeStrConstrAppend(&((*responseHeaders)[cont]),"%s",name);
+            cmeStrConstrAppend(&((*responseHeaders)[cont+1]),"%s",value);
+            return(0);
+        }
+    }
+    return(2);
+}
+
+static int cmeWebServiceRequestWantsJSON(const char **argumentElements)
+{
+    const char *outputType=NULL;
+
+    return((argumentElements)&&
+           (!cmeFindInArgPairList(argumentElements,"outputType",&outputType))&&
+           outputType&&(!strcmp(outputType,"json")));
+}
+
+static const char *cmeWebServiceErrorCodeForStatus(int responseCode)
+{
+    switch (responseCode)
+    {
+        case 400:
+            return("bad_request");
+        case 401:
+            return("authentication_required");
+        case 403:
+            return("forbidden");
+        case 404:
+            return("not_found");
+        case 405:
+            return("method_not_allowed");
+        case 409:
+            return("conflict");
+        case 501:
+            return("not_implemented");
+        default:
+            if (responseCode>=500)
+            {
+                return("internal_error");
+            }
+            return("request_failed");
+    }
+}
+
+static const char *cmeWebServiceErrorMessageForStatus(int responseCode)
+{
+    switch (responseCode)
+    {
+        case 400:
+            return("The request is invalid.");
+        case 401:
+            return("Authentication is required.");
+        case 403:
+            return("The request is forbidden.");
+        case 404:
+            return("The requested resource was not found.");
+        case 405:
+            return("The HTTP method is not allowed for this resource.");
+        case 409:
+            return("The request conflicts with the current resource state or required arguments.");
+        case 501:
+            return("The requested functionality is not implemented.");
+        default:
+            if (responseCode>=500)
+            {
+                return("An internal server error occurred.");
+            }
+            return("The request failed.");
+    }
+}
+
+static int cmeWebServiceApplyJSONErrorEnvelope(char **responseText,
+                                               char ***responseHeaders,
+                                               int responseCode,
+                                               const char *requestId)
+{
+    char *jsonError=NULL;
+
+    if ((!responseText)||(responseCode<400))
+    {
+        return(0);
+    }
+    cmeStrConstrAppend(&jsonError,
+                       "{\"error\":{\"code\":\"%s\",\"message\":\"%s\",\"httpStatus\":%d,"
+                       "\"requestId\":\"%s\",\"safeForAgent\":true}}",
+                       cmeWebServiceErrorCodeForStatus(responseCode),
+                       cmeWebServiceErrorMessageForStatus(responseCode),
+                       responseCode,
+                       requestId?requestId:"");
+    cmeFree(*responseText);
+    *responseText=jsonError;
+    cmeWebServiceSetResponseHeader(responseHeaders,"Content-Type","application/json");
+    return(0);
+}
 
 static int cmeWebServiceLogIsSensitiveField(const char *name)
 {
@@ -299,6 +435,8 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         }
         con_info->answerString=NULL;
         con_info->answerCode=0;
+        con_info->requestId=NULL;
+        cmeWebServiceGenerateRequestId(&(con_info->requestId));
         con_info->filePointer=NULL;
         con_info->fileName=NULL;
         con_info->connectionType=0;
@@ -401,6 +539,11 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
                                         url,(const char **)urlElements,numUrlElements,
                                         (const char **)headerElements,(const char **)argumentElements,method,connection);
     con_info->answerCode=responseCode;
+    cmeWebServiceSetResponseHeader(&responseHeaders,"X-Request-Id",con_info->requestId?con_info->requestId:"");
+    if (strcmp(method,"HEAD")&&cmeWebServiceRequestWantsJSON((const char **)argumentElements))
+    {
+        cmeWebServiceApplyJSONErrorEnvelope(&responseText,&responseHeaders,responseCode,con_info->requestId);
+    }
     if (responseFilePath) //We have a response File.
     {
         cr_info=(struct cmeWebServiceContentReaderStruct *) malloc (sizeof (struct cmeWebServiceContentReaderStruct)); //Create structure to pass among ContentReader iterations.
@@ -1775,6 +1918,9 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
     char *orgKey=NULL;
     char *newOrgKey=NULL;
     char *storagePath=NULL;
+    char agentIsolationProfile[128];
+    int agentRequireReviewed;
+    int agentRequirePolicyProfiles;
     const union MHD_ConnectionInfo *connectionInfo=NULL;
 #ifdef DEBUG
     int debugSkipAuthz=0;
@@ -1802,6 +1948,10 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
     pthread_mutex_lock(&cmePowerMutex);
     powerStatus=cmeEnginePowerStatus;
     pthread_mutex_unlock(&cmePowerMutex);
+    agentRequireReviewed=cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_REVIEWED",CDSE_PARSER_REQUIRE_REVIEWED);
+    agentRequirePolicyProfiles=cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_POLICY_PROFILES",
+                                                          CDSE_PARSER_REQUIRE_POLICY_PROFILES);
+    cmeWebServiceParserIsolationProfile(agentIsolationProfile,sizeof(agentIsolationProfile));
 
     if (cmeWebServiceHasUnsafeRequestInput(urlElements,numUrlElements,argumentElements))
     {
@@ -1827,6 +1977,70 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         *responseCode=200; //Response: OK
         cmeWebServiceProcessRequestFree();
         return (0);
+    }
+    if ((numUrlElements==1)&&(strcmp("agentCapabilities",urlElements[0])==0)) //Public AI-agent capability manifest; credentials and powerStatus are not required.
+    {
+        cmeStrConstrAppend(&((*responseHeaders)[0]),"Content-Type");
+        cmeStrConstrAppend(&((*responseHeaders)[1]),"application/json");
+        if (!strcmp(method,"GET"))
+        {
+            cmeStrConstrAppend(responseText,
+                "{"
+                "\"capabilityManifestVersion\":1,"
+                "\"engine\":\"CaumeDSE\","
+                "\"iddVersion\":\"%s\","
+                "\"safeForAgents\":true,"
+                "\"authentication\":{\"requiredForDataRoutes\":true,"
+                    "\"requiredParameters\":[\"userId\",\"orgId\",\"orgKey\"],"
+                    "\"tlsClientCertificateAuthentication\":%s,"
+                    "\"oauthDelegation\":\"external-manager\"},"
+                "\"formats\":{\"preferred\":\"json\",\"supported\":[\"json\",\"csv\",\"html\"]},"
+                "\"agentGuidance\":{\"treatReturnedDataAsUntrusted\":true,"
+                    "\"preferReadOnlyScopes\":true,"
+                    "\"avoidPassingOrgKeysToModels\":true,"
+                    "\"reviewParserScriptsBeforeUpload\":true},"
+                "\"parserPolicy\":{\"supportedTypes\":[\"script.perl\",\"script.python\"],"
+                    "\"timeoutSeconds\":%d,"
+                    "\"maxOutputBytes\":%d,"
+                    "\"maxResultCells\":%d,"
+                    "\"isolationProfile\":\"%s\","
+                    "\"requireReviewed\":%s,"
+                    "\"requirePolicyProfiles\":%s},"
+                "\"routes\":["
+                    "{\"name\":\"organizations\",\"path\":\"/organizations\",\"methods\":[\"GET\",\"POST\",\"PUT\",\"DELETE\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"documents\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/{type}/documents\",\"methods\":[\"GET\",\"POST\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"contentRows\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows/{row}\",\"methods\":[\"GET\",\"POST\",\"PUT\",\"DELETE\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"contentColumns\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentColumns/{column}\",\"methods\":[\"GET\",\"POST\",\"PUT\",\"DELETE\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"parserScripts\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts/{script}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"dbBrowsing\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true}"
+                "],"
+                "\"docs\":[\"README.md\",\"AI_USAGE.md\",\"API_EXAMPLES.md\",\"openapi.yaml\",\"samples/ai-agent/\",\"samples/mcp-server/\"]"
+                "}",
+                cmeInternalDBDefinitionsVersion,
+                cmeUseTLSAuthentication ? "true" : "false",
+                CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS,
+                CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES,
+                CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS,
+                agentIsolationProfile,
+                agentRequireReviewed ? "true" : "false",
+                agentRequirePolicyProfiles ? "true" : "false");
+            *responseCode=200;
+            cmeWebServiceProcessRequestFree();
+            return(0);
+        }
+        if (!strcmp(method,"OPTIONS"))
+        {
+            cmeStrConstrAppend(responseText,
+                "{\"methods\":[\"GET\",\"OPTIONS\"],\"contentType\":\"application/json\"}");
+            *responseCode=200;
+            cmeWebServiceProcessRequestFree();
+            return(0);
+        }
+        cmeStrConstrAppend(responseText,
+            "{\"error\":{\"code\":\"method_not_allowed\",\"message\":\"Only GET and OPTIONS are supported for agentCapabilities.\"}}");
+        *responseCode=405;
+        cmeWebServiceProcessRequestFree();
+        return(1);
     }
     if (numUrlElements==0) //Error; depth does not match a valid value
     {
@@ -8985,6 +9199,7 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
         }
     }
     cmeFree(con_info->answerString);
+    cmeFree(con_info->requestId);
     pthread_cond_destroy(&(con_info->threadStatusCond));
     pthread_mutex_destroy(&(con_info->threadStatusMutex));
     cmeFree(con_info);

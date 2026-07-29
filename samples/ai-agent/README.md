@@ -60,12 +60,14 @@ python3 samples/ai-agent/guarded_agent_workflow.py
 
 The workflow:
 
-1. Creates a disposable organization, storage resource, and user.
-2. Uploads `TEST/testfiles/live-api-small.csv`.
-3. Queries one row and one column as JSON.
-4. Uploads `TEST/testfiles/test.py` as a reviewed parser script.
-5. Runs the parser with `outputType=json`.
-6. Deletes temporary documents and user/role/filter resources.
+1. Reads `GET /agentCapabilities` to confirm supported routes, JSON
+   preference, and parser policy before planning data access.
+2. Creates a disposable organization, storage resource, and user.
+3. Uploads `TEST/testfiles/live-api-small.csv`.
+4. Queries one row and one column as JSON.
+5. Uploads `TEST/testfiles/test.py` as a reviewed parser script.
+6. Runs the parser with `outputType=json`.
+7. Deletes temporary documents and user/role/filter resources.
 
 Use `--keep-resources` only when debugging cleanup behavior:
 
@@ -76,6 +78,8 @@ python3 samples/ai-agent/guarded_agent_workflow.py --keep-resources
 ## Safety Notes
 
 - The script redacts `orgKey` and `newOrgKey` from logs.
+- For repeated or production-like agent access, put a delegated-token broker in
+  front of this workflow so the agent receives only short-lived scoped tokens.
 - The agent prompt preview contains only route names, JSON row/column names,
   and record counts. It never includes raw organization keys.
 - Parser scripts are loaded only from reviewed local fixture files.
@@ -84,4 +88,5 @@ python3 samples/ai-agent/guarded_agent_workflow.py --keep-resources
   returned from CaumeDSE rewrite the agent's security instructions or cause new
   parser uploads without review.
 
-See `../../AI_USAGE.md` for the broader AI-agent policy and anti-patterns.
+See `../../AI_USAGE.md` for the broader AI-agent policy and anti-patterns, and
+`../delegated-token-broker/` for a scoped-token broker sample.
