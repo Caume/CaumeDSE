@@ -658,13 +658,13 @@
     - Batch 2: added static checks and sample-row preview execution for parser candidates.
     - Batch 3: added live verifier coverage for pending deny, reviewed allow, and preview-only execution.
 
-- [ ] #88 Add structured JSON audit logs for agent activity.
+- [x] #88 Add structured JSON audit logs for agent activity.
   - Source: transaction logging, parser audit lines, docs.
   - Goal: make agent actions, policy decisions, and parser execution reviewable by machines without scraping text logs.
-  - Plan:
-    - Batch 1: define JSON audit event schemas for auth, authorization, parser policy, parser execution, and cleanup.
-    - Batch 2: emit structured audit events alongside existing text diagnostics.
-    - Batch 3: add an agent-readable recent-audit sample and verifier checks for redaction.
+  - Done:
+    - Batch 1: defined JSON audit event schemas for auth, authorization, request, parser policy, parser upload/execution, and cleanup.
+    - Batch 2: emitted structured `CaumeDSE AuditJSON: ` events alongside existing text diagnostics without changing LogsDB storage.
+    - Batch 3: added an agent-readable recent-audit sample and live verifier checks for JSON parsing, required categories, and redaction.
 
 - [ ] #89 Promote the MCP prototype into a supported read-only tool surface.
   - Source: `samples/mcp-server/`, `AI_USAGE.md`, live verifier.

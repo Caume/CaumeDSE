@@ -72,6 +72,14 @@ The workflow:
 8. Runs the reviewed parser with `outputType=json`.
 9. Deletes temporary documents and user/role/filter resources.
 
+Structured audit lines are emitted in service logs with the
+`CaumeDSE AuditJSON: ` prefix. To summarize recent agent-safe events from a
+local verifier service log:
+
+```sh
+python3 samples/ai-agent/recent_audit_reader.py /tmp/cdse-debug-components-*/live_http_service.log --limit 10
+```
+
 Use `--keep-resources` only when debugging cleanup behavior:
 
 ```sh

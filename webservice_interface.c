@@ -287,6 +287,109 @@ static void cmeWebServiceAppendJSONStringValue(char **dst, const char *src)
     cmeStrConstrAppend(dst,"\"");
 }
 
+static void cmeWebServiceAuditJSON(const char *category, const char *event, const char *outcome,
+                                   const char *reason, int result, const char *requestId,
+                                   const char *userId, const char *orgId, const char *storageId,
+                                   const char *documentId, const char *scriptId, const char *scriptType,
+                                   const char *method, const char *route, const char *authenticated,
+                                   const char *responseCode, int previewOnly)
+{
+#ifdef ERROR_LOG
+    char *jsonLine=NULL;
+
+    cmeStrConstrAppend(&jsonLine,"{\"auditSchemaVersion\":1,\"safeForAgent\":true,\"timestamp\":%lld",
+                       (long long)time(NULL));
+    cmeStrConstrAppend(&jsonLine,",\"category\":");
+    cmeWebServiceAppendJSONStringValue(&jsonLine,category?category:"unknown");
+    cmeStrConstrAppend(&jsonLine,",\"event\":");
+    cmeWebServiceAppendJSONStringValue(&jsonLine,event?event:"unknown");
+    cmeStrConstrAppend(&jsonLine,",\"outcome\":");
+    cmeWebServiceAppendJSONStringValue(&jsonLine,outcome?outcome:"unknown");
+    if (reason)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"reason\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,reason);
+    }
+    cmeStrConstrAppend(&jsonLine,",\"result\":%d",result);
+    if (requestId)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"requestId\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,requestId);
+    }
+    if (userId)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"userId\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,userId);
+    }
+    if (orgId)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"orgId\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,orgId);
+    }
+    if (storageId)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"storageId\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,storageId);
+    }
+    if (documentId)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"documentId\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,documentId);
+    }
+    if (scriptId)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"scriptId\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,scriptId);
+    }
+    if (scriptType)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"scriptType\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,scriptType);
+    }
+    if (method)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"method\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,method);
+    }
+    if (route)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"route\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,route);
+    }
+    if (authenticated)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"authenticated\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,authenticated);
+    }
+    if (responseCode)
+    {
+        cmeStrConstrAppend(&jsonLine,",\"responseCode\":");
+        cmeWebServiceAppendJSONStringValue(&jsonLine,responseCode);
+    }
+    cmeStrConstrAppend(&jsonLine,",\"previewOnly\":%s}",previewOnly?"true":"false");
+    fprintf(stderr,"\nCaumeDSE AuditJSON: %s\n",jsonLine?jsonLine:"{}");
+    cmeFree(jsonLine);
+#else
+    (void)category;
+    (void)event;
+    (void)outcome;
+    (void)reason;
+    (void)result;
+    (void)requestId;
+    (void)userId;
+    (void)orgId;
+    (void)storageId;
+    (void)documentId;
+    (void)scriptId;
+    (void)scriptType;
+    (void)method;
+    (void)route;
+    (void)authenticated;
+    (void)responseCode;
+    (void)previewOnly;
+#endif
+}
+
 static int cmeWebServiceLogAppendFieldValue(char **resultStr, const char *name, const char *value)
 {
     if (cmeWebServiceLogIsSensitiveField(name))
@@ -1430,6 +1533,8 @@ static int cmeWebServiceParserPolicyAllows(const char *metadata, const char *scr
         fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-deny reason=type userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s'\n",
                 userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
                 scriptId?scriptId:"",scriptType?scriptType:"",method?method:"");
+        cmeWebServiceAuditJSON("parserPolicy","policy-deny","deny","type",1,NULL,userId,orgId,storageId,
+                               documentId,scriptId,scriptType,method,NULL,NULL,NULL,previewOnly);
 #endif
         return(1);
     }
@@ -1439,6 +1544,8 @@ static int cmeWebServiceParserPolicyAllows(const char *metadata, const char *scr
         fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-deny reason=pending-review userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s'\n",
                 userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
                 scriptId?scriptId:"",scriptType?scriptType:"",method?method:"");
+        cmeWebServiceAuditJSON("parserPolicy","policy-deny","deny","pending-review",4,NULL,userId,orgId,storageId,
+                               documentId,scriptId,scriptType,method,NULL,NULL,NULL,previewOnly);
 #endif
         return(4);
     }
@@ -1448,6 +1555,8 @@ static int cmeWebServiceParserPolicyAllows(const char *metadata, const char *scr
         fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-deny reason=unreviewed userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s'\n",
                 userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
                 scriptId?scriptId:"",scriptType?scriptType:"",method?method:"");
+        cmeWebServiceAuditJSON("parserPolicy","policy-deny","deny","unreviewed",2,NULL,userId,orgId,storageId,
+                               documentId,scriptId,scriptType,method,NULL,NULL,NULL,previewOnly);
 #endif
         return(2);
     }
@@ -1460,6 +1569,8 @@ static int cmeWebServiceParserPolicyAllows(const char *metadata, const char *scr
         fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-deny reason=profile userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s' isolationProfile='%s'\n",
                 userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
                 scriptId?scriptId:"",scriptType?scriptType:"",method?method:"",isolationProfile);
+        cmeWebServiceAuditJSON("parserPolicy","policy-deny","deny","profile",3,NULL,userId,orgId,storageId,
+                               documentId,scriptId,scriptType,method,NULL,NULL,NULL,previewOnly);
 #endif
         return(3);
     }
@@ -1467,6 +1578,8 @@ static int cmeWebServiceParserPolicyAllows(const char *metadata, const char *scr
     fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-allow userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s' reviewed='%d' isolationProfile='%s'\n",
             userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
             scriptId?scriptId:"",scriptType?scriptType:"",method?method:"",reviewed,isolationProfile);
+    cmeWebServiceAuditJSON("parserPolicy","policy-allow","allow",reviewed?"reviewed":"preview-or-policy",0,NULL,
+                           userId,orgId,storageId,documentId,scriptId,scriptType,method,NULL,NULL,NULL,previewOnly);
 #endif
     return(0);
 }
@@ -1573,9 +1686,30 @@ static void cmeWebServiceParserAuditResult(const char *event, int result, const 
                                            const char *documentId, const char *scriptId, const char *method)
 {
 #ifdef ERROR_LOG
+    const char *category="parserExecution";
+    const char *outcome="error";
+
+    if (event&&strstr(event,"upload"))
+    {
+        category="parserUpload";
+    }
+    else if (event&&strstr(event,"cleanup"))
+    {
+        category="cleanup";
+    }
+    if (event&&((strstr(event,"success"))||(!strcmp(event,"execute-success"))))
+    {
+        outcome="allow";
+    }
+    else if (event&&((strstr(event,"fail"))||(strstr(event,"reject"))||(strstr(event,"timeout"))||(strstr(event,"deny"))))
+    {
+        outcome="deny";
+    }
     fprintf(stderr,"CaumeDSE Audit: parserExecution event=%s result=%d userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s'\n",
             event?event:"unknown",result,userId?userId:"",orgId?orgId:"",storageId?storageId:"",
             documentId?documentId:"",scriptId?scriptId:"",scriptType?scriptType:"",method?method:"");
+    cmeWebServiceAuditJSON(category,event?event:"unknown",outcome,NULL,result,NULL,userId,orgId,storageId,
+                           documentId,scriptId,scriptType,method,NULL,NULL,NULL,0);
 #else
     (void)event;
     (void)result;
@@ -2181,6 +2315,15 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                     "\"isolationProfile\":\"%s\","
                     "\"requireReviewed\":%s,"
                     "\"requirePolicyProfiles\":%s},"
+                "\"structuredAudit\":{\"schemaVersion\":1,"
+                    "\"logPrefix\":\"CaumeDSE AuditJSON: \","
+                    "\"events\":[\"auth\",\"authorization\",\"request\",\"parserPolicy\","
+                    "\"parserUpload\",\"parserExecution\",\"cleanup\"],"
+                    "\"safeFields\":[\"requestId\",\"category\",\"event\",\"outcome\","
+                    "\"reason\",\"result\",\"userId\",\"orgId\",\"storageId\",\"documentId\","
+                    "\"scriptId\",\"scriptType\",\"method\",\"route\",\"authenticated\","
+                    "\"responseCode\",\"previewOnly\"],"
+                    "\"secretsRedacted\":true},"
                 "\"routes\":["
                     "{\"name\":\"organizations\",\"path\":\"/organizations\",\"methods\":[\"GET\",\"POST\",\"PUT\",\"DELETE\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
                     "{\"name\":\"documents\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/{type}/documents\",\"methods\":[\"GET\",\"POST\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
@@ -10258,6 +10401,10 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                             result=cmeWebServiceParserStaticCheck(tmpRAWFile,scriptType,&staticDeniedPattern);
                             if (result)
                             {
+                                cmeWebServiceAuditJSON("parserPolicy","static-deny","deny",
+                                                       staticDeniedPattern?staticDeniedPattern:"unknown",result,NULL,
+                                                       userId,orgId,urlElements[3],urlElements[7],urlElements[9],
+                                                       scriptType,method,NULL,NULL,NULL,parserPreviewOnly);
                                 cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN parser static check denied preview.</b><br>"
                                                    "Denied pattern: '%s'. METHOD: '%s' URL: '%s'."
                                                    "%sLatest IDD version: <code>%s</code>",
@@ -14315,7 +14462,12 @@ static int cmeWebServiceConstructTableSchemaResponse(char **responseText, char *
                        CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES,
                        CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS);
     cmeWebServiceAppendJSONStringValue(responseText,isolationProfile);
-    cmeStrConstrAppend(responseText,",\"requireReviewed\":%s,\"requirePolicyProfiles\":%s}}",
+    cmeStrConstrAppend(responseText,",\"requireReviewed\":%s,\"requirePolicyProfiles\":%s},"
+                       "\"structuredAudit\":{\"schemaVersion\":1,"
+                       "\"logPrefix\":\"CaumeDSE AuditJSON: \","
+                       "\"events\":[\"auth\",\"authorization\",\"request\",\"parserPolicy\","
+                       "\"parserUpload\",\"parserExecution\",\"cleanup\"],"
+                       "\"secretsRedacted\":true}}",
                        cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_REVIEWED",
                                                   CDSE_PARSER_REQUIRE_REVIEWED)?"true":"false",
                        cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_POLICY_PROFILES",
@@ -15245,6 +15397,32 @@ int cmeWebServiceLogConnection (struct MHD_Connection *connection, void *con_cls
                                      startTimestamp, endTimestamp, requestDataSize, responseDataSize,
                                      orgResourceId, requestIPAddress, responseCode, responseHeaders,
                                      authenticated, orgKey);
+    if (!result)
+    {
+        const char *auditCategory="request";
+        const char *auditEvent="request-complete";
+        const char *auditOutcome="allow";
+
+        if (con_info->answerCode==401)
+        {
+            auditCategory="auth";
+            auditEvent="auth-deny";
+            auditOutcome="deny";
+        }
+        else if (con_info->answerCode==403)
+        {
+            auditCategory="authorization";
+            auditEvent="authorization-deny";
+            auditOutcome="deny";
+        }
+        else if (con_info->answerCode>=400)
+        {
+            auditOutcome="deny";
+        }
+        cmeWebServiceAuditJSON(auditCategory,auditEvent,auditOutcome,NULL,result,
+                               con_info->requestId,userId,orgId,orgResourceId,NULL,NULL,NULL,
+                               requestMethod,requestUrl,authenticated,responseCode,0);
+    }
     if (result) //Error
     {
 #ifdef ERROR_LOG

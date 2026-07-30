@@ -332,3 +332,9 @@ when saving verifier artifacts in CI or AI-assisted debugging sessions; this
 masks organization keys, `newOrgKey` values, selected credential-style request
 parameters, and generated certificate/key paths in summaries and live request
 artifacts.
+
+DEBUG service logs emit machine-readable audit entries prefixed with
+`CaumeDSE AuditJSON: `. Use
+`samples/ai-agent/recent_audit_reader.py` to parse recent version 1 events for
+auth, authorization, request, parser policy, parser execution, and cleanup
+review without scraping the older text diagnostics.
