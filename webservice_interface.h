@@ -134,6 +134,11 @@ int cmeWebServiceProcessDocumentTypeResource (char **responseText, char **respon
 int cmeWebServiceProcessDocumentResource (char **responseText, char ***responseHeaders, int *responseCode,
                                           const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                           const char *storagePath, struct MHD_Connection *connection);
+//Function to process document schema metadata requests.
+int cmeWebServiceProcessDocumentSchemaResource(char **responseText, char ***responseHeaders, int *responseCode,
+                                               const char *url, const char **urlElements,
+                                               const char **argumentElements, const char *method,
+                                               const char *storagePath);
 //Function to process document class resource requests
 int cmeWebServiceProcessDocumentClass (char **responseText, char ***responseHeaders, int *responseCode,
                                        const char *url, const char **urlElements, const char **argumentElements,

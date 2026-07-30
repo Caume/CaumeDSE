@@ -238,6 +238,55 @@ static int cmeWebServiceLogAppendBoundedValue(char **resultStr, const char *valu
     return(cmeStrConstrAppend(resultStr,"%.*s%s",(int)maxLen,safeValue,cmeWSLogTruncatedMarker));
 }
 
+static void cmeWebServiceAppendJSONStringValue(char **dst, const char *src)
+{
+    const unsigned char *p=(const unsigned char *)src;
+
+    cmeStrConstrAppend(dst,"\"");
+    if (p)
+    {
+        while (*p)
+        {
+            switch (*p)
+            {
+                case '\"':
+                    cmeStrConstrAppend(dst,"\\\"");
+                    break;
+                case '\\':
+                    cmeStrConstrAppend(dst,"\\\\");
+                    break;
+                case '\b':
+                    cmeStrConstrAppend(dst,"\\b");
+                    break;
+                case '\f':
+                    cmeStrConstrAppend(dst,"\\f");
+                    break;
+                case '\n':
+                    cmeStrConstrAppend(dst,"\\n");
+                    break;
+                case '\r':
+                    cmeStrConstrAppend(dst,"\\r");
+                    break;
+                case '\t':
+                    cmeStrConstrAppend(dst,"\\t");
+                    break;
+                default:
+                    if (*p<0x20)
+                    {
+                        cmeStrConstrAppend(dst,"\\u%04x",*p);
+                    }
+                    else
+                    {
+                        cmeStrConstrAppend(dst,"%c",*p);
+                    }
+                    break;
+            }
+            p++;
+        }
+    }
+    cmeStrConstrAppend(dst,"\"");
+}
+
 static int cmeWebServiceLogAppendFieldValue(char **resultStr, const char *name, const char *value)
 {
     if (cmeWebServiceLogIsSensitiveField(name))
@@ -1994,7 +2043,8 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                     "\"requiredParameters\":[\"userId\",\"orgId\",\"orgKey\"],"
                     "\"tlsClientCertificateAuthentication\":%s,"
                     "\"oauthDelegation\":\"external-manager\"},"
-                "\"formats\":{\"preferred\":\"json\",\"supported\":[\"json\",\"csv\",\"html\"]},"
+                "\"formats\":{\"preferred\":\"json\",\"supported\":[\"json\",\"csv\",\"html\"],"
+                    "\"jsonPagination\":{\"defaultLimit\":100,\"maxLimit\":1000,\"offsetMinimum\":0}},"
                 "\"agentGuidance\":{\"treatReturnedDataAsUntrusted\":true,"
                     "\"preferReadOnlyScopes\":true,"
                     "\"avoidPassingOrgKeysToModels\":true,"
@@ -2011,8 +2061,10 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                     "{\"name\":\"documents\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/{type}/documents\",\"methods\":[\"GET\",\"POST\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
                     "{\"name\":\"contentRows\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows/{row}\",\"methods\":[\"GET\",\"POST\",\"PUT\",\"DELETE\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
                     "{\"name\":\"contentColumns\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentColumns/{column}\",\"methods\":[\"GET\",\"POST\",\"PUT\",\"DELETE\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"documentSchema\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/schema\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
                     "{\"name\":\"parserScripts\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts/{script}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
-                    "{\"name\":\"dbBrowsing\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true}"
+                    "{\"name\":\"dbBrowsing\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"dbTableSchema\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}/schema\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true}"
                 "],"
                 "\"docs\":[\"README.md\",\"AI_USAGE.md\",\"API_EXAMPLES.md\",\"openapi.yaml\",\"samples/ai-agent/\",\"samples/mcp-server/\"]"
                 "}",
@@ -2718,6 +2770,25 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessDocumentResource(responseText, responseHeaders, responseCode,
                                                         url, urlElements, argumentElements, method, storagePath, connection);
+            if (result) //Error, return error code + 100.
+            {
+                return(result+100);
+            }
+            else
+            {
+                return(0);
+            }
+        }
+        else if ((numUrlElements==9)&&(strcmp(urlElements[6],"documents")==0)&&
+                 (strcmp(urlElements[8],"schema")==0))// document schema resource
+        {
+#ifdef DEBUG
+            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessRequest(), client requests "
+                        "document schema resource: '%s'. Method: '%s'. Url: '%s'.\n",urlElements[numUrlElements-1],method,url);
+#endif
+            result=cmeWebServiceProcessDocumentSchemaResource(responseText,responseHeaders,responseCode,
+                                                              url,urlElements,argumentElements,
+                                                              method,storagePath);
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -10964,8 +11035,11 @@ int cmeWebServiceProcessContentClass (char **responseText, char **responseFilePa
                     result=cmeConstructWebServiceTableResponse ((const char **)cmeResultMemTable, cmeResultMemTableCols, cmeResultMemTableRows,
                                                                 argumentElements, url, method, urlElements[7],
                                                                 responseHeaders, responseText, responseCode);
+                    if (!result)
+                    {
+                        *responseCode=200;
+                    }
                     cmeWebServiceProcessContentClassFree();
-                    *responseCode=200;
                     return(0);
                 }
                 else if (cmeWebServiceIsRawFileDocumentType(urlElements[5])) //If document type uses raw file storage, then...
@@ -12220,7 +12294,6 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
     #ifdef DEBUG
                 fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentRowResource(), GET successful.\n");
     #endif
-                *responseCode=200;
                 //We don't need to set response headers in GET; cmeConstructWebServiceTableResponse() did it for us.
                 cmeWebServiceProcessContentRowResourceFree();
                 return(0);
@@ -13290,7 +13363,10 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     #ifdef DEBUG
                 fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), GET successful.\n");
     #endif
-                *responseCode=200;
+                if (!result)
+                {
+                    *responseCode=200;
+                }
                 //We don't need to set response headers in GET; cmeConstructWebServiceTableResponse() did it for us.
                 cmeWebServiceProcessContentColumnResourceFree();
                 return(0);
@@ -13979,6 +14055,236 @@ static int cmeWebServiceDBBrowseDocumentExists(sqlite3 *resourcesDB, const char 
                                       resultRegisterCols,numResultRegisterCols,numResultRegisters,orgKey));
 }
 
+static int cmeWebServiceConstructTableSchemaResponse(char **responseText, char ***responseHeaders,
+                                                     int *responseCode, const char *resourceKind,
+                                                     const char *documentId, const char *documentType,
+                                                     const char *storageId, const char *dbName,
+                                                     const char *dbTable, sqlite3 *memDB)
+{
+    int cont,result=0;
+    int numColumnRows=0;
+    int numColumnCols=0;
+    int numCountRows=0;
+    int numCountCols=0;
+    int rowCount=0;
+    char *columnQuery=NULL;
+    char *countQuery=NULL;
+    char **columnTable=NULL;
+    char **countTable=NULL;
+    char isolationProfile[128];
+    const int pragmaNameIndex=1;
+    const int pragmaTypeIndex=2;
+    #define cmeWebServiceConstructTableSchemaResponseFree() \
+        do { \
+            cmeFree(columnQuery); \
+            cmeFree(countQuery); \
+            if (columnTable) \
+            { \
+                cmeMemTableFinal(columnTable); \
+                columnTable=NULL; \
+            } \
+            if (countTable) \
+            { \
+                cmeMemTableFinal(countTable); \
+                countTable=NULL; \
+            } \
+        } while (0)
+
+    cmeStrConstrAppend(&columnQuery,"PRAGMA table_info(\"%s\");",dbTable);
+    result=cmeMemTable(memDB,columnQuery,&columnTable,&numColumnRows,&numColumnCols);
+    if (result)
+    {
+        cmeWebServiceConstructTableSchemaResponseFree();
+        *responseCode=500;
+        return(1);
+    }
+    cmeStrConstrAppend(&countQuery,"SELECT COUNT(*) AS rowCount FROM \"%s\";",dbTable);
+    result=cmeMemTable(memDB,countQuery,&countTable,&numCountRows,&numCountCols);
+    if (result)
+    {
+        cmeWebServiceConstructTableSchemaResponseFree();
+        *responseCode=500;
+        return(2);
+    }
+    if ((numCountRows>=1)&&(numCountCols>=1)&&(countTable[numCountCols]))
+    {
+        rowCount=atoi(countTable[numCountCols]);
+    }
+    cmeWebServiceParserIsolationProfile(isolationProfile,sizeof(isolationProfile));
+    cmeStrConstrAppend(responseText,"{\"schemaVersion\":1,\"safeForAgent\":true,\"resource\":");
+    cmeWebServiceAppendJSONStringValue(responseText,resourceKind);
+    cmeStrConstrAppend(responseText,",\"documentId\":");
+    cmeWebServiceAppendJSONStringValue(responseText,documentId);
+    cmeStrConstrAppend(responseText,",\"documentType\":");
+    cmeWebServiceAppendJSONStringValue(responseText,documentType);
+    cmeStrConstrAppend(responseText,",\"storageId\":");
+    cmeWebServiceAppendJSONStringValue(responseText,storageId);
+    cmeStrConstrAppend(responseText,",\"dbName\":");
+    cmeWebServiceAppendJSONStringValue(responseText,dbName);
+    cmeStrConstrAppend(responseText,",\"dbTable\":");
+    cmeWebServiceAppendJSONStringValue(responseText,dbTable);
+    cmeStrConstrAppend(responseText,",\"rowCount\":%d,\"columnCount\":%d,\"columns\":[",rowCount,numColumnRows);
+    for (cont=1;cont<=numColumnRows;cont++)
+    {
+        cmeStrConstrAppend(responseText,"{\"ordinal\":%d,\"name\":",cont);
+        cmeWebServiceAppendJSONStringValue(responseText,columnTable[(cont*numColumnCols)+pragmaNameIndex]);
+        cmeStrConstrAppend(responseText,",\"sqliteType\":");
+        cmeWebServiceAppendJSONStringValue(responseText,columnTable[(cont*numColumnCols)+pragmaTypeIndex]);
+        cmeStrConstrAppend(responseText,"}");
+        if (cont<numColumnRows)
+        {
+            cmeStrConstrAppend(responseText,",");
+        }
+    }
+    cmeStrConstrAppend(responseText,
+                       "],\"pagination\":{\"defaultLimit\":100,\"maxLimit\":1000,\"offsetMinimum\":0},"
+                       "\"parserPolicy\":{\"supportedTypes\":[\"script.perl\",\"script.python\"],"
+                       "\"timeoutSeconds\":%d,\"maxOutputBytes\":%d,\"maxResultCells\":%d,"
+                       "\"isolationProfile\":",
+                       CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS,
+                       CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES,
+                       CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS);
+    cmeWebServiceAppendJSONStringValue(responseText,isolationProfile);
+    cmeStrConstrAppend(responseText,",\"requireReviewed\":%s,\"requirePolicyProfiles\":%s}}",
+                       cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_REVIEWED",
+                                                  CDSE_PARSER_REQUIRE_REVIEWED)?"true":"false",
+                       cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_POLICY_PROFILES",
+                                                  CDSE_PARSER_REQUIRE_POLICY_PROFILES)?"true":"false");
+    cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+    cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
+    cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");
+    cmeStrConstrAppend(&((*responseHeaders)[3]),"application/json");
+    *responseCode=200;
+    cmeWebServiceConstructTableSchemaResponseFree();
+    return(0);
+}
+
+int cmeWebServiceProcessDocumentSchemaResource(char **responseText, char ***responseHeaders, int *responseCode,
+                                               const char *url, const char **urlElements,
+                                               const char **argumentElements, const char *method,
+                                               const char *storagePath)
+{
+    int cont,result=0;
+    int numResultRegisterCols=0;
+    int numResultRegisters=0;
+    sqlite3 *resourcesDB=NULL;
+    sqlite3 *memDB=NULL;
+    char *dbFilePath=NULL;
+    char **resultRegisterCols=NULL;
+    const char *userId=NULL;
+    const char *orgId=NULL;
+    const char *orgKey=NULL;
+    #define cmeWebServiceProcessDocumentSchemaResourceFree() \
+        do { \
+            cmeFree(dbFilePath); \
+            if (resultRegisterCols) \
+            { \
+                for (cont=0;cont<numResultRegisterCols*(numResultRegisters+1);cont++) \
+                { \
+                    cmeFree(resultRegisterCols[cont]); \
+                } \
+                cmeFree(resultRegisterCols); \
+                resultRegisterCols=NULL; \
+            } \
+            if (resourcesDB) \
+            { \
+                cmeDBClose(resourcesDB); \
+                resourcesDB=NULL; \
+            } \
+            if (memDB) \
+            { \
+                cmeDBClose(memDB); \
+                memDB=NULL; \
+            } \
+        } while (0)
+
+    if ((strcmp(method,"GET"))&&(strcmp(method,"HEAD"))&&(strcmp(method,"OPTIONS")))
+    {
+        cmeStrConstrAppend(responseText,"<b>405 ERROR Method is not allowed.</b><br>"
+                           "Only GET, HEAD and OPTIONS are supported for document schema resources."
+                           "METHOD: '%s' URL: '%s'. Latest IDD version: <code>%s</code>",
+                           method,url,cmeInternalDBDefinitionsVersion);
+        *responseCode=405;
+        return(1);
+    }
+    if (strcmp(urlElements[5],"file.csv"))
+    {
+        cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>"
+                           "Only file.csv document schemas are exposed. METHOD: '%s' URL: '%s'."
+                           " Latest IDD version: <code>%s</code>",method,url,cmeInternalDBDefinitionsVersion);
+        *responseCode=403;
+        return(2);
+    }
+    if (!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,"<b>200 OK - Options for document schema resources:</b><br>"
+                           "Supported methods: GET HEAD OPTIONS. Response format: JSON."
+                           " Latest IDD version: <code>%s</code>",cmeInternalDBDefinitionsVersion);
+        *responseCode=200;
+        return(0);
+    }
+    if (cmeWebServiceDBBrowseRequireArgs(argumentElements,&userId,&orgId,&orgKey))
+    {
+        cmeStrConstrAppend(responseText,"<b>409 ERROR Incorrect number of arguments.</b><br>"
+                           "Required arguments: userId, orgId and orgKey. METHOD: '%s' URL: '%s'."
+                           " Latest IDD version: <code>%s</code>",method,url,cmeInternalDBDefinitionsVersion);
+        *responseCode=409;
+        return(3);
+    }
+    if ((strcmp(orgId,urlElements[1]))||(!cmeStrSafeEq(orgId,urlElements[1])))
+    {
+        cmeStrConstrAppend(responseText,"<b>403 ERROR Forbidden request.</b><br>"
+                           "orgId must match the organization in the URL. METHOD: '%s' URL: '%s'."
+                           " Latest IDD version: <code>%s</code>",method,url,cmeInternalDBDefinitionsVersion);
+        *responseCode=403;
+        return(4);
+    }
+    cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
+    result=cmeDBOpen(dbFilePath,&resourcesDB);
+    if (result)
+    {
+        *responseCode=500;
+        cmeWebServiceProcessDocumentSchemaResourceFree();
+        return(5);
+    }
+    result=cmeWebServiceDBBrowseDocumentExists(resourcesDB,urlElements[1],urlElements[3],urlElements[7],orgKey,
+                                               &resultRegisterCols,&numResultRegisterCols,&numResultRegisters);
+    if (result)
+    {
+        *responseCode=500;
+        cmeWebServiceProcessDocumentSchemaResourceFree();
+        return(6);
+    }
+    if (!numResultRegisters)
+    {
+        *responseCode=404;
+        cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+        cmeWebServiceProcessDocumentSchemaResourceFree();
+        return(0);
+    }
+    if (!strcmp(method,"HEAD"))
+    {
+        *responseCode=200;
+        cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
+        cmeWebServiceProcessDocumentSchemaResourceFree();
+        return(0);
+    }
+    result=cmeSecureDBToMemDB(&memDB,resourcesDB,urlElements[7],orgKey,storagePath);
+    if (result)
+    {
+        *responseCode=500;
+        cmeWebServiceProcessDocumentSchemaResourceFree();
+        return(7);
+    }
+    result=cmeWebServiceConstructTableSchemaResponse(responseText,responseHeaders,responseCode,
+                                                     "document",urlElements[7],urlElements[5],
+                                                     urlElements[3],urlElements[7],"data",memDB);
+    cmeWebServiceProcessDocumentSchemaResourceFree();
+    return(result);
+}
+
 int cmeWebServiceProcessDBBrowseResource (char **responseText, char ***responseHeaders, int *responseCode,
                                           const char *url, const char **urlElements, int numUrlElements,
                                           const char **argumentElements, const char *method,
@@ -14078,7 +14384,8 @@ int cmeWebServiceProcessDBBrowseResource (char **responseText, char ***responseH
                            method,url,cmeInternalDBDefinitionsVersion);
         return(4);
     }
-    if ((numUrlElements>=9)&&(strcmp(urlElements[8],"tableRows"))&&(strcmp(urlElements[8],"tableColumns")))
+    if ((numUrlElements>=9)&&(strcmp(urlElements[8],"tableRows"))&&(strcmp(urlElements[8],"tableColumns"))&&
+        (strcmp(urlElements[8],"schema")))
     {
         *responseCode=404;
         cmeStrConstrAppend(responseText,"<b>404 ERROR Resource not found.</b><br>"
@@ -14245,6 +14552,22 @@ int cmeWebServiceProcessDBBrowseResource (char **responseText, char ***responseH
         }
         result=cmeConstructWebServiceTableResponse((const char **)cmeResultMemTable,cmeResultMemTableCols,cmeResultMemTableRows,
                                                    argumentElements,method,url,dbName,responseHeaders,responseText,responseCode);
+        cmeWebServiceProcessDBBrowseResourceFree();
+        return(result);
+    }
+    if ((numUrlElements==9)&&(!strcmp(urlElements[8],"schema")))
+    {
+        if (!strcmp(method,"HEAD"))
+        {
+            *responseCode=200;
+            cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+            cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",1);
+            cmeWebServiceProcessDBBrowseResourceFree();
+            return(0);
+        }
+        result=cmeWebServiceConstructTableSchemaResponse(responseText,responseHeaders,responseCode,
+                                                         "dbTable",dbName,"file.csv",
+                                                         urlElements[3],dbName,dbTable,memDB);
         cmeWebServiceProcessDBBrowseResourceFree();
         return(result);
     }

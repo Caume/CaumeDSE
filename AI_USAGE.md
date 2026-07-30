@@ -38,10 +38,12 @@ Use the same shape as the live verifier:
 5. Have the broker validate each requested scope before forwarding to CaumeDSE
    with the delegated `userId`, `orgId`, and broker-held `orgKey`.
 6. Upload test CSV or script fixtures from known local paths.
-7. Query narrow resources such as a specific row, column, table, or parser
+7. Read schema metadata for CSV documents or exposed secure DB tables before
+   selecting rows, columns, or parser output.
+8. Query narrow resources such as a specific row, column, table, or parser
    output.
-8. Delete temporary documents, role/filter rows, users, and storage artifacts.
-9. Review `summary.txt` and `live-api-coverage.csv` with redaction enabled.
+9. Delete temporary documents, role/filter rows, users, and storage artifacts.
+10. Review `summary.txt` and `live-api-coverage.csv` with redaction enabled.
 
 For failures that an agent must parse, include `outputType=json`. Non-HEAD
 error responses include `error.code`, `error.message`, `error.httpStatus`,
@@ -70,12 +72,17 @@ Prefer explicit, narrow API calls:
 
 ```sh
 curl -i $TLS_ARGS \
-  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentColumns/name?$AUTH&newOrgKey=$ORG_KEY&outputType=csv"
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/schema?$AUTH&newOrgKey=$ORG_KEY"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentColumns/name?$AUTH&newOrgKey=$ORG_KEY&outputType=json&limit=10&offset=0"
 ```
 
 Avoid broad or open-ended data dumps unless the agent has a clear need and the
-data has been reviewed for sensitivity. For parser scripts, upload only scripts
-from reviewed local files:
+data has been reviewed for sensitivity. JSON table reads default to
+`limit=100&offset=0`, accept `limit` values from 1 to 1000, and return a
+`pagination` object with `returnedRows`, `totalRows`, and `hasMore`. For parser
+scripts, upload only scripts from reviewed local files:
 
 ```sh
 curl -i $TLS_ARGS \

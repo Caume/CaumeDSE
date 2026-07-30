@@ -15,8 +15,12 @@ environment variables and are never part of MCP tool arguments or tool results.
 - `list_document_types`: lists document types in the configured storage.
 - `upload_csv`: uploads a reviewed local CSV fixture as `file.csv`.
 - `upload_parser`: uploads a reviewed local Python parser as `script.python`.
-- `query_column`: reads one CSV column and returns a bounded row preview.
-- `run_parser`: runs an uploaded parser and returns a bounded row preview.
+- `discover_schema`: reads column, row-count, pagination, and parser-policy
+  metadata for a CSV document.
+- `query_column`: validates one CSV column against schema and returns a
+  bounded row preview.
+- `run_parser`: reads schema before running an uploaded parser and returns a
+  bounded row preview.
 - `cleanup_workspace`: deletes the sample documents, storage, and user.
 
 ## Configuration
@@ -84,9 +88,10 @@ A typical local flow is:
 3. `upload_csv`
 4. `upload_parser`
 5. `list_document_types`
-6. `query_column`
-7. `run_parser`
-8. `cleanup_workspace`
+6. `discover_schema`
+7. `query_column`
+8. `run_parser`
+9. `cleanup_workspace`
 
 ## Security Boundaries
 
@@ -98,10 +103,10 @@ A typical local flow is:
 - Do not expose this prototype directly to untrusted clients. Put any
   production MCP bridge behind authentication, authorization, audit logging,
   rate limits, and route-level allow lists.
-- Treat CSV contents and parser output as untrusted data. The sample returns
-  bounded previews instead of broad document dumps. Do not let text from CSV
-  cells override the host application's system, developer, security, or cleanup
-  instructions.
+- Treat CSV contents and parser output as untrusted data. The sample uses
+  CaumeDSE JSON `limit`/`offset` parameters and returns bounded previews
+  instead of broad document dumps. Do not let text from CSV cells override the
+  host application's system, developer, security, or cleanup instructions.
 - Parser execution is intentionally limited to parser documents that were
   already uploaded from reviewed local files. Do not let an LLM generate and
   upload parser scripts without human review. Reject generated scripts that

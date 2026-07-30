@@ -1034,7 +1034,19 @@ outputType
     resource specification queries, content rows/columns, parser script
     output, secure DB browsing, and requests for the contents of csv
     type files. JSON table responses use this shape:
-    `{"columns":[...],"rows":[{"column":"value"}]}`.
+    `{"columns":[...],"rows":[{"column":"value"}],"pagination":{"offset":0,"limit":100,"returnedRows":N,"totalRows":N,"hasMore":false}}`.
+    For `outputType=json`, optional `limit` and `offset` parameters bound
+    returned rows. `limit` defaults to 100 and must be 1..1000; `offset`
+    defaults to 0 and must be non-negative.
+
+schema
+    For agent-safe CSV inspection, read schema metadata before reading rows,
+    columns, or parser output:
+    `/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/schema`
+    and
+    `/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}/schema`.
+    These JSON endpoints return column names/types, row counts, pagination
+    limits, document/table identifiers, and parser policy metadata.
 
 #### 3.4 Document POST parameters
 
@@ -1095,6 +1107,7 @@ The manifest reports:
 
 - required authentication parameters for data routes;
 - preferred and supported response formats;
+- JSON pagination defaults and schema discovery routes;
 - parser policy settings such as timeout, result limits, isolation profile,
   and reviewed/profile enforcement;
 - core route names, path templates, supported methods, and whether

@@ -454,7 +454,32 @@ static void cmeAppendJSONStringValue(char **dst, const char *src)
 
 int cmeMemTableToJSONTableStr (const char** srcMemTable,char **resultJSONTableStr,int numColumns,int numRows)
 {
-    int cont,cont2;
+    return(cmeMemTableToJSONTableStrPaged(srcMemTable,resultJSONTableStr,numColumns,numRows,0,numRows));
+}
+
+int cmeMemTableToJSONTableStrPaged (const char** srcMemTable,char **resultJSONTableStr,int numColumns,int numRows,
+                                    int offset,int limit)
+{
+    int cont,cont2,returnedRows=0;
+    int firstRow=offset+1;
+    int lastRow=offset+limit;
+
+    if (offset<0)
+    {
+        offset=0;
+    }
+    if (limit<1)
+    {
+        limit=1;
+    }
+    if (firstRow<1)
+    {
+        firstRow=1;
+    }
+    if (lastRow>numRows)
+    {
+        lastRow=numRows;
+    }
 
     cmeStrConstrAppend(resultJSONTableStr,"{\"columns\":[");
     for (cont=0;cont<numColumns;cont++)
@@ -466,7 +491,7 @@ int cmeMemTableToJSONTableStr (const char** srcMemTable,char **resultJSONTableSt
         }
     }
     cmeStrConstrAppend(resultJSONTableStr,"],\"rows\":[");
-    for (cont=1;cont<=numRows;cont++)
+    for (cont=firstRow;cont<=lastRow;cont++)
     {
         cmeStrConstrAppend(resultJSONTableStr,"{");
         for(cont2=0;cont2<numColumns;cont2++)
@@ -480,12 +505,52 @@ int cmeMemTableToJSONTableStr (const char** srcMemTable,char **resultJSONTableSt
             }
         }
         cmeStrConstrAppend(resultJSONTableStr,"}");
-        if (cont<numRows)
+        returnedRows++;
+        if (cont<lastRow)
         {
             cmeStrConstrAppend(resultJSONTableStr,",");
         }
     }
-    cmeStrConstrAppend(resultJSONTableStr,"]}");
+    cmeStrConstrAppend(resultJSONTableStr,
+                       "],\"pagination\":{\"offset\":%d,\"limit\":%d,\"returnedRows\":%d,"
+                       "\"totalRows\":%d,\"hasMore\":%s}}",
+                       offset,limit,returnedRows,numRows,(offset+returnedRows<numRows)?"true":"false");
+    return(0);
+}
+
+static int cmeParseJSONReadPageParameter(const char **argumentElements, const char *name,
+                                         int defaultValue, int minValue, int maxValue, int *resultValue)
+{
+    const char *value=NULL;
+    const char *ptr=NULL;
+    long parsed=0;
+
+    *resultValue=defaultValue;
+    if ((!argumentElements)||(cmeFindInArgPairList(argumentElements,name,&value))||(!value))
+    {
+        return(0);
+    }
+    if (!*value)
+    {
+        return(1);
+    }
+    for (ptr=value;*ptr;ptr++)
+    {
+        if (!isdigit((unsigned char)*ptr))
+        {
+            return(1);
+        }
+        parsed=(parsed*10)+(*ptr-'0');
+        if (parsed>maxValue)
+        {
+            return(1);
+        }
+    }
+    if ((parsed<minValue)||(parsed>maxValue))
+    {
+        return(1);
+    }
+    *resultValue=(int)parsed;
     return(0);
 }
 
@@ -532,7 +597,23 @@ int cmeConstructWebServiceTableResponse (const char **resultTable, const int tab
             }
             else if (!strcmp("json",pOutputType)) // user request results in JSON format.
             {
-                result=cmeMemTableToJSONTableStr((const char **)resultTable,resultTableStr,tableCols,tableRows);
+                int limit=100;
+                int offset=0;
+
+                if ((cmeParseJSONReadPageParameter(argumentElements,"limit",100,1,1000,&limit))||
+                    (cmeParseJSONReadPageParameter(argumentElements,"offset",0,0,2147483647,&offset)))
+                {
+                    cmeStrConstrAppend(resultTableStr,"<b>409 ERROR Incorrect pagination arguments.</b><br>"
+                                       "JSON read pagination requires numeric limit 1..1000 and offset >= 0. "
+                                       "METHOD: '%s' URL: '%s'."
+                                       "Latest IDD version: <code>%s</code>",method,url,
+                                       cmeInternalDBDefinitionsVersion);
+                    cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");
+                    cmeStrConstrAppend(&((*responseHeaders)[3]),"application/json");
+                    *responseCode=409;
+                    return(1);
+                }
+                result=cmeMemTableToJSONTableStrPaged((const char **)resultTable,resultTableStr,tableCols,tableRows,offset,limit);
                 cmeStrConstrAppend(&((*responseHeaders)[2]),"Content-Type");  //Note: fields 0 & 1 will be set with Engine-results later.
                 cmeStrConstrAppend(&((*responseHeaders)[3]),"application/json");
             }

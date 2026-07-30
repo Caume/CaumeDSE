@@ -138,9 +138,11 @@ def multipart_body(fields, file_field, file_path):
     return body, {"Content-Type": f"multipart/form-data; boundary={boundary}"}
 
 
-def json_request(cfg, path, params):
+def json_request(cfg, path, params, limit=10, offset=0):
     params = dict(params)
     params["outputType"] = "json"
+    params["limit"] = str(limit)
+    params["offset"] = str(offset)
     _, _, payload = request(cfg, "GET", path, params=params)
     return json.loads(payload.decode("utf-8"))
 
@@ -220,10 +222,15 @@ def upload_file(cfg, doc_type, doc_name, file_path, resource_info):
     request(cfg, "POST", path, body=body, headers=headers, expected=(201, 409))
 
 
-def agent_prompt_preview(row_result, column_result, parser_result):
+def agent_prompt_preview(schema_result, row_result, column_result, parser_result):
     prompt = {
         "task": "Choose the narrowest next CaumeDSE read operation.",
         "available_context": {
+            "document_schema": {
+                "columns": [column.get("name") for column in schema_result.get("columns", [])],
+                "row_count": schema_result.get("rowCount"),
+                "parser_policy": schema_result.get("parserPolicy", {}),
+            },
             "row_columns": row_result.get("columns", []),
             "column_rows": len(column_result.get("rows", [])),
             "parser_columns": parser_result.get("columns", []),
@@ -269,17 +276,20 @@ def run_workflow(cfg):
         f"/storage/{urllib.parse.quote(cfg.storage)}"
         f"/documentTypes/file.csv/documents/{urllib.parse.quote(cfg.csv_doc)}"
     )
+    schema = json_request(cfg, f"{base_doc}/schema", auth, limit=1)
     row = json_request(cfg, f"{base_doc}/contentRows/1", auth)
     column = json_request(cfg, f"{base_doc}/contentColumns/name", auth)
     parser = json_request(cfg, f"{base_doc}/parserScripts/{urllib.parse.quote(cfg.parser_doc)}", auth)
 
     print("Narrow JSON query summary:")
     print(json.dumps({
+        "schema_columns": schema.get("columnCount"),
+        "schema_rows": schema.get("rowCount"),
         "row_count": len(row.get("rows", [])),
         "column_count": len(column.get("columns", [])),
         "parser_rows": len(parser.get("rows", [])),
     }, indent=2, sort_keys=True))
-    agent_prompt_preview(row, column, parser)
+    agent_prompt_preview(schema, row, column, parser)
 
 
 def parse_args(argv):

@@ -141,9 +141,11 @@ def multipart_body(fields, file_field, file_path):
     return body, {"Content-Type": f"multipart/form-data; boundary={boundary}"}
 
 
-def json_request(cfg, path, params):
+def json_request(cfg, path, params, limit=10, offset=0):
     params = dict(params)
     params["outputType"] = "json"
+    params["limit"] = str(limit)
+    params["offset"] = str(offset)
     _, _, payload = request(cfg, "GET", path, params=params)
     return json.loads(payload.decode("utf-8"))
 
@@ -172,9 +174,10 @@ def summarize_table(result, limit):
     rows = result.get("rows", [])
     return {
         "columns": result.get("columns", []),
-        "rowCount": len(rows),
+        "rowCount": result.get("pagination", {}).get("totalRows", len(rows)),
+        "pagination": result.get("pagination", {}),
         "rows": rows[:limit],
-        "truncated": len(rows) > limit,
+        "truncated": bool(result.get("pagination", {}).get("hasMore", len(rows) > limit)),
     }
 
 
@@ -237,7 +240,7 @@ def create_workspace(cfg, _args):
 
 def list_document_types(cfg, _args):
     path = f"/organizations/{quote_path(cfg.org)}/storage/{quote_path(cfg.storage)}/documentTypes"
-    result = json_request(cfg, path, cfg.auth_params(include_new_key=True))
+    result = json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=10)
     return summarize_table(result, 10)
 
 
@@ -277,20 +280,34 @@ def upload_parser(cfg, args):
     return upload_document(cfg, "script.python", doc_name, file_path, resource_info)
 
 
+def discover_schema(cfg, args):
+    doc_name = args.get("document") or cfg.csv_doc
+    path = f"{base_document_path(cfg, 'file.csv', doc_name)}/schema"
+    return json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=1)
+
+
 def query_column(cfg, args):
     doc_name = args.get("document") or cfg.csv_doc
     column = args.get("column") or "name"
     limit = clamp_limit(args.get("limit"))
+    schema = discover_schema(cfg, {"document": doc_name})
+    if column not in {entry.get("name") for entry in schema.get("columns", [])}:
+        raise ToolError(f"Column not found in document schema: {column}")
     path = f"{base_document_path(cfg, 'file.csv', doc_name)}/contentColumns/{quote_path(column)}"
-    return summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True)), limit)
+    summary = summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=limit), limit)
+    summary["schema"] = {"rowCount": schema.get("rowCount"), "columnCount": schema.get("columnCount")}
+    return summary
 
 
 def run_parser(cfg, args):
     doc_name = args.get("document") or cfg.csv_doc
     parser_name = args.get("parser") or cfg.parser_doc
     limit = clamp_limit(args.get("limit"))
+    schema = discover_schema(cfg, {"document": doc_name})
     path = f"{base_document_path(cfg, 'file.csv', doc_name)}/parserScripts/{quote_path(parser_name)}"
-    return summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True)), limit)
+    summary = summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=limit), limit)
+    summary["schema"] = {"rowCount": schema.get("rowCount"), "columnCount": schema.get("columnCount")}
+    return summary
 
 
 def cleanup_workspace(cfg, args):
@@ -316,6 +333,7 @@ TOOLS = {
     "list_document_types": list_document_types,
     "upload_csv": upload_csv,
     "upload_parser": upload_parser,
+    "discover_schema": discover_schema,
     "query_column": query_column,
     "run_parser": run_parser,
     "cleanup_workspace": cleanup_workspace,
@@ -365,8 +383,19 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "discover_schema",
+        "description": "Read document schema metadata before row, column, or parser reads.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "query_column",
-        "description": "Read one CSV column and return a bounded row preview.",
+        "description": "Read document schema, validate one CSV column, and return a bounded row preview.",
         "inputSchema": {
             "type": "object",
             "properties": {
