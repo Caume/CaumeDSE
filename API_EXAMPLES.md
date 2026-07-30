@@ -49,7 +49,8 @@ curl -s "$BASE_URL/agentCapabilities"
 ```
 
 Useful fields include `authentication.requiredParameters`,
-`formats.preferred`, `parserPolicy`, and each entry in `routes`.
+`formats.preferred`, `formats.jsonPagination`, `parserPolicy`, and each entry
+in `routes`.
 
 Every response includes `X-Request-Id` for correlation with LogsDB response
 headers. For parseable failures, request JSON:
@@ -197,7 +198,10 @@ curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=csv"
 
 curl -i $TLS_ARGS \
-  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/schema?$AUTH&newOrgKey=$ORG_KEY"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=json&limit=1&offset=0"
 
 curl -i $TLS_ARGS -X OPTIONS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/contentColumns?$AUTH&newOrgKey=$ORG_KEY"
@@ -229,7 +233,10 @@ curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableRows/1?$AUTH&newOrgKey=$ORG_KEY"
 
 curl -i $TLS_ARGS \
-  "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=json"
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/schema?$AUTH&newOrgKey=$ORG_KEY"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableRows/1?$AUTH&newOrgKey=$ORG_KEY&outputType=json&limit=1&offset=0"
 
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/dbNames/$CSV_DOC/dbTables/data/tableColumns/name?$AUTH&newOrgKey=$ORG_KEY"
@@ -242,7 +249,8 @@ curl -i $TLS_ARGS \
 ## Parser Scripts
 
 Upload Perl and Python parser scripts and run them against the secure CSV
-document.
+document. Generated parser candidates should start as pending, use preview-only
+execution, and be promoted only after review metadata is added.
 
 ```sh
 curl -i $TLS_ARGS \
@@ -251,7 +259,7 @@ curl -i $TLS_ARGS \
   -F "orgId=$ORG" \
   -F "orgKey=$ORG_KEY" \
   -F "newOrgKey=$ORG_KEY" \
-  -F "*resourceInfo=example Perl script" \
+  -F "*resourceInfo=example Perl script parser.reviewStatus:reviewed parser.reviewed:true parser.reviewer:human-reviewer parser.reviewTime:2026-07-30T00:00:00Z parser.interpreter:/usr/bin/perl parser.timeout:10 parser.isolation:none" \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/script.perl/documents/$SCRIPT_PERL"
 
 curl -i $TLS_ARGS \
@@ -269,8 +277,14 @@ curl -i $TLS_ARGS \
   -F "orgId=$ORG" \
   -F "orgKey=$ORG_KEY" \
   -F "newOrgKey=$ORG_KEY" \
-  -F "*resourceInfo=example Python script" \
+  -F "*resourceInfo=generated Python parser parser.reviewStatus:pending parser.generated:true parser.generator:sample-agent parser.promptHash:sha256-demo parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none" \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/script.python/documents/$SCRIPT_PYTHON"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/parserScripts/$SCRIPT_PYTHON?$AUTH&newOrgKey=$ORG_KEY&outputType=json&previewOnly=1&previewRows=1&limit=1"
+
+curl -i $TLS_ARGS -X PUT \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/script.python/documents/$SCRIPT_PYTHON?$AUTH&newOrgKey=$ORG_KEY&*resourceInfo=reviewed%20Python%20parser%20parser.reviewStatus:reviewed%20parser.reviewed:true%20parser.reviewer:human-reviewer%20parser.reviewTime:2026-07-30T00:00:00Z%20parser.interpreter:/usr/bin/python3%20parser.timeout:10%20parser.isolation:none"
 
 curl -i $TLS_ARGS \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/parserScripts/$SCRIPT_PYTHON?$AUTH&newOrgKey=$ORG_KEY&outputType=csv"

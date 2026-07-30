@@ -44,6 +44,7 @@ class Config:
         self.org_key = os.environ.get("CDSE_MCP_ORG_KEY")
         self.csv_doc = os.environ.get("CDSE_MCP_CSV_DOC", f"mcp-{run_id}.csv")
         self.parser_doc = os.environ.get("CDSE_MCP_PARSER_DOC", f"mcp-parser-{run_id}.py")
+        self.pending_parser_doc = os.environ.get("CDSE_MCP_PENDING_PARSER_DOC", f"mcp-parser-pending-{run_id}.py")
         self.ca_cert = os.environ.get("CDSE_MCP_CA_CERT")
         self.client_cert = os.environ.get("CDSE_MCP_CLIENT_CERT")
         self.client_key = os.environ.get("CDSE_MCP_CLIENT_KEY")
@@ -141,9 +142,11 @@ def multipart_body(fields, file_field, file_path):
     return body, {"Content-Type": f"multipart/form-data; boundary={boundary}"}
 
 
-def json_request(cfg, path, params):
+def json_request(cfg, path, params, limit=10, offset=0):
     params = dict(params)
     params["outputType"] = "json"
+    params["limit"] = str(limit)
+    params["offset"] = str(offset)
     _, _, payload = request(cfg, "GET", path, params=params)
     return json.loads(payload.decode("utf-8"))
 
@@ -172,9 +175,10 @@ def summarize_table(result, limit):
     rows = result.get("rows", [])
     return {
         "columns": result.get("columns", []),
-        "rowCount": len(rows),
+        "rowCount": result.get("pagination", {}).get("totalRows", len(rows)),
+        "pagination": result.get("pagination", {}),
         "rows": rows[:limit],
-        "truncated": len(rows) > limit,
+        "truncated": bool(result.get("pagination", {}).get("hasMore", len(rows) > limit)),
     }
 
 
@@ -237,7 +241,7 @@ def create_workspace(cfg, _args):
 
 def list_document_types(cfg, _args):
     path = f"/organizations/{quote_path(cfg.org)}/storage/{quote_path(cfg.storage)}/documentTypes"
-    result = json_request(cfg, path, cfg.auth_params(include_new_key=True))
+    result = json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=10)
     return summarize_table(result, 10)
 
 
@@ -273,24 +277,67 @@ def upload_csv(cfg, args):
 def upload_parser(cfg, args):
     doc_name = args.get("document") or cfg.parser_doc
     file_path = resolve_file(args.get("parser_path"), DEFAULT_PARSER)
-    resource_info = args.get("resource_info") or "reviewed MCP parser fixture"
+    resource_info = args.get("resource_info") or (
+        "reviewed MCP parser fixture parser.reviewStatus:reviewed parser.reviewed:true "
+        "parser.reviewer:human-reviewer parser.reviewTime:2026-07-30T00:00:00Z "
+        "parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none"
+    )
     return upload_document(cfg, "script.python", doc_name, file_path, resource_info)
+
+
+def upload_parser_candidate(cfg, args):
+    doc_name = args.get("document") or cfg.pending_parser_doc
+    file_path = resolve_file(args.get("parser_path"), DEFAULT_PARSER)
+    resource_info = args.get("resource_info") or (
+        "generated MCP parser candidate parser.reviewStatus:pending parser.generated:true "
+        "parser.generator:mcp-client parser.promptHash:sha256-demo "
+        "parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none"
+    )
+    return upload_document(cfg, "script.python", doc_name, file_path, resource_info)
+
+
+def discover_schema(cfg, args):
+    doc_name = args.get("document") or cfg.csv_doc
+    path = f"{base_document_path(cfg, 'file.csv', doc_name)}/schema"
+    return json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=1)
 
 
 def query_column(cfg, args):
     doc_name = args.get("document") or cfg.csv_doc
     column = args.get("column") or "name"
     limit = clamp_limit(args.get("limit"))
+    schema = discover_schema(cfg, {"document": doc_name})
+    if column not in {entry.get("name") for entry in schema.get("columns", [])}:
+        raise ToolError(f"Column not found in document schema: {column}")
     path = f"{base_document_path(cfg, 'file.csv', doc_name)}/contentColumns/{quote_path(column)}"
-    return summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True)), limit)
+    summary = summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=limit), limit)
+    summary["schema"] = {"rowCount": schema.get("rowCount"), "columnCount": schema.get("columnCount")}
+    return summary
 
 
 def run_parser(cfg, args):
     doc_name = args.get("document") or cfg.csv_doc
     parser_name = args.get("parser") or cfg.parser_doc
     limit = clamp_limit(args.get("limit"))
+    schema = discover_schema(cfg, {"document": doc_name})
     path = f"{base_document_path(cfg, 'file.csv', doc_name)}/parserScripts/{quote_path(parser_name)}"
-    return summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True)), limit)
+    summary = summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=limit), limit)
+    summary["schema"] = {"rowCount": schema.get("rowCount"), "columnCount": schema.get("columnCount")}
+    return summary
+
+
+def preview_parser_candidate(cfg, args):
+    doc_name = args.get("document") or cfg.csv_doc
+    parser_name = args.get("parser") or cfg.pending_parser_doc
+    limit = clamp_limit(args.get("limit"), default=1)
+    preview_rows = clamp_limit(args.get("preview_rows"), default=1)
+    schema = discover_schema(cfg, {"document": doc_name})
+    path = f"{base_document_path(cfg, 'file.csv', doc_name)}/parserScripts/{quote_path(parser_name)}"
+    params = {**cfg.auth_params(include_new_key=True), "previewOnly": "1", "previewRows": str(preview_rows)}
+    summary = summarize_table(json_request(cfg, path, params, limit=limit), limit)
+    summary["schema"] = {"rowCount": schema.get("rowCount"), "columnCount": schema.get("columnCount")}
+    summary["previewOnly"] = True
+    return summary
 
 
 def cleanup_workspace(cfg, args):
@@ -299,6 +346,7 @@ def cleanup_workspace(cfg, args):
     parser_doc = args.get("parser_document") or cfg.parser_doc
     resources = [
         ("csv", "DELETE", base_document_path(cfg, "file.csv", csv_doc)),
+        ("pending_parser", "DELETE", base_document_path(cfg, "script.python", cfg.pending_parser_doc)),
         ("parser", "DELETE", base_document_path(cfg, "script.python", parser_doc)),
         ("storage", "DELETE", f"/organizations/{quote_path(cfg.org)}/storage/{quote_path(cfg.storage)}"),
         ("user", "DELETE", f"/organizations/{quote_path(cfg.org)}/users/{quote_path(cfg.user)}"),
@@ -316,8 +364,11 @@ TOOLS = {
     "list_document_types": list_document_types,
     "upload_csv": upload_csv,
     "upload_parser": upload_parser,
+    "upload_parser_candidate": upload_parser_candidate,
+    "discover_schema": discover_schema,
     "query_column": query_column,
     "run_parser": run_parser,
+    "preview_parser_candidate": preview_parser_candidate,
     "cleanup_workspace": cleanup_workspace,
 }
 
@@ -353,7 +404,7 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "upload_parser",
-        "description": "Upload a reviewed local Python parser fixture.",
+        "description": "Upload a reviewed local Python parser fixture with review metadata.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -365,8 +416,32 @@ TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "upload_parser_candidate",
+        "description": "Upload a generated parser candidate as pending review metadata.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string"},
+                "parser_path": {"type": "string"},
+                "resource_info": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "discover_schema",
+        "description": "Read document schema metadata before row, column, or parser reads.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "query_column",
-        "description": "Read one CSV column and return a bounded row preview.",
+        "description": "Read document schema, validate one CSV column, and return a bounded row preview.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -386,6 +461,20 @@ TOOL_SCHEMAS = [
                 "document": {"type": "string"},
                 "parser": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 10},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "preview_parser_candidate",
+        "description": "Run a pending parser candidate in preview-only mode against capped sample rows.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string"},
+                "parser": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 10},
+                "preview_rows": {"type": "integer", "minimum": 1, "maximum": 10},
             },
             "additionalProperties": False,
         },

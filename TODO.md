@@ -637,21 +637,26 @@
     markers, and documented the contract in README, API examples, AI usage,
     and OpenAPI.
 
-- [ ] #86 Add agent-safe paginated read and schema metadata endpoints.
+- [x] #86 Add agent-safe paginated read and schema metadata endpoints.
   - Source: resource handlers, `openapi.yaml`, AI/MCP samples.
   - Goal: reduce large unbounded responses and give agents stable schemas before reading data.
   - Plan:
     - Batch 1: document and validate pagination parameters for JSON reads.
     - Batch 2: add document/table schema metadata routes for columns, row counts, document types, and parser policy metadata.
     - Batch 3: extend MCP and AI-agent samples to use schema discovery before row/column reads.
+  - Done: added validated JSON `limit`/`offset` handling with pagination
+    metadata to shared table responses, added document and secure DB table
+    schema JSON endpoints with column, row-count, pagination, and parser-policy
+    metadata, extended live verifier coverage, updated OpenAPI/docs, and taught
+    the AI-agent and MCP samples to discover schema before bounded reads.
 
-- [ ] #87 Add an AI-generated parser upload/review workflow.
+- [x] #87 Add an AI-generated parser upload/review workflow.
   - Source: parser script resources, parser policy metadata, verifier fixtures.
   - Goal: keep generated parser scripts pending until reviewed and allow safe sample execution before full runs.
-  - Plan:
-    - Batch 1: define pending/reviewed parser metadata and provenance fields such as generator, prompt hash, reviewer, and review time.
-    - Batch 2: add static checks and sample-row preview execution for parser candidates.
-    - Batch 3: add live verifier coverage for pending deny, reviewed allow, and preview-only execution.
+  - Done:
+    - Batch 1: defined pending/reviewed parser metadata and provenance fields such as generator, prompt hash, reviewer, and review time.
+    - Batch 2: added static checks and sample-row preview execution for parser candidates.
+    - Batch 3: added live verifier coverage for pending deny, reviewed allow, and preview-only execution.
 
 - [ ] #88 Add structured JSON audit logs for agent activity.
   - Source: transaction logging, parser audit lines, docs.

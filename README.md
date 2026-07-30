@@ -1034,7 +1034,19 @@ outputType
     resource specification queries, content rows/columns, parser script
     output, secure DB browsing, and requests for the contents of csv
     type files. JSON table responses use this shape:
-    `{"columns":[...],"rows":[{"column":"value"}]}`.
+    `{"columns":[...],"rows":[{"column":"value"}],"pagination":{"offset":0,"limit":100,"returnedRows":N,"totalRows":N,"hasMore":false}}`.
+    For `outputType=json`, optional `limit` and `offset` parameters bound
+    returned rows. `limit` defaults to 100 and must be 1..1000; `offset`
+    defaults to 0 and must be non-negative.
+
+schema
+    For agent-safe CSV inspection, read schema metadata before reading rows,
+    columns, or parser output:
+    `/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/schema`
+    and
+    `/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}/schema`.
+    These JSON endpoints return column names/types, row counts, pagination
+    limits, document/table identifiers, and parser policy metadata.
 
 #### 3.4 Document POST parameters
 
@@ -1095,6 +1107,7 @@ The manifest reports:
 
 - required authentication parameters for data routes;
 - preferred and supported response formats;
+- JSON pagination defaults and schema discovery routes;
 - parser policy settings such as timeout, result limits, isolation profile,
   and reviewed/profile enforcement;
 - core route names, path templates, supported methods, and whether
@@ -1833,12 +1846,19 @@ This is a raw file
     isolation fails closed if the platform or service privileges cannot apply
     it. Chroot deployments must provide the configured interpreter paths,
     parser temporary files, and required runtime libraries inside the jail.
-    Parser policy metadata can be stored in the script document's
-    `*resourceInfo`, for example `parser.reviewed:true`,
-    `parser.interpreter:/usr/bin/python3`, `parser.timeout:10`, and
-    `parser.isolation:none`. The policy matcher also accepts existing
-    `key=value` metadata already stored in a resources DB. Deployments can
-    enforce this metadata with
+    Parser policy and review metadata can be stored in the script document's
+    `*resourceInfo`. Generated scripts should be uploaded as pending with
+    fields such as `parser.reviewStatus:pending`, `parser.generated:true`,
+    `parser.generator:<tool>`, and `parser.promptHash:<hash>`. Reviewed
+    scripts should carry `parser.reviewStatus:reviewed`, `parser.reviewed:true`,
+    `parser.reviewer:<user>`, and `parser.reviewTime:<timestamp>`, plus the
+    policy profile fields `parser.interpreter:/usr/bin/python3`,
+    `parser.timeout:10`, and `parser.isolation:none`. The policy matcher also
+    accepts existing `key=value` metadata already stored in a resources DB.
+    Pending/generated-unreviewed scripts are denied for full parser execution;
+    `previewOnly=1&previewRows=N` can run them against 1..10 sample rows after
+    static checks reject shell, network, dynamic-code, and environment-access
+    patterns. Deployments can enforce reviewed/profile metadata with
     `CDSE_PARSER_REQUIRE_REVIEWED=1`,
     `CDSE_PARSER_REQUIRE_POLICY_PROFILES=1`, and
     `CDSE_PARSER_ALLOWED_TYPES=script.perl,script.python`. Parser upload,

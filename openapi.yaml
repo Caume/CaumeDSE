@@ -10,7 +10,9 @@ info:
     correlation. When `outputType=json` is requested and a non-HEAD request
     fails, common errors return a JSON envelope with `error.code`,
     `error.message`, `error.httpStatus`, `error.requestId`, and
-    `error.safeForAgent`.
+    `error.safeForAgent`. JSON table reads support `limit` and `offset`;
+    omitted values default to `limit=100` and `offset=0`, with a maximum
+    accepted limit of 1000.
 servers:
   - url: http://localhost:18080
     description: DEBUG HTTP verifier server
@@ -841,6 +843,10 @@ paths:
         - $ref: "#/components/parameters/orgKey"
         - $ref: "#/components/parameters/newOrgKey"
         - $ref: "#/components/parameters/outputType"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - $ref: "#/components/parameters/previewOnly"
+        - $ref: "#/components/parameters/previewRows"
       responses:
         "200":
           $ref: "#/components/responses/CsvResponse"
@@ -929,6 +935,8 @@ paths:
         - $ref: "#/components/parameters/orgKey"
         - $ref: "#/components/parameters/newOrgKey"
         - $ref: "#/components/parameters/outputType"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/CsvResponse"
@@ -977,6 +985,43 @@ paths:
         "200":
           $ref: "#/components/responses/TextResponse"
 
+  /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/schema:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/document"
+    get:
+      tags: [Document content]
+      summary: Read schema metadata for a CSV document before reading data.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/SchemaResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    head:
+      tags: [Document content]
+      summary: Check whether CSV document schema metadata is available.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Document content]
+      summary: Return supported methods for CSV document schema metadata.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
   /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts:
     parameters:
       - $ref: "#/components/parameters/organization"
@@ -1004,6 +1049,8 @@ paths:
         - $ref: "#/components/parameters/orgKey"
         - $ref: "#/components/parameters/newOrgKey"
         - $ref: "#/components/parameters/outputType"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/CsvResponse"
@@ -1111,6 +1158,8 @@ paths:
         - $ref: "#/components/parameters/orgKey"
         - $ref: "#/components/parameters/newOrgKey"
         - $ref: "#/components/parameters/outputType"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/TableResponse"
@@ -1153,6 +1202,8 @@ paths:
         - $ref: "#/components/parameters/orgKey"
         - $ref: "#/components/parameters/newOrgKey"
         - $ref: "#/components/parameters/outputType"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/TableResponse"
@@ -1173,6 +1224,44 @@ paths:
     options:
       tags: [Secure DB browsing]
       summary: Return supported methods for tableColumns.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/schema:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/dbName"
+      - $ref: "#/components/parameters/dbTable"
+    get:
+      tags: [Secure DB browsing]
+      summary: Read schema metadata for an exposed secure CSV table.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/SchemaResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    head:
+      tags: [Secure DB browsing]
+      summary: Check whether exposed secure CSV table schema metadata is available.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Secure DB browsing]
+      summary: Return supported methods for exposed secure CSV table schema metadata.
       responses:
         "200":
           $ref: "#/components/responses/TextResponse"
@@ -1333,6 +1422,44 @@ components:
         type: string
         enum: [html, csv, json]
       description: Requested response format supported by current handlers.
+    limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+      description: Maximum JSON table rows to return when outputType=json.
+    offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Zero-based JSON table row offset when outputType=json.
+    previewOnly:
+      name: previewOnly
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum: [0, 1]
+        default: 0
+      description: Run a pending parser script against a capped sample row set after static checks.
+    previewRows:
+      name: previewRows
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 10
+        default: 3
+      description: Number of input rows used when previewOnly=1.
     matchPublicKey:
       name: _publicKey
       in: query
@@ -1502,6 +1629,90 @@ components:
     TextTable:
       type: string
       description: HTML or CSV-style table text returned by current handlers.
+    PaginatedTable:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+        pagination:
+          type: object
+          properties:
+            offset:
+              type: integer
+              minimum: 0
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 1000
+            returnedRows:
+              type: integer
+              minimum: 0
+            totalRows:
+              type: integer
+              minimum: 0
+            hasMore:
+              type: boolean
+    SchemaMetadata:
+      type: object
+      required: [schemaVersion, safeForAgent, resource, rowCount, columnCount, columns, pagination, parserPolicy]
+      properties:
+        schemaVersion:
+          type: integer
+          example: 1
+        safeForAgent:
+          type: boolean
+          example: true
+        resource:
+          type: string
+          enum: [document, dbTable]
+        documentId:
+          type: string
+        documentType:
+          type: string
+          example: file.csv
+        storageId:
+          type: string
+        dbName:
+          type: string
+        dbTable:
+          type: string
+          example: data
+        rowCount:
+          type: integer
+          minimum: 0
+        columnCount:
+          type: integer
+          minimum: 0
+        columns:
+          type: array
+          items:
+            type: object
+            properties:
+              ordinal:
+                type: integer
+              name:
+                type: string
+              sqliteType:
+                type: string
+        pagination:
+          type: object
+          properties:
+            defaultLimit:
+              type: integer
+            maxLimit:
+              type: integer
+            offsetMinimum:
+              type: integer
+        parserPolicy:
+          type: object
     DocumentUpload:
       type: object
       required: [file, userId, orgId, orgKey]
@@ -1521,6 +1732,12 @@ components:
           format: password
         "*resourceInfo":
           type: string
+          description: |
+            Free-form metadata. Parser uploads should include review metadata
+            such as `parser.reviewStatus:pending`, `parser.generated:true`,
+            `parser.generator:<tool>`, `parser.promptHash:<hash>`,
+            `parser.reviewStatus:reviewed`, `parser.reviewer:<user>`, and
+            `parser.reviewTime:<timestamp>`.
         shuffle:
           type: string
           description: Optional secure CSV import flag.
@@ -1566,18 +1783,7 @@ components:
             type: string
         application/json:
           schema:
-            type: object
-            properties:
-              columns:
-                type: array
-                items:
-                  type: string
-              rows:
-                type: array
-                items:
-                  type: object
-                  additionalProperties:
-                    type: string
+            $ref: "#/components/schemas/PaginatedTable"
     CsvResponse:
       description: CSV-formatted response body.
       headers:
@@ -1596,18 +1802,20 @@ components:
             type: string
         application/json:
           schema:
-            type: object
-            properties:
-              columns:
-                type: array
-                items:
-                  type: string
-              rows:
-                type: array
-                items:
-                  type: object
-                  additionalProperties:
-                    type: string
+            $ref: "#/components/schemas/PaginatedTable"
+    SchemaResponse:
+      description: Schema metadata for agent-safe reads.
+      headers:
+        X-Request-Id:
+          schema:
+            type: string
+        Engine-results:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SchemaMetadata"
     FileContentResponse:
       description: Reconstructed document content.
       headers:
