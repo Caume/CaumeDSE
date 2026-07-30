@@ -37,6 +37,7 @@ class Config:
         self.org_key = os.environ.get("CDSE_AGENT_ORG_KEY")
         self.csv_doc = os.environ.get("CDSE_AGENT_CSV_DOC", f"agent-{run_id}.csv")
         self.parser_doc = os.environ.get("CDSE_AGENT_PARSER_DOC", f"agent-parser-{run_id}.py")
+        self.pending_parser_doc = os.environ.get("CDSE_AGENT_PENDING_PARSER_DOC", f"agent-parser-pending-{run_id}.py")
         self.csv_fixture = Path(args.csv_fixture)
         self.parser_fixture = Path(args.parser_fixture)
         self.ca_cert = os.environ.get("CDSE_AGENT_CA_CERT")
@@ -222,7 +223,7 @@ def upload_file(cfg, doc_type, doc_name, file_path, resource_info):
     request(cfg, "POST", path, body=body, headers=headers, expected=(201, 409))
 
 
-def agent_prompt_preview(schema_result, row_result, column_result, parser_result):
+def agent_prompt_preview(schema_result, row_result, column_result, preview_result, parser_result):
     prompt = {
         "task": "Choose the narrowest next CaumeDSE read operation.",
         "available_context": {
@@ -234,6 +235,7 @@ def agent_prompt_preview(schema_result, row_result, column_result, parser_result
             "row_columns": row_result.get("columns", []),
             "column_rows": len(column_result.get("rows", [])),
             "parser_columns": parser_result.get("columns", []),
+            "preview_rows": len(preview_result.get("rows", [])),
             "parser_rows": len(parser_result.get("rows", [])),
         },
         "security_constraints": [
@@ -253,6 +255,7 @@ def cleanup(cfg):
     quoted_user = urllib.parse.quote(cfg.user)
     resources = [
         ("DELETE", f"/organizations/{quoted_org}/storage/{quoted_storage}/documentTypes/file.csv/documents/{urllib.parse.quote(cfg.csv_doc)}"),
+        ("DELETE", f"/organizations/{quoted_org}/storage/{quoted_storage}/documentTypes/script.python/documents/{urllib.parse.quote(cfg.pending_parser_doc)}"),
         ("DELETE", f"/organizations/{quoted_org}/storage/{quoted_storage}/documentTypes/script.python/documents/{urllib.parse.quote(cfg.parser_doc)}"),
         ("DELETE", f"/organizations/{quoted_org}/storage/{quoted_storage}"),
         ("DELETE", f"/organizations/{quoted_org}/users/{quoted_user}"),
@@ -268,7 +271,24 @@ def run_workflow(cfg):
     discover_agent_capabilities(cfg)
     create_workspace(cfg)
     upload_file(cfg, "file.csv", cfg.csv_doc, cfg.csv_fixture, "reviewed AI-agent CSV fixture")
-    upload_file(cfg, "script.python", cfg.parser_doc, cfg.parser_fixture, "reviewed AI-agent parser fixture")
+    upload_file(
+        cfg,
+        "script.python",
+        cfg.pending_parser_doc,
+        cfg.parser_fixture,
+        "AI-generated parser candidate parser.reviewStatus:pending parser.generated:true "
+        "parser.generator:sample-agent parser.promptHash:sha256-demo "
+        "parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none",
+    )
+    upload_file(
+        cfg,
+        "script.python",
+        cfg.parser_doc,
+        cfg.parser_fixture,
+        "reviewed AI-agent parser parser.reviewStatus:reviewed parser.reviewed:true "
+        "parser.reviewer:human-reviewer parser.reviewTime:2026-07-30T00:00:00Z "
+        "parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none",
+    )
 
     auth = cfg.auth_params(include_new_key=True)
     base_doc = (
@@ -279,6 +299,19 @@ def run_workflow(cfg):
     schema = json_request(cfg, f"{base_doc}/schema", auth, limit=1)
     row = json_request(cfg, f"{base_doc}/contentRows/1", auth)
     column = json_request(cfg, f"{base_doc}/contentColumns/name", auth)
+    request(
+        cfg,
+        "GET",
+        f"{base_doc}/parserScripts/{urllib.parse.quote(cfg.pending_parser_doc)}",
+        params={**auth, "newOrgKey": cfg.org_key, "outputType": "json"},
+        expected=(403,),
+    )
+    preview = json_request(
+        cfg,
+        f"{base_doc}/parserScripts/{urllib.parse.quote(cfg.pending_parser_doc)}",
+        {**auth, "newOrgKey": cfg.org_key, "previewOnly": "1", "previewRows": "1"},
+        limit=1,
+    )
     parser = json_request(cfg, f"{base_doc}/parserScripts/{urllib.parse.quote(cfg.parser_doc)}", auth)
 
     print("Narrow JSON query summary:")
@@ -287,9 +320,10 @@ def run_workflow(cfg):
         "schema_rows": schema.get("rowCount"),
         "row_count": len(row.get("rows", [])),
         "column_count": len(column.get("columns", [])),
+        "preview_rows": len(preview.get("rows", [])),
         "parser_rows": len(parser.get("rows", [])),
     }, indent=2, sort_keys=True))
-    agent_prompt_preview(schema, row, column, parser)
+    agent_prompt_preview(schema, row, column, preview, parser)
 
 
 def parse_args(argv):

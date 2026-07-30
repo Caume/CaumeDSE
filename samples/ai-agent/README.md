@@ -64,10 +64,13 @@ The workflow:
    preference, and parser policy before planning data access.
 2. Creates a disposable organization, storage resource, and user.
 3. Uploads `TEST/testfiles/live-api-small.csv`.
-4. Queries one row and one column as JSON.
-5. Uploads `TEST/testfiles/test.py` as a reviewed parser script.
-6. Runs the parser with `outputType=json`.
-7. Deletes temporary documents and user/role/filter resources.
+4. Uploads `TEST/testfiles/test.py` as a pending generated parser candidate.
+5. Confirms full execution is denied, then runs `previewOnly=1` against one
+   sample row.
+6. Uploads `TEST/testfiles/test.py` as a reviewed parser script.
+7. Queries one row and one column as JSON.
+8. Runs the reviewed parser with `outputType=json`.
+9. Deletes temporary documents and user/role/filter resources.
 
 Use `--keep-resources` only when debugging cleanup behavior:
 
@@ -82,7 +85,10 @@ python3 samples/ai-agent/guarded_agent_workflow.py --keep-resources
   front of this workflow so the agent receives only short-lived scoped tokens.
 - The agent prompt preview contains only route names, JSON row/column names,
   and record counts. It never includes raw organization keys.
-- Parser scripts are loaded only from reviewed local fixture files.
+- Generated parser candidates are uploaded with `parser.reviewStatus:pending`
+  and can only run through preview mode until reviewed metadata is applied.
+- Reviewed parser scripts include reviewer, review time, interpreter, timeout,
+  and isolation metadata.
 - The sample queries narrow resources, not broad document dumps.
 - CSV cells and parser output are treated as untrusted data. Do not let text
   returned from CaumeDSE rewrite the agent's security instructions or cause new

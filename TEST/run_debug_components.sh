@@ -803,9 +803,12 @@ run_live_web_flow() {
     local python_oversize_script_name="${LIVE_FLOW_ID}_${protocol}_oversize.py"
     local python_network_script_name="${LIVE_FLOW_ID}_${protocol}_network.py"
     local python_outside_file_script_name="${LIVE_FLOW_ID}_${protocol}_outside_file.py"
+    local python_pending_script_name="${LIVE_FLOW_ID}_${protocol}_pending.py"
+    local python_pending_static_bad_script_name="${LIVE_FLOW_ID}_${protocol}_pending_static_bad.py"
     local python_unreviewed_script_name="${LIVE_FLOW_ID}_${protocol}_unreviewed.py"
     local perl_policy_meta="parser.reviewed:true parser.interpreter:/usr/bin/perl parser.timeout:10 parser.isolation:none"
     local python_policy_meta="parser.reviewed:true parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none"
+    local python_pending_policy_meta="parser.reviewStatus:pending parser.generated:true parser.generator:llm-test parser.promptHash:sha256-demo parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none"
     local user_id="User123"
     local role_user="${LIVE_FLOW_ID}_${protocol}_user"
     local auth="userId=$user_id&orgId=$org_name&orgKey=$org_key"
@@ -951,6 +954,23 @@ run_live_web_flow() {
         -F "*resourceInfo=live $protocol Python script $python_policy_meta"
     live_api_check "$protocol" python_parser_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=csv" "82400" "${curl_tls_args[@]}"
     live_api_check "$protocol" python_parser_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_script_name?$auth&newOrgKey=$org_key&outputType=json" '"salary":"82400"' "${curl_tls_args[@]}"
+    live_api_check "$protocol" upload_python_pending_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_pending_script_name" "" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/test.py" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol pending generated Python script $python_pending_policy_meta"
+    live_api_check "$protocol" python_parser_pending_full_denied 403 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_pending_script_name?$auth&newOrgKey=$org_key&outputType=json" '"code":"forbidden"' "${curl_tls_args[@]}"
+    live_api_check "$protocol" python_parser_pending_preview 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_pending_script_name?$auth&newOrgKey=$org_key&outputType=json&previewOnly=1&previewRows=1&limit=1" '"returnedRows":1' "${curl_tls_args[@]}"
+    live_api_check "$protocol" upload_python_pending_static_bad_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_pending_static_bad_script_name" "" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/test_network_access.py" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol pending static bad Python script $python_pending_policy_meta"
+    live_api_check "$protocol" python_parser_pending_static_denied 403 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_pending_static_bad_script_name?$auth&newOrgKey=$org_key&outputType=json&previewOnly=1&previewRows=1" '"code":"forbidden"' "${curl_tls_args[@]}"
     live_api_check "$protocol" upload_python_timeout_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_timeout_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test_timeout.py" \
         -F "userId=$user_id" \

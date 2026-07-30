@@ -650,13 +650,13 @@
     metadata, extended live verifier coverage, updated OpenAPI/docs, and taught
     the AI-agent and MCP samples to discover schema before bounded reads.
 
-- [ ] #87 Add an AI-generated parser upload/review workflow.
+- [x] #87 Add an AI-generated parser upload/review workflow.
   - Source: parser script resources, parser policy metadata, verifier fixtures.
   - Goal: keep generated parser scripts pending until reviewed and allow safe sample execution before full runs.
-  - Plan:
-    - Batch 1: define pending/reviewed parser metadata and provenance fields such as generator, prompt hash, reviewer, and review time.
-    - Batch 2: add static checks and sample-row preview execution for parser candidates.
-    - Batch 3: add live verifier coverage for pending deny, reviewed allow, and preview-only execution.
+  - Done:
+    - Batch 1: defined pending/reviewed parser metadata and provenance fields such as generator, prompt hash, reviewer, and review time.
+    - Batch 2: added static checks and sample-row preview execution for parser candidates.
+    - Batch 3: added live verifier coverage for pending deny, reviewed allow, and preview-only execution.
 
 - [ ] #88 Add structured JSON audit logs for agent activity.
   - Source: transaction logging, parser audit lines, docs.

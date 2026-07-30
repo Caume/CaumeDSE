@@ -15,12 +15,16 @@ environment variables and are never part of MCP tool arguments or tool results.
 - `list_document_types`: lists document types in the configured storage.
 - `upload_csv`: uploads a reviewed local CSV fixture as `file.csv`.
 - `upload_parser`: uploads a reviewed local Python parser as `script.python`.
+- `upload_parser_candidate`: uploads a generated parser candidate as pending
+  review metadata.
 - `discover_schema`: reads column, row-count, pagination, and parser-policy
   metadata for a CSV document.
 - `query_column`: validates one CSV column against schema and returns a
   bounded row preview.
 - `run_parser`: reads schema before running an uploaded parser and returns a
   bounded row preview.
+- `preview_parser_candidate`: runs a pending parser candidate in preview-only
+  mode against capped sample rows.
 - `cleanup_workspace`: deletes the sample documents, storage, and user.
 
 ## Configuration
@@ -51,6 +55,7 @@ Optional document names and fixture paths:
 ```sh
 export CDSE_MCP_CSV_DOC="mcp.csv"
 export CDSE_MCP_PARSER_DOC="mcp-parser.py"
+export CDSE_MCP_PENDING_PARSER_DOC="mcp-parser-pending.py"
 ```
 
 `upload_csv` defaults to `TEST/testfiles/live-api-small.csv`.
@@ -86,12 +91,14 @@ A typical local flow is:
    exposing tools.
 2. `create_workspace`
 3. `upload_csv`
-4. `upload_parser`
-5. `list_document_types`
-6. `discover_schema`
-7. `query_column`
-8. `run_parser`
-9. `cleanup_workspace`
+4. `upload_parser_candidate`
+5. `preview_parser_candidate`
+6. `upload_parser`
+7. `list_document_types`
+8. `discover_schema`
+9. `query_column`
+10. `run_parser`
+11. `cleanup_workspace`
 
 ## Security Boundaries
 
@@ -107,12 +114,13 @@ A typical local flow is:
   CaumeDSE JSON `limit`/`offset` parameters and returns bounded previews
   instead of broad document dumps. Do not let text from CSV cells override the
   host application's system, developer, security, or cleanup instructions.
-- Parser execution is intentionally limited to parser documents that were
-  already uploaded from reviewed local files. Do not let an LLM generate and
-  upload parser scripts without human review. Reject generated scripts that
-  open network connections, execute shell commands, read environment variables,
-  traverse files outside the provided input path, log credentials, or create
-  unbounded output.
+- Generated parser candidates are uploaded as `parser.reviewStatus:pending`
+  with generator and prompt-hash metadata. Full execution is denied until
+  reviewed metadata is applied; `preview_parser_candidate` runs only
+  `previewOnly=1` with capped sample rows and static checks. Reject generated
+  scripts that open network connections, execute shell commands, read
+  environment variables, traverse files outside the provided input path, log
+  credentials, or create unbounded output.
 - Request logs go to stderr and redact `orgKey`, `newOrgKey`, and selected
   credential-style parameters.
 

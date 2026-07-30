@@ -81,8 +81,9 @@ curl -i $TLS_ARGS \
 Avoid broad or open-ended data dumps unless the agent has a clear need and the
 data has been reviewed for sensitivity. JSON table reads default to
 `limit=100&offset=0`, accept `limit` values from 1 to 1000, and return a
-`pagination` object with `returnedRows`, `totalRows`, and `hasMore`. For parser
-scripts, upload only scripts from reviewed local files:
+`pagination` object with `returnedRows`, `totalRows`, and `hasMore`. Upload
+generated parser candidates as pending, run only preview execution, then
+promote by updating review metadata after human review:
 
 ```sh
 curl -i $TLS_ARGS \
@@ -91,9 +92,16 @@ curl -i $TLS_ARGS \
   -F "orgId=$ORG" \
   -F "orgKey=$ORG_KEY" \
   -F "newOrgKey=$ORG_KEY" \
-  -F "*resourceInfo=reviewed Python parser parser.reviewed:true parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none" \
+  -F "*resourceInfo=generated parser parser.reviewStatus:pending parser.generated:true parser.generator:sample-agent parser.promptHash:sha256-demo parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none" \
   "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/script.python/documents/$SCRIPT_PYTHON"
+
+curl -i $TLS_ARGS \
+  "$BASE_URL/organizations/$ORG/storage/$STORAGE/documentTypes/file.csv/documents/$CSV_DOC/parserScripts/$SCRIPT_PYTHON?$AUTH&newOrgKey=$ORG_KEY&outputType=json&previewOnly=1&previewRows=1&limit=1"
 ```
+
+Pending/generated-unreviewed scripts are denied for full execution. Reviewed
+metadata should include `parser.reviewStatus:reviewed`, `parser.reviewed:true`,
+`parser.reviewer:<user>`, and `parser.reviewTime:<timestamp>`.
 
 ## Parser-Script Guardrails
 

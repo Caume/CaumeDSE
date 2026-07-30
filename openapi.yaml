@@ -845,6 +845,8 @@ paths:
         - $ref: "#/components/parameters/outputType"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
+        - $ref: "#/components/parameters/previewOnly"
+        - $ref: "#/components/parameters/previewRows"
       responses:
         "200":
           $ref: "#/components/responses/CsvResponse"
@@ -1439,6 +1441,25 @@ components:
         minimum: 0
         default: 0
       description: Zero-based JSON table row offset when outputType=json.
+    previewOnly:
+      name: previewOnly
+      in: query
+      required: false
+      schema:
+        type: integer
+        enum: [0, 1]
+        default: 0
+      description: Run a pending parser script against a capped sample row set after static checks.
+    previewRows:
+      name: previewRows
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 10
+        default: 3
+      description: Number of input rows used when previewOnly=1.
     matchPublicKey:
       name: _publicKey
       in: query
@@ -1711,6 +1732,12 @@ components:
           format: password
         "*resourceInfo":
           type: string
+          description: |
+            Free-form metadata. Parser uploads should include review metadata
+            such as `parser.reviewStatus:pending`, `parser.generated:true`,
+            `parser.generator:<tool>`, `parser.promptHash:<hash>`,
+            `parser.reviewStatus:reviewed`, `parser.reviewer:<user>`, and
+            `parser.reviewTime:<timestamp>`.
         shuffle:
           type: string
           description: Optional secure CSV import flag.

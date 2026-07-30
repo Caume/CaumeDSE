@@ -1332,6 +1332,19 @@ static int cmeWebServiceParserMetadataKeyMatches(const char *metadata, const cha
     return(result);
 }
 
+static int cmeWebServiceParserMetadataReviewed(const char *metadata)
+{
+    return(cmeWebServiceParserMetadataHasToken(metadata,"parser.reviewed=true")||
+           cmeWebServiceParserMetadataHasToken(metadata,"parser.reviewed:true")||
+           cmeWebServiceParserMetadataKeyMatches(metadata,"parser.reviewStatus","reviewed"));
+}
+
+static int cmeWebServiceParserMetadataPending(const char *metadata)
+{
+    return(cmeWebServiceParserMetadataKeyMatches(metadata,"parser.reviewStatus","pending")||
+           cmeWebServiceParserMetadataKeyMatches(metadata,"parser.generated","true"));
+}
+
 static const char *cmeWebServiceParserInterpreterForType(const char *scriptType)
 {
     if (!scriptType)
@@ -1391,20 +1404,21 @@ static void cmeWebServiceParserIsolationProfile(char *profile, size_t profileLen
 
 static int cmeWebServiceParserPolicyAllows(const char *metadata, const char *scriptType, const char *userId,
                                            const char *orgId, const char *storageId, const char *documentId,
-                                           const char *scriptId, const char *method)
+                                           const char *scriptId, const char *method, int previewOnly)
 {
     char isolationProfile[128];
     char timeoutProfile[32];
     const char *allowedTypes;
     const char *interpreterPath;
     int reviewed;
+    int pending;
     int requireReviewed;
     int requireProfiles;
 
     allowedTypes=cmeWebServiceParserEnvString("CDSE_PARSER_ALLOWED_TYPES",CDSE_PARSER_ALLOWED_TYPES);
     interpreterPath=cmeWebServiceParserInterpreterForType(scriptType);
-    reviewed=(cmeWebServiceParserMetadataHasToken(metadata,"parser.reviewed=true")||
-              cmeWebServiceParserMetadataHasToken(metadata,"parser.reviewed:true"));
+    reviewed=cmeWebServiceParserMetadataReviewed(metadata);
+    pending=cmeWebServiceParserMetadataPending(metadata)&&(!reviewed);
     requireReviewed=cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_REVIEWED",CDSE_PARSER_REQUIRE_REVIEWED);
     requireProfiles=cmeWebServiceParserEnvFlag("CDSE_PARSER_REQUIRE_POLICY_PROFILES",
                                                CDSE_PARSER_REQUIRE_POLICY_PROFILES);
@@ -1419,7 +1433,16 @@ static int cmeWebServiceParserPolicyAllows(const char *metadata, const char *scr
 #endif
         return(1);
     }
-    if (requireReviewed&&(!reviewed))
+    if ((pending)&&(!previewOnly))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-deny reason=pending-review userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s'\n",
+                userId?userId:"",orgId?orgId:"",storageId?storageId:"",documentId?documentId:"",
+                scriptId?scriptId:"",scriptType?scriptType:"",method?method:"");
+#endif
+        return(4);
+    }
+    if (requireReviewed&&(!reviewed)&&(!previewOnly))
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Audit: parserExecution event=policy-deny reason=unreviewed userId='%s' orgId='%s' storageId='%s' documentId='%s' scriptId='%s' scriptType='%s' method='%s'\n",
@@ -1446,6 +1469,103 @@ static int cmeWebServiceParserPolicyAllows(const char *metadata, const char *scr
             scriptId?scriptId:"",scriptType?scriptType:"",method?method:"",reviewed,isolationProfile);
 #endif
     return(0);
+}
+
+static int cmeWebServiceParserStaticCheck(const char *scriptPath, const char *scriptType,
+                                          char **deniedPattern)
+{
+    FILE *fp=NULL;
+    char *scriptBuf=NULL;
+    long fileLen;
+    size_t readLen;
+    int cont;
+    const char *blockedPatterns[]={
+        "system(","exec(","popen(","fork(","`","socket","IO::Socket","Net::",
+        "subprocess","os.system","os.popen","import socket","import requests",
+        "urllib","__import__","eval(","compile(","getenv","os.environ","%ENV",NULL
+    };
+    #define cmeWebServiceParserStaticCheckFree() \
+        do { \
+            if (fp) \
+            { \
+                fclose(fp); \
+                fp=NULL; \
+            } \
+            cmeFree(scriptBuf); \
+        } while (0)
+
+    (void)scriptType;
+    *deniedPattern=NULL;
+    fp=fopen(scriptPath,"rb");
+    if (!fp)
+    {
+        cmeWebServiceParserStaticCheckFree();
+        return(1);
+    }
+    if ((fseek(fp,0,SEEK_END))||((fileLen=ftell(fp))<0)||(fseek(fp,0,SEEK_SET)))
+    {
+        cmeWebServiceParserStaticCheckFree();
+        return(2);
+    }
+    if (fileLen>65536)
+    {
+        cmeStrConstrAppend(deniedPattern,"script-size");
+        cmeWebServiceParserStaticCheckFree();
+        return(3);
+    }
+    scriptBuf=(char *)malloc((size_t)fileLen+1);
+    if (!scriptBuf)
+    {
+        cmeWebServiceParserStaticCheckFree();
+        return(4);
+    }
+    readLen=fread(scriptBuf,1,(size_t)fileLen,fp);
+    scriptBuf[readLen]='\0';
+    if (readLen!=(size_t)fileLen)
+    {
+        cmeWebServiceParserStaticCheckFree();
+        return(5);
+    }
+    for (cont=0;blockedPatterns[cont];cont++)
+    {
+        if (strstr(scriptBuf,blockedPatterns[cont]))
+        {
+            cmeStrConstrAppend(deniedPattern,"%s",blockedPatterns[cont]);
+            cmeWebServiceParserStaticCheckFree();
+            return(10+cont);
+        }
+    }
+    cmeWebServiceParserStaticCheckFree();
+    return(0);
+}
+
+static int cmeWebServiceParserPreviewRows(const char **argumentElements)
+{
+    const char *value=NULL;
+    const char *ptr=NULL;
+    long parsed=0;
+
+    if ((cmeFindInArgPairList(argumentElements,"previewRows",&value))||(!value)||(!value[0]))
+    {
+        return(3);
+    }
+    for (ptr=value;*ptr;ptr++)
+    {
+        if (!isdigit((unsigned char)*ptr))
+        {
+            return(3);
+        }
+        parsed=(parsed*10)+(*ptr-'0');
+        if (parsed>10)
+        {
+            return(10);
+        }
+    }
+    if (parsed<1)
+    {
+        return(1);
+    }
+    return((int)parsed);
 }
 
 static void cmeWebServiceParserAuditResult(const char *event, int result, const char *scriptType,
@@ -2050,6 +2170,11 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                     "\"avoidPassingOrgKeysToModels\":true,"
                     "\"reviewParserScriptsBeforeUpload\":true},"
                 "\"parserPolicy\":{\"supportedTypes\":[\"script.perl\",\"script.python\"],"
+                    "\"reviewWorkflow\":{\"statuses\":[\"pending\",\"reviewed\"],"
+                        "\"pendingAllowsPreviewOnly\":true,"
+                        "\"metadataFields\":[\"parser.reviewStatus\",\"parser.generated\","
+                        "\"parser.generator\",\"parser.promptHash\",\"parser.reviewer\","
+                        "\"parser.reviewTime\"]},"
                     "\"timeoutSeconds\":%d,"
                     "\"maxOutputBytes\":%d,"
                     "\"maxResultCells\":%d,"
@@ -9940,6 +10065,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     int numMatchArgs=0;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
+    int parserPreviewOnly=0;
+    int parserPreviewRows=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -9951,6 +10078,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
     char **columnValuesToMatch=NULL;    //Values to match a register to operate upon (GET/PUT)
     char **columnNamesToMatch=NULL;     //Names of columns for values to match a register (GET/PUT)
     char *tmpRAWFile=NULL;              //Full path to temporal, unencrypted script file.
+    char *sqlSelectRows=NULL;
+    char *staticDeniedPattern=NULL;
     char *dbFilePath=NULL;
     char **resultRegisterCols=NULL;
     const char *scriptType=NULL;
@@ -9969,6 +10098,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
             cmeFree(orgId); \
             cmeFree(newOrgKey); \
             cmeFree(dbFilePath); \
+            cmeFree(sqlSelectRows); \
+            cmeFree(staticDeniedPattern); \
             if(tmpRAWFile) \
             { \
                 int parserCleanupResult=cmeFileOverwriteAndDelete(tmpRAWFile); \
@@ -10044,6 +10175,8 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
        columnNamesToMatch[cont]=NULL;
     }
     cmeStrConstrAppend(&dbFilePath,"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
+    parserPreviewOnly=cmeWebServiceGetBooleanParam(argumentElements,"previewOnly",0);
+    parserPreviewRows=cmeWebServiceParserPreviewRows(argumentElements);
     if(!strcmp(method,"GET")) //Method = GET is ok, process:
     {
         //Mandatory values by user:
@@ -10089,7 +10222,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         scriptResourceInfo=resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_resourceInfo];
                         if ((!cmeWebServiceIsParserScriptDocumentType(scriptType))||
                             (cmeWebServiceParserPolicyAllows(scriptResourceInfo,scriptType,userId,orgId,urlElements[3],
-                                                             urlElements[7],urlElements[9],method)))
+                                                             urlElements[7],urlElements[9],method,parserPreviewOnly)))
                         {
                             cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN parser policy denied execution.</b><br>"
                                                "METHOD: '%s' URL: '%s'."
@@ -10119,6 +10252,23 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                             cmeWebServiceProcessParserScriptResourceFree();
                             *responseCode=500;
                             return(1);
+                        }
+                        if (parserPreviewOnly)
+                        {
+                            result=cmeWebServiceParserStaticCheck(tmpRAWFile,scriptType,&staticDeniedPattern);
+                            if (result)
+                            {
+                                cmeStrConstrAppend(responseText,"<b>403 FORBIDDEN parser static check denied preview.</b><br>"
+                                                   "Denied pattern: '%s'. METHOD: '%s' URL: '%s'."
+                                                   "%sLatest IDD version: <code>%s</code>",
+                                                   staticDeniedPattern?staticDeniedPattern:"unknown",method,url,
+                                                   cmeWSMsgParserScriptResourceOptions,cmeInternalDBDefinitionsVersion);
+                                cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
+                                cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
+                                cmeWebServiceProcessParserScriptResourceFree();
+                                *responseCode=403;
+                                return(0);
+                            }
                         }
                     }
                     else //Found 0
@@ -10193,7 +10343,11 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     if (!strcmp(resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_type],"script.perl"))
                     {
                         cmeResultMemTableClean();
-                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",NULL,NULL);
+                        if (parserPreviewOnly)
+                        {
+                            cmeStrConstrAppend(&sqlSelectRows,"SELECT * FROM data LIMIT %d;",parserPreviewRows);
+                        }
+                        result=cmeSQLRows(resultDB,parserPreviewOnly?sqlSelectRows:"SELECT * FROM data;",NULL,NULL);
                         if (!result)
                         {
                             result=cmeWebServiceRunPerlParserScript(tmpRAWFile);
@@ -10202,7 +10356,11 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                     else
                     {
                         cmeResultMemTableClean();
-                        result=cmeSQLRows(resultDB,"SELECT * FROM data;",NULL,NULL);
+                        if (parserPreviewOnly)
+                        {
+                            cmeStrConstrAppend(&sqlSelectRows,"SELECT * FROM data LIMIT %d;",parserPreviewRows);
+                        }
+                        result=cmeSQLRows(resultDB,parserPreviewOnly?sqlSelectRows:"SELECT * FROM data;",NULL,NULL);
                         if (!result)
                         {
                             result=cmeWebServiceRunPythonParserScript(tmpRAWFile);
@@ -10217,6 +10375,13 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         result=cmeConstructWebServiceTableResponse ((const char **)cmeResultMemTable, cmeResultMemTableCols, cmeResultMemTableRows,
                                                                     argumentElements, url, method, urlElements[7],
                                                                     responseHeaders, responseText, responseCode);
+                        if (parserPreviewOnly)
+                        {
+                            cmeStrConstrAppend(&((*responseHeaders)[4]),"Parser-preview");
+                            cmeStrConstrAppend(&((*responseHeaders)[5]),"true");
+                            cmeStrConstrAppend(&((*responseHeaders)[6]),"Parser-preview-rows");
+                            cmeStrConstrAppend(&((*responseHeaders)[7]),"%d",parserPreviewRows);
+                        }
                         cmeWebServiceProcessParserScriptResourceFree();
                         return(0);
                     }
@@ -10346,7 +10511,7 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
                         scriptResourceInfo=resultRegisterCols[cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_resourceInfo];
                         if ((!cmeWebServiceIsParserScriptDocumentType(scriptType))||
                             (cmeWebServiceParserPolicyAllows(scriptResourceInfo,scriptType,userId,orgId,urlElements[3],
-                                                             urlElements[7],urlElements[9],method)))
+                                                             urlElements[7],urlElements[9],method,0)))
                         {
                             cmeWebServiceProcessParserScriptResourceFree();
                             *responseCode=403; //No responseText in HEAD!
@@ -14139,6 +14304,11 @@ static int cmeWebServiceConstructTableSchemaResponse(char **responseText, char *
     cmeStrConstrAppend(responseText,
                        "],\"pagination\":{\"defaultLimit\":100,\"maxLimit\":1000,\"offsetMinimum\":0},"
                        "\"parserPolicy\":{\"supportedTypes\":[\"script.perl\",\"script.python\"],"
+                       "\"reviewWorkflow\":{\"statuses\":[\"pending\",\"reviewed\"],"
+                       "\"pendingAllowsPreviewOnly\":true,"
+                       "\"metadataFields\":[\"parser.reviewStatus\",\"parser.generated\","
+                       "\"parser.generator\",\"parser.promptHash\",\"parser.reviewer\","
+                       "\"parser.reviewTime\"]},"
                        "\"timeoutSeconds\":%d,\"maxOutputBytes\":%d,\"maxResultCells\":%d,"
                        "\"isolationProfile\":",
                        CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS,

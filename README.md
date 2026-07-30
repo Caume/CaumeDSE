@@ -1846,12 +1846,19 @@ This is a raw file
     isolation fails closed if the platform or service privileges cannot apply
     it. Chroot deployments must provide the configured interpreter paths,
     parser temporary files, and required runtime libraries inside the jail.
-    Parser policy metadata can be stored in the script document's
-    `*resourceInfo`, for example `parser.reviewed:true`,
-    `parser.interpreter:/usr/bin/python3`, `parser.timeout:10`, and
-    `parser.isolation:none`. The policy matcher also accepts existing
-    `key=value` metadata already stored in a resources DB. Deployments can
-    enforce this metadata with
+    Parser policy and review metadata can be stored in the script document's
+    `*resourceInfo`. Generated scripts should be uploaded as pending with
+    fields such as `parser.reviewStatus:pending`, `parser.generated:true`,
+    `parser.generator:<tool>`, and `parser.promptHash:<hash>`. Reviewed
+    scripts should carry `parser.reviewStatus:reviewed`, `parser.reviewed:true`,
+    `parser.reviewer:<user>`, and `parser.reviewTime:<timestamp>`, plus the
+    policy profile fields `parser.interpreter:/usr/bin/python3`,
+    `parser.timeout:10`, and `parser.isolation:none`. The policy matcher also
+    accepts existing `key=value` metadata already stored in a resources DB.
+    Pending/generated-unreviewed scripts are denied for full parser execution;
+    `previewOnly=1&previewRows=N` can run them against 1..10 sample rows after
+    static checks reject shell, network, dynamic-code, and environment-access
+    patterns. Deployments can enforce reviewed/profile metadata with
     `CDSE_PARSER_REQUIRE_REVIEWED=1`,
     `CDSE_PARSER_REQUIRE_POLICY_PROFILES=1`, and
     `CDSE_PARSER_ALLOWED_TYPES=script.perl,script.python`. Parser upload,
