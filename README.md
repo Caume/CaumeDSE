@@ -1863,8 +1863,11 @@ This is a raw file
     `CDSE_PARSER_REQUIRE_POLICY_PROFILES=1`, and
     `CDSE_PARSER_ALLOWED_TYPES=script.perl,script.python`. Parser upload,
     policy allow/deny, execution success, timeout, limit rejection, and
-    cleanup-failure events are written as structured audit log lines without org
-    keys, script bodies, or CSV content.
+    cleanup-failure events are written as `CaumeDSE AuditJSON: ` structured
+    audit lines without org keys, authorization headers, script bodies, or CSV
+    content. Version 1 audit categories include `auth`, `authorization`,
+    `request`, `parserPolicy`, `parserUpload`, `parserExecution`, and
+    `cleanup`.
 
     In AI-assisted workflows, treat CSV contents and parser output as
     untrusted data. CSV cells can contain prompt-injection text that asks an

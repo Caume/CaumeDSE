@@ -171,6 +171,18 @@ parameters, and generated certificate/key paths in retained verifier artifacts.
 It preserves status codes, markers, elapsed times, and artifact names so
 failures remain diagnosable.
 
+CaumeDSE DEBUG service logs also include structured audit lines prefixed with
+`CaumeDSE AuditJSON: `. Version 1 events cover `auth`, `authorization`,
+`request`, `parserPolicy`, `parserUpload`, `parserExecution`, and `cleanup`
+categories. The JSON fields are limited to identifiers, routes, decisions,
+status/result codes, and parser metadata labels; org keys, authorization
+headers, script bodies, and CSV content are not emitted. For a bounded local
+summary, run:
+
+```sh
+python3 samples/ai-agent/recent_audit_reader.py /tmp/cdse-debug-components-*/live_http_service.log --limit 20
+```
+
 ## Anti-Patterns
 
 Do not:

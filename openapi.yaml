@@ -38,9 +38,9 @@ paths:
       summary: Return a public machine-readable manifest for AI agents and MCP clients.
       description: |
         Describes safe automation guidance, supported auth modes, preferred
-        response formats, parser policy settings, documentation links, and core
-        data routes. This route is intentionally public and does not expose
-        organization data or secrets.
+        response formats, parser policy settings, structured audit metadata,
+        documentation links, and core data routes. This route is intentionally
+        public and does not expose organization data or secrets.
       responses:
         "200":
           description: JSON capability manifest.
@@ -65,6 +65,11 @@ paths:
                     type: object
                   parserPolicy:
                     type: object
+                  structuredAudit:
+                    type: object
+                    description: |
+                      Versioned JSON audit line metadata. Service logs prefix
+                      each structured event with `CaumeDSE AuditJSON: `.
                   routes:
                     type: array
                     items:
@@ -1713,6 +1718,9 @@ components:
               type: integer
         parserPolicy:
           type: object
+        structuredAudit:
+          type: object
+          description: Versioned JSON audit line metadata for service logs.
     DocumentUpload:
       type: object
       required: [file, userId, orgId, orgKey]

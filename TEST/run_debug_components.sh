@@ -634,6 +634,69 @@ PY
     fi
 }
 
+check_live_structured_audit_redaction() {
+    local protocol="$1"
+    local service_log="$2"
+    local org_key="$3"
+    local audit_log="$LOG_ROOT/live_${protocol}_structured_audit.log"
+
+    : > "$audit_log"
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        record_skip "live_${protocol}_structured_audit_redaction" "python3 is required to inspect structured audit JSON"
+        return
+    fi
+    if ! python3 "$ROOT_DIR/samples/ai-agent/recent_audit_reader.py" "$service_log" --limit 5 >> "$audit_log" 2>&1; then
+        redact_file_in_place "$audit_log"
+        record_fail "live_${protocol}_structured_audit_redaction" "sample audit reader failed log=$audit_log"
+        return
+    fi
+    if ! python3 - "$service_log" "$org_key" >> "$audit_log" 2>&1 <<'PY'
+import json
+import sys
+
+prefix = "CaumeDSE AuditJSON: "
+service_log, org_key = sys.argv[1], sys.argv[2]
+required = {"auth", "authorization", "request", "parserPolicy", "parserUpload", "parserExecution"}
+seen = set()
+count = 0
+with open(service_log, "r", encoding="utf-8", errors="replace") as handle:
+    for line in handle:
+        if prefix not in line:
+            continue
+        payload = line.split(prefix, 1)[1].strip()
+        if not payload.startswith("{"):
+            continue
+        event, _ = json.JSONDecoder().raw_decode(payload)
+        if not isinstance(event, dict):
+            continue
+        count += 1
+        if event.get("auditSchemaVersion") != 1:
+            raise SystemExit("unexpected audit schema version")
+        if event.get("safeForAgent") is not True:
+            raise SystemExit("audit event is not marked safeForAgent")
+        seen.add(event.get("category"))
+        serialized = json.dumps(event, sort_keys=True)
+        for marker in (org_key, "Authorization:", "Bearer "):
+            if marker and marker in serialized:
+                raise SystemExit(f"structured audit leaked marker: {marker}")
+if count == 0:
+    raise SystemExit("no structured audit events found")
+missing = sorted(required - seen)
+if missing:
+    raise SystemExit("missing structured audit categories: " + ",".join(missing))
+print(f"structured audit events={count} categories={','.join(sorted(str(x) for x in seen if x))}")
+PY
+    then
+        redact_file_in_place "$audit_log"
+        record_fail "live_${protocol}_structured_audit_redaction" "structured audit JSON validation failed log=$audit_log"
+        return
+    fi
+
+    record_pass "live_${protocol}_structured_audit_redaction"
+    rm -f "$audit_log"
+}
+
 stop_live_service() {
     local pid="$1"
 
@@ -1030,6 +1093,7 @@ run_live_web_flow() {
     stop_live_service "$service_pid"
     check_live_debug_secret_redaction "$protocol" "$service_log" "$org_key"
     check_live_transaction_log_redaction "$protocol" "$org_key" "$long_query_value"
+    check_live_structured_audit_redaction "$protocol" "$service_log" "$org_key"
     redact_file_in_place "$service_log"
     if [ "$protocol" = "http" ]; then
         if grep -Fq "HTTP TLS authentication bypass active for DEBUG/test profile only." "$service_log" &&
