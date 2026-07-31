@@ -697,6 +697,118 @@ PY
     rm -f "$audit_log"
 }
 
+check_live_mcp_readonly_smoke() {
+    local protocol="$1"
+    local base_url="$2"
+    local org_name="$3"
+    local storage_name="$4"
+    local user_id="$5"
+    local org_key="$6"
+    local csv_name="$7"
+    local parser_name="$8"
+    local pending_parser_name="$9"
+    local client_chain="${10:-}"
+    local client_key="${11:-}"
+    local mcp_log="$LOG_ROOT/live_${protocol}_mcp_readonly_smoke.log"
+
+    : > "$mcp_log"
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        record_skip "live_${protocol}_mcp_readonly_smoke" "python3 is required for MCP stdio smoke"
+        return
+    fi
+
+    if ! env \
+        CDSE_MCP_BASE_URL="$base_url" \
+        CDSE_MCP_ORG="$org_name" \
+        CDSE_MCP_USER="$user_id" \
+        CDSE_MCP_STORAGE="$storage_name" \
+        CDSE_MCP_ORG_KEY="$org_key" \
+        CDSE_MCP_CSV_DOC="$csv_name" \
+        CDSE_MCP_PARSER_DOC="$parser_name" \
+        CDSE_MCP_PENDING_PARSER_DOC="$pending_parser_name" \
+        CDSE_MCP_CA_CERT="$PREFIX/cdse/ca.pem" \
+        CDSE_MCP_CLIENT_CERT="$client_chain" \
+        CDSE_MCP_CLIENT_KEY="$client_key" \
+        python3 - "$ROOT_DIR/samples/mcp-server/caumedse_mcp_server.py" > "$mcp_log" 2>&1 <<'PY'
+import json
+import os
+import subprocess
+import sys
+
+server = sys.argv[1]
+requests = [
+    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+    {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+    {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "agentCapabilities_read", "arguments": {}}},
+    {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "documentSchema_read", "arguments": {}}},
+    {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "contentColumns_read", "arguments": {"column": "name", "limit": 1}}},
+    {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "parserScripts_run", "arguments": {"limit": 1}}},
+    {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "parserScripts_preview", "arguments": {"limit": 1, "preview_rows": 1}}},
+    {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "dbTableSchema_read", "arguments": {}}},
+    {"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "dbTableColumns_read", "arguments": {"column": "name", "limit": 1}}},
+]
+payload = "\n".join(json.dumps(item) for item in requests) + "\n"
+proc = subprocess.run(
+    [sys.executable, server],
+    input=payload,
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    env=os.environ.copy(),
+    timeout=90,
+)
+print(proc.stdout)
+if proc.stderr:
+    print(proc.stderr, file=sys.stderr)
+if proc.returncode != 0:
+    raise SystemExit(f"MCP server exited {proc.returncode}")
+responses = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
+by_id = {response.get("id"): response for response in responses}
+if set(by_id) != set(range(1, 10)):
+    raise SystemExit(f"unexpected MCP response ids: {sorted(by_id)}")
+tool_names = {tool["name"] for tool in by_id[2]["result"]["tools"]}
+required = {
+    "agentCapabilities_read",
+    "documentTypes_list",
+    "documentSchema_read",
+    "contentColumns_read",
+    "parserScripts_run",
+    "parserScripts_preview",
+    "dbTableSchema_read",
+    "dbTableColumns_read",
+}
+for name in required:
+    if name not in tool_names:
+        raise SystemExit(f"missing read-only MCP tool: {name}")
+for name in ("create_workspace", "upload_csv", "upload_parser", "cleanup_workspace"):
+    if name in tool_names:
+        raise SystemExit(f"write helper exposed without CDSE_MCP_ENABLE_WRITE_TOOLS: {name}")
+for request_id in range(3, 10):
+    result = by_id[request_id].get("result", {})
+    if result.get("isError"):
+        raise SystemExit(f"MCP tool call {request_id} failed: {result}")
+    content = result.get("content") or []
+    if not content:
+        raise SystemExit(f"MCP tool call {request_id} returned no content")
+    text = content[0].get("text", "")
+    if any(marker in text for marker in (os.environ["CDSE_MCP_ORG_KEY"], "Authorization:", "Bearer ")):
+        raise SystemExit("MCP tool result leaked a credential marker")
+    parsed = json.loads(text)
+    if request_id in (4, 8) and parsed.get("safeForAgent") is not True:
+        raise SystemExit("schema read did not return safeForAgent metadata")
+print("MCP read-only smoke passed")
+PY
+    then
+        redact_file_in_place "$mcp_log"
+        record_fail "live_${protocol}_mcp_readonly_smoke" "MCP read-only smoke failed log=$mcp_log"
+        return
+    fi
+
+    record_pass "live_${protocol}_mcp_readonly_smoke"
+    rm -f "$mcp_log"
+}
+
 stop_live_service() {
     local pid="$1"
 
@@ -1026,6 +1138,7 @@ run_live_web_flow() {
         -F "*resourceInfo=live $protocol pending generated Python script $python_pending_policy_meta"
     live_api_check "$protocol" python_parser_pending_full_denied 403 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_pending_script_name?$auth&newOrgKey=$org_key&outputType=json" '"code":"forbidden"' "${curl_tls_args[@]}"
     live_api_check "$protocol" python_parser_pending_preview 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_pending_script_name?$auth&newOrgKey=$org_key&outputType=json&previewOnly=1&previewRows=1&limit=1" '"returnedRows":1' "${curl_tls_args[@]}"
+    check_live_mcp_readonly_smoke "$protocol" "$base_url" "$org_name" "$storage_name" "$user_id" "$org_key" "$csv_name" "$python_script_name" "$python_pending_script_name" "${client_chain:-}" "${client_key:-}"
     live_api_check "$protocol" upload_python_pending_static_bad_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_pending_static_bad_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test_network_access.py" \
         -F "userId=$user_id" \

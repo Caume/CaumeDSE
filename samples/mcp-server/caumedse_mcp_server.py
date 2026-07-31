@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Prototype Model Context Protocol server for CaumeDSE.
+Model Context Protocol server for read-only CaumeDSE inspection.
 
-The server speaks JSON-RPC over stdio, implements a minimal MCP tool surface,
+The server speaks JSON-RPC over stdio, implements a stable MCP tool surface,
 and calls the CaumeDSE REST API with credentials sourced only from environment
 variables. It intentionally uses Python's standard library so the sample can
 run in constrained DEBUG/test environments.
@@ -24,9 +24,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CSV = ROOT / "TEST" / "testfiles" / "live-api-small.csv"
 DEFAULT_PARSER = ROOT / "TEST" / "testfiles" / "test.py"
-SERVER_NAME = "caumedse-mcp-prototype"
-SERVER_VERSION = "0.1.0"
+SERVER_NAME = "caumedse-mcp-readonly"
+SERVER_VERSION = "0.2.0"
 PROTOCOL_VERSION = "2024-11-05"
+MAX_LIMIT = 10
+MAX_TEXT_BYTES = 12000
 
 
 class ToolError(Exception):
@@ -48,6 +50,7 @@ class Config:
         self.ca_cert = os.environ.get("CDSE_MCP_CA_CERT")
         self.client_cert = os.environ.get("CDSE_MCP_CLIENT_CERT")
         self.client_key = os.environ.get("CDSE_MCP_CLIENT_KEY")
+        self.enable_write_tools = os.environ.get("CDSE_MCP_ENABLE_WRITE_TOOLS", "").lower() in {"1", "true", "yes", "on"}
 
     def require_key(self):
         if not self.org_key:
@@ -163,7 +166,7 @@ def get_agent_capabilities(cfg, _args):
     return json.loads(payload.decode("utf-8"))
 
 
-def clamp_limit(value, default=3, maximum=10):
+def clamp_limit(value, default=3, maximum=MAX_LIMIT):
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -172,13 +175,21 @@ def clamp_limit(value, default=3, maximum=10):
 
 
 def summarize_table(result, limit):
+    if not isinstance(result, dict):
+        raise ToolError("CaumeDSE returned a non-object JSON response.")
+    if "error" in result:
+        raise ToolError(json.dumps(result["error"], sort_keys=True))
     rows = result.get("rows", [])
+    columns = result.get("columns", [])
+    pagination = result.get("pagination", {})
+    if not isinstance(rows, list) or not isinstance(columns, list) or not isinstance(pagination, dict):
+        raise ToolError("CaumeDSE JSON table response is missing rows, columns, or pagination.")
     return {
-        "columns": result.get("columns", []),
-        "rowCount": result.get("pagination", {}).get("totalRows", len(rows)),
-        "pagination": result.get("pagination", {}),
+        "columns": columns[:MAX_LIMIT],
+        "rowCount": pagination.get("totalRows", len(rows)),
+        "pagination": pagination,
         "rows": rows[:limit],
-        "truncated": bool(result.get("pagination", {}).get("hasMore", len(rows) > limit)),
+        "truncated": bool(pagination.get("hasMore", len(rows) > limit) or len(columns) > MAX_LIMIT),
     }
 
 
@@ -299,7 +310,23 @@ def upload_parser_candidate(cfg, args):
 def discover_schema(cfg, args):
     doc_name = args.get("document") or cfg.csv_doc
     path = f"{base_document_path(cfg, 'file.csv', doc_name)}/schema"
-    return json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=1)
+    schema = json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=1)
+    validate_schema(schema, "document")
+    return schema
+
+
+def validate_schema(schema, expected_resource=None):
+    if not isinstance(schema, dict):
+        raise ToolError("CaumeDSE schema response is not a JSON object.")
+    if schema.get("safeForAgent") is not True:
+        raise ToolError("CaumeDSE schema response is not marked safeForAgent.")
+    if expected_resource and schema.get("resource") != expected_resource:
+        raise ToolError(f"Unexpected schema resource: {schema.get('resource')}")
+    if not isinstance(schema.get("columns"), list):
+        raise ToolError("CaumeDSE schema response is missing columns.")
+    if not isinstance(schema.get("pagination"), dict):
+        raise ToolError("CaumeDSE schema response is missing pagination metadata.")
+    return schema
 
 
 def query_column(cfg, args):
@@ -310,6 +337,41 @@ def query_column(cfg, args):
     if column not in {entry.get("name") for entry in schema.get("columns", [])}:
         raise ToolError(f"Column not found in document schema: {column}")
     path = f"{base_document_path(cfg, 'file.csv', doc_name)}/contentColumns/{quote_path(column)}"
+    summary = summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=limit), limit)
+    summary["schema"] = {"rowCount": schema.get("rowCount"), "columnCount": schema.get("columnCount")}
+    return summary
+
+
+def discover_db_table_schema(cfg, args):
+    db_name = args.get("db_name") or cfg.csv_doc
+    table = args.get("table") or "data"
+    path = (
+        f"/organizations/{quote_path(cfg.org)}"
+        f"/storage/{quote_path(cfg.storage)}"
+        f"/dbNames/{quote_path(db_name)}"
+        f"/dbTables/{quote_path(table)}"
+        f"/schema"
+    )
+    schema = json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=1)
+    validate_schema(schema, "dbTable")
+    return schema
+
+
+def query_db_table_column(cfg, args):
+    db_name = args.get("db_name") or cfg.csv_doc
+    table = args.get("table") or "data"
+    column = args.get("column") or "name"
+    limit = clamp_limit(args.get("limit"))
+    schema = discover_db_table_schema(cfg, {"db_name": db_name, "table": table})
+    if column not in {entry.get("name") for entry in schema.get("columns", [])}:
+        raise ToolError(f"Column not found in table schema: {column}")
+    path = (
+        f"/organizations/{quote_path(cfg.org)}"
+        f"/storage/{quote_path(cfg.storage)}"
+        f"/dbNames/{quote_path(db_name)}"
+        f"/dbTables/{quote_path(table)}"
+        f"/tableColumns/{quote_path(column)}"
+    )
     summary = summarize_table(json_request(cfg, path, cfg.auth_params(include_new_key=True), limit=limit), limit)
     summary["schema"] = {"rowCount": schema.get("rowCount"), "columnCount": schema.get("columnCount")}
     return summary
@@ -358,40 +420,124 @@ def cleanup_workspace(cfg, args):
     return {"cleanup": deleted}
 
 
-TOOLS = {
-    "get_agent_capabilities": get_agent_capabilities,
+READ_ONLY_TOOLS = {
+    "agentCapabilities_read": get_agent_capabilities,
+    "documentTypes_list": list_document_types,
+    "documentSchema_read": discover_schema,
+    "contentColumns_read": query_column,
+    "parserScripts_run": run_parser,
+    "parserScripts_preview": preview_parser_candidate,
+    "dbTableSchema_read": discover_db_table_schema,
+    "dbTableColumns_read": query_db_table_column,
+}
+
+WRITE_TOOLS = {
     "create_workspace": create_workspace,
-    "list_document_types": list_document_types,
     "upload_csv": upload_csv,
     "upload_parser": upload_parser,
     "upload_parser_candidate": upload_parser_candidate,
-    "discover_schema": discover_schema,
-    "query_column": query_column,
-    "run_parser": run_parser,
-    "preview_parser_candidate": preview_parser_candidate,
     "cleanup_workspace": cleanup_workspace,
 }
 
-
-TOOL_SCHEMAS = [
+READ_ONLY_TOOL_SCHEMAS = [
     {
-        "name": "get_agent_capabilities",
+        "name": "agentCapabilities_read",
         "description": "Read the public CaumeDSE AI-agent capability manifest without credentials.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
-        "name": "create_workspace",
-        "description": "Create the configured disposable organization, storage, and user.",
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
-    },
-    {
-        "name": "list_document_types",
+        "name": "documentTypes_list",
         "description": "List document types in the configured storage as a bounded JSON summary.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
+        "name": "documentSchema_read",
+        "description": "Read document schema metadata before row, column, or parser reads.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "contentColumns_read",
+        "description": "Validate one CSV column against schema and return a bounded row preview.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string"},
+                "column": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "parserScripts_run",
+        "description": "Run an already uploaded reviewed parser and return a bounded row preview.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string"},
+                "parser": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "parserScripts_preview",
+        "description": "Run a pending parser candidate in preview-only mode against capped sample rows.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document": {"type": "string"},
+                "parser": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT},
+                "preview_rows": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "dbTableSchema_read",
+        "description": "Read schema metadata for one exposed secure CSV table.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "db_name": {"type": "string"},
+                "table": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "dbTableColumns_read",
+        "description": "Validate one exposed table column against schema and return a bounded row preview.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "db_name": {"type": "string"},
+                "table": {"type": "string"},
+                "column": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT},
+            },
+            "additionalProperties": False,
+        },
+    },
+]
+
+WRITE_TOOL_SCHEMAS = [
+    {
+        "name": "create_workspace",
+        "description": "Local DEBUG helper: create the configured disposable organization, storage, and user.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "upload_csv",
-        "description": "Upload a reviewed local CSV fixture to the configured storage.",
+        "description": "Local DEBUG helper: upload a reviewed local CSV fixture to the configured storage.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -404,7 +550,7 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "upload_parser",
-        "description": "Upload a reviewed local Python parser fixture with review metadata.",
+        "description": "Local DEBUG helper: upload a reviewed local Python parser fixture with review metadata.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -417,7 +563,7 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "upload_parser_candidate",
-        "description": "Upload a generated parser candidate as pending review metadata.",
+        "description": "Local DEBUG helper: upload a generated parser candidate as pending review metadata.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -429,59 +575,8 @@ TOOL_SCHEMAS = [
         },
     },
     {
-        "name": "discover_schema",
-        "description": "Read document schema metadata before row, column, or parser reads.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "document": {"type": "string"},
-            },
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "query_column",
-        "description": "Read document schema, validate one CSV column, and return a bounded row preview.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "document": {"type": "string"},
-                "column": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 10},
-            },
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "run_parser",
-        "description": "Run an already uploaded reviewed parser and return a bounded row preview.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "document": {"type": "string"},
-                "parser": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 10},
-            },
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "preview_parser_candidate",
-        "description": "Run a pending parser candidate in preview-only mode against capped sample rows.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "document": {"type": "string"},
-                "parser": {"type": "string"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 10},
-                "preview_rows": {"type": "integer", "minimum": 1, "maximum": 10},
-            },
-            "additionalProperties": False,
-        },
-    },
-    {
         "name": "cleanup_workspace",
-        "description": "Delete the configured sample documents, storage, and user.",
+        "description": "Local DEBUG helper: delete the configured sample documents, storage, and user.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -494,10 +589,32 @@ TOOL_SCHEMAS = [
 ]
 
 
+def available_tools(cfg):
+    tools = dict(READ_ONLY_TOOLS)
+    if cfg.enable_write_tools:
+        tools.update(WRITE_TOOLS)
+    return tools
+
+
+def available_tool_schemas(cfg):
+    schemas = list(READ_ONLY_TOOL_SCHEMAS)
+    if cfg.enable_write_tools:
+        schemas.extend(WRITE_TOOL_SCHEMAS)
+    return schemas
+
+
 def tool_result(data, is_error=False):
+    text = json.dumps(data, indent=2, sort_keys=True)
+    truncated = False
+    encoded = text.encode("utf-8")
+    if len(encoded) > MAX_TEXT_BYTES:
+        text = encoded[:MAX_TEXT_BYTES].decode("utf-8", errors="ignore")
+        text += "\n...<truncated>"
+        truncated = True
     return {
-        "content": [{"type": "text", "text": json.dumps(data, indent=2, sort_keys=True)}],
+        "content": [{"type": "text", "text": text}],
         "isError": is_error,
+        "structuredContent": {"truncated": truncated},
     }
 
 
@@ -511,16 +628,17 @@ def handle_request(cfg, request_obj):
             "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
         }
     if method == "tools/list":
-        return {"tools": TOOL_SCHEMAS}
+        return {"tools": available_tool_schemas(cfg)}
     if method == "tools/call":
         name = params.get("name")
         arguments = params.get("arguments") or {}
-        if name not in TOOLS:
+        tools = available_tools(cfg)
+        if name not in tools:
             raise ToolError(f"Unknown tool: {name}")
         if not isinstance(arguments, dict):
             raise ToolError("Tool arguments must be an object.")
         try:
-            return tool_result(TOOLS[name](cfg, arguments))
+            return tool_result(tools[name](cfg, arguments))
         except ToolError as exc:
             return tool_result({"error": str(exc)}, is_error=True)
     if method and method.startswith("notifications/"):
