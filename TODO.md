@@ -666,13 +666,13 @@
     - Batch 2: emitted structured `CaumeDSE AuditJSON: ` events alongside existing text diagnostics without changing LogsDB storage.
     - Batch 3: added an agent-readable recent-audit sample and live verifier checks for JSON parsing, required categories, and redaction.
 
-- [ ] #89 Promote the MCP prototype into a supported read-only tool surface.
+- [x] #89 Promote the MCP prototype into a supported read-only tool surface.
   - Source: `samples/mcp-server/`, `AI_USAGE.md`, live verifier.
   - Goal: provide a stable MCP interface for agents to inspect CaumeDSE data with narrow permissions.
-  - Plan:
-    - Batch 1: align MCP tools with `/agentCapabilities` and OpenAPI route names.
-    - Batch 2: add schema validation, pagination, and safer result truncation to read tools.
-    - Batch 3: add a smoke test that runs MCP initialize/tools/list/tool calls against the live verifier service.
+  - Done:
+    - Batch 1: aligned supported MCP tools with `/agentCapabilities` and OpenAPI route names.
+    - Batch 2: added schema validation, pagination, and safer result truncation to read tools.
+    - Batch 3: added a smoke test that runs MCP initialize/tools/list/tool calls against the live verifier service.
 
 - [ ] #90 Add an AI agent cookbook and operational checklist.
   - Source: `AI_USAGE.md`, `samples/`, README.

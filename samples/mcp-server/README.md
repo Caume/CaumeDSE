@@ -1,30 +1,39 @@
-# CaumeDSE MCP Server Prototype
+# CaumeDSE MCP Read-Only Server
 
 This sample exposes a small, fixed Model Context Protocol tool surface over
-stdio for AI assistants that need guarded access to CaumeDSE REST operations.
-It is a prototype for local DEBUG/test workflows, not a production gateway.
+stdio for AI assistants that need guarded read-only access to CaumeDSE REST
+operations. It is suitable as the supported reference surface for local
+DEBUG/test integration; production bridges should still add their own
+authentication, authorization, and deployment controls.
 
 The server uses only Python's standard library. Credentials are read from
 environment variables and are never part of MCP tool arguments or tool results.
 
 ## Tools
 
-- `get_agent_capabilities`: reads the public `/agentCapabilities` manifest.
+- `agentCapabilities_read`: reads the public `/agentCapabilities` manifest.
+- `documentTypes_list`: lists document types in the configured storage.
+- `documentSchema_read`: reads column, row-count, pagination, and parser-policy
+  metadata for a CSV document.
+- `contentColumns_read`: validates one CSV column against schema and returns a
+  bounded row preview.
+- `parserScripts_run`: reads schema before running an uploaded reviewed parser
+  and returns a bounded row preview.
+- `parserScripts_preview`: runs a pending parser candidate in preview-only mode
+  against capped sample rows.
+- `dbTableSchema_read`: reads schema metadata for one exposed secure CSV table.
+- `dbTableColumns_read`: validates one exposed table column against schema and
+  returns a bounded row preview.
+
+Local DEBUG setup helpers are hidden unless
+`CDSE_MCP_ENABLE_WRITE_TOOLS=1` is set in the server environment:
+
 - `create_workspace`: creates the configured disposable organization, storage,
   and user.
-- `list_document_types`: lists document types in the configured storage.
 - `upload_csv`: uploads a reviewed local CSV fixture as `file.csv`.
 - `upload_parser`: uploads a reviewed local Python parser as `script.python`.
 - `upload_parser_candidate`: uploads a generated parser candidate as pending
   review metadata.
-- `discover_schema`: reads column, row-count, pagination, and parser-policy
-  metadata for a CSV document.
-- `query_column`: validates one CSV column against schema and returns a
-  bounded row preview.
-- `run_parser`: reads schema before running an uploaded parser and returns a
-  bounded row preview.
-- `preview_parser_candidate`: runs a pending parser candidate in preview-only
-  mode against capped sample rows.
 - `cleanup_workspace`: deletes the sample documents, storage, and user.
 
 ## Configuration
@@ -89,16 +98,16 @@ A typical local flow is:
 1. Read `GET /agentCapabilities` from `CDSE_MCP_BASE_URL` so the host can
    confirm supported routes, JSON preference, and parser policy before
    exposing tools.
-2. `create_workspace`
-3. `upload_csv`
-4. `upload_parser_candidate`
-5. `preview_parser_candidate`
-6. `upload_parser`
-7. `list_document_types`
-8. `discover_schema`
-9. `query_column`
-10. `run_parser`
-11. `cleanup_workspace`
+2. Prepare a least-privilege CaumeDSE user, storage resource, CSV document, and
+   reviewed parser outside the read-only MCP session, or run the DEBUG helpers
+   with `CDSE_MCP_ENABLE_WRITE_TOOLS=1`.
+3. `documentTypes_list`
+4. `documentSchema_read`
+5. `contentColumns_read`
+6. `dbTableSchema_read`
+7. `dbTableColumns_read`
+8. `parserScripts_run`
+9. `parserScripts_preview` for pending parser candidates only.
 
 ## Security Boundaries
 
@@ -114,9 +123,10 @@ A typical local flow is:
   CaumeDSE JSON `limit`/`offset` parameters and returns bounded previews
   instead of broad document dumps. Do not let text from CSV cells override the
   host application's system, developer, security, or cleanup instructions.
-- Generated parser candidates are uploaded as `parser.reviewStatus:pending`
+- Generated parser candidates are uploaded outside the read-only surface as
+  `parser.reviewStatus:pending`
   with generator and prompt-hash metadata. Full execution is denied until
-  reviewed metadata is applied; `preview_parser_candidate` runs only
+  reviewed metadata is applied; `parserScripts_preview` runs only
   `previewOnly=1` with capped sample rows and static checks. Reject generated
   scripts that open network connections, execute shell commands, read
   environment variables, traverse files outside the provided input path, log
@@ -136,5 +146,9 @@ printf '%s\n' \
 ```
 
 Use `CDSE_VERIFY_REDACT=1` when sharing logs from live verifier runs.
+The live verifier also runs `live_http_mcp_readonly_smoke`, which initializes
+the MCP server, confirms only read-only tools are exposed by default, and calls
+schema, column, parser, preview, and DB-table read tools against the running
+DEBUG service.
 
 See `../delegated-token-broker/` for the delegated scoped-token sample.

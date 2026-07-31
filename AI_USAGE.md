@@ -222,6 +222,9 @@ See `samples/delegated-token-broker/` for an external-manager sample that
 mints short-lived scoped tokens and maps them to broker-held delegated CaumeDSE
 credentials.
 
-See `samples/mcp-server/` for a prototype MCP stdio server that exposes a
-small allow-listed tool surface for the same REST API operations while keeping
-organization keys in environment variables.
+See `samples/mcp-server/` for the supported read-only MCP stdio surface. It
+exposes route-aligned tools such as `agentCapabilities_read`,
+`documentSchema_read`, `contentColumns_read`, `parserScripts_run`,
+`parserScripts_preview`, and `dbTableSchema_read` while keeping organization
+keys in environment variables. Local DEBUG setup/upload/cleanup helpers are
+hidden unless `CDSE_MCP_ENABLE_WRITE_TOOLS=1` is set.
