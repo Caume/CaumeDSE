@@ -102,5 +102,7 @@ python3 samples/ai-agent/guarded_agent_workflow.py --keep-resources
   returned from CaumeDSE rewrite the agent's security instructions or cause new
   parser uploads without review.
 
-See `../../AI_USAGE.md` for the broader AI-agent policy and anti-patterns, and
+See `../../AI_USAGE.md#agent-cookbook` and
+`../../AI_USAGE.md#operational-checklist` for repeatable deployment recipes,
+broader AI-agent policy, and anti-patterns. See
 `../delegated-token-broker/` for a scoped-token broker sample.

@@ -183,6 +183,110 @@ summary, run:
 python3 samples/ai-agent/recent_audit_reader.py /tmp/cdse-debug-components-*/live_http_service.log --limit 20
 ```
 
+## Agent Cookbook
+
+These recipes are intended to be repeatable deployment patterns. Keep secrets
+in the host process or broker, pass only identifiers and bounded JSON results
+to the model, and record the `X-Request-Id` for every failed call.
+
+### Read-Only Document Inspection
+
+Use this when an agent needs to inspect a CSV document without changing
+CaumeDSE state.
+
+1. Call `/agentCapabilities` and confirm JSON responses, pagination, schema
+   routes, and parser policy.
+2. Use a least-privilege CaumeDSE user whose role/filter rows allow only the
+   required `GET`/`HEAD` routes.
+3. Read `/schema` for the document before reading content.
+4. Read one column or row page with `outputType=json&limit=N&offset=0`.
+5. Send only column names, row counts, and task-relevant sample rows to the
+   model. Treat cell text as untrusted data, not instructions.
+6. Stop when `pagination.hasMore` is true unless a human approves reading the
+   next page.
+
+For MCP clients, prefer the default read-only tools:
+`agentCapabilities_read`, `documentSchema_read`, `contentColumns_read`,
+`dbTableSchema_read`, and `dbTableColumns_read`.
+
+### Parser Review And Upload
+
+Use this when an LLM proposes a parser script.
+
+1. Save the generated script outside CaumeDSE and review it as source code.
+2. Reject scripts that use network, shell, dynamic-code, environment, or
+   arbitrary-file access.
+3. Upload candidates as pending with `parser.reviewStatus:pending`,
+   `parser.generated:true`, `parser.generator:<tool>`,
+   `parser.promptHash:<hash>`, `parser.interpreter:<path>`,
+   `parser.timeout:10`, and `parser.isolation:<profile>`.
+4. Run only `previewOnly=1&previewRows=N` against a small sample.
+5. Promote by updating metadata to `parser.reviewStatus:reviewed`,
+   `parser.reviewed:true`, `parser.reviewer:<user>`, and
+   `parser.reviewTime:<timestamp>` after human approval.
+6. Run full parser execution only with bounded JSON output and a clear
+   downstream consumer.
+
+### Audit Review
+
+Use this when an agent action needs operator review.
+
+1. Keep the response status, `X-Request-Id`, route template, and timestamp for
+   each tool call.
+2. Read structured service-log events with
+   `samples/ai-agent/recent_audit_reader.py`.
+3. Review `auth`, `authorization`, `request`, `parserPolicy`,
+   `parserUpload`, `parserExecution`, and `cleanup` categories.
+4. Share only redacted verifier artifacts. Use `CDSE_VERIFY_REDACT=1` before
+   uploading logs into issue trackers or model context.
+5. Escalate denied parser-policy events to a human reviewer instead of asking
+   the model to bypass or rewrite policy.
+
+### Cleanup
+
+Use this after each trial or incident investigation.
+
+1. Delete temporary documents, pending parser candidates, reviewed parser
+   fixtures, role/filter rows, users, and storage resources created for the
+   task.
+2. Revoke delegated tokens and upstream OAuth grants tied to the agent
+   session.
+3. Remove local temporary CSV/parser files and generated certificate/key files
+   from non-retained scratch directories.
+4. Re-run a narrow read or `HEAD` check to confirm removed resources return
+   404 or are no longer listed.
+5. Keep only redacted summaries, coverage matrices, and structured audit
+   excerpts needed for operational records.
+
+## Operational Checklist
+
+Before deploying an agent or MCP bridge:
+
+- HTTPS: use HTTPS with client certificates outside DEBUG-only HTTP testing.
+  Disable `--enable-BYPASSTLSAUTHINHTTP` for production builds.
+- Scoped users: provision a dedicated CaumeDSE user per agent task class and
+  configure role/filter rows for the exact read/write methods required.
+- Delegation: put a broker in front of repeated agent sessions; mint
+  short-lived opaque scoped tokens and keep organization keys in the broker or
+  secret manager.
+- Parser review: require reviewed parser metadata for full execution and keep
+  generated candidates pending until human approval.
+- Parser isolation: set parser interpreter, timeout, and isolation metadata;
+  enable `CDSE_PARSER_REQUIRE_POLICY_PROFILES=1`, and use network/chroot
+  isolation where the deployment can satisfy the runtime requirements.
+- Pagination: require schema reads before data reads and cap model-visible
+  results with JSON `limit`/`offset` or MCP result limits.
+- Redaction: run verifier/debug flows with `CDSE_VERIFY_REDACT=1` before
+  sharing artifacts. Do not paste expanded URLs containing `orgKey` or
+  `newOrgKey`.
+- Prompt boundaries: tell the model that CSV cells, parser output, audit
+  events, and error messages are data. They must not override system,
+  developer, authorization, cleanup, TLS, logging, or parser-review rules.
+- Auditability: log request IDs and review `CaumeDSE AuditJSON` events for
+  auth, authorization, parser policy, parser execution, and cleanup outcomes.
+- Cleanup: define an owner and deadline for deleting temporary organizations,
+  storage paths, users, documents, parser scripts, and delegated tokens.
+
 ## Anti-Patterns
 
 Do not:

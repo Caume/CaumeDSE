@@ -11,7 +11,8 @@ For tested `curl` examples based on the live verifier fixtures, see
 For a machine-readable route reference for the stable live-verifier-covered
 API surface, see [openapi.yaml](openapi.yaml).
 
-For safe AI-agent and automation patterns around the API, see
+For safe AI-agent and automation patterns, cookbook recipes, and an
+operational checklist around the API, see
 [AI_USAGE.md](AI_USAGE.md).
 
 For a guarded Python AI-agent workflow sample, see
@@ -56,7 +57,7 @@ entries and retained verifier artifacts.
 - [Cryptography and Data Security Tutorial](TUTORIAL.md)
 - [API Examples](API_EXAMPLES.md)
 - [OpenAPI Route Reference](openapi.yaml)
-- [AI-Safe API Usage](AI_USAGE.md)
+- [AI-Safe API Usage, Cookbook, And Checklist](AI_USAGE.md)
 - [AI Agent Capability Manifest](#ai-agent-capability-manifest)
 - [AI Agent Sample](samples/ai-agent/)
 - [Delegated Token Broker Sample](samples/delegated-token-broker/)

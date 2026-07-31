@@ -50,7 +50,8 @@ curl -s "$BASE_URL/agentCapabilities"
 
 Useful fields include `authentication.requiredParameters`,
 `formats.preferred`, `formats.jsonPagination`, `parserPolicy`, and each entry
-in `routes`.
+in `routes`. For repeatable agent deployment recipes, see
+`AI_USAGE.md#agent-cookbook` and `AI_USAGE.md#operational-checklist`.
 
 Every response includes `X-Request-Id` for correlation with LogsDB response
 headers. For parseable failures, request JSON:

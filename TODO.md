@@ -674,10 +674,10 @@
     - Batch 2: added schema validation, pagination, and safer result truncation to read tools.
     - Batch 3: added a smoke test that runs MCP initialize/tools/list/tool calls against the live verifier service.
 
-- [ ] #90 Add an AI agent cookbook and operational checklist.
+- [x] #90 Add an AI agent cookbook and operational checklist.
   - Source: `AI_USAGE.md`, `samples/`, README.
   - Goal: make safe agent deployments repeatable for integrators.
-  - Plan:
-    - Batch 1: add recipes for read-only document inspection, parser review/upload, audit review, and cleanup.
-    - Batch 2: add deployment checklist entries for HTTPS, scoped delegated users, parser isolation, log redaction, and model prompt boundaries.
-    - Batch 3: cross-link cookbook recipes from README, API examples, MCP docs, and OpenAPI.
+  - Done:
+    - Batch 1: added recipes for read-only document inspection, parser review/upload, audit review, and cleanup.
+    - Batch 2: added deployment checklist entries for HTTPS, scoped delegated users, parser isolation, log redaction, and model prompt boundaries.
+    - Batch 3: cross-linked cookbook recipes from README, API examples, MCP docs, and OpenAPI/capability metadata.

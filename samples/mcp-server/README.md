@@ -133,6 +133,9 @@ A typical local flow is:
   credentials, or create unbounded output.
 - Request logs go to stderr and redact `orgKey`, `newOrgKey`, and selected
   credential-style parameters.
+- For repeatable deployment recipes and the full operational checklist, see
+  `../../AI_USAGE.md#agent-cookbook` and
+  `../../AI_USAGE.md#operational-checklist`.
 
 ## Local Smoke Test
 
