@@ -2334,7 +2334,9 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                     "{\"name\":\"dbBrowsing\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
                     "{\"name\":\"dbTableSchema\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}/schema\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true}"
                 "],"
-                "\"docs\":[\"README.md\",\"AI_USAGE.md\",\"API_EXAMPLES.md\",\"openapi.yaml\",\"samples/ai-agent/\",\"samples/mcp-server/\"]"
+                "\"docs\":[\"README.md\",\"AI_USAGE.md\",\"AI_USAGE.md#agent-cookbook\","
+                    "\"AI_USAGE.md#operational-checklist\",\"API_EXAMPLES.md\",\"openapi.yaml\","
+                    "\"samples/ai-agent/\",\"samples/mcp-server/\"]"
                 "}",
                 cmeInternalDBDefinitionsVersion,
                 cmeUseTLSAuthentication ? "true" : "false",

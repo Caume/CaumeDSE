@@ -39,8 +39,9 @@ paths:
       description: |
         Describes safe automation guidance, supported auth modes, preferred
         response formats, parser policy settings, structured audit metadata,
-        documentation links, and core data routes. This route is intentionally
-        public and does not expose organization data or secrets.
+        documentation links, cookbook/checklist references, and core data
+        routes. This route is intentionally public and does not expose
+        organization data or secrets.
       responses:
         "200":
           description: JSON capability manifest.
