@@ -326,6 +326,10 @@ See `samples/delegated-token-broker/` for an external-manager sample that
 mints short-lived scoped tokens and maps them to broker-held delegated CaumeDSE
 credentials.
 
+See `samples/agent-rag-connector/` for an allowlisted retrieval sample that
+reads schema first, returns only configured columns, applies redaction rules,
+and emits model-ready JSON with prompt-boundary metadata.
+
 See `samples/mcp-server/` for the supported read-only MCP stdio surface. It
 exposes route-aligned tools such as `agentCapabilities_read`,
 `documentSchema_read`, `contentColumns_read`, `parserScripts_run`,

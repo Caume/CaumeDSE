@@ -681,3 +681,37 @@
     - Batch 1: added recipes for read-only document inspection, parser review/upload, audit review, and cleanup.
     - Batch 2: added deployment checklist entries for HTTPS, scoped delegated users, parser isolation, log redaction, and model prompt boundaries.
     - Batch 3: cross-linked cookbook recipes from README, API examples, MCP docs, and OpenAPI/capability metadata.
+
+- [x] #91 Add an agent RAG data connector sample.
+  - Source: `samples/agent-rag-connector/`, `samples/mcp-server/`, `AI_USAGE.md`, `openapi.yaml`.
+  - Goal: show how an AI agent can retrieve CaumeDSE CSV data as bounded, schema-aware, model-ready snippets without exposing organization keys or broad sensitive rows.
+  - Plan:
+    - Batch 1: define a document/column allowlist configuration format with per-column redaction rules, row limits, and request-id capture.
+    - Batch 2: implement a Python connector that reads `/agentCapabilities`, fetches schema metadata, validates requested columns, applies pagination limits, and emits sanitized JSON for downstream model context.
+    - Batch 3: add fixtures that include sensitive and prompt-injection-style CSV cells, plus offline/live smoke checks proving redaction, bounds, and prompt-boundary behavior.
+    - Batch 4: document setup, threat boundaries, broker/MCP integration options, and validation commands; link the sample from README and AI usage docs.
+  - Done: added `samples/agent-rag-connector/` with a dependency-free Python
+    CLI, allowlisted config, per-column redaction rules, sensitive and
+    prompt-injection-style fixture data, offline fixture mode, live CaumeDSE
+    capability/schema/column reads, request-id capture, model-ready JSON
+    output, README documentation, README/AI_USAGE links, an offline verifier
+    self-test, and a live verifier smoke check against the existing uploaded
+    CSV document.
+
+- [ ] #92 Add a secure document review workspace sample.
+  - Source: `samples/review-workspace/`, parser script resources, delegated-token broker sample, `AI_USAGE.md`.
+  - Goal: provide a human-in-the-loop application that uploads documents, previews schemas and rows, reviews generated parser scripts, approves or rejects parser metadata, and exports redacted audit summaries.
+  - Plan:
+    - Batch 1: define the workspace flow for disposable organization/storage setup, reviewer assignment, parser candidate upload as pending, preview-only execution, promotion to reviewed metadata, and cleanup.
+    - Batch 2: implement a small local web application or Python service that keeps CaumeDSE credentials in the server environment and exposes only bounded review actions to the browser or bot.
+    - Batch 3: integrate delegated-token authorization for bot-assisted suggestions while requiring human approval before full parser execution.
+    - Batch 4: add README documentation, safe fixture data, and focused verifier coverage for approve, reject, preview, reviewed-run, and cleanup paths.
+
+- [ ] #93 Add a compliance audit dashboard sample.
+  - Source: `samples/audit-dashboard/`, structured `CaumeDSE AuditJSON` service logs, `live-api-coverage.csv`, `AI_USAGE.md`.
+  - Goal: make CaumeDSE traceability easier for operators and AI-assisted incident review by summarizing auth, authorization, parser policy, parser execution, request, and cleanup events without exposing secrets or raw CSV content.
+  - Plan:
+    - Batch 1: extend the recent-audit parsing logic into a reusable parser that groups events by request ID, user, organization, route, decision, status, and parser policy outcome.
+    - Batch 2: implement a lightweight local dashboard or static HTML report generator with filters for denied auth, parser-policy denials, cleanup failures, and broad-read indicators.
+    - Batch 3: add redacted export output suitable for issue reports or model context, preserving diagnostic fields while masking credentials, certificate paths, and sensitive parameters.
+    - Batch 4: document how to run against DEBUG verifier logs and add smoke tests using committed representative audit fixtures.

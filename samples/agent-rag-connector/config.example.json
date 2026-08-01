@@ -1,0 +1,25 @@
+{
+  "documents": {
+    "rag-small.csv": {
+      "documentType": "file.csv",
+      "allowedColumns": ["name", "department", "email", "notes"],
+      "maxRows": 3,
+      "redactions": {
+        "email": {
+          "pattern": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+",
+          "replacement": "[redacted-email]"
+        },
+        "notes": [
+          {
+            "pattern": "(?i)ignore previous instructions[^.]*\\.",
+            "replacement": "[removed prompt-injection text]."
+          },
+          {
+            "pattern": "(?i)secret token is [A-Za-z0-9._-]+",
+            "replacement": "[removed secret-like text]"
+          }
+        ]
+      }
+    }
+  }
+}

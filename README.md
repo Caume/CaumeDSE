@@ -22,6 +22,10 @@ For a delegated scoped-token broker sample that keeps CaumeDSE organization
 keys out of agent prompts, see
 [samples/delegated-token-broker/](samples/delegated-token-broker/).
 
+For an allowlisted, redacting retrieval connector that prepares bounded CSV
+snippets for AI context, see
+[samples/agent-rag-connector/](samples/agent-rag-connector/).
+
 For the supported read-only MCP stdio tool surface over safe REST reads, see
 [samples/mcp-server/](samples/mcp-server/).
 
@@ -61,6 +65,7 @@ entries and retained verifier artifacts.
 - [AI Agent Capability Manifest](#ai-agent-capability-manifest)
 - [AI Agent Sample](samples/ai-agent/)
 - [Delegated Token Broker Sample](samples/delegated-token-broker/)
+- [Agent RAG Connector Sample](samples/agent-rag-connector/)
 - [MCP Read-Only Server](samples/mcp-server/)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)

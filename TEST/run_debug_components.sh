@@ -367,6 +367,27 @@ run_delegated_token_broker_self_test() {
     return 1
 }
 
+run_agent_rag_connector_self_test() {
+    local log="$LOG_ROOT/agent_rag_connector_self_test.log"
+    local start
+    local rc
+
+    note "RUN  agent_rag_connector_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/agent-rag-connector/caumedse_rag_connector.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS agent RAG connector self-test" "$log"; then
+        record_pass "agent_rag_connector_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail agent_rag_connector_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
 protocol_enabled() {
     local protocol="$1"
 
@@ -809,6 +830,92 @@ PY
     rm -f "$mcp_log"
 }
 
+check_live_agent_rag_connector_smoke() {
+    local protocol="$1"
+    local base_url="$2"
+    local org_name="$3"
+    local storage_name="$4"
+    local user_id="$5"
+    local org_key="$6"
+    local csv_name="$7"
+    local client_chain="${8:-}"
+    local client_key="${9:-}"
+    local rag_log="$LOG_ROOT/live_${protocol}_agent_rag_connector_smoke.log"
+    local rag_config="$LOG_ROOT/live_${protocol}_agent_rag_connector_config.json"
+
+    : > "$rag_log"
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        record_skip "live_${protocol}_agent_rag_connector_smoke" "python3 is required for agent RAG connector smoke"
+        return
+    fi
+
+    cat > "$rag_config" <<EOF
+{
+  "documents": {
+    "$csv_name": {
+      "documentType": "file.csv",
+      "allowedColumns": ["name", "salary"],
+      "maxRows": 1,
+      "redactions": {
+        "salary": "[redacted-salary]"
+      }
+    }
+  }
+}
+EOF
+
+    if ! env \
+        CDSE_RAG_BASE_URL="$base_url" \
+        CDSE_RAG_ORG="$org_name" \
+        CDSE_RAG_USER="$user_id" \
+        CDSE_RAG_STORAGE="$storage_name" \
+        CDSE_RAG_ORG_KEY="$org_key" \
+        CDSE_RAG_CA_CERT="$PREFIX/cdse/ca.pem" \
+        CDSE_RAG_CLIENT_CERT="$client_chain" \
+        CDSE_RAG_CLIENT_KEY="$client_key" \
+        python3 "$ROOT_DIR/samples/agent-rag-connector/caumedse_rag_connector.py" live \
+            --config "$rag_config" \
+            --document "$csv_name" \
+            --columns name,salary \
+            --limit 1 > "$rag_log" 2>&1; then
+        redact_file_in_place "$rag_log"
+        record_fail "live_${protocol}_agent_rag_connector_smoke" "agent RAG connector failed log=$rag_log"
+        return
+    fi
+
+    if ! python3 - "$rag_log" "$org_key" >> "$rag_log" 2>&1 <<'PY'
+import json
+import sys
+
+path, org_key = sys.argv[1], sys.argv[2]
+with open(path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+text = json.dumps(data, sort_keys=True)
+if data.get("safeForAgent") is not True:
+    raise SystemExit("RAG connector output is not marked safeForAgent")
+if data.get("mode") != "live":
+    raise SystemExit("RAG connector did not run in live mode")
+if data.get("policy", {}).get("returnedColumns") != ["name", "salary"]:
+    raise SystemExit("RAG connector returned unexpected columns")
+if data.get("rows", [{}])[0].get("salary") != "[redacted-salary]":
+    raise SystemExit("RAG connector did not redact salary")
+if not data.get("source", {}).get("requestIds"):
+    raise SystemExit("RAG connector did not capture request IDs")
+if org_key in text or "orgKey" in text or "newOrgKey" in text:
+    raise SystemExit("RAG connector output leaked credential markers")
+print("agent RAG connector live smoke passed")
+PY
+    then
+        redact_file_in_place "$rag_log"
+        record_fail "live_${protocol}_agent_rag_connector_smoke" "agent RAG connector validation failed log=$rag_log"
+        return
+    fi
+
+    record_pass "live_${protocol}_agent_rag_connector_smoke"
+    rm -f "$rag_log" "$rag_config"
+}
+
 stop_live_service() {
     local pid="$1"
 
@@ -1139,6 +1246,7 @@ run_live_web_flow() {
     live_api_check "$protocol" python_parser_pending_full_denied 403 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_pending_script_name?$auth&newOrgKey=$org_key&outputType=json" '"code":"forbidden"' "${curl_tls_args[@]}"
     live_api_check "$protocol" python_parser_pending_preview 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_pending_script_name?$auth&newOrgKey=$org_key&outputType=json&previewOnly=1&previewRows=1&limit=1" '"returnedRows":1' "${curl_tls_args[@]}"
     check_live_mcp_readonly_smoke "$protocol" "$base_url" "$org_name" "$storage_name" "$user_id" "$org_key" "$csv_name" "$python_script_name" "$python_pending_script_name" "${client_chain:-}" "${client_key:-}"
+    check_live_agent_rag_connector_smoke "$protocol" "$base_url" "$org_name" "$storage_name" "$user_id" "$org_key" "$csv_name" "${client_chain:-}" "${client_key:-}"
     live_api_check "$protocol" upload_python_pending_static_bad_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.python/documents/$python_pending_static_bad_script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test_network_access.py" \
         -F "userId=$user_id" \
@@ -1291,8 +1399,10 @@ fi
 
 if command -v python3 >/dev/null 2>&1; then
     run_delegated_token_broker_self_test
+    run_agent_rag_connector_self_test
 else
     record_skip delegated_token_broker_self_test "python3 not available"
+    record_skip agent_rag_connector_self_test "python3 not available"
 fi
 
 FULL_LOG="$LOG_ROOT/full-debug-run.log"
