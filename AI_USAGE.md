@@ -330,6 +330,11 @@ See `samples/agent-rag-connector/` for an allowlisted retrieval sample that
 reads schema first, returns only configured columns, applies redaction rules,
 and emits model-ready JSON with prompt-boundary metadata.
 
+See `samples/review-workspace/` for a human-in-the-loop review service that
+uploads generated parser candidates as pending, supports bounded preview,
+requires approve/reject decisions, applies reviewed/rejected parser metadata,
+and exports redacted review audit JSON.
+
 See `samples/mcp-server/` for the supported read-only MCP stdio surface. It
 exposes route-aligned tools such as `agentCapabilities_read`,
 `documentSchema_read`, `contentColumns_read`, `parserScripts_run`,

@@ -26,6 +26,9 @@ For an allowlisted, redacting retrieval connector that prepares bounded CSV
 snippets for AI context, see
 [samples/agent-rag-connector/](samples/agent-rag-connector/).
 
+For a human-in-the-loop document and generated-parser review workspace, see
+[samples/review-workspace/](samples/review-workspace/).
+
 For the supported read-only MCP stdio tool surface over safe REST reads, see
 [samples/mcp-server/](samples/mcp-server/).
 
@@ -66,6 +69,7 @@ entries and retained verifier artifacts.
 - [AI Agent Sample](samples/ai-agent/)
 - [Delegated Token Broker Sample](samples/delegated-token-broker/)
 - [Agent RAG Connector Sample](samples/agent-rag-connector/)
+- [Secure Document Review Workspace](samples/review-workspace/)
 - [MCP Read-Only Server](samples/mcp-server/)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)

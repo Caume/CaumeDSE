@@ -698,7 +698,7 @@
     self-test, and a live verifier smoke check against the existing uploaded
     CSV document.
 
-- [ ] #92 Add a secure document review workspace sample.
+- [x] #92 Add a secure document review workspace sample.
   - Source: `samples/review-workspace/`, parser script resources, delegated-token broker sample, `AI_USAGE.md`.
   - Goal: provide a human-in-the-loop application that uploads documents, previews schemas and rows, reviews generated parser scripts, approves or rejects parser metadata, and exports redacted audit summaries.
   - Plan:
@@ -706,6 +706,15 @@
     - Batch 2: implement a small local web application or Python service that keeps CaumeDSE credentials in the server environment and exposes only bounded review actions to the browser or bot.
     - Batch 3: integrate delegated-token authorization for bot-assisted suggestions while requiring human approval before full parser execution.
     - Batch 4: add README documentation, safe fixture data, and focused verifier coverage for approve, reject, preview, reviewed-run, and cleanup paths.
+  - Done: added `samples/review-workspace/` with a dependency-free Python
+    service/CLI, safe and unsafe parser fixtures, CSV preview fixture, local
+    approve/reject state machine, static parser checks, reviewed/rejected
+    parser metadata generation, redacted audit export, live CaumeDSE commands
+    for workspace creation, CSV upload, pending parser upload, schema read,
+    preview-only execution, approve/reject metadata update, reviewed execution,
+    and cleanup. Added README/AI_USAGE links and verifier self-test coverage
+    for preview, approval, rejection, unsafe approval denial, and redacted audit
+    export.
 
 - [ ] #93 Add a compliance audit dashboard sample.
   - Source: `samples/audit-dashboard/`, structured `CaumeDSE AuditJSON` service logs, `live-api-coverage.csv`, `AI_USAGE.md`.
