@@ -335,6 +335,10 @@ uploads generated parser candidates as pending, supports bounded preview,
 requires approve/reject decisions, applies reviewed/rejected parser metadata,
 and exports redacted review audit JSON.
 
+See `samples/audit-dashboard/` for a static report generator that summarizes
+structured `CaumeDSE AuditJSON` service logs and `live-api-coverage.csv`
+artifacts into redacted JSON or HTML for operator and AI-assisted review.
+
 See `samples/mcp-server/` for the supported read-only MCP stdio surface. It
 exposes route-aligned tools such as `agentCapabilities_read`,
 `documentSchema_read`, `contentColumns_read`, `parserScripts_run`,

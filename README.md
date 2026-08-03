@@ -29,6 +29,9 @@ snippets for AI context, see
 For a human-in-the-loop document and generated-parser review workspace, see
 [samples/review-workspace/](samples/review-workspace/).
 
+For a redacted structured-audit and live-verifier report generator, see
+[samples/audit-dashboard/](samples/audit-dashboard/).
+
 For the supported read-only MCP stdio tool surface over safe REST reads, see
 [samples/mcp-server/](samples/mcp-server/).
 
@@ -70,6 +73,7 @@ entries and retained verifier artifacts.
 - [Delegated Token Broker Sample](samples/delegated-token-broker/)
 - [Agent RAG Connector Sample](samples/agent-rag-connector/)
 - [Secure Document Review Workspace](samples/review-workspace/)
+- [Compliance Audit Dashboard](samples/audit-dashboard/)
 - [MCP Read-Only Server](samples/mcp-server/)
 - [License](#license)
 - [Architecture and Functionality](#architecture-and-functionality)

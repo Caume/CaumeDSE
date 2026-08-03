@@ -716,7 +716,7 @@
     for preview, approval, rejection, unsafe approval denial, and redacted audit
     export.
 
-- [ ] #93 Add a compliance audit dashboard sample.
+- [x] #93 Add a compliance audit dashboard sample.
   - Source: `samples/audit-dashboard/`, structured `CaumeDSE AuditJSON` service logs, `live-api-coverage.csv`, `AI_USAGE.md`.
   - Goal: make CaumeDSE traceability easier for operators and AI-assisted incident review by summarizing auth, authorization, parser policy, parser execution, request, and cleanup events without exposing secrets or raw CSV content.
   - Plan:
@@ -724,3 +724,10 @@
     - Batch 2: implement a lightweight local dashboard or static HTML report generator with filters for denied auth, parser-policy denials, cleanup failures, and broad-read indicators.
     - Batch 3: add redacted export output suitable for issue reports or model context, preserving diagnostic fields while masking credentials, certificate paths, and sensitive parameters.
     - Batch 4: document how to run against DEBUG verifier logs and add smoke tests using committed representative audit fixtures.
+  - Done: added `samples/audit-dashboard/` with a dependency-free Python
+    parser/report generator, representative `CaumeDSE AuditJSON` and
+    `live-api-coverage.csv` fixtures, redacted JSON export, static HTML report
+    rendering, grouping by request ID/user/category/outcome, findings for
+    denied events, parser policy denials, parser execution issues, cleanup
+    failures, failed verifier coverage, and broad-read indicators. Added
+    README/AI_USAGE links and verifier self-test coverage.
