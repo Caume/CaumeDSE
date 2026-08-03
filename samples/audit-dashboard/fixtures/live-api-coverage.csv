@@ -1,0 +1,6 @@
+protocol,feature,method,expected_status,actual_status,curl_rc,marker,status,elapsed,body,meta
+"http","agent_capabilities","GET","200","200","0","ok","PASS","0s","agent_capabilities.body","agent_capabilities.meta"
+"http","json_error_auth_missing_org_key","GET","401","401","0","ok","PASS","0s","auth.body","auth.meta"
+"http","python_parser_pending_full_denied","GET","403","403","0","ok","PASS","0s","parser_deny.body","parser_deny.meta"
+"http","python_parser_pending_preview","GET","200","200","0","ok","PASS","0s","parser_preview.body","parser_preview.meta"
+"http","cleanup_storage","DELETE","200","404","0","missing","FAIL","0s","cleanup.body","cleanup.meta"
