@@ -156,8 +156,11 @@ Do not implement these as initial CDSE storage algorithms:
 
 ## Storage Design Direction
 
-Future implementation should add a storage crypto profile abstraction before
-calling HerraduraKEx directly from existing EVP-only paths.
+CaumeDSE now has a storage crypto profile abstraction before calling
+HerraduraKEx directly from existing EVP-only paths. The current abstraction
+resolves existing OpenSSL EVP algorithm names dynamically and resolves planned
+HerraduraKEx storage ids as metadata-only profiles until encryption wrappers
+are implemented.
 
 Profile metadata should include:
 
@@ -167,6 +170,16 @@ Profile metadata should include:
 - Ciphertext frame version.
 - Whether the profile is allowed as a default algorithm.
 - Whether the profile is compiled into the current binary.
+
+Known HerraduraKEx storage profile ids:
+
+- `herradura-hske-nla1-aead-256`
+- `herradura-hske-duplex-256`
+- `herradura-hske-nla2-256`
+
+The HerraduraKEx profiles are intentionally not marked implemented or allowed
+as defaults yet. Runtime encryption dispatch remains OpenSSL-only until the
+wrapper work adds frame encode/decode and calls into `herradura.h`.
 
 Herradura ciphertexts should use a new protected-value frame so they cannot be
 confused with existing OpenSSL ciphertexts. A candidate binary layout is:

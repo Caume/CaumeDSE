@@ -52,7 +52,39 @@ typedef HMAC_CTX CME_HMAC_CTX;
 #define CME_HMAC_CTX_free(ctx) HMAC_CTX_free(ctx)
 #endif
 
+#define cmeCryptoProviderUnknown 0
+#define cmeCryptoProviderOpenSSLEVP 1
+#define cmeCryptoProviderHerraduraKEx 2
+
+#define cmeCryptoFrameNone 0
+#define cmeCryptoFrameHerraduraKExV1 1
+
+#define cmeCryptoProfileNameMaxLen 64
+#define cmeHerraduraKExFrameMagic "CDSEHKX1"
+#define cmeHerraduraKExProfileHSKENLA1AEAD256 "herradura-hske-nla1-aead-256"
+#define cmeHerraduraKExProfileHSKEDuplex256 "herradura-hske-duplex-256"
+#define cmeHerraduraKExProfileHSKENLA2256 "herradura-hske-nla2-256"
+
+typedef struct
+{
+    char algorithm[cmeCryptoProfileNameMaxLen];
+    int provider;
+    int keyLen;
+    int nonceLen;
+    int saltLen;
+    int tagLen;
+    int isAEAD;
+    int frameVersion;
+    int compiledIn;
+    int implemented;
+    int allowedAsDefault;
+} cmeCryptoProfile;
+
 // --- OpenSSL Wrappers and CaumeDSE Crypto functions prototypes
+// Function to resolve a storage crypto profile by algorithm id.
+int cmeGetCryptoProfile (cmeCryptoProfile *profile, const char *algorithm);
+// Function to check whether an algorithm id is known and implemented by this binary.
+int cmeCryptoAlgorithmIsImplemented (const char *algorithm);
 // Wrapper Function to get a digest function pointer by name
 int cmeGetDigest (EVP_MD** digest, const char* algorithm);
 // Wrapper Function for OpenSSL's EVP_DigestInit_ex()

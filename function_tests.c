@@ -175,11 +175,44 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     const EVP_CIPHER *cipher=NULL;
     int keyLen=0;
     int ivLen=0;
+    cmeCryptoProfile cryptoProfile;
 
     key=(unsigned char *)malloc(1024);
     iv=(unsigned char *)malloc(1024);
     ciphertext=(unsigned char *)malloc(1024);
     expectedKeyIv=(unsigned char *)malloc(1024);
+
+    if (!cmeGetCryptoProfile(&cryptoProfile,cmeDefaultEncAlg) &&
+        cryptoProfile.provider==cmeCryptoProviderOpenSSLEVP &&
+        cryptoProfile.implemented && cryptoProfile.allowedAsDefault)
+    {
+        printf("TESTS: testCryptoSymmetric(), PASS: default OpenSSL EVP storage crypto profile resolved.\n");
+    }
+    else
+    {
+        printf("TESTS: testCryptoSymmetric(), FAIL: default OpenSSL EVP storage crypto profile not resolved.\n");
+    }
+    if (!cmeGetCryptoProfile(&cryptoProfile,cmeHerraduraKExProfileHSKENLA1AEAD256) &&
+        cryptoProfile.provider==cmeCryptoProviderHerraduraKEx &&
+        cryptoProfile.keyLen==32 && cryptoProfile.nonceLen==32 &&
+        cryptoProfile.tagLen==32 && cryptoProfile.isAEAD &&
+        cryptoProfile.frameVersion==cmeCryptoFrameHerraduraKExV1 &&
+        !cryptoProfile.implemented && !cryptoProfile.allowedAsDefault)
+    {
+        printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata resolved as not-yet-implemented.\n");
+    }
+    else
+    {
+        printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata mismatch.\n");
+    }
+    if (!cmeCryptoAlgorithmIsImplemented(cmeHerraduraKExProfileHSKENLA1AEAD256))
+    {
+        printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx profiles are not accepted before storage wrappers are implemented.\n");
+    }
+    else
+    {
+        printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx profile accepted before storage wrappers are implemented.\n");
+    }
 
     cmeGetCipher(&cipher,algorithm);
     keyLen=EVP_CIPHER_key_length(cipher);

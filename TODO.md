@@ -769,7 +769,7 @@
     commit `13e5fb0346ca5ec81202dee8bb3302633780ec35`. Runtime Herradura
     algorithm dispatch remains deferred to TODO #96 and TODO #97.
 
-- [ ] #96 Add a storage crypto profile abstraction for non-EVP algorithms.
+- [x] #96 Add a storage crypto profile abstraction for non-EVP algorithms.
   - Source: `crypto.c`, `crypto.h`, `common.h`, ResourcesDB metadata handling, ColumnFile metadata handling, and existing encryption algorithm configuration paths.
   - Goal: allow CaumeDSE to dispatch between existing OpenSSL EVP algorithms and HerraduraKEx storage profiles while preserving backward compatibility for existing encrypted databases.
   - Plan:
@@ -779,6 +779,12 @@
     - Define a stable protected-value frame for Herradura ciphertexts, including magic/version, algorithm id or compact profile id, nonce, tag, and ciphertext bytes.
     - Define associated data inputs for SQLite at-rest encryption, favoring stable metadata such as algorithm id, salt, database role, table/field scope, and immutable document or storage identifiers; avoid mutable metadata that would break normal updates.
     - Ensure salt/PBKDF handling remains explicit and versioned so current key derivation can coexist with any future Herradura-specific KDF profile.
+  - Done: added `cmeCryptoProfile` metadata and lookup helpers, dynamic
+    OpenSSL EVP profile resolution, planned HerraduraKEx storage profile ids,
+    provider/key/nonce/salt/tag/AEAD/frame metadata, provider-aware default
+    algorithm validation, an OpenSSL-only guard in `cmeCipherByteString()`, and
+    DEBUG component coverage proving existing EVP profiles still resolve while
+    Herradura profiles remain metadata-only until TODO #97 implements wrappers.
 
 - [ ] #97 Implement HerraduraKEx at-rest encryption and decryption wrappers.
   - Source: `crypto.c`, `crypto.h`, selected upstream `herradura.h` APIs, and DEBUG crypto component tests.

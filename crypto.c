@@ -44,6 +44,103 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 
+typedef struct
+{
+    const char *algorithm;
+    int keyLen;
+    int nonceLen;
+    int saltLen;
+    int tagLen;
+    int isAEAD;
+    int frameVersion;
+    int compiledIn;
+    int implemented;
+    int allowedAsDefault;
+} cmeStaticCryptoProfile;
+
+static const cmeStaticCryptoProfile cmeHerraduraKExProfiles[] =
+{
+    {cmeHerraduraKExProfileHSKENLA1AEAD256, 32, 32, evpSaltBufferSize, 32, 1,
+     cmeCryptoFrameHerraduraKExV1, cmeUseHerraduraKEx, 0, 0},
+    {cmeHerraduraKExProfileHSKEDuplex256, 32, 32, evpSaltBufferSize, 32, 1,
+     cmeCryptoFrameHerraduraKExV1, cmeUseHerraduraKEx, 0, 0},
+    {cmeHerraduraKExProfileHSKENLA2256, 32, 32, evpSaltBufferSize, 0, 0,
+     cmeCryptoFrameHerraduraKExV1, cmeUseHerraduraKEx, 0, 0}
+};
+
+static void cmeCopyCryptoProfileAlgorithm(cmeCryptoProfile *profile, const char *algorithm)
+{
+    strncpy(profile->algorithm, algorithm, cmeCryptoProfileNameMaxLen-1);
+    profile->algorithm[cmeCryptoProfileNameMaxLen-1]='\0';
+}
+
+int cmeGetCryptoProfile (cmeCryptoProfile *profile, const char *algorithm)
+{
+    const EVP_CIPHER *cipher=NULL;
+    size_t cont=0;
+
+    if (!profile || !algorithm || !*algorithm)
+    {
+        return(1);
+    }
+    memset(profile,0,sizeof(cmeCryptoProfile));
+    cmeCopyCryptoProfileAlgorithm(profile,algorithm);
+
+    cipher=EVP_get_cipherbyname(algorithm);
+    if (cipher)
+    {
+        profile->provider=cmeCryptoProviderOpenSSLEVP;
+        profile->keyLen=EVP_CIPHER_key_length(cipher);
+        profile->nonceLen=EVP_CIPHER_iv_length(cipher);
+        profile->saltLen=evpSaltBufferSize;
+#ifdef EVP_CIPH_GCM_MODE
+        if (EVP_CIPHER_mode(cipher)==EVP_CIPH_GCM_MODE)
+        {
+            profile->isAEAD=1;
+            profile->tagLen=cmeGCMTagLen;
+        }
+#endif
+        profile->frameVersion=cmeCryptoFrameNone;
+        profile->compiledIn=1;
+        profile->implemented=1;
+        profile->allowedAsDefault=1;
+        return(0);
+    }
+
+    for (cont=0; cont<(sizeof(cmeHerraduraKExProfiles)/sizeof(cmeHerraduraKExProfiles[0])); cont++)
+    {
+        if (!strcmp(algorithm,cmeHerraduraKExProfiles[cont].algorithm))
+        {
+            cmeCopyCryptoProfileAlgorithm(profile,cmeHerraduraKExProfiles[cont].algorithm);
+            profile->provider=cmeCryptoProviderHerraduraKEx;
+            profile->keyLen=cmeHerraduraKExProfiles[cont].keyLen;
+            profile->nonceLen=cmeHerraduraKExProfiles[cont].nonceLen;
+            profile->saltLen=cmeHerraduraKExProfiles[cont].saltLen;
+            profile->tagLen=cmeHerraduraKExProfiles[cont].tagLen;
+            profile->isAEAD=cmeHerraduraKExProfiles[cont].isAEAD;
+            profile->frameVersion=cmeHerraduraKExProfiles[cont].frameVersion;
+            profile->compiledIn=cmeHerraduraKExProfiles[cont].compiledIn;
+            profile->implemented=cmeHerraduraKExProfiles[cont].implemented;
+            profile->allowedAsDefault=cmeHerraduraKExProfiles[cont].allowedAsDefault;
+            return(0);
+        }
+    }
+
+    profile->provider=cmeCryptoProviderUnknown;
+    return(2);
+}
+
+int cmeCryptoAlgorithmIsImplemented (const char *algorithm)
+{
+    cmeCryptoProfile profile;
+
+    if (cmeGetCryptoProfile(&profile,algorithm))
+    {
+        return(0);
+    }
+    return(profile.implemented && profile.allowedAsDefault);
+}
+
 int cmeGetDigest (EVP_MD **digest, const char *algorithm)
 {
     *digest = (EVP_MD*)EVP_get_digestbyname(algorithm);
@@ -604,6 +701,7 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
     unsigned char hexStrbyteSalt[evpSaltBufferSize*2+1];     //Space for an hex str representation of an evpSaltBufferSize long, byte salt
     EVP_CIPHER_CTX *ctx=NULL;
     const EVP_CIPHER *cipher=NULL; //Note that cipher is a pointer to a constant cipher function in OPENSSL.
+    cmeCryptoProfile cryptoProfile;
     #define cmeCipherByteStringFree() \
         { \
                 if (key) \
@@ -633,6 +731,13 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
         fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), srcBuf is NULL!\n");
 #endif
         return(1);
+    }
+    if (cmeGetCryptoProfile(&cryptoProfile,algorithm) || cryptoProfile.provider!=cmeCryptoProviderOpenSSLEVP)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported storage crypto profile: %s!\n",algorithm);
+#endif
+        return(2);
     }
     if (cmeGetCipher(&cipher,algorithm)) //Verify algorithm and get cipher object.
     {

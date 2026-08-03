@@ -37,12 +37,12 @@ static char *cmeUnquoteConfigValue(char *value)
 
 static int cmeSetDefaultEncAlg(const char *value, const char *source)
 {
-    const EVP_CIPHER *cipher = NULL;
+    cmeCryptoProfile profile;
     if (!value || !*value)
     {
         return 1;
     }
-    if (cmeGetCipher(&cipher, value) == 0)
+    if (cmeGetCryptoProfile(&profile, value) == 0 && profile.implemented && profile.allowedAsDefault)
     {
         strncpy(cmeDefaultEncAlg, value, sizeof(cmeDefaultEncAlg)-1);
         cmeDefaultEncAlg[sizeof(cmeDefaultEncAlg)-1] = '\0';
@@ -52,7 +52,7 @@ static int cmeSetDefaultEncAlg(const char *value, const char *source)
         return 0;
     }
 #ifdef ERROR_LOG
-    fprintf(stderr,"CaumeDSE Error: cmeSetDefaultEncAlg(), unsupported algorithm %s from %s; using default %s.\n", value, source, cmeDefaultEncAlg);
+    fprintf(stderr,"CaumeDSE Error: cmeSetDefaultEncAlg(), unsupported or unimplemented storage crypto profile %s from %s; using default %s.\n", value, source, cmeDefaultEncAlg);
 #endif
     return 1;
 }

@@ -113,7 +113,7 @@ int main(int argc, char *argv[], char *env[])
     unsigned char *bufOut=NULL;
     char *title=NULL;
     const char *algorithm=cmeDefaultEncAlg;
-    const EVP_CIPHER *cipher=NULL;
+    cmeCryptoProfile cryptoProfile;
     #define mainFree() \
         do { \
             cmeFree(title); \
@@ -134,10 +134,10 @@ int main(int argc, char *argv[], char *env[])
     }
     cmeStrConstrAppend(&title,"Caume Data Security Engine, ver. %s - %s.\n",cmeEngineVersion,cmeCopyright);
     printf("%s",title);
-    if (cmeGetCipher(&cipher,algorithm))
-    { // Error, cmeDefaultEncAlg points to an unsupported encryption algorithm identifier.
+    if (cmeGetCryptoProfile(&cryptoProfile,algorithm) || !cryptoProfile.implemented || !cryptoProfile.allowedAsDefault)
+    { // Error, cmeDefaultEncAlg points to an unsupported or unimplemented storage crypto profile.
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: main(), cmeGetCipher(), unsupported algorithm id"
+        fprintf(stderr,"CaumeDSE Error: main(), unsupported or unimplemented storage crypto profile"
                 " %s specified in cmeDefaultEncAlg!\n",cmeDefaultEncAlg);
 #endif
         mainFree();
