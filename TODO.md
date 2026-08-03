@@ -731,3 +731,89 @@
     denied events, parser policy denials, parser execution issues, cleanup
     failures, failed verifier coverage, and broad-read indicators. Added
     README/AI_USAGE links and verifier self-test coverage.
+
+- [x] #94 Define the HerraduraKEx at-rest crypto design and algorithm selection.
+  - Source: `crypto.c`, `crypto.h`, `common.h`, `configure.ac`, `Makefile.am`, upstream `Caume/HerraduraKEx` `README.md`, `llms.txt`, `spec/herradura-protocol-spec.json`, `docs/INTRODUCTION.md`, `docs/TUTORIAL.md`, and `herradura.h`.
+  - Goal: scope HerraduraKEx support to internal CaumeDSE encryption at rest for values stored in SQLite-backed databases, without changing TLS channel encryption or HTTP transport behavior.
+  - Plan:
+    - Document the current OpenSSL EVP path, PBKDF profile, salt handling, GCM tag handling, HMAC handling, and every call site that encrypts or verifies data before it reaches ResourcesDB, ColumnFile DBs, or related SQLite storage.
+    - Define explicit non-goals: no TLS ciphersuite changes, no HTTPS certificate changes, no HKEX-GF transport handshake, no public-key document sharing, and no signature workflow in the initial implementation.
+    - Select `herradura-hske-nla1-aead-256` as the first candidate profile for protected SQLite value encryption, using upstream `hske_nl_aead_encrypt()` and `hske_nl_aead_decrypt()` where arbitrary-length plaintext support is confirmed.
+    - Evaluate `herradura-hske-duplex-256` as the preferred arbitrary-length AEAD profile if its C API is cleaner for variable-size database fields than the HSKE-NL-A1 AEAD wrapper.
+    - Keep `herradura-hske-nla2-256` as an optional experimental profile only when a reversible permutation mode is specifically useful; do not make it the default storage profile.
+    - Use `hfscx-256` or `hfscx-256-ds` only for Herradura-native MAC or domain-separated integrity experiments after AEAD storage framing is stable; preserve existing HMAC-SHA256 behavior for compatibility unless a migration plan exists.
+    - Exclude `hske` from PQC recommendations because upstream marks it classical, and exclude `hpke-stern`, `hpke-stern-kem`, and `hpks-stern` from production storage use because upstream marks the Stern flows demo-only or dependent on missing production decoder/round settings.
+    - Defer `hkex-rnl` to a future key-wrapping or offline key-establishment design; it is not needed for direct encryption of SQLite data at rest.
+  - Done: added `HERRADURAKEX_AT_REST_PLAN.md` with the current CDSE storage
+    crypto baseline, HerraduraKEx upstream findings, explicit non-goals for
+    TLS and public-key workflows, recommended PQC-oriented at-rest algorithms,
+    excluded algorithms, ciphertext framing direction, associated-data
+    guidance, compatibility rules, verification requirements, and the proposed
+    implementation order.
+
+- [ ] #95 Add optional HerraduraKEx build and dependency integration.
+  - Source: `configure.ac`, `Makefile.am`, `crypto.c`, `crypto.h`, upstream `herradura.h`, and upstream `bindings/ffi/`.
+  - Goal: make HerraduraKEx available as an opt-in internal crypto provider without affecting default OpenSSL builds.
+  - Plan:
+    - Add a configure option such as `--enable-HERRADURAKEX` or `--with-herradurakex=PATH` that defaults off and leaves current builds byte-for-byte behaviorally unchanged.
+    - Decide whether to vendor a reviewed `herradura.h` snapshot or consume an installed header; complete a license compatibility review first because the GitHub repository reports a non-standard `Other` license.
+    - Prefer direct C header integration over the current FFI shim for PQC storage profiles, because upstream documents the FFI as exposing only the classical HKEX-GF, HSKE, HPKS, and HPKE quartet and not the NL/PQC or Stern APIs.
+    - Add compile checks for `herradura.h`, expected constants such as 256-bit keys, and the selected AEAD entry points.
+    - Keep all HerraduraKEx code behind compile-time guards so unsupported builds reject Herradura algorithm names with a clear error instead of silently falling back to OpenSSL.
+    - Add build documentation that names the exact upstream commit or release used for review.
+
+- [ ] #96 Add a storage crypto profile abstraction for non-EVP algorithms.
+  - Source: `crypto.c`, `crypto.h`, `common.h`, ResourcesDB metadata handling, ColumnFile metadata handling, and existing encryption algorithm configuration paths.
+  - Goal: allow CaumeDSE to dispatch between existing OpenSSL EVP algorithms and HerraduraKEx storage profiles while preserving backward compatibility for existing encrypted databases.
+  - Plan:
+    - Introduce internal profile metadata for algorithm id, provider, key length, nonce length, salt length, tag length, AEAD support, and ciphertext framing version.
+    - Keep existing OpenSSL EVP algorithm names mapped to the current `cmeCipherByteString()` behavior.
+    - Add Herradura algorithm ids such as `herradura-hske-nla1-aead-256` and, if selected by TODO #94, `herradura-hske-duplex-256`.
+    - Define a stable protected-value frame for Herradura ciphertexts, including magic/version, algorithm id or compact profile id, nonce, tag, and ciphertext bytes.
+    - Define associated data inputs for SQLite at-rest encryption, favoring stable metadata such as algorithm id, salt, database role, table/field scope, and immutable document or storage identifiers; avoid mutable metadata that would break normal updates.
+    - Ensure salt/PBKDF handling remains explicit and versioned so current key derivation can coexist with any future Herradura-specific KDF profile.
+
+- [ ] #97 Implement HerraduraKEx at-rest encryption and decryption wrappers.
+  - Source: `crypto.c`, `crypto.h`, selected upstream `herradura.h` APIs, and DEBUG crypto component tests.
+  - Goal: add round-trip encryption support for HerraduraKEx-protected SQLite values through the same internal encryption interfaces CaumeDSE already uses.
+  - Plan:
+    - Convert CDSE byte keys, nonces, plaintext, ciphertext, and tags into the upstream HerraduraKEx C structures without leaking temporary material.
+    - Implement encrypt and decrypt paths for the selected AEAD profile, returning authentication failure distinctly from parse, unsupported-algorithm, and allocation failures.
+    - Preserve existing OpenSSL GCM tag behavior for current algorithms and keep Herradura framing separate to avoid ambiguous ciphertext parsing.
+    - Cleanse or tightly scope derived keys, nonces, tags, and temporary buffers before returning from error paths.
+    - Add negative tests for wrong key, wrong salt, modified nonce, modified tag, modified ciphertext, truncated frame, unsupported profile id, and malformed associated data.
+    - Add mixed-profile tests proving old AES-protected values and new Herradura-protected values can be read in the same DEBUG environment.
+
+- [ ] #98 Add SQLite metadata, configuration, and migration safeguards for Herradura profiles.
+  - Source: ResourcesDB schema usage, ColumnFile DB metadata, organization/storage configuration flows, `README.md`, `TUTORIAL.md`, and live verifier setup.
+  - Goal: make HerraduraKEx storage encryption opt-in, discoverable, and reversible without forcing automatic migration of existing encrypted data.
+  - Plan:
+    - Store the exact Herradura algorithm/profile id wherever CaumeDSE currently records encryption algorithm metadata.
+    - Reject Herradura profile requests at configuration time when the binary was built without HerraduraKEx support.
+    - Keep existing databases readable without metadata rewrites, and allow mixed old/new encrypted records during phased adoption.
+    - Do not auto-migrate existing SQLite data; define a separate explicit re-protect or export/import workflow for later implementation.
+    - Add diagnostics that distinguish unsupported algorithm, missing build support, failed authentication, and corrupted ciphertext frame.
+    - Document rollback expectations: existing AES data remains usable, while Herradura-protected data requires a Herradura-enabled binary.
+
+- [ ] #99 Add verifier and component coverage for Herradura at-rest encryption.
+  - Source: `debug_tests.c`, `function_tests.c`, `TEST/run_debug_components.sh`, live verifier fixtures, and crypto DEBUG markers.
+  - Goal: prove HerraduraKEx storage profiles protect SQLite data at rest and fail closed on tampering.
+  - Plan:
+    - Add DEBUG component tests for profile lookup, frame encode/decode, encryption/decryption, and all negative authentication cases from TODO #97.
+    - Add live verifier coverage that creates a Herradura-enabled organization/storage profile, uploads CSV data, reads it back through normal APIs, and confirms protected storage bytes differ from plaintext.
+    - Add tamper fixtures for nonce, tag, ciphertext, salt, and algorithm metadata where practical.
+    - Add skip behavior when HerraduraKEx support is not compiled in, so default CI remains stable.
+    - Include focused HTTP and HTTPS verifier modes only to prove normal API behavior still works; do not test or alter TLS channel algorithms.
+    - Record performance smoke numbers for representative small and large field values without making throughput a pass/fail gate.
+
+- [ ] #100 Document HerraduraKEx PQC storage recommendations and operational boundaries.
+  - Source: `README.md`, `TUTORIAL.md`, `API_EXAMPLES.md`, `AI_USAGE.md`, and upstream `Caume/HerraduraKEx` documentation.
+  - Goal: give operators, developers, and AI agents clear guidance for when and how to use HerraduraKEx inside CaumeDSE.
+  - Plan:
+    - Recommend `herradura-hske-nla1-aead-256` as the initial PQC-oriented at-rest encryption candidate when upstream arbitrary-length AEAD behavior is validated in CDSE tests.
+    - Recommend `herradura-hske-duplex-256` for evaluation when CDSE needs a direct arbitrary-length AEAD interface for variable-size SQLite fields.
+    - Mark `herradura-hske-nla2-256` experimental for storage unless a specific reversible-permutation use case is documented.
+    - Mark `hfscx-256` and `hfscx-256-ds` as candidate Herradura-native hash/MAC primitives, not replacements for existing compatibility MACs in the first implementation.
+    - Explicitly state that `hkex-rnl` is a future key-wrapping or key-establishment candidate, not a direct SQLite field encryption algorithm.
+    - Explicitly state that `hpke-stern`, `hpke-stern-kem`, and `hpks-stern` are not recommended for production CDSE storage until upstream production decoder and round requirements are satisfied.
+    - Explain that HerraduraKEx support is opt-in, experimental until reviewed, and scoped to data encryption at rest; TLS channel encryption remains configured through the existing OpenSSL/HTTPS stack.
