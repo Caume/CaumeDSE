@@ -751,7 +751,7 @@
     guidance, compatibility rules, verification requirements, and the proposed
     implementation order.
 
-- [ ] #95 Add optional HerraduraKEx build and dependency integration.
+- [x] #95 Add optional HerraduraKEx build and dependency integration.
   - Source: `configure.ac`, `Makefile.am`, `crypto.c`, `crypto.h`, upstream `herradura.h`, and upstream `bindings/ffi/`.
   - Goal: make HerraduraKEx available as an opt-in internal crypto provider without affecting default OpenSSL builds.
   - Plan:
@@ -761,6 +761,13 @@
     - Add compile checks for `herradura.h`, expected constants such as 256-bit keys, and the selected AEAD entry points.
     - Keep all HerraduraKEx code behind compile-time guards so unsupported builds reject Herradura algorithm names with a clear error instead of silently falling back to OpenSSL.
     - Add build documentation that names the exact upstream commit or release used for review.
+  - Done: added an opt-in `--enable-HERRADURAKEX` configure path with
+    `--with-herradurakex=DIR` include discovery, direct `herradura.h` checks,
+    256-bit key constant checks, HSKE-NL AEAD entry point checks, a
+    `CDSE_ENABLE_HERRADURAKEX` compile-time feature macro, Makefile include
+    flag propagation, and build-status documentation tied to reviewed upstream
+    commit `13e5fb0346ca5ec81202dee8bb3302633780ec35`. Runtime Herradura
+    algorithm dispatch remains deferred to TODO #96 and TODO #97.
 
 - [ ] #96 Add a storage crypto profile abstraction for non-EVP algorithms.
   - Source: `crypto.c`, `crypto.h`, `common.h`, ResourcesDB metadata handling, ColumnFile metadata handling, and existing encryption algorithm configuration paths.

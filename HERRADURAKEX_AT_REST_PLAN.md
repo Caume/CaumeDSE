@@ -62,6 +62,11 @@ Primary upstream sources reviewed:
 - `https://github.com/Caume/HerraduraKEx/blob/master/docs/TUTORIAL.md`
 - `https://github.com/Caume/HerraduraKEx/blob/master/herradura.h`
 
+Reviewed upstream reference:
+
+- `Caume/HerraduraKEx` `master` commit
+  `13e5fb0346ca5ec81202dee8bb3302633780ec35`.
+
 Relevant implementation facts:
 
 - The repository provides a header-only C API in `herradura.h`.
@@ -230,3 +235,28 @@ normal flows:
 6. Add metadata/configuration safeguards.
 7. Add live verifier coverage.
 8. Document operational guidance and rollback behavior.
+
+## Build Integration Status
+
+CaumeDSE provides an opt-in configure path for HerraduraKEx provider checks:
+
+```sh
+./configure --enable-HERRADURAKEX --with-herradurakex=/path/to/HerraduraKEx
+```
+
+The path may point either at the repository root containing `herradura.h` or at
+an include directory containing `herradura.h`. The default build does not look
+for HerraduraKEx and does not enable any Herradura algorithm names.
+
+When enabled, configure verifies:
+
+- `herradura.h` is available.
+- `KEYBITS` is 256.
+- `KEYBYTES` is 32.
+- `hske_nl_aead_encrypt()` and `hske_nl_aead_decrypt()` are exposed by the
+  header.
+
+This integration intentionally does not vendor upstream code yet. Vendoring or
+linking must wait for the license compatibility review because the upstream
+GitHub metadata reports a non-standard license. Runtime Herradura encryption is
+also intentionally deferred to the later storage profile and wrapper TODOs.

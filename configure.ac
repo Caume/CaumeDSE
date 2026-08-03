@@ -204,12 +204,70 @@ AC_ARG_WITH([max-threads],
 		[Maximum number of simultaneous HTTP/HTTPS worker threads (default: 4)])],
 	[CDSE_MAX_THREADS="$withval"],
 	[CDSE_MAX_THREADS=4])
+AC_ARG_ENABLE([HERRADURAKEX],
+	[AS_HELP_STRING([--enable-HERRADURAKEX],
+		[enable optional HerraduraKEx at-rest crypto provider checks (default: disabled)])],
+	[ENABLE_HERRADURAKEX="$enableval"],
+	[ENABLE_HERRADURAKEX="no"])
+AC_ARG_WITH([herradurakex],
+	[AS_HELP_STRING([--with-herradurakex=DIR],
+		[root or include directory containing herradura.h for --enable-HERRADURAKEX])],
+	[HERRADURAKEX_PATH="$withval"],
+	[HERRADURAKEX_PATH=""])
+HERRADURAKEX_CPPFLAGS=""
+CDSE_ENABLE_HERRADURAKEX=0
+AS_IF([test "x$HERRADURAKEX_PATH" != "x" && test "x$HERRADURAKEX_PATH" != "xno"],
+	[ENABLE_HERRADURAKEX="yes"])
+AS_IF([test "x$ENABLE_HERRADURAKEX" = "xyes"], [
+	AC_MSG_NOTICE([ ----- Looking for optional HerraduraKEx include files -----])
+	AS_IF([test "x$HERRADURAKEX_PATH" != "x" && test "x$HERRADURAKEX_PATH" != "xyes"], [
+		AS_IF([test -f "$HERRADURAKEX_PATH/herradura.h"],
+			[HERRADURAKEX_CPPFLAGS="-I$HERRADURAKEX_PATH"],
+			[AS_IF([test -f "$HERRADURAKEX_PATH/include/herradura.h"],
+				[HERRADURAKEX_CPPFLAGS="-I$HERRADURAKEX_PATH/include"],
+				[AC_MSG_ERROR([herradura.h not found under --with-herradurakex path])])])
+	])
+	oldCPPFLAGS="$CPPFLAGS"
+	CPPFLAGS="$CPPFLAGS $HERRADURAKEX_CPPFLAGS"
+	AC_CHECK_HEADERS([herradura.h], [],
+		[AC_MSG_ERROR([--enable-HERRADURAKEX requires herradura.h])])
+	AC_COMPILE_IFELSE(
+		[AC_LANG_PROGRAM([[
+#include <stdint.h>
+#include <stddef.h>
+#include <herradura.h>
+#ifndef KEYBITS
+# error "HerraduraKEx KEYBITS is not defined"
+#endif
+#ifndef KEYBYTES
+# error "HerraduraKEx KEYBYTES is not defined"
+#endif
+		]], [[
+#if KEYBITS != 256
+# error "CaumeDSE expects HerraduraKEx KEYBITS to be 256"
+#endif
+#if KEYBYTES != 32
+# error "CaumeDSE expects HerraduraKEx KEYBYTES to be 32"
+#endif
+void *aead_encrypt_ptr = (void *)hske_nl_aead_encrypt;
+void *aead_decrypt_ptr = (void *)hske_nl_aead_decrypt;
+return (aead_encrypt_ptr == aead_decrypt_ptr);
+		]])],
+		[CDSE_ENABLE_HERRADURAKEX=1],
+		[AC_MSG_ERROR([herradura.h does not expose the expected 256-bit HSKE-NL AEAD API])])
+	CPPFLAGS="$oldCPPFLAGS"
+], [
+	AS_IF([test "x$ENABLE_HERRADURAKEX" != "xno"],
+		[AC_MSG_ERROR([unsupported --enable-HERRADURAKEX value: $ENABLE_HERRADURAKEX])])
+])
+AC_SUBST([HERRADURAKEX_CPPFLAGS])
 
 # Set required configuration defines y config.h
 AC_DEFINE_UNQUOTED([PATH_DATADIR], ["$DATADIR"], [Path for default data and system databases.])
 AC_DEFINE_UNQUOTED([BYPASS_TLS_IN_HTTP], [$BYTLS], [Enables (1) or disables (0) bypassing TLS authentication when it is required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)])
 AC_DEFINE_UNQUOTED([PBKDF1_OPENSSL_CLI_COMPATIBILITY], [$PBKDF], [Enables (1) or disables (2) Use of old Password Based Key Derivation Function (PKCS5v1.5)])
 AC_DEFINE_UNQUOTED([CDSE_MAX_THREADS], [$CDSE_MAX_THREADS], [Maximum number of concurrent HTTP/HTTPS worker threads])
+AC_DEFINE_UNQUOTED([CDSE_ENABLE_HERRADURAKEX], [$CDSE_ENABLE_HERRADURAKEX], [Enables (1) or disables (0) optional HerraduraKEx at-rest crypto provider integration])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
@@ -235,6 +293,7 @@ echo \
  Package features:
 	Build mode: 	'${compile_mode}'
 	Max threads:	'${CDSE_MAX_THREADS}'
+	HerraduraKEx:	'${CDSE_ENABLE_HERRADURAKEX}'
 
  Now type 'make @<:@<target>@:>@' where the optional <target> is:
      all                - build all binaries

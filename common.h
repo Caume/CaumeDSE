@@ -55,6 +55,11 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define evpSaltBufferSize 16             //EVP_BytesToKey{} uses this many bytes long salts to derive key and iv.
 #define cmeGCMTagLen 16                 //Default tag length (bytes) to use for AES-GCM authenticated data.
 #define bioReadBufferSize 4096          //Buffer Size for BIO_read {RECOMMENDED: 4096}.
+#ifdef CDSE_ENABLE_HERRADURAKEX
+#define cmeUseHerraduraKEx CDSE_ENABLE_HERRADURAKEX //Optional HerraduraKEx at-rest crypto provider build flag {1=ON, 0=OFF}.
+#else
+#define cmeUseHerraduraKEx 0            //Safe default: HerraduraKEx support is disabled unless configure enables it.
+#endif
 #ifdef BYPASS_TLS_IN_HTTP
 #define cmeBypassTLSAuthenticationInHTTP BYPASS_TLS_IN_HTTP //Enable/disable bypassing TLS authentication with non TLS sessions {i.e. HTTP} with config. script {1=ON, 0=OFF}.
 #else

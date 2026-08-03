@@ -644,6 +644,7 @@ ac_header_c_list=
 ac_subst_vars='am__EXEEXT_FALSE
 am__EXEEXT_TRUE
 LTLIBOBJS
+HERRADURAKEX_CPPFLAGS
 TESTDB
 TESTFILES
 ADDITIONAL_CFLAGS
@@ -774,6 +775,8 @@ enable_TESTDATABASE
 enable_BYPASSTLSAUTHINHTTP
 enable_OLDPBKDF1
 with_max_threads
+enable_HERRADURAKEX
+with_herradurakex
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1425,12 +1428,16 @@ Optional Features:
   --enable-TESTDATABASE			copy TEST DATABASE files to Data directory
   --enable-BYPASSTLSAUTHINHTTP		Accepts sessions in HTTP when TLS authentication is used (for testing; NOT RECOMMENDED!)
   --enable-OLDPBKDF1			Uses PBKDF1 (i.e. PKCS5v1.5, compatible with openssl's command line tool) instead of PBKDF2 (for testing; NOT RECOMMENDED!)
+  --enable-HERRADURAKEX   enable optional HerraduraKEx at-rest crypto provider
+                          checks (default: disabled)
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --with-max-threads=N    Maximum number of simultaneous HTTP/HTTPS worker
                           threads (default: 4)
+  --with-herradurakex=DIR root or include directory containing herradura.h for
+                          --enable-HERRADURAKEX
 
 Some influential environment variables:
   CXX         C++ compiler command
@@ -8078,6 +8085,120 @@ else case e in #(
 esac
 fi
 
+# Check whether --enable-HERRADURAKEX was given.
+if test ${enable_HERRADURAKEX+y}
+then :
+  enableval=$enable_HERRADURAKEX; ENABLE_HERRADURAKEX="$enableval"
+else case e in #(
+  e) ENABLE_HERRADURAKEX="no" ;;
+esac
+fi
+
+
+# Check whether --with-herradurakex was given.
+if test ${with_herradurakex+y}
+then :
+  withval=$with_herradurakex; HERRADURAKEX_PATH="$withval"
+else case e in #(
+  e) HERRADURAKEX_PATH="" ;;
+esac
+fi
+
+HERRADURAKEX_CPPFLAGS=""
+CDSE_ENABLE_HERRADURAKEX=0
+if test "x$HERRADURAKEX_PATH" != "x" && test "x$HERRADURAKEX_PATH" != "xno"
+then :
+  ENABLE_HERRADURAKEX="yes"
+fi
+if test "x$ENABLE_HERRADURAKEX" = "xyes"
+then :
+
+	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}:  ----- Looking for optional HerraduraKEx include files -----" >&5
+printf "%s\n" "$as_me:  ----- Looking for optional HerraduraKEx include files -----" >&6;}
+	if test "x$HERRADURAKEX_PATH" != "x" && test "x$HERRADURAKEX_PATH" != "xyes"
+then :
+
+		if test -f "$HERRADURAKEX_PATH/herradura.h"
+then :
+  HERRADURAKEX_CPPFLAGS="-I$HERRADURAKEX_PATH"
+else case e in #(
+  e) if test -f "$HERRADURAKEX_PATH/include/herradura.h"
+then :
+  HERRADURAKEX_CPPFLAGS="-I$HERRADURAKEX_PATH/include"
+else case e in #(
+  e) as_fn_error $? "herradura.h not found under --with-herradurakex path" "$LINENO" 5 ;;
+esac
+fi ;;
+esac
+fi
+
+fi
+	oldCPPFLAGS="$CPPFLAGS"
+	CPPFLAGS="$CPPFLAGS $HERRADURAKEX_CPPFLAGS"
+	       for ac_header in herradura.h
+do :
+  ac_fn_c_check_header_compile "$LINENO" "herradura.h" "ac_cv_header_herradura_h" "$ac_includes_default"
+if test "x$ac_cv_header_herradura_h" = xyes
+then :
+  printf "%s\n" "#define HAVE_HERRADURA_H 1" >>confdefs.h
+
+else case e in #(
+  e) as_fn_error $? "--enable-HERRADURAKEX requires herradura.h" "$LINENO" 5 ;;
+esac
+fi
+
+done
+	cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+#include <stdint.h>
+#include <stddef.h>
+#include <herradura.h>
+#ifndef KEYBITS
+# error "HerraduraKEx KEYBITS is not defined"
+#endif
+#ifndef KEYBYTES
+# error "HerraduraKEx KEYBYTES is not defined"
+#endif
+
+int
+main (void)
+{
+
+#if KEYBITS != 256
+# error "CaumeDSE expects HerraduraKEx KEYBITS to be 256"
+#endif
+#if KEYBYTES != 32
+# error "CaumeDSE expects HerraduraKEx KEYBYTES to be 32"
+#endif
+void *aead_encrypt_ptr = (void *)hske_nl_aead_encrypt;
+void *aead_decrypt_ptr = (void *)hske_nl_aead_decrypt;
+return (aead_encrypt_ptr == aead_decrypt_ptr);
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"
+then :
+  CDSE_ENABLE_HERRADURAKEX=1
+else case e in #(
+  e) as_fn_error $? "herradura.h does not expose the expected 256-bit HSKE-NL AEAD API" "$LINENO" 5 ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
+	CPPFLAGS="$oldCPPFLAGS"
+
+else case e in #(
+  e)
+	if test "x$ENABLE_HERRADURAKEX" != "xno"
+then :
+  as_fn_error $? "unsupported --enable-HERRADURAKEX value: $ENABLE_HERRADURAKEX" "$LINENO" 5
+fi
+ ;;
+esac
+fi
+
 
 # Set required configuration defines y config.h
 
@@ -8091,6 +8212,9 @@ printf "%s\n" "#define PBKDF1_OPENSSL_CLI_COMPATIBILITY $PBKDF" >>confdefs.h
 
 
 printf "%s\n" "#define CDSE_MAX_THREADS $CDSE_MAX_THREADS" >>confdefs.h
+
+
+printf "%s\n" "#define CDSE_ENABLE_HERRADURAKEX $CDSE_ENABLE_HERRADURAKEX" >>confdefs.h
 
 
 ac_config_files="$ac_config_files Makefile"
@@ -9588,6 +9712,7 @@ echo \
  Package features:
 	Build mode: 	'${compile_mode}'
 	Max threads:	'${CDSE_MAX_THREADS}'
+	HerraduraKEx:	'${CDSE_ENABLE_HERRADURAKEX}'
 
  Now type 'make [<target>]' where the optional <target> is:
      all                - build all binaries
