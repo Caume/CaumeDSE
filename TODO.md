@@ -827,7 +827,7 @@
     rewritten automatically; AES rows remain readable and Herradura rows require
     a Herradura-enabled binary.
 
-- [ ] #99 Add verifier and component coverage for Herradura at-rest encryption.
+- [x] #99 Add verifier and component coverage for Herradura at-rest encryption.
   - Source: `debug_tests.c`, `function_tests.c`, `TEST/run_debug_components.sh`, live verifier fixtures, and crypto DEBUG markers.
   - Goal: prove HerraduraKEx storage profiles protect SQLite data at rest and fail closed on tampering.
   - Plan:
@@ -844,6 +844,13 @@
     `CDSE_VERIFY_HERRADURAKEX_DIR` for opt-in Herradura builds, optional
     `CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE`, and a Herradura component marker
     group that skips cleanly when the provider is not requested.
+  - Done: live verifier runs with `CDSE_VERIFY_HERRADURAKEX_DIR` now default to
+    `herradura-hske-nla1-aead-256` unless another Herradura profile is supplied,
+    upload and read back the normal CSV fixture through the existing HTTP/HTTPS
+    API flow, upload a larger CSV for timing-only smoke data, scan the backing
+    SQLite files for decoded `CDSEHKX1` frames/profile id `1`, and fail if
+    representative plaintext values appear in the SQLite-backed storage. Default
+    verifier runs skip the Herradura-specific live checks.
 
 - [ ] #100 Document HerraduraKEx PQC storage recommendations and operational boundaries.
   - Source: `README.md`, `TUTORIAL.md`, `API_EXAMPLES.md`, `AI_USAGE.md`, and upstream `Caume/HerraduraKEx` documentation.
