@@ -806,7 +806,7 @@
     Default-profile enablement and SQLite metadata migration remain deferred to
     TODO #98.
 
-- [ ] #98 Add SQLite metadata, configuration, and migration safeguards for Herradura profiles.
+- [x] #98 Add SQLite metadata, configuration, and migration safeguards for Herradura profiles.
   - Source: ResourcesDB schema usage, ColumnFile DB metadata, organization/storage configuration flows, `README.md`, `TUTORIAL.md`, and live verifier setup.
   - Goal: make HerraduraKEx storage encryption opt-in, discoverable, and reversible without forcing automatic migration of existing encrypted data.
   - Plan:
@@ -816,6 +816,16 @@
     - Do not auto-migrate existing SQLite data; define a separate explicit re-protect or export/import workflow for later implementation.
     - Add diagnostics that distinguish unsupported algorithm, missing build support, failed authentication, and corrupted ciphertext frame.
     - Document rollback expectations: existing AES data remains usable, while Herradura-protected data requires a Herradura-enabled binary.
+  - Done: Herradura-enabled builds now allow HSKE-NL-A1 AEAD and HSKE duplex
+    as explicit default storage profiles while default builds reject those
+    names. Herradura protected values carry the exact compact profile id in the
+    `CDSEHKX1` frame, decrypt dispatch uses that embedded metadata, and
+    unframed legacy protected values fall back to `aes-256-gcm` when a
+    Herradura profile is configured for new writes. HMAC key derivation and
+    engine-admin startup validation now use storage profile metadata instead of
+    requiring the default profile to be an OpenSSL EVP cipher. No SQLite data is
+    rewritten automatically; AES rows remain readable and Herradura rows require
+    a Herradura-enabled binary.
 
 - [ ] #99 Add verifier and component coverage for Herradura at-rest encryption.
   - Source: `debug_tests.c`, `function_tests.c`, `TEST/run_debug_components.sh`, live verifier fixtures, and crypto DEBUG markers.

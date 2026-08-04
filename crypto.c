@@ -74,10 +74,10 @@ static const cmeStaticCryptoProfile cmeHerraduraKExProfiles[] =
 {
     {cmeHerraduraKExProfileHSKENLA1AEAD256, 32, 32, evpSaltBufferSize, 32, 1,
      cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKENLA1AEAD256,
-     cmeUseHerraduraKEx, cmeUseHerraduraKEx, 0},
+     cmeUseHerraduraKEx, cmeUseHerraduraKEx, cmeUseHerraduraKEx},
     {cmeHerraduraKExProfileHSKEDuplex256, 32, 32, evpSaltBufferSize, 32, 1,
      cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKEDuplex256,
-     cmeUseHerraduraKEx, cmeUseHerraduraKEx, 0},
+     cmeUseHerraduraKEx, cmeUseHerraduraKEx, cmeUseHerraduraKEx},
     {cmeHerraduraKExProfileHSKENLA2256, 32, 32, evpSaltBufferSize, 0, 0,
      cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKENLA2256,
      cmeUseHerraduraKEx, 0, 0}
@@ -192,6 +192,25 @@ static int cmeHerraduraKExProfileIdMatchesAlgorithm (unsigned char profileId, co
             !strcmp(algorithm,cmeHerraduraKExProfileHSKEDuplex256)));
 }
 #endif
+
+static const char *cmeHerraduraKExAlgorithmFromProfileId (unsigned char profileId)
+{
+    if (profileId==cmeHerraduraKExProfileIdHSKENLA1AEAD256)
+    {
+        return(cmeHerraduraKExProfileHSKENLA1AEAD256);
+    }
+    if (profileId==cmeHerraduraKExProfileIdHSKEDuplex256)
+    {
+        return(cmeHerraduraKExProfileHSKEDuplex256);
+    }
+    return(NULL);
+}
+
+static int cmeIsHerraduraKExFrame (const unsigned char *srcBuf, int srcLen)
+{
+    return(srcBuf && srcLen>=cmeHerraduraKExFrameHeaderLen &&
+           !memcmp(srcBuf,cmeHerraduraKExFrameMagic,cmeHerraduraKExFrameMagicLen));
+}
 
 static int cmeHerraduraKExCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf,
                                             unsigned char **salt, const int srcLen, int *dstWritten,
@@ -922,6 +941,7 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
     EVP_CIPHER_CTX *ctx=NULL;
     const EVP_CIPHER *cipher=NULL; //Note that cipher is a pointer to a constant cipher function in OPENSSL.
     cmeCryptoProfile cryptoProfile;
+    const char *effectiveAlgorithm=algorithm;
     #define cmeCipherByteStringFree() \
         { \
                 if (key) \
@@ -952,29 +972,50 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
 #endif
         return(1);
     }
-    if (cmeGetCryptoProfile(&cryptoProfile,algorithm))
+    if (mode=='d' && cmeIsHerraduraKExFrame(srcBuf,srcLen))
+    {
+        effectiveAlgorithm=cmeHerraduraKExAlgorithmFromProfileId(srcBuf[cmeHerraduraKExFrameMagicLen]);
+        if (!effectiveAlgorithm)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported HerraduraKEx frame profile id: %u!\n",
+                    (unsigned int)srcBuf[cmeHerraduraKExFrameMagicLen]);
+#endif
+            return(31);
+        }
+    }
+    else if (mode=='d')
+    {
+        cmeCryptoProfile requestedProfile;
+        if (!cmeGetCryptoProfile(&requestedProfile,algorithm) &&
+            requestedProfile.provider==cmeCryptoProviderHerraduraKEx)
+        {
+            effectiveAlgorithm=cmeOpenSSLLegacyStorageProfile;
+        }
+    }
+    if (cmeGetCryptoProfile(&cryptoProfile,effectiveAlgorithm) || !cryptoProfile.implemented)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported storage crypto profile: %s!\n",algorithm);
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported storage crypto profile: %s!\n",effectiveAlgorithm);
 #endif
         return(2);
     }
     if (cryptoProfile.provider==cmeCryptoProviderHerraduraKEx)
     {
         return(cmeHerraduraKExCipherByteString(srcBuf,dstBuf,salt,srcLen,dstWritten,
-                                               algorithm,ctPassword,mode,&cryptoProfile));
+                                               effectiveAlgorithm,ctPassword,mode,&cryptoProfile));
     }
     if (cryptoProfile.provider!=cmeCryptoProviderOpenSSLEVP)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported storage crypto provider for profile: %s!\n",algorithm);
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported storage crypto provider for profile: %s!\n",effectiveAlgorithm);
 #endif
         return(2);
     }
-    if (cmeGetCipher(&cipher,algorithm)) //Verify algorithm and get cipher object.
+    if (cmeGetCipher(&cipher,effectiveAlgorithm)) //Verify algorithm and get cipher object.
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), incorrect cipher algorithm: %s!\n",algorithm);
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), incorrect cipher algorithm: %s!\n",effectiveAlgorithm);
 #endif
         return(2);
     }
@@ -1439,15 +1480,13 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
     int exitcode=0;
     int written=0;
     int keyLen=0;
-    int ivLen=0;
     unsigned char *key=NULL;
-    unsigned char *iv=NULL;
     unsigned char *digestBytes=NULL;
     unsigned char *byteSalt=NULL;
     unsigned char hexStrbyteSalt[evpSaltBufferSize*2+1];     //Space for an hex str representation of an evpSaltBufferSize long, byte salt
     CME_HMAC_CTX *ctx=NULL;                 //Note that ctx will be freed normally by cmeHMACFinal(), but we need to free it if we exit before cmeHMACFinal() is called.
     EVP_MD *digest=NULL;          //Note that digest is a pointer to a constant digest function in OPENSSL.
-    const EVP_CIPHER *cipher=NULL;      //Note that cipher is a pointer to a constant cipher function in OPENSSL.
+    cmeCryptoProfile defaultProfile;
 #if OPENSSL_VERSION_MAJOR >= 3
     #define cmeHMACByteStringFree() \
         { \
@@ -1457,8 +1496,6 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
                     cmeFree(digestBytes); \
                 if (key) \
                     { memset(key,0,keyLen); cmeFree(key); } \
-                if (iv) \
-                    { memset(iv,0,ivLen); cmeFree(iv); } \
                 if (byteSalt) \
                     { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
         }
@@ -1471,8 +1508,6 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
                     cmeFree(digestBytes); \
                 if (key) \
                     { memset(key,0,keyLen); cmeFree(key); } \
-                if (iv) \
-                    { memset(iv,0,ivLen); cmeFree(iv); } \
                 if (byteSalt) \
                     { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
         }
@@ -1486,10 +1521,12 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
 #endif
         return(1);
     }
-    if ((cmeGetCipher(&cipher,cmeDefaultEncAlg))) //Use default encryption algorithm's key length for PBKDF.
+    if (cmeGetCryptoProfile(&defaultProfile,cmeDefaultEncAlg) ||
+        !defaultProfile.implemented || !defaultProfile.allowedAsDefault ||
+        defaultProfile.keyLen<=0)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), incorrect digest algorithm; %s!\n",algorithm);
+        fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), unsupported default storage crypto profile; %s!\n",cmeDefaultEncAlg);
 #endif
         cmeHMACByteStringFree();
         return(2);
@@ -1538,11 +1575,18 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
             return(3);
         }
     }
-    keyLen=EVP_CIPHER_key_length(cipher); //Get cipher key length.
-    ivLen=EVP_CIPHER_iv_length(cipher); //Get cipher iv length.
+    keyLen=defaultProfile.keyLen;
     key=(unsigned char *)malloc(keyLen);
-    iv=(unsigned char *)malloc(ivLen);
-    if ((cmePBKDF(cipher,byteSalt,evpSaltBufferSize,(unsigned char *)userKey,strlen(userKey),key,iv))) //Error setting key & IV.
+    if (!key)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), Error in memory allocation!\n");
+#endif
+        cmeHMACByteStringFree();
+        return(4);
+    }
+    if (!PKCS5_PBKDF2_HMAC(userKey,strlen(userKey),byteSalt,evpSaltBufferSize,
+                           cmeDefaultPBKDFCount,EVP_sha256(),keyLen,key))
     {
         cmeHMACByteStringFree();
         return(7);

@@ -177,11 +177,9 @@ Known HerraduraKEx storage profile ids:
 - `herradura-hske-duplex-256`
 - `herradura-hske-nla2-256`
 
-The HSKE-NL-A1 AEAD and HSKE duplex profiles are marked implemented only when
-CaumeDSE is built with HerraduraKEx support. They are still not allowed as
-defaults yet, because the metadata/configuration migration work must first
-remove remaining default-path assumptions around OpenSSL-only HMAC key-length
-derivation and per-dataset algorithm metadata.
+The HSKE-NL-A1 AEAD and HSKE duplex profiles are marked implemented and allowed
+as opt-in defaults only when CaumeDSE is built with HerraduraKEx support. The
+default build still rejects those profile names at configuration time.
 
 Herradura ciphertexts should use a new protected-value frame so they cannot be
 confused with existing OpenSSL ciphertexts. A candidate binary layout is:
@@ -220,8 +218,10 @@ Initial HerraduraKEx support should be opt-in:
 - Default builds continue to use OpenSSL EVP and `aes-256-gcm`.
 - Herradura profiles are rejected when the binary lacks HerraduraKEx support.
 - Existing SQLite databases are not rewritten automatically.
-- Mixed AES/Herradura data should be allowed only when metadata records the
-  exact algorithm used for each protected value or protected dataset.
+- Mixed AES/Herradura data is allowed without rewriting existing rows:
+  Herradura frames carry the exact compact profile id for each protected value,
+  and unframed legacy values continue to use the existing AES-GCM storage
+  profile.
 - Failure messages should distinguish unsupported algorithm, missing provider,
   corrupted frame, authentication failure, and KDF/salt errors.
 
@@ -274,8 +274,8 @@ When enabled, configure verifies:
 This integration intentionally does not vendor upstream code yet. Vendoring or
 linking must wait for the license compatibility review because the upstream
 GitHub metadata reports a non-standard license. Runtime Herradura encryption is
-available only for direct wrapper calls in Herradura-enabled builds until the
-metadata/configuration TODO enables safe default-profile selection.
+available for direct wrapper calls and as an opt-in default storage profile in
+Herradura-enabled builds. Default builds reject Herradura profile names.
 
 ## Wrapper Status
 
@@ -295,3 +295,22 @@ with PBKDF2-HMAC-SHA256 to derive the 32-byte Herradura key from the
 organization key. Associated data currently binds the CDSE Herradura AAD domain,
 algorithm id, and salt. Later metadata work should extend this with stable
 database/table/field context where every decrypt path can provide it.
+
+## Metadata and Configuration Status
+
+HerraduraKEx protected values are discoverable from the stored ciphertext
+frame. The `profile_id` maps to the exact Herradura algorithm used for that
+value. On decrypt, CaumeDSE uses this embedded metadata instead of relying only
+on the currently configured default encryption algorithm. Unframed protected
+values are treated as legacy AES-GCM values, which keeps existing SQLite rows
+readable when a Herradura profile is selected for new writes.
+
+Configuration remains fail-closed:
+
+- Default builds reject Herradura profile names because they are not compiled
+  in or allowed as defaults.
+- Herradura-enabled builds may set `CDSE_DEFAULT_ENC_ALG` or the config-file
+  default to `herradura-hske-nla1-aead-256` or `herradura-hske-duplex-256`.
+- Existing AES data is not migrated automatically.
+- Herradura-protected values require a Herradura-enabled binary for rollback or
+  readback.

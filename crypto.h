@@ -71,6 +71,7 @@ typedef HMAC_CTX CME_HMAC_CTX;
 #define cmeHerraduraKExProfileHSKENLA1AEAD256 "herradura-hske-nla1-aead-256"
 #define cmeHerraduraKExProfileHSKEDuplex256 "herradura-hske-duplex-256"
 #define cmeHerraduraKExProfileHSKENLA2256 "herradura-hske-nla2-256"
+#define cmeOpenSSLLegacyStorageProfile "aes-256-gcm"
 
 typedef struct
 {

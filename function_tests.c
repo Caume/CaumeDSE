@@ -161,7 +161,7 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     int cont,cont2,written,ctSize,result __attribute__((unused));
     unsigned char password[10]= "Password";
     unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
-    const char *algorithm = cmeDefaultEncAlg;
+    const char *algorithm = cmeOpenSSLLegacyStorageProfile;
     unsigned char *key=NULL;
     unsigned char *iv=NULL;
     unsigned char *expectedKeyIv=NULL;
@@ -183,21 +183,21 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     expectedKeyIv=(unsigned char *)malloc(1024);
 
     if (!cmeGetCryptoProfile(&cryptoProfile,cmeDefaultEncAlg) &&
-        cryptoProfile.provider==cmeCryptoProviderOpenSSLEVP &&
         cryptoProfile.implemented && cryptoProfile.allowedAsDefault)
     {
-        printf("TESTS: testCryptoSymmetric(), PASS: default OpenSSL EVP storage crypto profile resolved.\n");
+        printf("TESTS: testCryptoSymmetric(), PASS: default storage crypto profile resolved.\n");
     }
     else
     {
-        printf("TESTS: testCryptoSymmetric(), FAIL: default OpenSSL EVP storage crypto profile not resolved.\n");
+        printf("TESTS: testCryptoSymmetric(), FAIL: default storage crypto profile not resolved.\n");
     }
     if (!cmeGetCryptoProfile(&cryptoProfile,cmeHerraduraKExProfileHSKENLA1AEAD256) &&
         cryptoProfile.provider==cmeCryptoProviderHerraduraKEx &&
         cryptoProfile.keyLen==32 && cryptoProfile.nonceLen==32 &&
         cryptoProfile.tagLen==32 && cryptoProfile.isAEAD &&
         cryptoProfile.frameVersion==cmeCryptoFrameHerraduraKExV1 &&
-        cryptoProfile.implemented==cmeUseHerraduraKEx && !cryptoProfile.allowedAsDefault)
+        cryptoProfile.implemented==cmeUseHerraduraKEx &&
+        cryptoProfile.allowedAsDefault==cmeUseHerraduraKEx)
     {
         printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata resolved.\n");
     }
@@ -239,6 +239,11 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
         int hkxCiphertextLen=0;
         int hkxPlaintextLen=0;
         int hkxTamperResult=0;
+        unsigned char *aesCiphertext=NULL;
+        unsigned char *aesPlaintext=NULL;
+        unsigned char *aesSalt=NULL;
+        int aesCiphertextLen=0;
+        int aesPlaintextLen=0;
         if (!cmeCipherByteString(cleartext,&hkxCiphertext,&hkxSalt,strlen((char *)cleartext),
                                  &hkxCiphertextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
                                  "Password",'e') &&
@@ -253,6 +258,22 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
         else
         {
             printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD profile round trip failed.\n");
+        }
+        cmeFree(hkxPlaintext);
+        hkxPlaintext=NULL;
+        hkxPlaintextLen=0;
+        if (hkxCiphertext &&
+            !cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                 &hkxPlaintextLen,cmeOpenSSLLegacyStorageProfile,
+                                 "Password",'d') &&
+            hkxPlaintextLen==(int)strlen((char *)cleartext) &&
+            !memcmp(hkxPlaintext,cleartext,hkxPlaintextLen))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame decrypts via embedded profile metadata.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx frame metadata decrypt failed.\n");
         }
         if (hkxCiphertext && hkxCiphertextLen>cmeHerraduraKExFrameHeaderLen)
         {
@@ -270,6 +291,24 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
                 printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted tampered tag.\n");
             }
         }
+        if (!cmeCipherByteString(cleartext,&aesCiphertext,&aesSalt,strlen((char *)cleartext),
+                                 &aesCiphertextLen,cmeOpenSSLLegacyStorageProfile,
+                                 "Password",'e') &&
+            !cmeCipherByteString(aesCiphertext,&aesPlaintext,&aesSalt,aesCiphertextLen,
+                                 &aesPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                 "Password",'d') &&
+            aesPlaintextLen==(int)strlen((char *)cleartext) &&
+            !memcmp(aesPlaintext,cleartext,aesPlaintextLen))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: legacy AES profile decrypts when Herradura is configured.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: legacy AES fallback decrypt failed under Herradura profile.\n");
+        }
+        cmeFree(aesCiphertext);
+        cmeFree(aesPlaintext);
+        cmeFree(aesSalt);
         cmeFree(hkxCiphertext);
         cmeFree(hkxPlaintext);
         cmeFree(hkxSalt);
