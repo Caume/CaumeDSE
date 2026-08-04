@@ -872,3 +872,26 @@
     candidates, exclude Stern HPKE/HPKS profiles from production storage, and
     state that HerraduraKEx changes only SQLite-backed at-rest protection, not
     TLS channel encryption.
+
+- [x] #101 Add independent tests for Herradura cryptographic algorithms.
+  - Source: upstream `Caume/HerraduraKEx` reference tests or examples, `herradura.h`, `crypto.c`, `function_tests.c`, and `TEST/run_debug_components.sh`.
+  - Goal: verify HerraduraKEx primitives independently from the CaumeDSE SQLite at-rest wrapper so CDSE can distinguish upstream algorithm behavior from CDSE framing, PBKDF, metadata, or storage bugs.
+  - Plan:
+    - Add deterministic known-answer tests for the Herradura algorithms CDSE exposes or plans to expose, starting with `herradura-hske-nla1-aead-256` and `herradura-hske-duplex-256`.
+    - Cover fixed keys, nonces, associated data, plaintext sizes including empty, one-byte, block-boundary, multi-block, and multi-kilobyte inputs.
+    - Add negative authentication tests that mutate key, nonce, tag, ciphertext, associated data, and algorithm/profile selection without involving SQLite storage.
+    - Add independent tests for `hfscx-256` and `hfscx-256-ds` once CDSE evaluates them as future hash/MAC candidates.
+    - Add skip behavior for default builds without `--enable-HERRADURAKEX`, while making Herradura-enabled verifier runs fail clearly on upstream API drift or changed test vectors.
+    - Prefer upstream-reviewed vectors where available; if CDSE must generate vectors, record the HerraduraKEx commit, generator command, inputs, outputs, and review status in committed test fixtures.
+  - Done: added `testHerraduraIndependent()` to call upstream `herradura.h`
+    primitives directly, independent from CDSE SQLite storage, PBKDF, and
+    `CDSEHKX1` framing. Coverage now includes hard-coded deterministic vectors
+    for HSKE-NL-A1 AEAD, HSKE duplex, empty plaintext tags, HFSCX-256, and
+    HFSCX-256-DS; fixed-size round trips for empty, one-byte, boundary,
+    multi-block, and multi-kilobyte inputs; and negative direct API checks for
+    mutated key, nonce, associated data, ciphertext, tag, and wrong profile
+    selection. Vector provenance is recorded in
+    `TEST/testfiles/herradurakex-independent-vectors.txt`. The DEBUG verifier now
+    has a separate `herradurakex_independent` component that skips without a
+    requested Herradura provider and fails Herradura-enabled runs on vector/API
+    drift.

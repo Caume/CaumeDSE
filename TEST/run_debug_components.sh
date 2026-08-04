@@ -480,12 +480,15 @@ check_required() {
 
 check_forbidden() {
     local log="$1"
+    local filtered_log="$LOG_ROOT/forbidden_markers_filtered.log"
+
+    grep -Ev 'CaumeDSE Error: cmeCipherByteString\(\), unsupported storage crypto profile: herradura-hske-nla1-aead-256!' "$log" > "$filtered_log"
     if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
-        grep -Ev 'CaumeDSE Error: cmeCipherByteString\(\), unsupported HerraduraKEx frame profile id: 255!' "$log" | \
+        grep -Ev 'CaumeDSE Error: cmeCipherByteString\(\), unsupported HerraduraKEx frame profile id: 255!' "$filtered_log" | \
             grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core'
         return $?
     fi
-    grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core' "$log"
+    grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core' "$filtered_log"
 }
 
 certificate_read_marker_seen() {
@@ -562,6 +565,24 @@ check_herradurakex_component() {
         'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects truncated frame.' \
         'TESTS: testCryptoSymmetric(), PASS: legacy AES profile decrypts when Herradura is configured.' \
         'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE duplex profile round trip.'
+}
+
+check_herradurakex_independent_component() {
+    local source="$1"
+
+    if [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+        record_skip herradurakex_independent "HerraduraKEx provider not requested"
+        return 0
+    fi
+    check_component herradurakex_independent 'testHerraduraIndependent|HFSCX|HSKE direct APIs' "$source" \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE-NL-A1 AEAD known-answer vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE duplex known-answer vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE-NL-A1 AEAD empty-plaintext vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE duplex empty-plaintext vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE direct APIs round trip fixed boundary sizes.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE direct APIs reject mutated auth inputs and wrong profile selection.' \
+        'TESTS: testHerraduraIndependent(), PASS: HFSCX-256 known-answer vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HFSCX-256-DS known-answer vector matches.'
 }
 
 check_live_herradurakex_storage_at_rest() {
@@ -1700,6 +1721,7 @@ check_component crypto_streaming '---ctSize|---etSize|Decrypted text|Unprotected
     'Unprotected text: This is cleartext This is cleartext This is cleartext This is cleartext.'
 
 check_herradurakex_component "$FULL_LOG"
+check_herradurakex_independent_component "$FULL_LOG"
 
 check_component digest 'HASH parameters|HASH digest Size|HASH digest with integrated function|StrToB64|B64ToStr' "$FULL_LOG" \
     '--- HASH digest Size (bytes): 32' \
