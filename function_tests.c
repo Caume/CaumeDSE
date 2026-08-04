@@ -239,6 +239,8 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
         int hkxCiphertextLen=0;
         int hkxPlaintextLen=0;
         int hkxTamperResult=0;
+        unsigned char *hkxTampered=NULL;
+        unsigned char *hkxWrongSalt=NULL;
         unsigned char *aesCiphertext=NULL;
         unsigned char *aesPlaintext=NULL;
         unsigned char *aesSalt=NULL;
@@ -275,11 +277,49 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
         {
             printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx frame metadata decrypt failed.\n");
         }
+        cmeFree(hkxPlaintext);
+        hkxPlaintext=NULL;
+        hkxPlaintextLen=0;
+        if (hkxCiphertext &&
+            cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                "WrongPassword",'d'))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects wrong key.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted wrong key.\n");
+        }
+        cmeFree(hkxPlaintext);
+        hkxPlaintext=NULL;
+        hkxPlaintextLen=0;
+        if (hkxSalt)
+        {
+            cmeStrConstrAppend((char **)&hkxWrongSalt,"%s",hkxSalt);
+            hkxWrongSalt[0]=(hkxWrongSalt[0]=='0') ? '1' : '0';
+        }
+        if (hkxCiphertext && hkxWrongSalt &&
+            cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxWrongSalt,hkxCiphertextLen,
+                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                "Password",'d'))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects wrong salt.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted wrong salt.\n");
+        }
+        cmeFree(hkxPlaintext);
+        hkxPlaintext=NULL;
+        hkxPlaintextLen=0;
         if (hkxCiphertext && hkxCiphertextLen>cmeHerraduraKExFrameHeaderLen)
         {
-            hkxCiphertext[cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen] ^= 0x01;
+            hkxTampered=(unsigned char *)malloc(hkxCiphertextLen);
+            memcpy(hkxTampered,hkxCiphertext,hkxCiphertextLen);
+            hkxTampered[cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen] ^= 0x01;
             cmeFree(hkxPlaintext);
-            hkxTamperResult=cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+            hkxTamperResult=cmeCipherByteString(hkxTampered,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
                                                 &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
                                                 "Password",'d');
             if (hkxTamperResult)
@@ -290,6 +330,78 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
             {
                 printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted tampered tag.\n");
             }
+            cmeFree(hkxTampered);
+            cmeFree(hkxPlaintext);
+            hkxTampered=(unsigned char *)malloc(hkxCiphertextLen);
+            memcpy(hkxTampered,hkxCiphertext,hkxCiphertextLen);
+            hkxTampered[cmeHerraduraKExFrameMagicLen+2] ^= 0x01;
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
+            hkxTamperResult=cmeCipherByteString(hkxTampered,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered nonce.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted tampered nonce.\n");
+            }
+            cmeFree(hkxTampered);
+            cmeFree(hkxPlaintext);
+            hkxTampered=(unsigned char *)malloc(hkxCiphertextLen);
+            memcpy(hkxTampered,hkxCiphertext,hkxCiphertextLen);
+            hkxTampered[cmeHerraduraKExFrameHeaderLen] ^= 0x01;
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
+            hkxTamperResult=cmeCipherByteString(hkxTampered,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered ciphertext.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted tampered ciphertext.\n");
+            }
+            cmeFree(hkxTampered);
+            cmeFree(hkxPlaintext);
+            hkxTampered=(unsigned char *)malloc(hkxCiphertextLen);
+            memcpy(hkxTampered,hkxCiphertext,hkxCiphertextLen);
+            hkxTampered[cmeHerraduraKExFrameMagicLen]=0xff;
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
+            hkxTamperResult=cmeCipherByteString(hkxTampered,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects unsupported profile id.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx frame accepted unsupported profile id.\n");
+            }
+            cmeFree(hkxTampered);
+            cmeFree(hkxPlaintext);
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
+            hkxTamperResult=cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,cmeHerraduraKExFrameHeaderLen-1,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects truncated frame.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx frame accepted truncated frame.\n");
+            }
+            hkxTampered=NULL;
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
         }
         if (!cmeCipherByteString(cleartext,&aesCiphertext,&aesSalt,strlen((char *)cleartext),
                                  &aesCiphertextLen,cmeOpenSSLLegacyStorageProfile,
@@ -309,6 +421,8 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
         cmeFree(aesCiphertext);
         cmeFree(aesPlaintext);
         cmeFree(aesSalt);
+        cmeFree(hkxTampered);
+        cmeFree(hkxWrongSalt);
         cmeFree(hkxCiphertext);
         cmeFree(hkxPlaintext);
         cmeFree(hkxSalt);

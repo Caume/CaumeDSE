@@ -837,6 +837,13 @@
     - Add skip behavior when HerraduraKEx support is not compiled in, so default CI remains stable.
     - Include focused HTTP and HTTPS verifier modes only to prove normal API behavior still works; do not test or alter TLS channel algorithms.
     - Record performance smoke numbers for representative small and large field values without making throughput a pass/fail gate.
+  - Batch 1 done: extended DEBUG crypto coverage for Herradura wrong-key,
+    wrong-salt, tampered tag, tampered nonce, tampered ciphertext, unsupported
+    profile id, truncated frame, embedded profile decrypt, legacy AES fallback,
+    and duplex round trip. `TEST/run_debug_components.sh` now supports
+    `CDSE_VERIFY_HERRADURAKEX_DIR` for opt-in Herradura builds, optional
+    `CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE`, and a Herradura component marker
+    group that skips cleanly when the provider is not requested.
 
 - [ ] #100 Document HerraduraKEx PQC storage recommendations and operational boundaries.
   - Source: `README.md`, `TUTORIAL.md`, `API_EXAMPLES.md`, `AI_USAGE.md`, and upstream `Caume/HerraduraKEx` documentation.

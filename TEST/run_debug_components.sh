@@ -21,6 +21,8 @@ VERIFY_PARSER_CHROOT_ISOLATION="${CDSE_VERIFY_PARSER_CHROOT_ISOLATION:-0}"
 VERIFY_PARSER_NO_NEW_PRIVS="${CDSE_VERIFY_PARSER_NO_NEW_PRIVS:-0}"
 VERIFY_PARSER_REQUIRE_REVIEWED="${CDSE_VERIFY_PARSER_REQUIRE_REVIEWED:-0}"
 VERIFY_PARSER_REQUIRE_POLICY_PROFILES="${CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES:-0}"
+VERIFY_HERRADURAKEX_DIR="${CDSE_VERIFY_HERRADURAKEX_DIR:-}"
+VERIFY_HERRADURAKEX_DEFAULT_PROFILE="${CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE:-}"
 
 PASSED=0
 FAILED=0
@@ -53,6 +55,8 @@ usage() {
     printf '  CDSE_VERIFY_PARSER_CHROOT_ISOLATION  run optional chroot parser filesystem check when set to 1/true/on\n'
     printf '  CDSE_VERIFY_PARSER_REQUIRE_REVIEWED  require parser.reviewed:true metadata in live parser checks\n'
     printf '  CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES require parser interpreter/timeout/isolation metadata in live parser checks\n'
+    printf '  CDSE_VERIFY_HERRADURAKEX_DIR         enable HerraduraKEx build checks with the directory containing herradura.h\n'
+    printf '  CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE set an opt-in Herradura default profile for the DEBUG run\n'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -113,6 +117,16 @@ fi
 
 if [ "$CI_SMOKE" -eq 1 ] && [ "$SKIP_WEB" -eq 1 ]; then
     printf '%s\n' '--ci-smoke cannot be combined with --skip-web' >&2
+    exit 2
+fi
+
+if [ -n "$VERIFY_HERRADURAKEX_DIR" ] && [ ! -f "$VERIFY_HERRADURAKEX_DIR/herradura.h" ]; then
+    printf 'CDSE_VERIFY_HERRADURAKEX_DIR must point to a directory containing herradura.h: %s\n' "$VERIFY_HERRADURAKEX_DIR" >&2
+    exit 2
+fi
+
+if [ -n "$VERIFY_HERRADURAKEX_DEFAULT_PROFILE" ] && [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+    printf '%s\n' 'CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE requires CDSE_VERIFY_HERRADURAKEX_DIR' >&2
     exit 2
 fi
 
@@ -462,6 +476,11 @@ check_required() {
 
 check_forbidden() {
     local log="$1"
+    if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
+        grep -Ev 'CaumeDSE Error: cmeCipherByteString\(\), unsupported HerraduraKEx frame profile id: 255!' "$log" | \
+            grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core'
+        return $?
+    fi
     grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core' "$log"
 }
 
@@ -516,6 +535,29 @@ check_component() {
     if [ "$missing" -eq 0 ]; then
         record_pass "$name"
     fi
+}
+
+check_herradurakex_component() {
+    local source="$1"
+
+    if [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+        record_skip herradurakex_at_rest "HerraduraKEx provider not requested"
+        return 0
+    fi
+    check_component herradurakex_at_rest 'HerraduraKEx|legacy AES profile|embedded profile|CDSEHKX1' "$source" \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata resolved.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx implementation availability follows build flag.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD profile round trip.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame decrypts via embedded profile metadata.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects wrong key.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects wrong salt.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered tag.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered nonce.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered ciphertext.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects unsupported profile id.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects truncated frame.' \
+        'TESTS: testCryptoSymmetric(), PASS: legacy AES profile decrypts when Herradura is configured.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE duplex profile round trip.'
 }
 
 wait_for_log_marker() {
@@ -1386,10 +1428,17 @@ note "root=$ROOT_DIR"
 note "prefix=$PREFIX"
 note "logs=$LOG_ROOT"
 note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_protocol=$WEB_PROTOCOL live_only=$LIVE_ONLY ci_smoke=$CI_SMOKE redact=$REDACT_OUTPUT"
+if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
+    note "herradurakex_dir=$VERIFY_HERRADURAKEX_DIR default_profile=${VERIFY_HERRADURAKEX_DEFAULT_PROFILE:-<unset>}"
+fi
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
+    CONFIGURE_ARGS=(./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP)
+    if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
+        CONFIGURE_ARGS+=(--enable-HERRADURAKEX "--with-herradurakex=$VERIFY_HERRADURAKEX_DIR")
+    fi
     run_release_bypass_config_guard || exit 1
-    run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP || exit 1
+    run_step configure "${CONFIGURE_ARGS[@]}" || exit 1
     run_step make_clean make clean || exit 1
     run_step make make || exit 1
     run_step make_check make check || exit 1
@@ -1457,6 +1506,9 @@ if [ "$LIVE_ONLY" -eq 0 ]; then
     note "RUN  debug_engine"
     (
         cd "$ROOT_DIR" || exit 1
+        if [ -n "$VERIFY_HERRADURAKEX_DEFAULT_PROFILE" ]; then
+            export CDSE_DEFAULT_ENC_ALG="$VERIFY_HERRADURAKEX_DEFAULT_PROFILE"
+        fi
         if [ "$SKIP_WEB" -eq 0 ]; then
             env CDSE_DEBUG_TESTS_NONINTERACTIVE=1 \
                 CDSE_DEBUG_TEST_HTTP_PORT="$HTTP_PORT" \
@@ -1501,6 +1553,8 @@ check_component crypto_streaming '---ctSize|---etSize|Decrypted text|Unprotected
     'TESTS: testCryptoSymmetric(), PASS: default PBKDF profile v3 uses HMAC-SHA256 count=10000.' \
     'TESTS: testCryptoSymmetric(), PASS: legacy PBKDF profile v2 decrypt fallback preserved old data.' \
     'Unprotected text: This is cleartext This is cleartext This is cleartext This is cleartext.'
+
+check_herradurakex_component "$FULL_LOG"
 
 check_component digest 'HASH parameters|HASH digest Size|HASH digest with integrated function|StrToB64|B64ToStr' "$FULL_LOG" \
     '--- HASH digest Size (bytes): 32' \
