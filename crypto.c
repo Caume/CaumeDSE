@@ -43,6 +43,17 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 ***/
 #include "common.h"
+#if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+#include <herradura.h>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+#endif
 
 typedef struct
 {
@@ -53,6 +64,7 @@ typedef struct
     int tagLen;
     int isAEAD;
     int frameVersion;
+    int frameProfileId;
     int compiledIn;
     int implemented;
     int allowedAsDefault;
@@ -61,11 +73,14 @@ typedef struct
 static const cmeStaticCryptoProfile cmeHerraduraKExProfiles[] =
 {
     {cmeHerraduraKExProfileHSKENLA1AEAD256, 32, 32, evpSaltBufferSize, 32, 1,
-     cmeCryptoFrameHerraduraKExV1, cmeUseHerraduraKEx, 0, 0},
+     cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKENLA1AEAD256,
+     cmeUseHerraduraKEx, cmeUseHerraduraKEx, 0},
     {cmeHerraduraKExProfileHSKEDuplex256, 32, 32, evpSaltBufferSize, 32, 1,
-     cmeCryptoFrameHerraduraKExV1, cmeUseHerraduraKEx, 0, 0},
+     cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKEDuplex256,
+     cmeUseHerraduraKEx, cmeUseHerraduraKEx, 0},
     {cmeHerraduraKExProfileHSKENLA2256, 32, 32, evpSaltBufferSize, 0, 0,
-     cmeCryptoFrameHerraduraKExV1, cmeUseHerraduraKEx, 0, 0}
+     cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKENLA2256,
+     cmeUseHerraduraKEx, 0, 0}
 };
 
 static void cmeCopyCryptoProfileAlgorithm(cmeCryptoProfile *profile, const char *algorithm)
@@ -119,6 +134,7 @@ int cmeGetCryptoProfile (cmeCryptoProfile *profile, const char *algorithm)
             profile->tagLen=cmeHerraduraKExProfiles[cont].tagLen;
             profile->isAEAD=cmeHerraduraKExProfiles[cont].isAEAD;
             profile->frameVersion=cmeHerraduraKExProfiles[cont].frameVersion;
+            profile->frameProfileId=cmeHerraduraKExProfiles[cont].frameProfileId;
             profile->compiledIn=cmeHerraduraKExProfiles[cont].compiledIn;
             profile->implemented=cmeHerraduraKExProfiles[cont].implemented;
             profile->allowedAsDefault=cmeHerraduraKExProfiles[cont].allowedAsDefault;
@@ -138,7 +154,211 @@ int cmeCryptoAlgorithmIsImplemented (const char *algorithm)
     {
         return(0);
     }
-    return(profile.implemented && profile.allowedAsDefault);
+    return(profile.implemented);
+}
+
+#if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
+static int cmeHerraduraKExBuildAAD (unsigned char **ad, int *adLen, const char *algorithm, const char *salt)
+{
+    const char *prefix="CDSE-HKX-AAD-v1";
+    int needed=0;
+
+    *ad=NULL;
+    *adLen=0;
+    if (!algorithm || !salt)
+    {
+        return(1);
+    }
+    needed=snprintf(NULL,0,"%s|%s|%s",prefix,algorithm,salt);
+    if (needed<0)
+    {
+        return(2);
+    }
+    *ad=(unsigned char *)malloc(needed+1);
+    if (!*ad)
+    {
+        return(3);
+    }
+    snprintf((char *)*ad,needed+1,"%s|%s|%s",prefix,algorithm,salt);
+    *adLen=needed;
+    return(0);
+}
+
+static int cmeHerraduraKExProfileIdMatchesAlgorithm (unsigned char profileId, const char *algorithm)
+{
+    return((profileId==cmeHerraduraKExProfileIdHSKENLA1AEAD256 &&
+            !strcmp(algorithm,cmeHerraduraKExProfileHSKENLA1AEAD256)) ||
+           (profileId==cmeHerraduraKExProfileIdHSKEDuplex256 &&
+            !strcmp(algorithm,cmeHerraduraKExProfileHSKEDuplex256)));
+}
+#endif
+
+static int cmeHerraduraKExCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf,
+                                            unsigned char **salt, const int srcLen, int *dstWritten,
+                                            const char *algorithm, const char *ctPassword,
+                                            const char mode, const cmeCryptoProfile *profile)
+{
+#if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
+    BitArray key;
+    BitArray nonce;
+    unsigned char *byteSalt=NULL;
+    unsigned char hexStrbyteSalt[evpSaltBufferSize*2+1];
+    unsigned char *ad=NULL;
+    int adLen=0;
+    int result=0;
+    int ctLen=0;
+    unsigned char *randomNonce=NULL;
+    #define cmeHerraduraKExCipherByteStringFree() \
+        { \
+            OPENSSL_cleanse(key.b,sizeof(key.b)); \
+            OPENSSL_cleanse(nonce.b,sizeof(nonce.b)); \
+            if (byteSalt) { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
+            if (ad) { memset(ad,0,adLen); cmeFree(ad); } \
+            if (randomNonce) { memset(randomNonce,0,cmeHerraduraKExNonceLen); cmeFree(randomNonce); } \
+        }
+
+    memset(&key,0,sizeof(key));
+    memset(&nonce,0,sizeof(nonce));
+    if (!profile || !profile->implemented || !profile->isAEAD ||
+        profile->frameVersion!=cmeCryptoFrameHerraduraKExV1 ||
+        (profile->frameProfileId!=cmeHerraduraKExProfileIdHSKENLA1AEAD256 &&
+         profile->frameProfileId!=cmeHerraduraKExProfileIdHSKEDuplex256))
+    {
+        return(20);
+    }
+    if (mode=='e')
+    {
+        if (!(*salt))
+        {
+            cmePrngGetBytes(&byteSalt,evpSaltBufferSize);
+            cmeBytesToHexstr(byteSalt,salt,evpSaltBufferSize);
+        }
+        else
+        {
+            strncpy((char *)hexStrbyteSalt,(char *)*salt,evpSaltBufferSize*2);
+            hexStrbyteSalt[evpSaltBufferSize*2]='\0';
+            if (cmeHexstrToBytes(&byteSalt,hexStrbyteSalt))
+            {
+                cmeHerraduraKExCipherByteStringFree();
+                return(21);
+            }
+        }
+        cmePrngGetBytes(&randomNonce,cmeHerraduraKExNonceLen);
+        memcpy(nonce.b,randomNonce,cmeHerraduraKExNonceLen);
+    }
+    else if (mode=='d')
+    {
+        if (srcLen<cmeHerraduraKExFrameHeaderLen ||
+            memcmp(srcBuf,cmeHerraduraKExFrameMagic,cmeHerraduraKExFrameMagicLen) ||
+            !cmeHerraduraKExProfileIdMatchesAlgorithm(srcBuf[cmeHerraduraKExFrameMagicLen],algorithm))
+        {
+            return(22);
+        }
+        strncpy((char *)hexStrbyteSalt,(char *)*salt,evpSaltBufferSize*2);
+        hexStrbyteSalt[evpSaltBufferSize*2]='\0';
+        if (cmeHexstrToBytes(&byteSalt,hexStrbyteSalt))
+        {
+            cmeHerraduraKExCipherByteStringFree();
+            return(23);
+        }
+        memcpy(nonce.b,srcBuf+cmeHerraduraKExFrameMagicLen+2,cmeHerraduraKExNonceLen);
+    }
+    else
+    {
+        return(24);
+    }
+    if (!byteSalt)
+    {
+        cmeHerraduraKExCipherByteStringFree();
+        return(25);
+    }
+    if (!PKCS5_PBKDF2_HMAC((const char *)ctPassword,strlen(ctPassword),byteSalt,evpSaltBufferSize,
+                           cmeDefaultPBKDFCount,EVP_sha256(),cmeHerraduraKExNonceLen,key.b))
+    {
+        cmeHerraduraKExCipherByteStringFree();
+        return(26);
+    }
+    if (cmeHerraduraKExBuildAAD(&ad,&adLen,algorithm,(const char *)*salt))
+    {
+        cmeHerraduraKExCipherByteStringFree();
+        return(27);
+    }
+    if (mode=='e')
+    {
+        int frameLen=cmeHerraduraKExFrameHeaderLen+srcLen;
+        *dstBuf=(unsigned char *)malloc(frameLen+1);
+        if (!*dstBuf)
+        {
+            cmeHerraduraKExCipherByteStringFree();
+            return(28);
+        }
+        memset(*dstBuf,0,frameLen+1);
+        memcpy(*dstBuf,cmeHerraduraKExFrameMagic,cmeHerraduraKExFrameMagicLen);
+        (*dstBuf)[cmeHerraduraKExFrameMagicLen]=(unsigned char)profile->frameProfileId;
+        (*dstBuf)[cmeHerraduraKExFrameMagicLen+1]=0;
+        memcpy(*dstBuf+cmeHerraduraKExFrameMagicLen+2,nonce.b,cmeHerraduraKExNonceLen);
+        if (profile->frameProfileId==cmeHerraduraKExProfileIdHSKENLA1AEAD256)
+        {
+            hske_nl_aead_encrypt(&key,&nonce,ad,adLen,srcBuf,srcLen,
+                                 *dstBuf+cmeHerraduraKExFrameHeaderLen,
+                                 *dstBuf+cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen);
+        }
+        else
+        {
+            hske_nl_v2_duplex_encrypt(&key,&nonce,ad,adLen,srcBuf,srcLen,
+                                      *dstBuf+cmeHerraduraKExFrameHeaderLen,
+                                      *dstBuf+cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen);
+        }
+        *dstWritten=frameLen;
+    }
+    else
+    {
+        ctLen=srcLen-cmeHerraduraKExFrameHeaderLen;
+        *dstBuf=(unsigned char *)malloc(ctLen+1);
+        if (!*dstBuf)
+        {
+            cmeHerraduraKExCipherByteStringFree();
+            return(29);
+        }
+        memset(*dstBuf,0,ctLen+1);
+        if (srcBuf[cmeHerraduraKExFrameMagicLen]==cmeHerraduraKExProfileIdHSKENLA1AEAD256)
+        {
+            result=hske_nl_aead_decrypt(&key,&nonce,ad,adLen,
+                                        srcBuf+cmeHerraduraKExFrameHeaderLen,ctLen,
+                                        srcBuf+cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen,
+                                        *dstBuf);
+        }
+        else
+        {
+            result=hske_nl_v2_duplex_decrypt(&key,&nonce,ad,adLen,
+                                             srcBuf+cmeHerraduraKExFrameHeaderLen,ctLen,
+                                             srcBuf+cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen,
+                                             *dstBuf);
+        }
+        if (!result)
+        {
+            cmeFree(*dstBuf);
+            *dstWritten=0;
+            cmeHerraduraKExCipherByteStringFree();
+            return(30);
+        }
+        (*dstBuf)[ctLen]='\0';
+        *dstWritten=ctLen;
+    }
+    cmeHerraduraKExCipherByteStringFree();
+    return(0);
+#else
+    (void)srcBuf;
+    (void)dstBuf;
+    (void)salt;
+    (void)srcLen;
+    (void)dstWritten;
+    (void)algorithm;
+    (void)ctPassword;
+    (void)mode;
+    (void)profile;
+    return(31);
+#endif
 }
 
 int cmeGetDigest (EVP_MD **digest, const char *algorithm)
@@ -732,10 +952,22 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
 #endif
         return(1);
     }
-    if (cmeGetCryptoProfile(&cryptoProfile,algorithm) || cryptoProfile.provider!=cmeCryptoProviderOpenSSLEVP)
+    if (cmeGetCryptoProfile(&cryptoProfile,algorithm))
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported storage crypto profile: %s!\n",algorithm);
+#endif
+        return(2);
+    }
+    if (cryptoProfile.provider==cmeCryptoProviderHerraduraKEx)
+    {
+        return(cmeHerraduraKExCipherByteString(srcBuf,dstBuf,salt,srcLen,dstWritten,
+                                               algorithm,ctPassword,mode,&cryptoProfile));
+    }
+    if (cryptoProfile.provider!=cmeCryptoProviderOpenSSLEVP)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported storage crypto provider for profile: %s!\n",algorithm);
 #endif
         return(2);
     }

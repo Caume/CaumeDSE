@@ -197,21 +197,105 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
         cryptoProfile.keyLen==32 && cryptoProfile.nonceLen==32 &&
         cryptoProfile.tagLen==32 && cryptoProfile.isAEAD &&
         cryptoProfile.frameVersion==cmeCryptoFrameHerraduraKExV1 &&
-        !cryptoProfile.implemented && !cryptoProfile.allowedAsDefault)
+        cryptoProfile.implemented==cmeUseHerraduraKEx && !cryptoProfile.allowedAsDefault)
     {
-        printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata resolved as not-yet-implemented.\n");
+        printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata resolved.\n");
     }
     else
     {
         printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata mismatch.\n");
     }
-    if (!cmeCryptoAlgorithmIsImplemented(cmeHerraduraKExProfileHSKENLA1AEAD256))
+    if (cmeCryptoAlgorithmIsImplemented(cmeHerraduraKExProfileHSKENLA1AEAD256)==cmeUseHerraduraKEx)
     {
-        printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx profiles are not accepted before storage wrappers are implemented.\n");
+        printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx implementation availability follows build flag.\n");
     }
     else
     {
-        printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx profile accepted before storage wrappers are implemented.\n");
+        printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx implementation availability mismatch.\n");
+    }
+    if (!cmeUseHerraduraKEx)
+    {
+        unsigned char *hkxCiphertext=NULL;
+        unsigned char *hkxSalt=NULL;
+        int hkxWritten=0;
+        if (cmeCipherByteString(cleartext,&hkxCiphertext,&hkxSalt,strlen((char *)cleartext),
+                                &hkxWritten,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                "Password",'e'))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx profile rejects encryption when provider is not compiled in.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx profile encrypted without provider support.\n");
+        }
+        cmeFree(hkxCiphertext);
+        cmeFree(hkxSalt);
+    }
+    else
+    {
+        unsigned char *hkxCiphertext=NULL;
+        unsigned char *hkxPlaintext=NULL;
+        unsigned char *hkxSalt=NULL;
+        int hkxCiphertextLen=0;
+        int hkxPlaintextLen=0;
+        int hkxTamperResult=0;
+        if (!cmeCipherByteString(cleartext,&hkxCiphertext,&hkxSalt,strlen((char *)cleartext),
+                                 &hkxCiphertextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                 "Password",'e') &&
+            !cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                 &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                 "Password",'d') &&
+            hkxPlaintextLen==(int)strlen((char *)cleartext) &&
+            !memcmp(hkxPlaintext,cleartext,hkxPlaintextLen))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD profile round trip.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD profile round trip failed.\n");
+        }
+        if (hkxCiphertext && hkxCiphertextLen>cmeHerraduraKExFrameHeaderLen)
+        {
+            hkxCiphertext[cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen] ^= 0x01;
+            cmeFree(hkxPlaintext);
+            hkxTamperResult=cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered tag.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted tampered tag.\n");
+            }
+        }
+        cmeFree(hkxCiphertext);
+        cmeFree(hkxPlaintext);
+        cmeFree(hkxSalt);
+        hkxCiphertext=NULL;
+        hkxPlaintext=NULL;
+        hkxSalt=NULL;
+        hkxCiphertextLen=0;
+        hkxPlaintextLen=0;
+        if (!cmeCipherByteString(cleartext,&hkxCiphertext,&hkxSalt,strlen((char *)cleartext),
+                                 &hkxCiphertextLen,cmeHerraduraKExProfileHSKEDuplex256,
+                                 "Password",'e') &&
+            !cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                 &hkxPlaintextLen,cmeHerraduraKExProfileHSKEDuplex256,
+                                 "Password",'d') &&
+            hkxPlaintextLen==(int)strlen((char *)cleartext) &&
+            !memcmp(hkxPlaintext,cleartext,hkxPlaintextLen))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE duplex profile round trip.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE duplex profile round trip failed.\n");
+        }
+        cmeFree(hkxCiphertext);
+        cmeFree(hkxPlaintext);
+        cmeFree(hkxSalt);
     }
 
     cmeGetCipher(&cipher,algorithm);

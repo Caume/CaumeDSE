@@ -177,9 +177,11 @@ Known HerraduraKEx storage profile ids:
 - `herradura-hske-duplex-256`
 - `herradura-hske-nla2-256`
 
-The HerraduraKEx profiles are intentionally not marked implemented or allowed
-as defaults yet. Runtime encryption dispatch remains OpenSSL-only until the
-wrapper work adds frame encode/decode and calls into `herradura.h`.
+The HSKE-NL-A1 AEAD and HSKE duplex profiles are marked implemented only when
+CaumeDSE is built with HerraduraKEx support. They are still not allowed as
+defaults yet, because the metadata/configuration migration work must first
+remove remaining default-path assumptions around OpenSSL-only HMAC key-length
+derivation and per-dataset algorithm metadata.
 
 Herradura ciphertexts should use a new protected-value frame so they cannot be
 confused with existing OpenSSL ciphertexts. A candidate binary layout is:
@@ -272,4 +274,24 @@ When enabled, configure verifies:
 This integration intentionally does not vendor upstream code yet. Vendoring or
 linking must wait for the license compatibility review because the upstream
 GitHub metadata reports a non-standard license. Runtime Herradura encryption is
-also intentionally deferred to the later storage profile and wrapper TODOs.
+available only for direct wrapper calls in Herradura-enabled builds until the
+metadata/configuration TODO enables safe default-profile selection.
+
+## Wrapper Status
+
+CaumeDSE has guarded HerraduraKEx byte-string wrappers for:
+
+- `herradura-hske-nla1-aead-256`
+- `herradura-hske-duplex-256`
+
+The wrappers use a versioned binary frame:
+
+```text
+CDSEHKX1 || profile_id || flags || nonce32 || tag32 || ciphertext
+```
+
+The existing per-record hex salt is still stored outside the frame and is used
+with PBKDF2-HMAC-SHA256 to derive the 32-byte Herradura key from the
+organization key. Associated data currently binds the CDSE Herradura AAD domain,
+algorithm id, and salt. Later metadata work should extend this with stable
+database/table/field context where every decrypt path can provide it.

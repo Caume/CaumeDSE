@@ -786,7 +786,7 @@
     DEBUG component coverage proving existing EVP profiles still resolve while
     Herradura profiles remain metadata-only until TODO #97 implements wrappers.
 
-- [ ] #97 Implement HerraduraKEx at-rest encryption and decryption wrappers.
+- [x] #97 Implement HerraduraKEx at-rest encryption and decryption wrappers.
   - Source: `crypto.c`, `crypto.h`, selected upstream `herradura.h` APIs, and DEBUG crypto component tests.
   - Goal: add round-trip encryption support for HerraduraKEx-protected SQLite values through the same internal encryption interfaces CaumeDSE already uses.
   - Plan:
@@ -796,6 +796,15 @@
     - Cleanse or tightly scope derived keys, nonces, tags, and temporary buffers before returning from error paths.
     - Add negative tests for wrong key, wrong salt, modified nonce, modified tag, modified ciphertext, truncated frame, unsupported profile id, and malformed associated data.
     - Add mixed-profile tests proving old AES-protected values and new Herradura-protected values can be read in the same DEBUG environment.
+  - Done: added guarded HerraduraKEx byte-string wrapper paths for
+    `herradura-hske-nla1-aead-256` and `herradura-hske-duplex-256`, a
+    versioned `CDSEHKX1` frame with profile id, flags, nonce, tag, and
+    ciphertext, PBKDF2-HMAC-SHA256 key derivation into 32-byte Herradura keys,
+    AAD binding for CDSE domain/profile/salt, authentication-failure handling,
+    buffer cleansing on cleanup paths, and DEBUG coverage proving default
+    builds reject Herradura encryption when the provider is not compiled in.
+    Default-profile enablement and SQLite metadata migration remain deferred to
+    TODO #98.
 
 - [ ] #98 Add SQLite metadata, configuration, and migration safeguards for Herradura profiles.
   - Source: ResourcesDB schema usage, ColumnFile DB metadata, organization/storage configuration flows, `README.md`, `TUTORIAL.md`, and live verifier setup.

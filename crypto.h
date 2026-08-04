@@ -61,6 +61,13 @@ typedef HMAC_CTX CME_HMAC_CTX;
 
 #define cmeCryptoProfileNameMaxLen 64
 #define cmeHerraduraKExFrameMagic "CDSEHKX1"
+#define cmeHerraduraKExFrameMagicLen 8
+#define cmeHerraduraKExFrameHeaderLen (cmeHerraduraKExFrameMagicLen+2+32+32)
+#define cmeHerraduraKExNonceLen 32
+#define cmeHerraduraKExTagLen 32
+#define cmeHerraduraKExProfileIdHSKENLA1AEAD256 1
+#define cmeHerraduraKExProfileIdHSKEDuplex256 2
+#define cmeHerraduraKExProfileIdHSKENLA2256 3
 #define cmeHerraduraKExProfileHSKENLA1AEAD256 "herradura-hske-nla1-aead-256"
 #define cmeHerraduraKExProfileHSKEDuplex256 "herradura-hske-duplex-256"
 #define cmeHerraduraKExProfileHSKENLA2256 "herradura-hske-nla2-256"
@@ -75,6 +82,7 @@ typedef struct
     int tagLen;
     int isAEAD;
     int frameVersion;
+    int frameProfileId;
     int compiledIn;
     int implemented;
     int allowedAsDefault;
