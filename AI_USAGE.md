@@ -24,6 +24,8 @@ Recommended boundaries:
 - Use disposable organizations, users, storage paths, and documents for agent
   trials.
 - Prefer HTTPS and client certificates outside DEBUG-only local testing.
+- Treat HerraduraKEx as an opt-in at-rest storage provider only. It does not
+  change HTTPS, TLS cipher selection, certificates, or client authentication.
 
 ## Safe Workflow
 
@@ -65,6 +67,32 @@ export TLS_ARGS="--cacert /tmp/cdse-verify/cdse/ca.pem --cert client_chain.pem -
 The agent may generate request templates that reference `$AUTH`, `$ORG_KEY`,
 and `$TLS_ARGS`. Do not paste expanded command lines containing real secrets
 into prompts, issue trackers, shared logs, or chat transcripts.
+
+## HerraduraKEx At-Rest Profiles
+
+Agents may report or request HerraduraKEx storage profiles only when the operator
+has explicitly provided a Herradura-enabled CaumeDSE build. The profile is set by
+the service configuration, for example `CDSE_DEFAULT_ENC_ALG`, and is not an API
+argument on ordinary upload or read requests.
+
+Use these rules in generated plans:
+
+- Prefer `herradura-hske-nla1-aead-256` as the initial PQC-oriented SQLite
+  at-rest candidate after verifier coverage passes.
+- Treat `herradura-hske-duplex-256` as an evaluation profile for variable-size
+  fields.
+- Treat `herradura-hske-nla2-256` as experimental.
+- Treat `hfscx-256` and `hfscx-256-ds` as future Herradura-native hash/MAC
+  candidates, not replacements for existing compatibility HMAC behavior.
+- Do not use `hkex-rnl` for direct SQLite field encryption; reserve it for
+  future key wrapping or key establishment.
+- Do not recommend `hpke-stern`, `hpke-stern-kem`, or `hpks-stern` for
+  production CaumeDSE storage until upstream production decoder and round
+  requirements are satisfied.
+
+Agents should not ask to migrate existing AES rows automatically. Existing AES
+protected values remain readable, and Herradura-protected values require a
+Herradura-enabled binary for readback or rollback.
 
 ## Request Patterns
 
@@ -264,6 +292,9 @@ Before deploying an agent or MCP bridge:
 
 - HTTPS: use HTTPS with client certificates outside DEBUG-only HTTP testing.
   Disable `--enable-BYPASSTLSAUTHINHTTP` for production builds.
+- At-rest encryption: keep OpenSSL/AES defaults unless a Herradura-enabled build
+  and verifier evidence are available. Do not describe HerraduraKEx storage
+  profiles as TLS ciphersuites.
 - Scoped users: provision a dedicated CaumeDSE user per agent task class and
   configure role/filter rows for the exact read/write methods required.
 - Delegation: put a broker in front of repeated agent sessions; mint

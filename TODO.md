@@ -852,7 +852,7 @@
     representative plaintext values appear in the SQLite-backed storage. Default
     verifier runs skip the Herradura-specific live checks.
 
-- [ ] #100 Document HerraduraKEx PQC storage recommendations and operational boundaries.
+- [x] #100 Document HerraduraKEx PQC storage recommendations and operational boundaries.
   - Source: `README.md`, `TUTORIAL.md`, `API_EXAMPLES.md`, `AI_USAGE.md`, and upstream `Caume/HerraduraKEx` documentation.
   - Goal: give operators, developers, and AI agents clear guidance for when and how to use HerraduraKEx inside CaumeDSE.
   - Plan:
@@ -863,3 +863,12 @@
     - Explicitly state that `hkex-rnl` is a future key-wrapping or key-establishment candidate, not a direct SQLite field encryption algorithm.
     - Explicitly state that `hpke-stern`, `hpke-stern-kem`, and `hpks-stern` are not recommended for production CDSE storage until upstream production decoder and round requirements are satisfied.
     - Explain that HerraduraKEx support is opt-in, experimental until reviewed, and scoped to data encryption at rest; TLS channel encryption remains configured through the existing OpenSSL/HTTPS stack.
+  - Done: added operator, tutorial, API-example, and AI-agent guidance for
+    HerraduraKEx at-rest storage profiles. The docs recommend
+    `herradura-hske-nla1-aead-256` as the initial PQC-oriented candidate,
+    position `herradura-hske-duplex-256` for evaluation, keep
+    `herradura-hske-nla2-256` experimental, defer `hkex-rnl` to key wrapping or
+    key establishment, keep `hfscx-256`/`hfscx-256-ds` as future MAC/hash
+    candidates, exclude Stern HPKE/HPKS profiles from production storage, and
+    state that HerraduraKEx changes only SQLite-backed at-rest protection, not
+    TLS channel encryption.
