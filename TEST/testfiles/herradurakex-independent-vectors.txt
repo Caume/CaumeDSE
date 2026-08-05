@@ -1,0 +1,126 @@
+HerraduraKEx independent primitive test vectors
+================================================
+
+Purpose
+-------
+
+These vectors support `testHerraduraIndependent()` in `function_tests.c`. They
+exercise upstream `herradura.h` primitives directly, without CaumeDSE SQLite
+storage, PBKDF, or `CDSEHKX1` framing.
+
+Upstream reference
+------------------
+
+- Repository: `Caume/HerraduraKEx`
+- Reviewed commit: `13e5fb0346ca5ec81202dee8bb3302633780ec35`
+- Header under test: `herradura.h`
+- Review status: CDSE-generated deterministic vectors from the reviewed header;
+  not upstream-published vectors.
+
+Generator
+---------
+
+Build and run the generator from a HerraduraKEx include directory:
+
+```sh
+gcc -x c -I/path/to/HerraduraKEx -o /tmp/cdse_hkx_vectors - <<'EOF'
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <herradura.h>
+
+static void print_hex(const char *label, const uint8_t *buf, size_t len)
+{
+    size_t i;
+    printf("%s=", label);
+    for (i=0; i<len; i++) printf("%02x", buf[i]);
+    printf("\n");
+}
+
+static void fill_key(BitArray *key)
+{
+    int i;
+    for (i=0; i<KEYBYTES; i++) key->b[i]=(uint8_t)(0x10+i*3);
+}
+
+static void fill_nonce(BitArray *nonce)
+{
+    int i;
+    for (i=0; i<KEYBYTES; i++) nonce->b[i]=(uint8_t)(0xa0-i*5);
+}
+
+int main(void)
+{
+    BitArray key, nonce;
+    const uint8_t ad[] = "cdse-independent-hkx-test-aad-v1";
+    uint8_t pt[97], ct[sizeof(pt)], tag[KEYBYTES], dec[sizeof(pt)], hash[KEYBYTES];
+    size_t i;
+
+    fill_key(&key);
+    fill_nonce(&nonce);
+    for (i=0; i<sizeof(pt); i++) pt[i]=(uint8_t)((i*7+3)&0xff);
+
+    print_hex("key", key.b, KEYBYTES);
+    print_hex("nonce", nonce.b, KEYBYTES);
+    print_hex("ad", ad, sizeof(ad)-1);
+    print_hex("pt97", pt, sizeof(pt));
+
+    hske_nl_aead_encrypt(&key, &nonce, ad, sizeof(ad)-1, pt, sizeof(pt), ct, tag);
+    print_hex("nla1_ct97", ct, sizeof(ct));
+    print_hex("nla1_tag97", tag, KEYBYTES);
+    printf("nla1_dec=%d\n", hske_nl_aead_decrypt(&key, &nonce, ad, sizeof(ad)-1, ct, sizeof(ct), tag, dec));
+    printf("nla1_plain_match=%d\n", memcmp(pt, dec, sizeof(pt))==0);
+
+    hske_nl_v2_duplex_encrypt(&key, &nonce, ad, sizeof(ad)-1, pt, sizeof(pt), ct, tag);
+    print_hex("duplex_ct97", ct, sizeof(ct));
+    print_hex("duplex_tag97", tag, KEYBYTES);
+    printf("duplex_dec=%d\n", hske_nl_v2_duplex_decrypt(&key, &nonce, ad, sizeof(ad)-1, ct, sizeof(ct), tag, dec));
+    printf("duplex_plain_match=%d\n", memcmp(pt, dec, sizeof(pt))==0);
+
+    hske_nl_aead_encrypt(&key, &nonce, ad, sizeof(ad)-1, pt, 0, ct, tag);
+    print_hex("nla1_tag0", tag, KEYBYTES);
+    printf("nla1_dec0=%d\n", hske_nl_aead_decrypt(&key, &nonce, ad, sizeof(ad)-1, ct, 0, tag, dec));
+
+    hske_nl_v2_duplex_encrypt(&key, &nonce, ad, sizeof(ad)-1, pt, 0, ct, tag);
+    print_hex("duplex_tag0", tag, KEYBYTES);
+    printf("duplex_dec0=%d\n", hske_nl_v2_duplex_decrypt(&key, &nonce, ad, sizeof(ad)-1, ct, 0, tag, dec));
+
+    hfscx_256(pt, sizeof(pt), NULL, hash);
+    print_hex("hfscx97", hash, KEYBYTES);
+    hfscx_256_ds(0x03, pt, sizeof(pt), NULL, hash);
+    print_hex("hfscxds03_97", hash, KEYBYTES);
+    return 0;
+}
+EOF
+/tmp/cdse_hkx_vectors
+```
+
+Inputs
+------
+
+```text
+key=101316191c1f2225282b2e3134373a3d404346494c4f5255585b5e6164676a6d
+nonce=a09b96918c87827d78736e69645f5a55504b46413c37322d28231e19140f0a05
+ad=636473652d696e646570656e64656e742d686b782d746573742d6161642d7631
+pt97=030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f565d646b727980878e959ca3
+```
+
+Expected outputs
+----------------
+
+```text
+nla1_ct97=57933cf530ee9fabbcab39c9e559f025b440aa540eae5668fd01d8dca633dcf7e6daeb5b9f108193285d71971045e66e5c2c6c3a24d0511846bd088cf3a4128f97b2586520c9642597be1e677c327b1ae3b7018a90cdad7f03ab69e85a83fbc4e6
+nla1_tag97=6e8058b38db2ad25685cfe3fbfcc9da9f404c36570d477ac8fb17c162d1c7290
+nla1_dec=1
+nla1_plain_match=1
+duplex_ct97=4a29ab1a9262e8fd7a4328cb27afec50d0b23dae488753e1f80186a0a636d7e8fb3d5ddd9c44a8f66ff1ee7f61022cf23942509b695f38e207fcf345bfebc13fc1c5083fe6c490b0c1cf20f87c1baba7463d525344f0ca5b92106a48732f76465b
+duplex_tag97=7d8d435a21c9ead0ac6f6327264954544eab7560abb61825a56932dd5d15ee6a
+duplex_dec=1
+duplex_plain_match=1
+nla1_tag0=aae510ae499a6ad7d37b13b2f81948eb991b2b1043ebc9dad09b94b7374795aa
+nla1_dec0=1
+duplex_tag0=ed9b822dcd7efad2aa35a5ae90cf0f6831353f56284bbc1cfe365d407f0bb883
+duplex_dec0=1
+hfscx97=00d7b4d2c70391c55cba497faca5a95ab72c8746089e15bc203f9221dd04d7d3
+hfscxds03_97=d1a6609dc1b3f10ee00eb9ee307fd20859471063e38c846db73d50f615285cb1
+```

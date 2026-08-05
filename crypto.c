@@ -43,6 +43,342 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 ***/
 #include "common.h"
+#if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+#include <herradura.h>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+#endif
+
+typedef struct
+{
+    const char *algorithm;
+    int keyLen;
+    int nonceLen;
+    int saltLen;
+    int tagLen;
+    int isAEAD;
+    int frameVersion;
+    int frameProfileId;
+    int compiledIn;
+    int implemented;
+    int allowedAsDefault;
+} cmeStaticCryptoProfile;
+
+static const cmeStaticCryptoProfile cmeHerraduraKExProfiles[] =
+{
+    {cmeHerraduraKExProfileHSKENLA1AEAD256, 32, 32, evpSaltBufferSize, 32, 1,
+     cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKENLA1AEAD256,
+     cmeUseHerraduraKEx, cmeUseHerraduraKEx, cmeUseHerraduraKEx},
+    {cmeHerraduraKExProfileHSKEDuplex256, 32, 32, evpSaltBufferSize, 32, 1,
+     cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKEDuplex256,
+     cmeUseHerraduraKEx, cmeUseHerraduraKEx, cmeUseHerraduraKEx},
+    {cmeHerraduraKExProfileHSKENLA2256, 32, 32, evpSaltBufferSize, 0, 0,
+     cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKENLA2256,
+     cmeUseHerraduraKEx, 0, 0}
+};
+
+static void cmeCopyCryptoProfileAlgorithm(cmeCryptoProfile *profile, const char *algorithm)
+{
+    strncpy(profile->algorithm, algorithm, cmeCryptoProfileNameMaxLen-1);
+    profile->algorithm[cmeCryptoProfileNameMaxLen-1]='\0';
+}
+
+int cmeGetCryptoProfile (cmeCryptoProfile *profile, const char *algorithm)
+{
+    const EVP_CIPHER *cipher=NULL;
+    size_t cont=0;
+
+    if (!profile || !algorithm || !*algorithm)
+    {
+        return(1);
+    }
+    memset(profile,0,sizeof(cmeCryptoProfile));
+    cmeCopyCryptoProfileAlgorithm(profile,algorithm);
+
+    cipher=EVP_get_cipherbyname(algorithm);
+    if (cipher)
+    {
+        profile->provider=cmeCryptoProviderOpenSSLEVP;
+        profile->keyLen=EVP_CIPHER_key_length(cipher);
+        profile->nonceLen=EVP_CIPHER_iv_length(cipher);
+        profile->saltLen=evpSaltBufferSize;
+#ifdef EVP_CIPH_GCM_MODE
+        if (EVP_CIPHER_mode(cipher)==EVP_CIPH_GCM_MODE)
+        {
+            profile->isAEAD=1;
+            profile->tagLen=cmeGCMTagLen;
+        }
+#endif
+        profile->frameVersion=cmeCryptoFrameNone;
+        profile->compiledIn=1;
+        profile->implemented=1;
+        profile->allowedAsDefault=1;
+        return(0);
+    }
+
+    for (cont=0; cont<(sizeof(cmeHerraduraKExProfiles)/sizeof(cmeHerraduraKExProfiles[0])); cont++)
+    {
+        if (!strcmp(algorithm,cmeHerraduraKExProfiles[cont].algorithm))
+        {
+            cmeCopyCryptoProfileAlgorithm(profile,cmeHerraduraKExProfiles[cont].algorithm);
+            profile->provider=cmeCryptoProviderHerraduraKEx;
+            profile->keyLen=cmeHerraduraKExProfiles[cont].keyLen;
+            profile->nonceLen=cmeHerraduraKExProfiles[cont].nonceLen;
+            profile->saltLen=cmeHerraduraKExProfiles[cont].saltLen;
+            profile->tagLen=cmeHerraduraKExProfiles[cont].tagLen;
+            profile->isAEAD=cmeHerraduraKExProfiles[cont].isAEAD;
+            profile->frameVersion=cmeHerraduraKExProfiles[cont].frameVersion;
+            profile->frameProfileId=cmeHerraduraKExProfiles[cont].frameProfileId;
+            profile->compiledIn=cmeHerraduraKExProfiles[cont].compiledIn;
+            profile->implemented=cmeHerraduraKExProfiles[cont].implemented;
+            profile->allowedAsDefault=cmeHerraduraKExProfiles[cont].allowedAsDefault;
+            return(0);
+        }
+    }
+
+    profile->provider=cmeCryptoProviderUnknown;
+    return(2);
+}
+
+int cmeCryptoAlgorithmIsImplemented (const char *algorithm)
+{
+    cmeCryptoProfile profile;
+
+    if (cmeGetCryptoProfile(&profile,algorithm))
+    {
+        return(0);
+    }
+    return(profile.implemented);
+}
+
+#if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
+static int cmeHerraduraKExBuildAAD (unsigned char **ad, int *adLen, const char *algorithm, const char *salt)
+{
+    const char *prefix="CDSE-HKX-AAD-v1";
+    int needed=0;
+
+    *ad=NULL;
+    *adLen=0;
+    if (!algorithm || !salt)
+    {
+        return(1);
+    }
+    needed=snprintf(NULL,0,"%s|%s|%s",prefix,algorithm,salt);
+    if (needed<0)
+    {
+        return(2);
+    }
+    *ad=(unsigned char *)malloc(needed+1);
+    if (!*ad)
+    {
+        return(3);
+    }
+    snprintf((char *)*ad,needed+1,"%s|%s|%s",prefix,algorithm,salt);
+    *adLen=needed;
+    return(0);
+}
+
+static int cmeHerraduraKExProfileIdMatchesAlgorithm (unsigned char profileId, const char *algorithm)
+{
+    return((profileId==cmeHerraduraKExProfileIdHSKENLA1AEAD256 &&
+            !strcmp(algorithm,cmeHerraduraKExProfileHSKENLA1AEAD256)) ||
+           (profileId==cmeHerraduraKExProfileIdHSKEDuplex256 &&
+            !strcmp(algorithm,cmeHerraduraKExProfileHSKEDuplex256)));
+}
+#endif
+
+static const char *cmeHerraduraKExAlgorithmFromProfileId (unsigned char profileId)
+{
+    if (profileId==cmeHerraduraKExProfileIdHSKENLA1AEAD256)
+    {
+        return(cmeHerraduraKExProfileHSKENLA1AEAD256);
+    }
+    if (profileId==cmeHerraduraKExProfileIdHSKEDuplex256)
+    {
+        return(cmeHerraduraKExProfileHSKEDuplex256);
+    }
+    return(NULL);
+}
+
+static int cmeIsHerraduraKExFrame (const unsigned char *srcBuf, int srcLen)
+{
+    return(srcBuf && srcLen>=cmeHerraduraKExFrameHeaderLen &&
+           !memcmp(srcBuf,cmeHerraduraKExFrameMagic,cmeHerraduraKExFrameMagicLen));
+}
+
+static int cmeHerraduraKExCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf,
+                                            unsigned char **salt, const int srcLen, int *dstWritten,
+                                            const char *algorithm, const char *ctPassword,
+                                            const char mode, const cmeCryptoProfile *profile)
+{
+#if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
+    BitArray key;
+    BitArray nonce;
+    unsigned char *byteSalt=NULL;
+    unsigned char hexStrbyteSalt[evpSaltBufferSize*2+1];
+    unsigned char *ad=NULL;
+    int adLen=0;
+    int result=0;
+    int ctLen=0;
+    unsigned char *randomNonce=NULL;
+    #define cmeHerraduraKExCipherByteStringFree() \
+        { \
+            OPENSSL_cleanse(key.b,sizeof(key.b)); \
+            OPENSSL_cleanse(nonce.b,sizeof(nonce.b)); \
+            if (byteSalt) { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
+            if (ad) { memset(ad,0,adLen); cmeFree(ad); } \
+            if (randomNonce) { memset(randomNonce,0,cmeHerraduraKExNonceLen); cmeFree(randomNonce); } \
+        }
+
+    memset(&key,0,sizeof(key));
+    memset(&nonce,0,sizeof(nonce));
+    if (!profile || !profile->implemented || !profile->isAEAD ||
+        profile->frameVersion!=cmeCryptoFrameHerraduraKExV1 ||
+        (profile->frameProfileId!=cmeHerraduraKExProfileIdHSKENLA1AEAD256 &&
+         profile->frameProfileId!=cmeHerraduraKExProfileIdHSKEDuplex256))
+    {
+        return(20);
+    }
+    if (mode=='e')
+    {
+        if (!(*salt))
+        {
+            cmePrngGetBytes(&byteSalt,evpSaltBufferSize);
+            cmeBytesToHexstr(byteSalt,salt,evpSaltBufferSize);
+        }
+        else
+        {
+            strncpy((char *)hexStrbyteSalt,(char *)*salt,evpSaltBufferSize*2);
+            hexStrbyteSalt[evpSaltBufferSize*2]='\0';
+            if (cmeHexstrToBytes(&byteSalt,hexStrbyteSalt))
+            {
+                cmeHerraduraKExCipherByteStringFree();
+                return(21);
+            }
+        }
+        cmePrngGetBytes(&randomNonce,cmeHerraduraKExNonceLen);
+        memcpy(nonce.b,randomNonce,cmeHerraduraKExNonceLen);
+    }
+    else if (mode=='d')
+    {
+        if (srcLen<cmeHerraduraKExFrameHeaderLen ||
+            memcmp(srcBuf,cmeHerraduraKExFrameMagic,cmeHerraduraKExFrameMagicLen) ||
+            !cmeHerraduraKExProfileIdMatchesAlgorithm(srcBuf[cmeHerraduraKExFrameMagicLen],algorithm))
+        {
+            return(22);
+        }
+        strncpy((char *)hexStrbyteSalt,(char *)*salt,evpSaltBufferSize*2);
+        hexStrbyteSalt[evpSaltBufferSize*2]='\0';
+        if (cmeHexstrToBytes(&byteSalt,hexStrbyteSalt))
+        {
+            cmeHerraduraKExCipherByteStringFree();
+            return(23);
+        }
+        memcpy(nonce.b,srcBuf+cmeHerraduraKExFrameMagicLen+2,cmeHerraduraKExNonceLen);
+    }
+    else
+    {
+        return(24);
+    }
+    if (!byteSalt)
+    {
+        cmeHerraduraKExCipherByteStringFree();
+        return(25);
+    }
+    if (!PKCS5_PBKDF2_HMAC((const char *)ctPassword,strlen(ctPassword),byteSalt,evpSaltBufferSize,
+                           cmeDefaultPBKDFCount,EVP_sha256(),cmeHerraduraKExNonceLen,key.b))
+    {
+        cmeHerraduraKExCipherByteStringFree();
+        return(26);
+    }
+    if (cmeHerraduraKExBuildAAD(&ad,&adLen,algorithm,(const char *)*salt))
+    {
+        cmeHerraduraKExCipherByteStringFree();
+        return(27);
+    }
+    if (mode=='e')
+    {
+        int frameLen=cmeHerraduraKExFrameHeaderLen+srcLen;
+        *dstBuf=(unsigned char *)malloc(frameLen+1);
+        if (!*dstBuf)
+        {
+            cmeHerraduraKExCipherByteStringFree();
+            return(28);
+        }
+        memset(*dstBuf,0,frameLen+1);
+        memcpy(*dstBuf,cmeHerraduraKExFrameMagic,cmeHerraduraKExFrameMagicLen);
+        (*dstBuf)[cmeHerraduraKExFrameMagicLen]=(unsigned char)profile->frameProfileId;
+        (*dstBuf)[cmeHerraduraKExFrameMagicLen+1]=0;
+        memcpy(*dstBuf+cmeHerraduraKExFrameMagicLen+2,nonce.b,cmeHerraduraKExNonceLen);
+        if (profile->frameProfileId==cmeHerraduraKExProfileIdHSKENLA1AEAD256)
+        {
+            hske_nl_aead_encrypt(&key,&nonce,ad,adLen,srcBuf,srcLen,
+                                 *dstBuf+cmeHerraduraKExFrameHeaderLen,
+                                 *dstBuf+cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen);
+        }
+        else
+        {
+            hske_nl_v2_duplex_encrypt(&key,&nonce,ad,adLen,srcBuf,srcLen,
+                                      *dstBuf+cmeHerraduraKExFrameHeaderLen,
+                                      *dstBuf+cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen);
+        }
+        *dstWritten=frameLen;
+    }
+    else
+    {
+        ctLen=srcLen-cmeHerraduraKExFrameHeaderLen;
+        *dstBuf=(unsigned char *)malloc(ctLen+1);
+        if (!*dstBuf)
+        {
+            cmeHerraduraKExCipherByteStringFree();
+            return(29);
+        }
+        memset(*dstBuf,0,ctLen+1);
+        if (srcBuf[cmeHerraduraKExFrameMagicLen]==cmeHerraduraKExProfileIdHSKENLA1AEAD256)
+        {
+            result=hske_nl_aead_decrypt(&key,&nonce,ad,adLen,
+                                        srcBuf+cmeHerraduraKExFrameHeaderLen,ctLen,
+                                        srcBuf+cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen,
+                                        *dstBuf);
+        }
+        else
+        {
+            result=hske_nl_v2_duplex_decrypt(&key,&nonce,ad,adLen,
+                                             srcBuf+cmeHerraduraKExFrameHeaderLen,ctLen,
+                                             srcBuf+cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen,
+                                             *dstBuf);
+        }
+        if (!result)
+        {
+            cmeFree(*dstBuf);
+            *dstWritten=0;
+            cmeHerraduraKExCipherByteStringFree();
+            return(30);
+        }
+        (*dstBuf)[ctLen]='\0';
+        *dstWritten=ctLen;
+    }
+    cmeHerraduraKExCipherByteStringFree();
+    return(0);
+#else
+    (void)srcBuf;
+    (void)dstBuf;
+    (void)salt;
+    (void)srcLen;
+    (void)dstWritten;
+    (void)algorithm;
+    (void)ctPassword;
+    (void)mode;
+    (void)profile;
+    return(31);
+#endif
+}
 
 int cmeGetDigest (EVP_MD **digest, const char *algorithm)
 {
@@ -604,6 +940,8 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
     unsigned char hexStrbyteSalt[evpSaltBufferSize*2+1];     //Space for an hex str representation of an evpSaltBufferSize long, byte salt
     EVP_CIPHER_CTX *ctx=NULL;
     const EVP_CIPHER *cipher=NULL; //Note that cipher is a pointer to a constant cipher function in OPENSSL.
+    cmeCryptoProfile cryptoProfile;
+    const char *effectiveAlgorithm=algorithm;
     #define cmeCipherByteStringFree() \
         { \
                 if (key) \
@@ -634,10 +972,50 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
 #endif
         return(1);
     }
-    if (cmeGetCipher(&cipher,algorithm)) //Verify algorithm and get cipher object.
+    if (mode=='d' && cmeIsHerraduraKExFrame(srcBuf,srcLen))
+    {
+        effectiveAlgorithm=cmeHerraduraKExAlgorithmFromProfileId(srcBuf[cmeHerraduraKExFrameMagicLen]);
+        if (!effectiveAlgorithm)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported HerraduraKEx frame profile id: %u!\n",
+                    (unsigned int)srcBuf[cmeHerraduraKExFrameMagicLen]);
+#endif
+            return(31);
+        }
+    }
+    else if (mode=='d')
+    {
+        cmeCryptoProfile requestedProfile;
+        if (!cmeGetCryptoProfile(&requestedProfile,algorithm) &&
+            requestedProfile.provider==cmeCryptoProviderHerraduraKEx)
+        {
+            effectiveAlgorithm=cmeOpenSSLLegacyStorageProfile;
+        }
+    }
+    if (cmeGetCryptoProfile(&cryptoProfile,effectiveAlgorithm) || !cryptoProfile.implemented)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), incorrect cipher algorithm: %s!\n",algorithm);
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported storage crypto profile: %s!\n",effectiveAlgorithm);
+#endif
+        return(2);
+    }
+    if (cryptoProfile.provider==cmeCryptoProviderHerraduraKEx)
+    {
+        return(cmeHerraduraKExCipherByteString(srcBuf,dstBuf,salt,srcLen,dstWritten,
+                                               effectiveAlgorithm,ctPassword,mode,&cryptoProfile));
+    }
+    if (cryptoProfile.provider!=cmeCryptoProviderOpenSSLEVP)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported storage crypto provider for profile: %s!\n",effectiveAlgorithm);
+#endif
+        return(2);
+    }
+    if (cmeGetCipher(&cipher,effectiveAlgorithm)) //Verify algorithm and get cipher object.
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), incorrect cipher algorithm: %s!\n",effectiveAlgorithm);
 #endif
         return(2);
     }
@@ -1102,15 +1480,13 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
     int exitcode=0;
     int written=0;
     int keyLen=0;
-    int ivLen=0;
     unsigned char *key=NULL;
-    unsigned char *iv=NULL;
     unsigned char *digestBytes=NULL;
     unsigned char *byteSalt=NULL;
     unsigned char hexStrbyteSalt[evpSaltBufferSize*2+1];     //Space for an hex str representation of an evpSaltBufferSize long, byte salt
     CME_HMAC_CTX *ctx=NULL;                 //Note that ctx will be freed normally by cmeHMACFinal(), but we need to free it if we exit before cmeHMACFinal() is called.
     EVP_MD *digest=NULL;          //Note that digest is a pointer to a constant digest function in OPENSSL.
-    const EVP_CIPHER *cipher=NULL;      //Note that cipher is a pointer to a constant cipher function in OPENSSL.
+    cmeCryptoProfile defaultProfile;
 #if OPENSSL_VERSION_MAJOR >= 3
     #define cmeHMACByteStringFree() \
         { \
@@ -1120,8 +1496,6 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
                     cmeFree(digestBytes); \
                 if (key) \
                     { memset(key,0,keyLen); cmeFree(key); } \
-                if (iv) \
-                    { memset(iv,0,ivLen); cmeFree(iv); } \
                 if (byteSalt) \
                     { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
         }
@@ -1134,8 +1508,6 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
                     cmeFree(digestBytes); \
                 if (key) \
                     { memset(key,0,keyLen); cmeFree(key); } \
-                if (iv) \
-                    { memset(iv,0,ivLen); cmeFree(iv); } \
                 if (byteSalt) \
                     { memset(byteSalt,0,evpSaltBufferSize); cmeFree(byteSalt); } \
         }
@@ -1149,10 +1521,12 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
 #endif
         return(1);
     }
-    if ((cmeGetCipher(&cipher,cmeDefaultEncAlg))) //Use default encryption algorithm's key length for PBKDF.
+    if (cmeGetCryptoProfile(&defaultProfile,cmeDefaultEncAlg) ||
+        !defaultProfile.implemented || !defaultProfile.allowedAsDefault ||
+        defaultProfile.keyLen<=0)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), incorrect digest algorithm; %s!\n",algorithm);
+        fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), unsupported default storage crypto profile; %s!\n",cmeDefaultEncAlg);
 #endif
         cmeHMACByteStringFree();
         return(2);
@@ -1201,11 +1575,18 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
             return(3);
         }
     }
-    keyLen=EVP_CIPHER_key_length(cipher); //Get cipher key length.
-    ivLen=EVP_CIPHER_iv_length(cipher); //Get cipher iv length.
+    keyLen=defaultProfile.keyLen;
     key=(unsigned char *)malloc(keyLen);
-    iv=(unsigned char *)malloc(ivLen);
-    if ((cmePBKDF(cipher,byteSalt,evpSaltBufferSize,(unsigned char *)userKey,strlen(userKey),key,iv))) //Error setting key & IV.
+    if (!key)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), Error in memory allocation!\n");
+#endif
+        cmeHMACByteStringFree();
+        return(4);
+    }
+    if (!PKCS5_PBKDF2_HMAC(userKey,strlen(userKey),byteSalt,evpSaltBufferSize,
+                           cmeDefaultPBKDFCount,EVP_sha256(),keyLen,key))
     {
         cmeHMACByteStringFree();
         return(7);

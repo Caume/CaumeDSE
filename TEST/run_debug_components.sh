@@ -21,6 +21,8 @@ VERIFY_PARSER_CHROOT_ISOLATION="${CDSE_VERIFY_PARSER_CHROOT_ISOLATION:-0}"
 VERIFY_PARSER_NO_NEW_PRIVS="${CDSE_VERIFY_PARSER_NO_NEW_PRIVS:-0}"
 VERIFY_PARSER_REQUIRE_REVIEWED="${CDSE_VERIFY_PARSER_REQUIRE_REVIEWED:-0}"
 VERIFY_PARSER_REQUIRE_POLICY_PROFILES="${CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES:-0}"
+VERIFY_HERRADURAKEX_DIR="${CDSE_VERIFY_HERRADURAKEX_DIR:-}"
+VERIFY_HERRADURAKEX_DEFAULT_PROFILE="${CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE:-}"
 
 PASSED=0
 FAILED=0
@@ -53,6 +55,8 @@ usage() {
     printf '  CDSE_VERIFY_PARSER_CHROOT_ISOLATION  run optional chroot parser filesystem check when set to 1/true/on\n'
     printf '  CDSE_VERIFY_PARSER_REQUIRE_REVIEWED  require parser.reviewed:true metadata in live parser checks\n'
     printf '  CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES require parser interpreter/timeout/isolation metadata in live parser checks\n'
+    printf '  CDSE_VERIFY_HERRADURAKEX_DIR         enable HerraduraKEx build checks with the directory containing herradura.h\n'
+    printf '  CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE set an opt-in Herradura default profile for the DEBUG run\n'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -114,6 +118,20 @@ fi
 if [ "$CI_SMOKE" -eq 1 ] && [ "$SKIP_WEB" -eq 1 ]; then
     printf '%s\n' '--ci-smoke cannot be combined with --skip-web' >&2
     exit 2
+fi
+
+if [ -n "$VERIFY_HERRADURAKEX_DIR" ] && [ ! -f "$VERIFY_HERRADURAKEX_DIR/herradura.h" ]; then
+    printf 'CDSE_VERIFY_HERRADURAKEX_DIR must point to a directory containing herradura.h: %s\n' "$VERIFY_HERRADURAKEX_DIR" >&2
+    exit 2
+fi
+
+if [ -n "$VERIFY_HERRADURAKEX_DEFAULT_PROFILE" ] && [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+    printf '%s\n' 'CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE requires CDSE_VERIFY_HERRADURAKEX_DIR' >&2
+    exit 2
+fi
+
+if [ -n "$VERIFY_HERRADURAKEX_DIR" ] && [ -z "$VERIFY_HERRADURAKEX_DEFAULT_PROFILE" ]; then
+    VERIFY_HERRADURAKEX_DEFAULT_PROFILE="herradura-hske-nla1-aead-256"
 fi
 
 mkdir -p "$LOG_ROOT"
@@ -462,7 +480,15 @@ check_required() {
 
 check_forbidden() {
     local log="$1"
-    grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core' "$log"
+    local filtered_log="$LOG_ROOT/forbidden_markers_filtered.log"
+
+    grep -Ev 'CaumeDSE Error: cmeCipherByteString\(\), unsupported storage crypto profile: herradura-hske-nla1-aead-256!' "$log" > "$filtered_log"
+    if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
+        grep -Ev 'CaumeDSE Error: cmeCipherByteString\(\), unsupported HerraduraKEx frame profile id: 255!' "$filtered_log" | \
+            grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core'
+        return $?
+    fi
+    grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core' "$filtered_log"
 }
 
 certificate_read_marker_seen() {
@@ -516,6 +542,167 @@ check_component() {
     if [ "$missing" -eq 0 ]; then
         record_pass "$name"
     fi
+}
+
+check_herradurakex_component() {
+    local source="$1"
+
+    if [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+        record_skip herradurakex_at_rest "HerraduraKEx provider not requested"
+        return 0
+    fi
+    check_component herradurakex_at_rest 'HerraduraKEx|legacy AES profile|embedded profile|CDSEHKX1' "$source" \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata resolved.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx implementation availability follows build flag.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD profile round trip.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame decrypts via embedded profile metadata.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects wrong key.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects wrong salt.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered tag.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered nonce.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered ciphertext.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects unsupported profile id.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects truncated frame.' \
+        'TESTS: testCryptoSymmetric(), PASS: legacy AES profile decrypts when Herradura is configured.' \
+        'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE duplex profile round trip.'
+}
+
+check_herradurakex_independent_component() {
+    local source="$1"
+
+    if [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+        record_skip herradurakex_independent "HerraduraKEx provider not requested"
+        return 0
+    fi
+    check_component herradurakex_independent 'testHerraduraIndependent|HFSCX|HSKE direct APIs' "$source" \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE-NL-A1 AEAD known-answer vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE duplex known-answer vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE-NL-A1 AEAD empty-plaintext vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE duplex empty-plaintext vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE direct APIs round trip fixed boundary sizes.' \
+        'TESTS: testHerraduraIndependent(), PASS: HSKE direct APIs reject mutated auth inputs and wrong profile selection.' \
+        'TESTS: testHerraduraIndependent(), PASS: HFSCX-256 known-answer vector matches.' \
+        'TESTS: testHerraduraIndependent(), PASS: HFSCX-256-DS known-answer vector matches.'
+}
+
+check_live_herradurakex_storage_at_rest() {
+    local protocol="$1"
+    local storage_path="$2"
+    local csv_name="$3"
+    local large_csv_name="$4"
+    local log="$LOG_ROOT/live_${protocol}_herradurakex_storage.log"
+
+    if [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+        record_skip "live_${protocol}_herradurakex_storage_at_rest" "HerraduraKEx provider not requested"
+        return 0
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        record_skip "live_${protocol}_herradurakex_storage_at_rest" "python3 not available"
+        return 0
+    fi
+
+    CDSE_VERIFY_PREFIX_PATH="$PREFIX/cdse" \
+    CDSE_VERIFY_STORAGE_PATH="$storage_path" \
+    CDSE_VERIFY_DOC_NAMES="$csv_name,$large_csv_name" \
+    python3 - <<'PY' > "$log" 2>&1
+import base64
+import os
+import sqlite3
+import string
+import sys
+
+roots = [
+    os.environ["CDSE_VERIFY_PREFIX_PATH"],
+    os.environ["CDSE_VERIFY_STORAGE_PATH"],
+]
+doc_names = [v for v in os.environ["CDSE_VERIFY_DOC_NAMES"].split(",") if v]
+plaintext_tokens = [b"Jacob", b"Nieves", b"82400"]
+magic = b"CDSEHKX1"
+hexchars = set(string.hexdigits)
+sqlite_files = []
+frame_count = 0
+profile_ids = set()
+plaintext_hits = []
+
+for root in roots:
+    if not os.path.isdir(root):
+        continue
+    for dirpath, _, filenames in os.walk(root):
+        for filename in filenames:
+            path = os.path.join(dirpath, filename)
+            try:
+                with open(path, "rb") as fh:
+                    raw = fh.read()
+            except OSError:
+                continue
+            if any(token in raw for token in plaintext_tokens):
+                plaintext_hits.append(path)
+            try:
+                conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+                rows = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            except sqlite3.Error:
+                continue
+            sqlite_files.append(path)
+            for (table_name,) in rows:
+                try:
+                    cursor = conn.execute(f'SELECT * FROM "{table_name}"')
+                except sqlite3.Error:
+                    continue
+                for row in cursor:
+                    for value in row:
+                        if not isinstance(value, str):
+                            continue
+                        if any(token.decode("ascii") in value for token in plaintext_tokens):
+                            plaintext_hits.append(f"{path}:{table_name}")
+                        if len(value) <= 64 or any(ch not in hexchars for ch in value[:64]):
+                            continue
+                        try:
+                            decoded = base64.b64decode(value[64:], validate=True)
+                        except Exception:
+                            continue
+                        if decoded.startswith(magic):
+                            frame_count += 1
+                            if len(decoded) > len(magic):
+                                profile_ids.add(decoded[len(magic)])
+            conn.close()
+
+print(f"sqlite_files={len(sqlite_files)}")
+print(f"herradura_frames={frame_count}")
+print("profile_ids=" + ",".join(str(v) for v in sorted(profile_ids)))
+print("documents=" + ",".join(doc_names))
+if plaintext_hits:
+    print("plaintext_hits=" + ",".join(sorted(set(plaintext_hits))[:10]))
+    sys.exit(2)
+if frame_count <= 0:
+    print("missing_herradura_frames=1")
+    sys.exit(3)
+if 1 not in profile_ids:
+    print("missing_hske_nla1_profile=1")
+    sys.exit(4)
+PY
+    local rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ]; then
+        record_pass "live_${protocol}_herradurakex_storage_at_rest"
+    else
+        record_fail "live_${protocol}_herradurakex_storage_at_rest" "rc=$rc log=$log"
+    fi
+}
+
+record_herradurakex_perf_smoke() {
+    local protocol="$1"
+    local feature="$2"
+    local file_path="$3"
+    local started="$4"
+    local file_bytes
+
+    if [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+        return 0
+    fi
+    file_bytes="$(wc -c < "$file_path" | tr -d '[:space:]')"
+    note "INFO live_${protocol}_herradurakex_perf_smoke feature=$feature bytes=$file_bytes elapsed=$(elapsed_seconds "$started") threshold=none"
 }
 
 wait_for_log_marker() {
@@ -1118,6 +1305,7 @@ run_live_web_flow() {
     local storage_name="${LIVE_FLOW_ID}_${protocol}_storage"
     local storage_path="$LOG_ROOT/live_${protocol}_storage"
     local csv_name="${LIVE_FLOW_ID}_${protocol}.csv"
+    local large_csv_name="${LIVE_FLOW_ID}_${protocol}_large.csv"
     local column_doc_name="${LIVE_FLOW_ID}_${protocol}_columns.csv"
     local script_name="${LIVE_FLOW_ID}_${protocol}.pl"
     local perl_timeout_script_name="${LIVE_FLOW_ID}_${protocol}_timeout.pl"
@@ -1137,6 +1325,7 @@ run_live_web_flow() {
     local role_user="${LIVE_FLOW_ID}_${protocol}_user"
     local auth="userId=$user_id&orgId=$org_name&orgKey=$org_key"
     local long_query_value=""
+    local upload_start=0
     local curl_tls_args=()
     local client_chain
     local client_key
@@ -1159,6 +1348,9 @@ run_live_web_flow() {
     LIVE_FLOW_FAILED=0
     (
         cd "$ROOT_DIR" || exit 1
+        if [ -n "$VERIFY_HERRADURAKEX_DEFAULT_PROFILE" ]; then
+            export CDSE_DEFAULT_ENC_ALG="$VERIFY_HERRADURAKEX_DEFAULT_PROFILE"
+        fi
         env CDSE_DEBUG_TEST_SKIP_AUTHZ=1 \
             CDSE_DEBUG_TEST_HTTP_PORT="$HTTP_PORT" \
             CDSE_DEBUG_TEST_HTTPS_PORT="$HTTPS_PORT" \
@@ -1207,6 +1399,7 @@ run_live_web_flow() {
     live_api_check "$protocol" filter_blacklist_post 201 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key&*_get=0&*_post=1&*_put=0&*_delete=0&*_head=0&*_options=0" "" "${curl_tls_args[@]}" -X POST
     live_api_check "$protocol" filter_blacklist_get 200 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key" "$role_user" "${curl_tls_args[@]}"
     live_api_check "$protocol" filter_blacklist_json_get 200 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
+    upload_start="$(date +%s)"
     live_api_check "$protocol" upload_csv 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/live-api-small.csv" \
         -F "userId=$user_id" \
@@ -1214,6 +1407,20 @@ run_live_web_flow() {
         -F "orgKey=$org_key" \
         -F "newOrgKey=$org_key" \
         -F "*resourceInfo=live $protocol CSV"
+    record_herradurakex_perf_smoke "$protocol" "small_csv_upload" "$ROOT_DIR/TEST/testfiles/live-api-small.csv" "$upload_start"
+    if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
+        upload_start="$(date +%s)"
+        live_api_check "$protocol" upload_herradurakex_large_csv 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$large_csv_name" "" "${curl_tls_args[@]}" \
+            -F "file=@$ROOT_DIR/TEST/testfiles/randomdata-620_A.csv" \
+            -F "userId=$user_id" \
+            -F "orgId=$org_name" \
+            -F "orgKey=$org_key" \
+            -F "newOrgKey=$org_key" \
+            -F "*resourceInfo=live $protocol Herradura large CSV"
+        record_herradurakex_perf_smoke "$protocol" "large_csv_upload" "$ROOT_DIR/TEST/testfiles/randomdata-620_A.csv" "$upload_start"
+    else
+        record_skip "live_${protocol}_herradurakex_large_csv_upload" "HerraduraKEx provider not requested"
+    fi
     live_api_check "$protocol" documents_list 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents?$auth&newOrgKey=$org_key" "$csv_name" "${curl_tls_args[@]}"
     live_api_check "$protocol" documents_json_list 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents?$auth&newOrgKey=$org_key&outputType=json" '"rows":[' "${curl_tls_args[@]}"
     live_api_check "$protocol" document_head 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -I
@@ -1347,7 +1554,11 @@ run_live_web_flow() {
             -F "*resourceInfo=live $protocol unreviewed Python script"
         live_api_check "$protocol" python_parser_policy_unreviewed 403 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name/parserScripts/$python_unreviewed_script_name?$auth&newOrgKey=$org_key&outputType=csv" "" "${curl_tls_args[@]}"
     fi
+    check_live_herradurakex_storage_at_rest "$protocol" "$storage_path" "$csv_name" "$large_csv_name"
     live_api_check "$protocol" document_delete 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
+    if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
+        live_api_check "$protocol" herradurakex_large_document_delete 200 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/file.csv/documents/$large_csv_name?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
+    fi
     live_api_check "$protocol" role_table_delete 200 "$base_url/organizations/$org_name/users/$role_user/roleTables/users?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
     live_api_check "$protocol" filter_whitelist_delete 200 "$base_url/organizations/$org_name/users/$role_user/filterWhitelist/$role_user?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
     live_api_check "$protocol" filter_blacklist_delete 200 "$base_url/organizations/$org_name/users/$role_user/filterBlacklist/$role_user?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}" -X DELETE
@@ -1386,10 +1597,17 @@ note "root=$ROOT_DIR"
 note "prefix=$PREFIX"
 note "logs=$LOG_ROOT"
 note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_protocol=$WEB_PROTOCOL live_only=$LIVE_ONLY ci_smoke=$CI_SMOKE redact=$REDACT_OUTPUT"
+if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
+    note "herradurakex_dir=$VERIFY_HERRADURAKEX_DIR default_profile=${VERIFY_HERRADURAKEX_DEFAULT_PROFILE:-<unset>}"
+fi
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
+    CONFIGURE_ARGS=(./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP)
+    if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
+        CONFIGURE_ARGS+=(--enable-HERRADURAKEX "--with-herradurakex=$VERIFY_HERRADURAKEX_DIR")
+    fi
     run_release_bypass_config_guard || exit 1
-    run_step configure ./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP || exit 1
+    run_step configure "${CONFIGURE_ARGS[@]}" || exit 1
     run_step make_clean make clean || exit 1
     run_step make make || exit 1
     run_step make_check make check || exit 1
@@ -1501,6 +1719,9 @@ check_component crypto_streaming '---ctSize|---etSize|Decrypted text|Unprotected
     'TESTS: testCryptoSymmetric(), PASS: default PBKDF profile v3 uses HMAC-SHA256 count=10000.' \
     'TESTS: testCryptoSymmetric(), PASS: legacy PBKDF profile v2 decrypt fallback preserved old data.' \
     'Unprotected text: This is cleartext This is cleartext This is cleartext This is cleartext.'
+
+check_herradurakex_component "$FULL_LOG"
+check_herradurakex_independent_component "$FULL_LOG"
 
 check_component digest 'HASH parameters|HASH digest Size|HASH digest with integrated function|StrToB64|B64ToStr' "$FULL_LOG" \
     '--- HASH digest Size (bytes): 32' \

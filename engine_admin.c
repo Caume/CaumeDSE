@@ -300,7 +300,7 @@ int cmeSetupEngineAdminDBs ()
     char *sqlQuery=NULL;
     char *rndAdminOrgPwd=NULL;
     sqlite3 *currentDB=NULL;
-    const EVP_CIPHER *cipher=NULL; //Note that cipher is a pointer to a constant cipher function in OPENSSL.
+    cmeCryptoProfile cryptoProfile;
     #define cmeSetupEngineAdminDBsFree() \
         { \
             cmeFree(rndAdminOrgPwd); \
@@ -313,15 +313,16 @@ int cmeSetupEngineAdminDBs ()
             } \
         } //Local free() macro
 
-    if (cmeGetCipher(&cipher,cmeDefaultEncAlg)) //Verify default cipher algorithm and get cipher object.
+    if (cmeGetCryptoProfile(&cryptoProfile,cmeDefaultEncAlg) ||
+        !cryptoProfile.implemented || !cryptoProfile.allowedAsDefault)
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), incorrect default cipher algorithm: %s!\n",cmeDefaultEncAlg);
+        fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), incorrect default storage crypto profile: %s!\n",cmeDefaultEncAlg);
 #endif
         cmeSetupEngineAdminDBsFree();
         return(1);
     }
-    keyLen=EVP_CIPHER_key_length(cipher);   //Get cipher key length.
+    keyLen=cryptoProfile.keyLen;
     //Prepare: ResourcesDB
     cmeStrConstrAppend(&currentDBName,"%s%s",cmeDefaultFilePath,dbFName1); //Create full path
     result=cmeDBOpen(currentDBName,&currentDB);

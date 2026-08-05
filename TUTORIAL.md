@@ -133,6 +133,20 @@ it encrypts data and produces an authentication tag that helps detect
 tampering. CaumeDSE sets and verifies GCM tags in the cipher path when the
 selected cipher is a GCM cipher.
 
+HerraduraKEx can also be enabled as an experimental, opt-in at-rest storage
+provider. It is intended for protected SQLite-backed values and protected file
+parts only; it does not change HTTPS, TLS ciphersuites, certificates, or client
+certificate authentication. Default builds keep using OpenSSL EVP profiles and
+reject Herradura profile names.
+
+For Herradura-enabled builds, use `herradura-hske-nla1-aead-256` as the initial
+PQC-oriented storage candidate after the deployment passes the DEBUG and live
+verifier checks. `herradura-hske-duplex-256` is available for evaluation when
+variable-size SQLite fields need a direct arbitrary-length AEAD profile.
+`herradura-hske-nla2-256` remains experimental. `hkex-rnl` is reserved for
+future key-wrapping or key-establishment designs, and Stern HPKE/HPKS profiles
+are not recommended for production CaumeDSE storage.
+
 Applied examples:
 
 - Internal protected database values are encrypted before storage in
@@ -519,6 +533,8 @@ Use this checklist before handling real sensitive data:
 - Disable testing-only authentication bypasses outside DEBUG verification.
 - Place CaumeDSE data directories on protected storage with restricted
   permissions.
+- Use HerraduraKEx storage profiles only in opt-in Herradura-enabled builds that
+  have passed the verifier; keep TLS configuration separate.
 - Protect backups, snapshots, logs, and temporary directories.
 - Use roleTables plus whitelist/blacklist filters for least privilege.
 - Review parser scripts before upload and restrict script-authoring roles.
@@ -532,6 +548,7 @@ Use this checklist before handling real sensitive data:
 | --- | --- | --- |
 | Symmetric encryption | Protected values and secure file parts | `crypto.c`, `db.c`, `filehandling.c` |
 | Authenticated encryption | AES-GCM tag handling | `crypto.c` |
+| Optional PQC-oriented at-rest encryption | HerraduraKEx `CDSEHKX1` protected values | `crypto.c`, `db.c`, `HERRADURAKEX_AT_REST_PLAN.md` |
 | Key derivation | PBKDF2 from `orgKey` and salts | `crypto.c`, `common.h` |
 | HMAC integrity | `MAC || ciphertext`, file part MACs | `crypto.c`, `engine_interface.c`, `filehandling.c` |
 | Protected lookup | HMAC indexes for document metadata | `db.c`, `engine_interface.c` |

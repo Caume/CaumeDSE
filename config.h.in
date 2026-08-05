@@ -5,6 +5,10 @@
    */
 #undef BYPASS_TLS_IN_HTTP
 
+/* Enables (1) or disables (0) optional HerraduraKEx at-rest crypto provider
+   integration */
+#undef CDSE_ENABLE_HERRADURAKEX
+
 /* Maximum number of concurrent HTTP/HTTPS worker threads */
 #undef CDSE_MAX_THREADS
 
@@ -23,53 +27,56 @@
 /* Define to 1 if you have the <gnutls/x509.h> header file. */
 #undef HAVE_GNUTLS_X509_H
 
+/* Define to 1 if you have the <herradura.h> header file. */
+#undef HAVE_HERRADURA_H
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
-/* Define to 1 if you have the `c' library (-lc). */
+/* Define to 1 if you have the 'c' library (-lc). */
 #undef HAVE_LIBC
 
-/* Define to 1 if you have the `crypt' library (-lcrypt). */
+/* Define to 1 if you have the 'crypt' library (-lcrypt). */
 #undef HAVE_LIBCRYPT
 
-/* Define to 1 if you have the `crypto' library (-lcrypto). */
+/* Define to 1 if you have the 'crypto' library (-lcrypto). */
 #undef HAVE_LIBCRYPTO
 
-/* Define to 1 if you have the `dl' library (-ldl). */
+/* Define to 1 if you have the 'dl' library (-ldl). */
 #undef HAVE_LIBDL
 
-/* Define to 1 if you have the `gnutls' library (-lgnutls). */
+/* Define to 1 if you have the 'gnutls' library (-lgnutls). */
 #undef HAVE_LIBGNUTLS
 
-/* Define to 1 if you have the `m' library (-lm). */
+/* Define to 1 if you have the 'm' library (-lm). */
 #undef HAVE_LIBM
 
-/* Define to 1 if you have the `microhttpd' library (-lmicrohttpd). */
+/* Define to 1 if you have the 'microhttpd' library (-lmicrohttpd). */
 #undef HAVE_LIBMICROHTTPD
 
-/* Define to 1 if you have the `nsl' library (-lnsl). */
+/* Define to 1 if you have the 'nsl' library (-lnsl). */
 #undef HAVE_LIBNSL
 
-/* Define to 1 if you have the `perl' library (-lperl). */
+/* Define to 1 if you have the 'perl' library (-lperl). */
 #undef HAVE_LIBPERL
 
-/* Define to 1 if you have the `pthread' library (-lpthread). */
+/* Define to 1 if you have the 'pthread' library (-lpthread). */
 #undef HAVE_LIBPTHREAD
 
-/* Define to 1 if you have the `sqlite3' library (-lsqlite3). */
+/* Define to 1 if you have the 'sqlite3' library (-lsqlite3). */
 #undef HAVE_LIBSQLITE3
 
-/* Define to 1 if you have the `util' library (-lutil). */
+/* Define to 1 if you have the 'util' library (-lutil). */
 #undef HAVE_LIBUTIL
 
 /* Define to 1 if you have the <locale.h> header file. */
 #undef HAVE_LOCALE_H
 
-/* Define to 1 if your system has a GNU libc compatible `malloc' function, and
+/* Define to 1 if your system has a GNU libc compatible 'malloc' function, and
    to 0 otherwise. */
 #undef HAVE_MALLOC
 
-/* Define to 1 if you have the `memset' function. */
+/* Define to 1 if you have the 'memset' function. */
 #undef HAVE_MEMSET
 
 /* Define to 1 if you have the <microhttpd.h> header file. */
@@ -99,11 +106,11 @@
 /* Define to 1 if you have the <perl.h> header file. */
 #undef HAVE_PERL_H
 
-/* Define to 1 if your system has a GNU libc compatible `realloc' function,
+/* Define to 1 if your system has a GNU libc compatible 'realloc' function,
    and to 0 otherwise. */
 #undef HAVE_REALLOC
 
-/* Define to 1 if you have the `setlocale' function. */
+/* Define to 1 if you have the 'setlocale' function. */
 #undef HAVE_SETLOCALE
 
 /* Define to 1 if you have the <sqlite3ext.h> header file. */
@@ -130,7 +137,7 @@
 /* Define to 1 if you have the <string.h> header file. */
 #undef HAVE_STRING_H
 
-/* Define to 1 if you have the `strndup' function. */
+/* Define to 1 if you have the 'strndup' function. */
 #undef HAVE_STRNDUP
 
 /* Define to 1 if you have the <sys/select.h> header file. */
@@ -182,7 +189,7 @@
    Function (PKCS5v1.5) */
 #undef PBKDF1_OPENSSL_CLI_COMPATIBILITY
 
-/* Define to 1 if all of the C90 standard headers exist (not just the ones
+/* Define to 1 if all of the C89 standard headers exist (not just the ones
    required in a freestanding environment). This macro is provided for
    backward compatibility; new code need not use it. */
 #undef STDC_HEADERS
@@ -201,10 +208,10 @@
 /* Define to rpl_realloc if the replacement function should be used. */
 #undef realloc
 
-/* Define to `unsigned int' if <sys/types.h> does not define. */
+/* Define as 'unsigned int' if <stddef.h> doesn't define. */
 #undef size_t
 
-/* Define to `int' if <sys/types.h> does not define. */
+/* Define as 'int' if <sys/types.h> doesn't define. */
 #undef ssize_t
 
 /* Define to the type of an unsigned integer type of width exactly 64 bits if

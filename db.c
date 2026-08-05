@@ -935,7 +935,7 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
     char **memDataEncrypted=NULL;
     int numRowsEncrypted=0;
     int numColsEncrypted=0;
-    const EVP_CIPHER *cipher=NULL;
+    cmeCryptoProfile cryptoProfile;
     sqlite3_stmt *updateDataSaltStmt=NULL;
     sqlite3_stmt *updateDataFullStmt=NULL;
     sqlite3_stmt *updateDataProtectStmt=NULL;
@@ -1134,8 +1134,8 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
             {
                 cmeStrConstrAppend(&currentDataEncAlg,"%s",memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+
                                cmeIDDColumnFileMeta_attributeData]); //Get encryption algorithm.
-                result=cmeGetCipher(&cipher,currentDataEncAlg);
-                if (!result) //OK, supported algorithm
+                result=cmeGetCryptoProfile(&cryptoProfile,currentDataEncAlg);
+                if (!result && cryptoProfile.implemented) //OK, supported algorithm
                 {
                     //Encrypt rowOrder and update memSQL table Data:
                     cmeStrConstrAppend(&currentDataId,"%d",atoi(memData[cmeIDDColumnFileDataNumCols*cont2+cmeIDDanydb_id])); //Sanitize id with atoi().
@@ -1226,8 +1226,8 @@ int cmeMemSecureDBProtect (sqlite3 *memSecureDB, const char *orgKey)
             //Protect 'value' column in Data table, use random salt for each 'value' and store it as well:
             cmeStrConstrAppend(&currentDataEncAlg,"%s",memProtectMetaData[cont*cmeIDDColumnFileMetaNumCols+
                                cmeIDDColumnFileMeta_attributeData]); //Get encryption algorithm.
-            result=cmeGetCipher(&cipher,currentDataEncAlg);
-            if (!result) //OK, supported algorithm
+            result=cmeGetCryptoProfile(&cryptoProfile,currentDataEncAlg);
+            if (!result && cryptoProfile.implemented) //OK, supported algorithm
             {
                 result=sqlite3_prepare_v2(memSecureDB,
                                           "UPDATE data SET value=?,userId=?,orgId=? WHERE id=?;",
@@ -1632,7 +1632,7 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
     char **memDataDecrypted=NULL;
     int numRowsDecrypted=0;
     int numColsDecrypted=0;
-    const EVP_CIPHER *cipher=NULL;
+    cmeCryptoProfile cryptoProfile;
     sqlite3_stmt *updateDataRowOrderStmt=NULL;
     sqlite3_stmt *updateDataFullStmt=NULL;
     sqlite3_stmt *updateDataUserOrgSaltStmt=NULL;
@@ -1833,8 +1833,8 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
                           sizeof(cmeIDDColumnFileMeta_attribute_1)))
         {
             cmeStrConstrAppend(&currentDataEncAlg,"%s",currentMetaAttributeData); //Get encryption algorithm.
-            result=cmeGetCipher(&cipher,currentDataEncAlg);
-            if (result) //Error
+            result=cmeGetCryptoProfile(&cryptoProfile,currentDataEncAlg);
+            if (result || !cryptoProfile.implemented) //Error
             {
 #ifdef ERROR_LOG
                 fprintf(stderr,"CaumeDSE Error: cmeMemSecureDBUnprotect(), Error, "
@@ -2129,8 +2129,8 @@ int cmeMemSecureDBUnprotect (sqlite3 *memSecureDB, const char *orgKey)
             }
             cmeFree(currentEncB64Data);
             //Unprotect 'value' column in Data table, using corresponding salt.
-            result=cmeGetCipher(&cipher,currentDataEncAlg);
-            if (!result) //OK, supported algorithm
+            result=cmeGetCryptoProfile(&cryptoProfile,currentDataEncAlg);
+            if (!result && cryptoProfile.implemented) //OK, supported algorithm
             {
                 result=sqlite3_prepare_v2(memSecureDB,"UPDATE data SET value=? WHERE id=?;",-1,&updateDataValueStmt,NULL);
                 if (result!=SQLITE_OK)

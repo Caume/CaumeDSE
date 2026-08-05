@@ -38,6 +38,22 @@ The examples use committed verifier fixtures:
 - `TEST/testfiles/test.pl`
 - `TEST/testfiles/test.py`
 
+Optional HerraduraKEx at-rest encryption is configured on the CaumeDSE process,
+not on individual HTTP requests. For a Herradura-enabled DEBUG build, start the
+service with a reviewed storage profile such as:
+
+```sh
+CDSE_DEFAULT_ENC_ALG="herradura-hske-nla1-aead-256" \
+  /tmp/cdse-verify/cdse/bin/CaumeDSE-debug-tests --web-service http
+```
+
+Use `herradura-hske-nla1-aead-256` as the initial PQC-oriented SQLite at-rest
+candidate after the Herradura verifier passes. Evaluate
+`herradura-hske-duplex-256` for variable-size fields. Keep
+`herradura-hske-nla2-256` experimental, keep `hkex-rnl` for future key wrapping
+or key establishment, and do not use Stern HPKE/HPKS profiles for production
+CaumeDSE storage. This setting does not change HTTP/HTTPS or TLS algorithms.
+
 ## Agent Capability Discovery
 
 Agents and MCP clients should discover supported safe automation behavior before

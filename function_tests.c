@@ -43,6 +43,17 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 ***/
 #include "common.h"
+#if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+#include <herradura.h>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+#endif
 
 void testContentRows(void);
 void testContentColumns(void);
@@ -156,12 +167,300 @@ err:
     return ret;
 }
 
+#if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
+static void cmeTestHerraduraFillKey(BitArray *key)
+{
+    int cont;
+
+    for (cont=0; cont<KEYBYTES; cont++)
+    {
+        key->b[cont]=(uint8_t)(0x10+cont*3);
+    }
+}
+
+static void cmeTestHerraduraFillNonce(BitArray *nonce)
+{
+    int cont;
+
+    for (cont=0; cont<KEYBYTES; cont++)
+    {
+        nonce->b[cont]=(uint8_t)(0xa0-cont*5);
+    }
+}
+
+static void cmeTestHerraduraFillPlaintext(uint8_t *plaintext, size_t len)
+{
+    size_t cont;
+
+    for (cont=0; cont<len; cont++)
+    {
+        plaintext[cont]=(uint8_t)((cont*7+3)&0xff);
+    }
+}
+
+static int cmeTestHerraduraRoundTripSize(size_t len, int duplex)
+{
+    BitArray key;
+    BitArray nonce;
+    const uint8_t aad[]="cdse-independent-hkx-test-aad-v1";
+    uint8_t *plaintext=NULL;
+    uint8_t *ciphertext=NULL;
+    uint8_t *decrypted=NULL;
+    uint8_t tag[KEYBYTES];
+    int result=1;
+
+    plaintext=(uint8_t *)malloc(len ? len : 1);
+    ciphertext=(uint8_t *)malloc(len ? len : 1);
+    decrypted=(uint8_t *)malloc(len ? len : 1);
+    if (!plaintext || !ciphertext || !decrypted)
+    {
+        result=0;
+    }
+    else
+    {
+        cmeTestHerraduraFillKey(&key);
+        cmeTestHerraduraFillNonce(&nonce);
+        cmeTestHerraduraFillPlaintext(plaintext,len);
+        memset(ciphertext,0,len ? len : 1);
+        memset(decrypted,0,len ? len : 1);
+        memset(tag,0,sizeof(tag));
+        if (duplex)
+        {
+            hske_nl_v2_duplex_encrypt(&key,&nonce,aad,sizeof(aad)-1,
+                                      plaintext,len,ciphertext,tag);
+            result=hske_nl_v2_duplex_decrypt(&key,&nonce,aad,sizeof(aad)-1,
+                                             ciphertext,len,tag,decrypted);
+        }
+        else
+        {
+            hske_nl_aead_encrypt(&key,&nonce,aad,sizeof(aad)-1,
+                                 plaintext,len,ciphertext,tag);
+            result=hske_nl_aead_decrypt(&key,&nonce,aad,sizeof(aad)-1,
+                                        ciphertext,len,tag,decrypted);
+        }
+        result=(result && !memcmp(plaintext,decrypted,len));
+    }
+    if (plaintext)
+    {
+        OPENSSL_cleanse(plaintext,len ? len : 1);
+    }
+    if (ciphertext)
+    {
+        OPENSSL_cleanse(ciphertext,len ? len : 1);
+    }
+    if (decrypted)
+    {
+        OPENSSL_cleanse(decrypted,len ? len : 1);
+    }
+    OPENSSL_cleanse(tag,sizeof(tag));
+    cmeFree(plaintext);
+    cmeFree(ciphertext);
+    cmeFree(decrypted);
+    return(result);
+}
+#endif
+
+void testHerraduraIndependent(void)
+{
+#if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
+    static const uint8_t expectedNLA1Ciphertext97[] = {
+        0x57,0x93,0x3c,0xf5,0x30,0xee,0x9f,0xab,0xbc,0xab,0x39,0xc9,0xe5,0x59,0xf0,0x25,
+        0xb4,0x40,0xaa,0x54,0x0e,0xae,0x56,0x68,0xfd,0x01,0xd8,0xdc,0xa6,0x33,0xdc,0xf7,
+        0xe6,0xda,0xeb,0x5b,0x9f,0x10,0x81,0x93,0x28,0x5d,0x71,0x97,0x10,0x45,0xe6,0x6e,
+        0x5c,0x2c,0x6c,0x3a,0x24,0xd0,0x51,0x18,0x46,0xbd,0x08,0x8c,0xf3,0xa4,0x12,0x8f,
+        0x97,0xb2,0x58,0x65,0x20,0xc9,0x64,0x25,0x97,0xbe,0x1e,0x67,0x7c,0x32,0x7b,0x1a,
+        0xe3,0xb7,0x01,0x8a,0x90,0xcd,0xad,0x7f,0x03,0xab,0x69,0xe8,0x5a,0x83,0xfb,0xc4,
+        0xe6
+    };
+    static const uint8_t expectedNLA1Tag97[KEYBYTES] = {
+        0x6e,0x80,0x58,0xb3,0x8d,0xb2,0xad,0x25,0x68,0x5c,0xfe,0x3f,0xbf,0xcc,0x9d,0xa9,
+        0xf4,0x04,0xc3,0x65,0x70,0xd4,0x77,0xac,0x8f,0xb1,0x7c,0x16,0x2d,0x1c,0x72,0x90
+    };
+    static const uint8_t expectedNLA1Tag0[KEYBYTES] = {
+        0xaa,0xe5,0x10,0xae,0x49,0x9a,0x6a,0xd7,0xd3,0x7b,0x13,0xb2,0xf8,0x19,0x48,0xeb,
+        0x99,0x1b,0x2b,0x10,0x43,0xeb,0xc9,0xda,0xd0,0x9b,0x94,0xb7,0x37,0x47,0x95,0xaa
+    };
+    static const uint8_t expectedDuplexCiphertext97[] = {
+        0x4a,0x29,0xab,0x1a,0x92,0x62,0xe8,0xfd,0x7a,0x43,0x28,0xcb,0x27,0xaf,0xec,0x50,
+        0xd0,0xb2,0x3d,0xae,0x48,0x87,0x53,0xe1,0xf8,0x01,0x86,0xa0,0xa6,0x36,0xd7,0xe8,
+        0xfb,0x3d,0x5d,0xdd,0x9c,0x44,0xa8,0xf6,0x6f,0xf1,0xee,0x7f,0x61,0x02,0x2c,0xf2,
+        0x39,0x42,0x50,0x9b,0x69,0x5f,0x38,0xe2,0x07,0xfc,0xf3,0x45,0xbf,0xeb,0xc1,0x3f,
+        0xc1,0xc5,0x08,0x3f,0xe6,0xc4,0x90,0xb0,0xc1,0xcf,0x20,0xf8,0x7c,0x1b,0xab,0xa7,
+        0x46,0x3d,0x52,0x53,0x44,0xf0,0xca,0x5b,0x92,0x10,0x6a,0x48,0x73,0x2f,0x76,0x46,
+        0x5b
+    };
+    static const uint8_t expectedDuplexTag97[KEYBYTES] = {
+        0x7d,0x8d,0x43,0x5a,0x21,0xc9,0xea,0xd0,0xac,0x6f,0x63,0x27,0x26,0x49,0x54,0x54,
+        0x4e,0xab,0x75,0x60,0xab,0xb6,0x18,0x25,0xa5,0x69,0x32,0xdd,0x5d,0x15,0xee,0x6a
+    };
+    static const uint8_t expectedDuplexTag0[KEYBYTES] = {
+        0xed,0x9b,0x82,0x2d,0xcd,0x7e,0xfa,0xd2,0xaa,0x35,0xa5,0xae,0x90,0xcf,0x0f,0x68,
+        0x31,0x35,0x3f,0x56,0x28,0x4b,0xbc,0x1c,0xfe,0x36,0x5d,0x40,0x7f,0x0b,0xb8,0x83
+    };
+    static const uint8_t expectedHFSCX97[KEYBYTES] = {
+        0x00,0xd7,0xb4,0xd2,0xc7,0x03,0x91,0xc5,0x5c,0xba,0x49,0x7f,0xac,0xa5,0xa9,0x5a,
+        0xb7,0x2c,0x87,0x46,0x08,0x9e,0x15,0xbc,0x20,0x3f,0x92,0x21,0xdd,0x04,0xd7,0xd3
+    };
+    static const uint8_t expectedHFSCXDS97[KEYBYTES] = {
+        0xd1,0xa6,0x60,0x9d,0xc1,0xb3,0xf1,0x0e,0xe0,0x0e,0xb9,0xee,0x30,0x7f,0xd2,0x08,
+        0x59,0x47,0x10,0x63,0xe3,0x8c,0x84,0x6d,0xb7,0x3d,0x50,0xf6,0x15,0x28,0x5c,0xb1
+    };
+    static const size_t sizes[] = {0,1,16,32,33,97,4097};
+    BitArray key;
+    BitArray nonce;
+    BitArray wrongKey;
+    BitArray wrongNonce;
+    const uint8_t aad[]="cdse-independent-hkx-test-aad-v1";
+    const uint8_t wrongAad[]="cdse-independent-hkx-test-aad-v2";
+    uint8_t plaintext[97];
+    uint8_t ciphertext[97];
+    uint8_t decrypted[97];
+    uint8_t tag[KEYBYTES];
+    uint8_t hash[KEYBYTES];
+    uint8_t tamperedCiphertext[97];
+    uint8_t tamperedTag[KEYBYTES];
+    size_t cont;
+    int allSizesOk=1;
+    int negativeOk=1;
+
+    cmeTestHerraduraFillKey(&key);
+    cmeTestHerraduraFillNonce(&nonce);
+    cmeTestHerraduraFillPlaintext(plaintext,sizeof(plaintext));
+
+    hske_nl_aead_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,sizeof(plaintext),ciphertext,tag);
+    if (!memcmp(ciphertext,expectedNLA1Ciphertext97,sizeof(expectedNLA1Ciphertext97)) &&
+        !memcmp(tag,expectedNLA1Tag97,sizeof(expectedNLA1Tag97)) &&
+        hske_nl_aead_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tag,decrypted) &&
+        !memcmp(plaintext,decrypted,sizeof(plaintext)))
+    {
+        printf("TESTS: testHerraduraIndependent(), PASS: HSKE-NL-A1 AEAD known-answer vector matches.\n");
+    }
+    else
+    {
+        printf("TESTS: testHerraduraIndependent(), FAIL: HSKE-NL-A1 AEAD known-answer vector mismatch.\n");
+    }
+
+    hske_nl_v2_duplex_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,sizeof(plaintext),ciphertext,tag);
+    if (!memcmp(ciphertext,expectedDuplexCiphertext97,sizeof(expectedDuplexCiphertext97)) &&
+        !memcmp(tag,expectedDuplexTag97,sizeof(expectedDuplexTag97)) &&
+        hske_nl_v2_duplex_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tag,decrypted) &&
+        !memcmp(plaintext,decrypted,sizeof(plaintext)))
+    {
+        printf("TESTS: testHerraduraIndependent(), PASS: HSKE duplex known-answer vector matches.\n");
+    }
+    else
+    {
+        printf("TESTS: testHerraduraIndependent(), FAIL: HSKE duplex known-answer vector mismatch.\n");
+    }
+
+    hske_nl_aead_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,0,ciphertext,tag);
+    if (!memcmp(tag,expectedNLA1Tag0,sizeof(expectedNLA1Tag0)) &&
+        hske_nl_aead_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,0,tag,decrypted))
+    {
+        printf("TESTS: testHerraduraIndependent(), PASS: HSKE-NL-A1 AEAD empty-plaintext vector matches.\n");
+    }
+    else
+    {
+        printf("TESTS: testHerraduraIndependent(), FAIL: HSKE-NL-A1 AEAD empty-plaintext vector mismatch.\n");
+    }
+
+    hske_nl_v2_duplex_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,0,ciphertext,tag);
+    if (!memcmp(tag,expectedDuplexTag0,sizeof(expectedDuplexTag0)) &&
+        hske_nl_v2_duplex_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,0,tag,decrypted))
+    {
+        printf("TESTS: testHerraduraIndependent(), PASS: HSKE duplex empty-plaintext vector matches.\n");
+    }
+    else
+    {
+        printf("TESTS: testHerraduraIndependent(), FAIL: HSKE duplex empty-plaintext vector mismatch.\n");
+    }
+
+    for (cont=0; cont<(sizeof(sizes)/sizeof(sizes[0])); cont++)
+    {
+        allSizesOk=(allSizesOk &&
+                    cmeTestHerraduraRoundTripSize(sizes[cont],0) &&
+                    cmeTestHerraduraRoundTripSize(sizes[cont],1));
+    }
+    if (allSizesOk)
+    {
+        printf("TESTS: testHerraduraIndependent(), PASS: HSKE direct APIs round trip fixed boundary sizes.\n");
+    }
+    else
+    {
+        printf("TESTS: testHerraduraIndependent(), FAIL: HSKE direct APIs boundary-size round trip failed.\n");
+    }
+
+    hske_nl_aead_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,sizeof(plaintext),ciphertext,tag);
+    memcpy(tamperedCiphertext,ciphertext,sizeof(tamperedCiphertext));
+    memcpy(tamperedTag,tag,sizeof(tamperedTag));
+    wrongKey=key;
+    wrongNonce=nonce;
+    wrongKey.b[0]^=0x01;
+    wrongNonce.b[0]^=0x01;
+    tamperedCiphertext[0]^=0x01;
+    tamperedTag[0]^=0x01;
+    negativeOk=(negativeOk &&
+                !hske_nl_aead_decrypt(&wrongKey,&nonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tag,decrypted) &&
+                !hske_nl_aead_decrypt(&key,&wrongNonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tag,decrypted) &&
+                !hske_nl_aead_decrypt(&key,&nonce,wrongAad,sizeof(wrongAad)-1,ciphertext,sizeof(ciphertext),tag,decrypted) &&
+                !hske_nl_aead_decrypt(&key,&nonce,aad,sizeof(aad)-1,tamperedCiphertext,sizeof(tamperedCiphertext),tag,decrypted) &&
+                !hske_nl_aead_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tamperedTag,decrypted));
+
+    hske_nl_v2_duplex_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,sizeof(plaintext),ciphertext,tag);
+    memcpy(tamperedCiphertext,ciphertext,sizeof(tamperedCiphertext));
+    memcpy(tamperedTag,tag,sizeof(tamperedTag));
+    tamperedCiphertext[0]^=0x01;
+    tamperedTag[0]^=0x01;
+    negativeOk=(negativeOk &&
+                !hske_nl_v2_duplex_decrypt(&wrongKey,&nonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tag,decrypted) &&
+                !hske_nl_v2_duplex_decrypt(&key,&wrongNonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tag,decrypted) &&
+                !hske_nl_v2_duplex_decrypt(&key,&nonce,wrongAad,sizeof(wrongAad)-1,ciphertext,sizeof(ciphertext),tag,decrypted) &&
+                !hske_nl_v2_duplex_decrypt(&key,&nonce,aad,sizeof(aad)-1,tamperedCiphertext,sizeof(tamperedCiphertext),tag,decrypted) &&
+                !hske_nl_v2_duplex_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tamperedTag,decrypted));
+    hske_nl_aead_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,sizeof(plaintext),ciphertext,tag);
+    negativeOk=(negativeOk &&
+                !hske_nl_v2_duplex_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tag,decrypted));
+    hske_nl_v2_duplex_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,sizeof(plaintext),ciphertext,tag);
+    negativeOk=(negativeOk &&
+                !hske_nl_aead_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tag,decrypted));
+    if (negativeOk)
+    {
+        printf("TESTS: testHerraduraIndependent(), PASS: HSKE direct APIs reject mutated auth inputs and wrong profile selection.\n");
+    }
+    else
+    {
+        printf("TESTS: testHerraduraIndependent(), FAIL: HSKE direct APIs accepted mutated auth input or wrong profile selection.\n");
+    }
+
+    hfscx_256(plaintext,sizeof(plaintext),NULL,hash);
+    if (!memcmp(hash,expectedHFSCX97,sizeof(expectedHFSCX97)))
+    {
+        printf("TESTS: testHerraduraIndependent(), PASS: HFSCX-256 known-answer vector matches.\n");
+    }
+    else
+    {
+        printf("TESTS: testHerraduraIndependent(), FAIL: HFSCX-256 known-answer vector mismatch.\n");
+    }
+    hfscx_256_ds(0x03,plaintext,sizeof(plaintext),NULL,hash);
+    if (!memcmp(hash,expectedHFSCXDS97,sizeof(expectedHFSCXDS97)))
+    {
+        printf("TESTS: testHerraduraIndependent(), PASS: HFSCX-256-DS known-answer vector matches.\n");
+    }
+    else
+    {
+        printf("TESTS: testHerraduraIndependent(), FAIL: HFSCX-256-DS known-answer vector mismatch.\n");
+    }
+#else
+    printf("TESTS: testHerraduraIndependent(), SKIP: HerraduraKEx provider is not compiled in.\n");
+#endif
+}
+
 void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
 {
     int cont,cont2,written,ctSize,result __attribute__((unused));
     unsigned char password[10]= "Password";
     unsigned char cleartext[] = "This is cleartext This is cleartext This is cleartext This is cleartext.\n";
-    const char *algorithm = cmeDefaultEncAlg;
+    const char *algorithm = cmeOpenSSLLegacyStorageProfile;
     unsigned char *key=NULL;
     unsigned char *iv=NULL;
     unsigned char *expectedKeyIv=NULL;
@@ -175,11 +474,281 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     const EVP_CIPHER *cipher=NULL;
     int keyLen=0;
     int ivLen=0;
+    cmeCryptoProfile cryptoProfile;
 
     key=(unsigned char *)malloc(1024);
     iv=(unsigned char *)malloc(1024);
     ciphertext=(unsigned char *)malloc(1024);
     expectedKeyIv=(unsigned char *)malloc(1024);
+
+    if (!cmeGetCryptoProfile(&cryptoProfile,cmeDefaultEncAlg) &&
+        cryptoProfile.implemented && cryptoProfile.allowedAsDefault)
+    {
+        printf("TESTS: testCryptoSymmetric(), PASS: default storage crypto profile resolved.\n");
+    }
+    else
+    {
+        printf("TESTS: testCryptoSymmetric(), FAIL: default storage crypto profile not resolved.\n");
+    }
+    if (!cmeGetCryptoProfile(&cryptoProfile,cmeHerraduraKExProfileHSKENLA1AEAD256) &&
+        cryptoProfile.provider==cmeCryptoProviderHerraduraKEx &&
+        cryptoProfile.keyLen==32 && cryptoProfile.nonceLen==32 &&
+        cryptoProfile.tagLen==32 && cryptoProfile.isAEAD &&
+        cryptoProfile.frameVersion==cmeCryptoFrameHerraduraKExV1 &&
+        cryptoProfile.implemented==cmeUseHerraduraKEx &&
+        cryptoProfile.allowedAsDefault==cmeUseHerraduraKEx)
+    {
+        printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata resolved.\n");
+    }
+    else
+    {
+        printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD storage profile metadata mismatch.\n");
+    }
+    if (cmeCryptoAlgorithmIsImplemented(cmeHerraduraKExProfileHSKENLA1AEAD256)==cmeUseHerraduraKEx)
+    {
+        printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx implementation availability follows build flag.\n");
+    }
+    else
+    {
+        printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx implementation availability mismatch.\n");
+    }
+    if (!cmeUseHerraduraKEx)
+    {
+        unsigned char *hkxCiphertext=NULL;
+        unsigned char *hkxSalt=NULL;
+        int hkxWritten=0;
+        if (cmeCipherByteString(cleartext,&hkxCiphertext,&hkxSalt,strlen((char *)cleartext),
+                                &hkxWritten,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                "Password",'e'))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx profile rejects encryption when provider is not compiled in.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx profile encrypted without provider support.\n");
+        }
+        cmeFree(hkxCiphertext);
+        cmeFree(hkxSalt);
+    }
+    else
+    {
+        unsigned char *hkxCiphertext=NULL;
+        unsigned char *hkxPlaintext=NULL;
+        unsigned char *hkxSalt=NULL;
+        int hkxCiphertextLen=0;
+        int hkxPlaintextLen=0;
+        int hkxTamperResult=0;
+        unsigned char *hkxTampered=NULL;
+        unsigned char *hkxWrongSalt=NULL;
+        unsigned char *aesCiphertext=NULL;
+        unsigned char *aesPlaintext=NULL;
+        unsigned char *aesSalt=NULL;
+        int aesCiphertextLen=0;
+        int aesPlaintextLen=0;
+        if (!cmeCipherByteString(cleartext,&hkxCiphertext,&hkxSalt,strlen((char *)cleartext),
+                                 &hkxCiphertextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                 "Password",'e') &&
+            !cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                 &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                 "Password",'d') &&
+            hkxPlaintextLen==(int)strlen((char *)cleartext) &&
+            !memcmp(hkxPlaintext,cleartext,hkxPlaintextLen))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD profile round trip.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD profile round trip failed.\n");
+        }
+        cmeFree(hkxPlaintext);
+        hkxPlaintext=NULL;
+        hkxPlaintextLen=0;
+        if (hkxCiphertext &&
+            !cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                 &hkxPlaintextLen,cmeOpenSSLLegacyStorageProfile,
+                                 "Password",'d') &&
+            hkxPlaintextLen==(int)strlen((char *)cleartext) &&
+            !memcmp(hkxPlaintext,cleartext,hkxPlaintextLen))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame decrypts via embedded profile metadata.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx frame metadata decrypt failed.\n");
+        }
+        cmeFree(hkxPlaintext);
+        hkxPlaintext=NULL;
+        hkxPlaintextLen=0;
+        if (hkxCiphertext &&
+            cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                "WrongPassword",'d'))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects wrong key.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted wrong key.\n");
+        }
+        cmeFree(hkxPlaintext);
+        hkxPlaintext=NULL;
+        hkxPlaintextLen=0;
+        if (hkxSalt)
+        {
+            cmeStrConstrAppend((char **)&hkxWrongSalt,"%s",hkxSalt);
+            hkxWrongSalt[0]=(hkxWrongSalt[0]=='0') ? '1' : '0';
+        }
+        if (hkxCiphertext && hkxWrongSalt &&
+            cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxWrongSalt,hkxCiphertextLen,
+                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                "Password",'d'))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects wrong salt.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted wrong salt.\n");
+        }
+        cmeFree(hkxPlaintext);
+        hkxPlaintext=NULL;
+        hkxPlaintextLen=0;
+        if (hkxCiphertext && hkxCiphertextLen>cmeHerraduraKExFrameHeaderLen)
+        {
+            hkxTampered=(unsigned char *)malloc(hkxCiphertextLen);
+            memcpy(hkxTampered,hkxCiphertext,hkxCiphertextLen);
+            hkxTampered[cmeHerraduraKExFrameMagicLen+2+cmeHerraduraKExNonceLen] ^= 0x01;
+            cmeFree(hkxPlaintext);
+            hkxTamperResult=cmeCipherByteString(hkxTampered,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered tag.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted tampered tag.\n");
+            }
+            cmeFree(hkxTampered);
+            cmeFree(hkxPlaintext);
+            hkxTampered=(unsigned char *)malloc(hkxCiphertextLen);
+            memcpy(hkxTampered,hkxCiphertext,hkxCiphertextLen);
+            hkxTampered[cmeHerraduraKExFrameMagicLen+2] ^= 0x01;
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
+            hkxTamperResult=cmeCipherByteString(hkxTampered,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered nonce.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted tampered nonce.\n");
+            }
+            cmeFree(hkxTampered);
+            cmeFree(hkxPlaintext);
+            hkxTampered=(unsigned char *)malloc(hkxCiphertextLen);
+            memcpy(hkxTampered,hkxCiphertext,hkxCiphertextLen);
+            hkxTampered[cmeHerraduraKExFrameHeaderLen] ^= 0x01;
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
+            hkxTamperResult=cmeCipherByteString(hkxTampered,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE-NL-A1 AEAD rejects tampered ciphertext.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE-NL-A1 AEAD accepted tampered ciphertext.\n");
+            }
+            cmeFree(hkxTampered);
+            cmeFree(hkxPlaintext);
+            hkxTampered=(unsigned char *)malloc(hkxCiphertextLen);
+            memcpy(hkxTampered,hkxCiphertext,hkxCiphertextLen);
+            hkxTampered[cmeHerraduraKExFrameMagicLen]=0xff;
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
+            hkxTamperResult=cmeCipherByteString(hkxTampered,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects unsupported profile id.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx frame accepted unsupported profile id.\n");
+            }
+            cmeFree(hkxTampered);
+            cmeFree(hkxPlaintext);
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
+            hkxTamperResult=cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,cmeHerraduraKExFrameHeaderLen-1,
+                                                &hkxPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                                "Password",'d');
+            if (hkxTamperResult)
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects truncated frame.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx frame accepted truncated frame.\n");
+            }
+            hkxTampered=NULL;
+            hkxPlaintext=NULL;
+            hkxPlaintextLen=0;
+        }
+        if (!cmeCipherByteString(cleartext,&aesCiphertext,&aesSalt,strlen((char *)cleartext),
+                                 &aesCiphertextLen,cmeOpenSSLLegacyStorageProfile,
+                                 "Password",'e') &&
+            !cmeCipherByteString(aesCiphertext,&aesPlaintext,&aesSalt,aesCiphertextLen,
+                                 &aesPlaintextLen,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                 "Password",'d') &&
+            aesPlaintextLen==(int)strlen((char *)cleartext) &&
+            !memcmp(aesPlaintext,cleartext,aesPlaintextLen))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: legacy AES profile decrypts when Herradura is configured.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: legacy AES fallback decrypt failed under Herradura profile.\n");
+        }
+        cmeFree(aesCiphertext);
+        cmeFree(aesPlaintext);
+        cmeFree(aesSalt);
+        cmeFree(hkxTampered);
+        cmeFree(hkxWrongSalt);
+        cmeFree(hkxCiphertext);
+        cmeFree(hkxPlaintext);
+        cmeFree(hkxSalt);
+        hkxCiphertext=NULL;
+        hkxPlaintext=NULL;
+        hkxSalt=NULL;
+        hkxCiphertextLen=0;
+        hkxPlaintextLen=0;
+        if (!cmeCipherByteString(cleartext,&hkxCiphertext,&hkxSalt,strlen((char *)cleartext),
+                                 &hkxCiphertextLen,cmeHerraduraKExProfileHSKEDuplex256,
+                                 "Password",'e') &&
+            !cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
+                                 &hkxPlaintextLen,cmeHerraduraKExProfileHSKEDuplex256,
+                                 "Password",'d') &&
+            hkxPlaintextLen==(int)strlen((char *)cleartext) &&
+            !memcmp(hkxPlaintext,cleartext,hkxPlaintextLen))
+        {
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE duplex profile round trip.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE duplex profile round trip failed.\n");
+        }
+        cmeFree(hkxCiphertext);
+        cmeFree(hkxPlaintext);
+        cmeFree(hkxSalt);
+    }
 
     cmeGetCipher(&cipher,algorithm);
     keyLen=EVP_CIPHER_key_length(cipher);

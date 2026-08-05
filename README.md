@@ -2481,13 +2481,53 @@ without using it for new writes.
 
 The default symmetric encryption algorithm used by CaumeDSE is `AES-256-GCM`.
 You may override this at runtime with a configuration file, or by setting the
-environment variable `CDSE_DEFAULT_ENC_ALG` to any cipher name recognized by
-OpenSSL, such as `aes-256-cbc` for AES in CBC mode.  By default CaumeDSE reads
-`caumedse.conf` from the configured data directory, and `CDSE_CONFIG_FILE` may
-point to an alternate configuration file.  The supported configuration keys for
-this setting are `defaultEncAlg`, `default_enc_alg`, and
-`CDSE_DEFAULT_ENC_ALG`; the environment variable takes precedence over the
-configuration file.
+environment variable `CDSE_DEFAULT_ENC_ALG` to a supported storage encryption
+profile. In default builds, supported profiles are OpenSSL cipher names such as
+`aes-256-cbc` for AES in CBC mode. By default CaumeDSE reads `caumedse.conf`
+from the configured data directory, and `CDSE_CONFIG_FILE` may point to an
+alternate configuration file. The supported configuration keys for this setting
+are `defaultEncAlg`, `default_enc_alg`, and `CDSE_DEFAULT_ENC_ALG`; the
+environment variable takes precedence over the configuration file.
+
+### HerraduraKEx at-rest storage profiles
+
+HerraduraKEx support is optional and scoped to internal data encryption at rest
+for protected values stored in SQLite-backed CaumeDSE databases and protected
+file parts. It does not change TLS channel encryption, HTTPS certificates,
+client-certificate authentication, or libmicrohttpd/GnuTLS behavior.
+
+Builds that need HerraduraKEx must opt in explicitly:
+
+```sh
+./configure --enable-HERRADURAKEX --with-herradurakex=/path/to/HerraduraKEx
+```
+
+The path may point to a HerraduraKEx repository root or include directory
+containing `herradura.h`. Configure checks for 256-bit key constants and the
+HSKE-NL AEAD entry points. Default builds do not enable Herradura algorithm names
+and reject them instead of falling back to OpenSSL.
+
+Recommended storage profiles:
+
+- `herradura-hske-nla1-aead-256`: initial PQC-oriented at-rest encryption
+  candidate. Use this first when the deployment has passed the Herradura-enabled
+  DEBUG and live verifier checks.
+- `herradura-hske-duplex-256`: evaluation profile for variable-size SQLite
+  fields when a direct arbitrary-length AEAD interface is preferred.
+- `herradura-hske-nla2-256`: experimental only unless a specific
+  reversible-permutation storage use case is documented.
+
+Do not use `hkex-rnl` for direct SQLite value encryption. Treat it as a future
+key-wrapping or offline key-establishment candidate. Treat `hfscx-256` and
+`hfscx-256-ds` as future Herradura-native hash/MAC candidates, not replacements
+for the existing compatibility HMAC paths in the first implementation. Do not
+use `hpke-stern`, `hpke-stern-kem`, or `hpks-stern` for production CaumeDSE
+storage until upstream production decoder and round requirements are satisfied.
+
+Herradura-protected values use a versioned `CDSEHKX1` frame that records the
+compact profile id, nonce, tag, and ciphertext. Existing AES-GCM rows are not
+migrated automatically and remain readable. Herradura-protected rows require a
+Herradura-enabled binary for readback or rollback.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit
