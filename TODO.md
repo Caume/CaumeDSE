@@ -918,6 +918,7 @@
     - Add fallback or configurable alternate port selection for verifier runs when the default ports are unavailable.
     - Capture startup diagnostics into dedicated verifier logs and include concise failure hints in `summary.txt`.
     - Add DEBUG component tests for expected startup failure redaction and verifier self-tests for port validation, timeout behavior, and skipped live-flow handling.
+  - Batch 1: added webservice preflight self-tests for TCP port validation, a dedicated `webservice-startup-preflight.log` with selected protocol/ports, curl/libmicrohttpd availability, listener diagnostics, and certificate readability/size checks, plus richer `cmeWebServiceSetup()` HTTP/HTTPS daemon-start failure diagnostics with daemon flags, thread limits, connection limits, and errno context.
 
 - [ ] #104 Add a guarded write-capable MCP service sample.
   - Source: `samples/mcp-server/`, `samples/delegated-token-broker/`, `AI_USAGE.md`, `openapi.yaml`, live verifier routes, and delegated-token patterns.

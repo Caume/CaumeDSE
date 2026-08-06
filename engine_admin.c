@@ -1053,7 +1053,10 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
                         unsigned int numThreads)
 {
     int result;
+    int daemonErrno=0;
     int stopHandlersInstalled=0;
+    unsigned int nThreads = numThreads ? numThreads : (unsigned int)cmeDefaultMaxThreads;
+    unsigned int connectionLimit = nThreads*4;
     struct sigaction oldIntAction;
     struct sigaction oldTermAction;
     struct MHD_Daemon *webServiceDaemon=NULL;
@@ -1093,26 +1096,28 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
             cmeWebServiceSetupFree();
             return (1);
         }
-        {
-            unsigned int nThreads = numThreads ? numThreads : (unsigned int)cmeDefaultMaxThreads;
-            webServiceDaemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD | MHD_USE_SSL,
-                                                port,NULL,NULL,
-                                                (MHD_AccessHandlerCallback)&cmeWebServiceAnswerConnection,NULL,
-                                                MHD_OPTION_NOTIFY_COMPLETED,&cmeWebServiceRequestCompleted,NULL,
-                                                MHD_OPTION_THREAD_POOL_SIZE,(unsigned int)nThreads,
-                                                MHD_OPTION_CONNECTION_LIMIT,(unsigned int)(nThreads*4),
-                                                MHD_OPTION_HTTPS_MEM_KEY,key_pem,
-                                                MHD_OPTION_HTTPS_MEM_CERT,cert_pem,
-                                                MHD_OPTION_HTTPS_MEM_TRUST,ca_pem,    //root CA certificate = engine certificate; CA certifies organization, and organization certifies user.
-                                                MHD_OPTION_END);
-        }
+        errno=0;
+        webServiceDaemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD | MHD_USE_SSL,
+                                            port,NULL,NULL,
+                                            (MHD_AccessHandlerCallback)&cmeWebServiceAnswerConnection,NULL,
+                                            MHD_OPTION_NOTIFY_COMPLETED,&cmeWebServiceRequestCompleted,NULL,
+                                            MHD_OPTION_THREAD_POOL_SIZE,nThreads,
+                                            MHD_OPTION_CONNECTION_LIMIT,connectionLimit,
+                                            MHD_OPTION_HTTPS_MEM_KEY,key_pem,
+                                            MHD_OPTION_HTTPS_MEM_CERT,cert_pem,
+                                            MHD_OPTION_HTTPS_MEM_TRUST,ca_pem,    //root CA certificate = engine certificate; CA certifies organization, and organization certifies user.
+                                            MHD_OPTION_END);
+        daemonErrno=errno;
 
         if (NULL == webServiceDaemon) //Error
         {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't "
                 "start HTTPS server on port %d. Cert path: %s. Key path: %s. "
-                "CA path: %s.\n",port,sslCertFile,sslKeyFile,caCertFile);
+                "CA path: %s. Flags: MHD_USE_INTERNAL_POLLING_THREAD|MHD_USE_SSL. "
+                "threads=%u connectionLimit=%u errno=%d (%s).\n",
+                port,sslCertFile,sslKeyFile,caCertFile,nThreads,connectionLimit,
+                daemonErrno,strerror(daemonErrno));
 #endif
             cmeWebServiceSetupFree();
             return (2);
@@ -1120,21 +1125,22 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
     }
     else  //HTTP
     {
-        {
-            unsigned int nThreads = numThreads ? numThreads : (unsigned int)cmeDefaultMaxThreads;
-            webServiceDaemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD,
-                                                port, NULL, NULL,
-                                                (MHD_AccessHandlerCallback)&cmeWebServiceAnswerConnection,NULL,
-                                                MHD_OPTION_NOTIFY_COMPLETED,&cmeWebServiceRequestCompleted,NULL,
-                                                MHD_OPTION_THREAD_POOL_SIZE,(unsigned int)nThreads,
-                                                MHD_OPTION_CONNECTION_LIMIT,(unsigned int)(nThreads*4),
-                                                MHD_OPTION_END);
-        }
+        errno=0;
+        webServiceDaemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD,
+                                            port, NULL, NULL,
+                                            (MHD_AccessHandlerCallback)&cmeWebServiceAnswerConnection,NULL,
+                                            MHD_OPTION_NOTIFY_COMPLETED,&cmeWebServiceRequestCompleted,NULL,
+                                            MHD_OPTION_THREAD_POOL_SIZE,nThreads,
+                                            MHD_OPTION_CONNECTION_LIMIT,connectionLimit,
+                                            MHD_OPTION_END);
+        daemonErrno=errno;
         if (NULL == webServiceDaemon)
         {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: cmeWebServiceSetup(), Error, can't "
-                "start HTTP server on port %d!\n",port);
+                "start HTTP server on port %d. Flags: MHD_USE_INTERNAL_POLLING_THREAD. "
+                "threads=%u connectionLimit=%u errno=%d (%s).\n",
+                port,nThreads,connectionLimit,daemonErrno,strerror(daemonErrno));
 #endif
             cmeWebServiceSetupFree();
             return (3);
