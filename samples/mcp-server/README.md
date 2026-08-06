@@ -26,7 +26,8 @@ environment variables and are never part of MCP tool arguments or tool results.
   returns a bounded row preview.
 
 Local DEBUG setup helpers are hidden unless
-`CDSE_MCP_ENABLE_WRITE_TOOLS=1` is set in the server environment:
+`CDSE_MCP_ENABLE_WRITE_TOOLS=1` and `CDSE_MCP_DELEGATED_TOKEN` are set in the
+server environment:
 
 - `create_workspace`: creates the configured disposable organization, storage,
   and user.
@@ -35,6 +36,17 @@ Local DEBUG setup helpers are hidden unless
 - `upload_parser_candidate`: uploads a generated parser candidate as pending
   review metadata.
 - `cleanup_workspace`: deletes the sample documents, storage, and user.
+
+Every write call also requires explicit guard arguments:
+
+- `organization`, `storage`, and `user` must match the server environment.
+- `scope` must match the exact resource scope reported by the tool schema or
+  dry-run output, never `*`, `all`, or a broad organization/storage scope.
+- `expected_status` must be one of the status codes accepted by that helper.
+- `idempotency_key` must be a caller-generated non-space value of at least 12
+  characters.
+- `confirm` must be `confirm-caumedse-mcp-write`.
+- `dry_run=true` returns the guarded mutation plan without contacting CaumeDSE.
 
 ## Configuration
 
@@ -48,6 +60,7 @@ export CDSE_MCP_USER="McpTrialUser"
 export CDSE_MCP_STORAGE="McpTrialStorage"
 export CDSE_MCP_STORAGE_PATH="/tmp/caumedse-mcp-storage"
 export CDSE_MCP_ORG_KEY="$(openssl rand -hex 32)"
+export CDSE_MCP_DELEGATED_TOKEN="broker-minted-token-for-this-agent-session"
 ```
 
 For HTTPS, add the CA and client certificate paths used by the test service:
@@ -100,7 +113,8 @@ A typical local flow is:
    exposing tools.
 2. Prepare a least-privilege CaumeDSE user, storage resource, CSV document, and
    reviewed parser outside the read-only MCP session, or run the DEBUG helpers
-   with `CDSE_MCP_ENABLE_WRITE_TOOLS=1`.
+   with `CDSE_MCP_ENABLE_WRITE_TOOLS=1` and `CDSE_MCP_DELEGATED_TOKEN` only for
+   local guarded DEBUG workflows.
 3. `documentTypes_list`
 4. `documentSchema_read`
 5. `contentColumns_read`
@@ -116,6 +130,9 @@ A typical local flow is:
 - For repeated agent sessions, put a delegated-token broker in front of the MCP
   server so each tool call is authorized by a short-lived scoped token before
   the server forwards broker-held CaumeDSE credentials.
+- Write tools stay hidden unless both write-tool opt-in and delegated-token
+  configuration are present. Even then, each call must include the exact guard
+  fields, and `dry_run=true` should be used before every mutation.
 - Do not expose this prototype directly to untrusted clients. Put any
   production MCP bridge behind authentication, authorization, audit logging,
   rate limits, and route-level allow lists.
@@ -146,6 +163,13 @@ printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
   | python3 samples/mcp-server/caumedse_mcp_server.py
+```
+
+This checks guarded write-tool exposure and dry-run refusal behavior without
+contacting a CaumeDSE service:
+
+```sh
+python3 samples/mcp-server/caumedse_mcp_server.py self-test
 ```
 
 Use `CDSE_VERIFY_REDACT=1` when sharing logs from live verifier runs.

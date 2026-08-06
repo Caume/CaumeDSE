@@ -930,6 +930,7 @@
     - Integrate with the delegated-token broker sample so MCP clients never receive raw `orgKey` or `newOrgKey`.
     - Add dry-run output, redacted audit correlation, and clear refusal messages for unsafe parser execution or broad data mutation.
     - Add sample README guidance and verifier self-tests that prove write tools are hidden by default and guarded when enabled.
+  - Batch 1: tightened the MCP sample so write tools require both `CDSE_MCP_ENABLE_WRITE_TOOLS=1` and `CDSE_MCP_DELEGATED_TOKEN`, added per-call guard fields for exact organization/storage/user/scope, expected status, idempotency key, confirmation, and dry-run mode, documented the write boundary, and added an offline verifier self-test for hidden/default write tools and broad-scope rejection.
 
 - [ ] #105 Add a policy-as-code authorization tester.
   - Source: roleTables, filterWhitelist/filterBlacklist handlers, `TEST/run_debug_components.sh`, `samples/`, `AI_USAGE.md`, and `API_EXAMPLES.md`.

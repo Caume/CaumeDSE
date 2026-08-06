@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Model Context Protocol server for read-only CaumeDSE inspection.
+Model Context Protocol server for guarded CaumeDSE inspection.
 
 The server speaks JSON-RPC over stdio, implements a stable MCP tool surface,
 and calls the CaumeDSE REST API with credentials sourced only from environment
@@ -29,6 +29,7 @@ SERVER_VERSION = "0.2.0"
 PROTOCOL_VERSION = "2024-11-05"
 MAX_LIMIT = 10
 MAX_TEXT_BYTES = 12000
+WRITE_CONFIRMATION = "confirm-caumedse-mcp-write"
 
 
 class ToolError(Exception):
@@ -50,7 +51,9 @@ class Config:
         self.ca_cert = os.environ.get("CDSE_MCP_CA_CERT")
         self.client_cert = os.environ.get("CDSE_MCP_CLIENT_CERT")
         self.client_key = os.environ.get("CDSE_MCP_CLIENT_KEY")
-        self.enable_write_tools = os.environ.get("CDSE_MCP_ENABLE_WRITE_TOOLS", "").lower() in {"1", "true", "yes", "on"}
+        self.delegated_token = os.environ.get("CDSE_MCP_DELEGATED_TOKEN")
+        self.write_tools_requested = os.environ.get("CDSE_MCP_ENABLE_WRITE_TOOLS", "").lower() in {"1", "true", "yes", "on"}
+        self.enable_write_tools = self.write_tools_requested and bool(self.delegated_token)
 
     def require_key(self):
         if not self.org_key:
@@ -161,6 +164,49 @@ def resolve_file(path_value, default_path):
     return path
 
 
+def write_scope(action, cfg, document=None):
+    scopes = {
+        "create_workspace": f"workspace:{cfg.org}:{cfg.storage}:{cfg.user}",
+        "upload_csv": f"document:file.csv:{document}",
+        "upload_parser": f"document:script.python:{document}",
+        "upload_parser_candidate": f"document:script.python.pending:{document}",
+        "cleanup_workspace": f"cleanup:{cfg.org}:{cfg.storage}:{cfg.user}",
+    }
+    return scopes[action]
+
+
+def require_write_guard(cfg, args, action, allowed_statuses, document=None):
+    required = ("organization", "storage", "user", "scope", "expected_status", "idempotency_key", "confirm")
+    missing = [name for name in required if args.get(name) in (None, "")]
+    if missing:
+        raise ToolError(f"Write tool guard rejected {action}: missing required arguments: {', '.join(missing)}")
+    if args["organization"] != cfg.org or args["storage"] != cfg.storage or args["user"] != cfg.user:
+        raise ToolError("Write tool guard rejected request: organization, storage, and user must match server configuration.")
+    expected_scope = write_scope(action, cfg, document)
+    scope = str(args["scope"])
+    if scope != expected_scope or scope.lower() in {"*", "all", "organization", "storage"}:
+        raise ToolError(f"Write tool guard rejected request: scope must be exactly {expected_scope}.")
+    try:
+        expected_status = int(args["expected_status"])
+    except (TypeError, ValueError) as exc:
+        raise ToolError("Write tool guard rejected request: expected_status must be an integer.") from exc
+    if expected_status not in allowed_statuses:
+        raise ToolError(f"Write tool guard rejected request: expected_status must be one of {sorted(allowed_statuses)}.")
+    idempotency_key = str(args["idempotency_key"])
+    if len(idempotency_key) < 12 or any(ch.isspace() for ch in idempotency_key):
+        raise ToolError("Write tool guard rejected request: idempotency_key must be at least 12 non-space characters.")
+    if args["confirm"] != WRITE_CONFIRMATION:
+        raise ToolError(f"Write tool guard rejected request: confirm must be {WRITE_CONFIRMATION}.")
+    return {
+        "action": action,
+        "scope": scope,
+        "expectedStatus": expected_status,
+        "idempotencyKey": idempotency_key,
+        "dryRun": bool(args.get("dry_run")),
+        "delegatedTokenConfigured": True,
+    }
+
+
 def get_agent_capabilities(cfg, _args):
     _, _, payload = request(cfg, "GET", "/agentCapabilities")
     return json.loads(payload.decode("utf-8"))
@@ -203,6 +249,9 @@ def base_document_path(cfg, doc_type, doc_name):
 
 
 def create_workspace(cfg, _args):
+    guard = require_write_guard(cfg, _args, "create_workspace", {201, 409})
+    if guard["dryRun"]:
+        return {"guard": guard, "wouldCreate": {"organization": cfg.org, "storage": cfg.storage, "user": cfg.user}}
     auth = cfg.auth_params(include_new_key=True)
     Path(cfg.storage_path).mkdir(parents=True, exist_ok=True)
     request(
@@ -247,7 +296,7 @@ def create_workspace(cfg, _args):
         },
         expected=(201, 409),
     )
-    return {"organization": cfg.org, "storage": cfg.storage, "user": cfg.user, "createdOrAlreadyPresent": True}
+    return {"guard": guard, "organization": cfg.org, "storage": cfg.storage, "user": cfg.user, "createdOrAlreadyPresent": True}
 
 
 def list_document_types(cfg, _args):
@@ -280,31 +329,46 @@ def upload_document(cfg, doc_type, doc_name, file_path, resource_info):
 
 def upload_csv(cfg, args):
     doc_name = args.get("document") or cfg.csv_doc
+    guard = require_write_guard(cfg, args, "upload_csv", {201, 409}, doc_name)
+    if guard["dryRun"]:
+        return {"guard": guard, "wouldUpload": {"documentType": "file.csv", "document": doc_name}}
     file_path = resolve_file(args.get("csv_path"), DEFAULT_CSV)
     resource_info = args.get("resource_info") or "reviewed MCP CSV fixture"
-    return upload_document(cfg, "file.csv", doc_name, file_path, resource_info)
+    result = upload_document(cfg, "file.csv", doc_name, file_path, resource_info)
+    result["guard"] = guard
+    return result
 
 
 def upload_parser(cfg, args):
     doc_name = args.get("document") or cfg.parser_doc
+    guard = require_write_guard(cfg, args, "upload_parser", {201, 409}, doc_name)
+    if guard["dryRun"]:
+        return {"guard": guard, "wouldUpload": {"documentType": "script.python", "document": doc_name}}
     file_path = resolve_file(args.get("parser_path"), DEFAULT_PARSER)
     resource_info = args.get("resource_info") or (
         "reviewed MCP parser fixture parser.reviewStatus:reviewed parser.reviewed:true "
         "parser.reviewer:human-reviewer parser.reviewTime:2026-07-30T00:00:00Z "
         "parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none"
     )
-    return upload_document(cfg, "script.python", doc_name, file_path, resource_info)
+    result = upload_document(cfg, "script.python", doc_name, file_path, resource_info)
+    result["guard"] = guard
+    return result
 
 
 def upload_parser_candidate(cfg, args):
     doc_name = args.get("document") or cfg.pending_parser_doc
+    guard = require_write_guard(cfg, args, "upload_parser_candidate", {201, 409}, doc_name)
+    if guard["dryRun"]:
+        return {"guard": guard, "wouldUpload": {"documentType": "script.python", "document": doc_name, "reviewStatus": "pending"}}
     file_path = resolve_file(args.get("parser_path"), DEFAULT_PARSER)
     resource_info = args.get("resource_info") or (
         "generated MCP parser candidate parser.reviewStatus:pending parser.generated:true "
         "parser.generator:mcp-client parser.promptHash:sha256-demo "
         "parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none"
     )
-    return upload_document(cfg, "script.python", doc_name, file_path, resource_info)
+    result = upload_document(cfg, "script.python", doc_name, file_path, resource_info)
+    result["guard"] = guard
+    return result
 
 
 def discover_schema(cfg, args):
@@ -403,6 +467,9 @@ def preview_parser_candidate(cfg, args):
 
 
 def cleanup_workspace(cfg, args):
+    guard = require_write_guard(cfg, args, "cleanup_workspace", {200, 404})
+    if guard["dryRun"]:
+        return {"guard": guard, "wouldDelete": ["csv", "pending_parser", "parser", "storage", "user"]}
     auth = cfg.auth_params(include_new_key=True)
     csv_doc = args.get("csv_document") or cfg.csv_doc
     parser_doc = args.get("parser_document") or cfg.parser_doc
@@ -417,7 +484,7 @@ def cleanup_workspace(cfg, args):
     for label, method, path in resources:
         status, _, _ = request(cfg, method, path, params=auth, expected=(200, 404))
         deleted.append({"resource": label, "status": status})
-    return {"cleanup": deleted}
+    return {"guard": guard, "cleanup": deleted}
 
 
 READ_ONLY_TOOLS = {
@@ -438,6 +505,38 @@ WRITE_TOOLS = {
     "upload_parser_candidate": upload_parser_candidate,
     "cleanup_workspace": cleanup_workspace,
 }
+
+COMMON_WRITE_GUARD_PROPERTIES = {
+    "organization": {"type": "string"},
+    "storage": {"type": "string"},
+    "user": {"type": "string"},
+    "scope": {"type": "string"},
+    "expected_status": {"type": "integer"},
+    "idempotency_key": {"type": "string", "minLength": 12},
+    "confirm": {"type": "string", "const": WRITE_CONFIRMATION},
+    "dry_run": {"type": "boolean"},
+}
+COMMON_WRITE_GUARD_REQUIRED = [
+    "organization",
+    "storage",
+    "user",
+    "scope",
+    "expected_status",
+    "idempotency_key",
+    "confirm",
+]
+
+
+def write_schema(properties, required=None):
+    merged = dict(COMMON_WRITE_GUARD_PROPERTIES)
+    merged.update(properties)
+    return {
+        "type": "object",
+        "properties": merged,
+        "required": COMMON_WRITE_GUARD_REQUIRED + list(required or []),
+        "additionalProperties": False,
+    }
+
 
 READ_ONLY_TOOL_SCHEMAS = [
     {
@@ -533,57 +632,49 @@ WRITE_TOOL_SCHEMAS = [
     {
         "name": "create_workspace",
         "description": "Local DEBUG helper: create the configured disposable organization, storage, and user.",
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "inputSchema": write_schema({}),
     },
     {
         "name": "upload_csv",
         "description": "Local DEBUG helper: upload a reviewed local CSV fixture to the configured storage.",
         "inputSchema": {
-            "type": "object",
-            "properties": {
+            **write_schema({
                 "document": {"type": "string"},
                 "csv_path": {"type": "string"},
                 "resource_info": {"type": "string"},
-            },
-            "additionalProperties": False,
+            }),
         },
     },
     {
         "name": "upload_parser",
         "description": "Local DEBUG helper: upload a reviewed local Python parser fixture with review metadata.",
         "inputSchema": {
-            "type": "object",
-            "properties": {
+            **write_schema({
                 "document": {"type": "string"},
                 "parser_path": {"type": "string"},
                 "resource_info": {"type": "string"},
-            },
-            "additionalProperties": False,
+            }),
         },
     },
     {
         "name": "upload_parser_candidate",
         "description": "Local DEBUG helper: upload a generated parser candidate as pending review metadata.",
         "inputSchema": {
-            "type": "object",
-            "properties": {
+            **write_schema({
                 "document": {"type": "string"},
                 "parser_path": {"type": "string"},
                 "resource_info": {"type": "string"},
-            },
-            "additionalProperties": False,
+            }),
         },
     },
     {
         "name": "cleanup_workspace",
         "description": "Local DEBUG helper: delete the configured sample documents, storage, and user.",
         "inputSchema": {
-            "type": "object",
-            "properties": {
+            **write_schema({
                 "csv_document": {"type": "string"},
                 "parser_document": {"type": "string"},
-            },
-            "additionalProperties": False,
+            }),
         },
     },
 ]
@@ -655,6 +746,75 @@ def write_response(response):
     sys.stdout.flush()
 
 
+def scoped_guard_args(cfg, action, document=None, expected_status=201):
+    return {
+        "organization": cfg.org,
+        "storage": cfg.storage,
+        "user": cfg.user,
+        "scope": write_scope(action, cfg, document),
+        "expected_status": expected_status,
+        "idempotency_key": f"selftest-{action}-0001",
+        "confirm": WRITE_CONFIRMATION,
+        "dry_run": True,
+    }
+
+
+def self_test():
+    saved_env = {key: os.environ.get(key) for key in (
+        "CDSE_MCP_ENABLE_WRITE_TOOLS",
+        "CDSE_MCP_DELEGATED_TOKEN",
+        "CDSE_MCP_ORG",
+        "CDSE_MCP_STORAGE",
+        "CDSE_MCP_USER",
+    )}
+    try:
+        os.environ.pop("CDSE_MCP_ENABLE_WRITE_TOOLS", None)
+        os.environ.pop("CDSE_MCP_DELEGATED_TOKEN", None)
+        cfg = Config()
+        if any(name in available_tools(cfg) for name in WRITE_TOOLS):
+            raise AssertionError("write tools exposed by default")
+
+        os.environ["CDSE_MCP_ENABLE_WRITE_TOOLS"] = "1"
+        cfg = Config()
+        if any(name in available_tools(cfg) for name in WRITE_TOOLS):
+            raise AssertionError("write tools exposed without delegated-token configuration")
+
+        os.environ["CDSE_MCP_DELEGATED_TOKEN"] = "self-test-delegated-token"
+        os.environ["CDSE_MCP_ORG"] = "SelfTestOrg"
+        os.environ["CDSE_MCP_STORAGE"] = "SelfTestStorage"
+        os.environ["CDSE_MCP_USER"] = "SelfTestUser"
+        cfg = Config()
+        tools = available_tools(cfg)
+        for name in WRITE_TOOLS:
+            if name not in tools:
+                raise AssertionError(f"guarded write tool missing when explicitly enabled: {name}")
+
+        args = scoped_guard_args(cfg, "create_workspace")
+        result = create_workspace(cfg, args)
+        if not result.get("guard", {}).get("dryRun"):
+            raise AssertionError("guarded dry-run create_workspace did not return dryRun guard metadata")
+
+        bad_args = dict(args)
+        bad_args["scope"] = "*"
+        try:
+            create_workspace(cfg, bad_args)
+            raise AssertionError("broad write scope was accepted")
+        except ToolError:
+            pass
+
+        upload_args = scoped_guard_args(cfg, "upload_csv", cfg.csv_doc, expected_status=201)
+        upload_result = upload_csv(cfg, upload_args)
+        if upload_result.get("wouldUpload", {}).get("documentType") != "file.csv":
+            raise AssertionError("guarded dry-run upload_csv did not report target document")
+    finally:
+        for key, value in saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    print("PASS MCP write guard self-test")
+
+
 def serve():
     cfg = Config()
     for line in sys.stdin:
@@ -683,11 +843,15 @@ def serve():
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Run the CaumeDSE MCP stdio prototype server.")
     parser.add_argument("--version", action="version", version=f"{SERVER_NAME} {SERVER_VERSION}")
+    parser.add_argument("command", nargs="?", choices=["serve", "self-test"], default="serve")
     return parser.parse_args(argv)
 
 
 def main(argv=None):
-    parse_args(argv or sys.argv[1:])
+    args = parse_args(argv or sys.argv[1:])
+    if args.command == "self-test":
+        self_test()
+        return
     serve()
 
 
