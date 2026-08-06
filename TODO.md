@@ -941,6 +941,7 @@
     - Emit a redacted report that maps each policy rule to observed HTTP status, request id, route, and relevant audit category.
     - Add negative cases for overbroad roles, missing filters, conflicting whitelist/blacklist rows, unsupported methods, and cleanup failures.
     - Add documentation for AI-generated policy review, including prompt-boundary rules and human approval before applying generated policies to real deployments.
+  - Batch 1: added `samples/policy-authz-tester/` with a JSON policy format, setup-plan rendering for roleTables/filterWhitelist/filterBlacklist intent, offline observed-status evaluation, redacted `safeForAgent` reports, documentation, and a verifier self-test for validation, mismatch detection, and secret redaction.
 
 - [ ] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.

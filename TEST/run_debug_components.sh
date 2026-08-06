@@ -469,6 +469,27 @@ run_mcp_write_guard_self_test() {
     return 1
 }
 
+run_policy_authz_tester_self_test() {
+    local log="$LOG_ROOT/policy_authz_tester_self_test.log"
+    local start
+    local rc
+
+    note "RUN  policy_authz_tester_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/policy-authz-tester/policy_authz_tester.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS policy authz tester self-test" "$log"; then
+        record_pass "policy_authz_tester_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail policy_authz_tester_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
 protocol_enabled() {
     local protocol="$1"
 
@@ -1778,12 +1799,14 @@ if command -v python3 >/dev/null 2>&1; then
     run_review_workspace_self_test
     run_audit_dashboard_self_test
     run_mcp_write_guard_self_test
+    run_policy_authz_tester_self_test
 else
     record_skip delegated_token_broker_self_test "python3 not available"
     record_skip agent_rag_connector_self_test "python3 not available"
     record_skip review_workspace_self_test "python3 not available"
     record_skip audit_dashboard_self_test "python3 not available"
     record_skip mcp_write_guard_self_test "python3 not available"
+    record_skip policy_authz_tester_self_test "python3 not available"
 fi
 run_webservice_preflight_self_test
 
