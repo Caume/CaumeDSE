@@ -591,7 +591,8 @@ check_key_rotation_component() {
     check_component key_rotation_reprotect 'testCryptoReprotectDBValue|re-protect' "$source" \
         'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rotates key with AES profile.' \
         'TESTS: testCryptoReprotectDBValue(), PASS: DB value dry-run re-protect reports plaintext length without writing.' \
-        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rejects wrong source key.'
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rejects wrong source key.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB re-protect inventory reports AES protected row scope.'
 }
 
 check_key_rotation_herradurakex_component() {

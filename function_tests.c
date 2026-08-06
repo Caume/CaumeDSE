@@ -1014,6 +1014,44 @@ void testCryptoReprotectDBValue(void)
     cmeFree(protectedValue);
     cmeFree(rotatedValue);
     cmeFree(readbackValue);
+
+    {
+        sqlite3 *memDB=NULL;
+        cmeReprotectDBInventory inventory;
+        int inventoryOK=0;
+
+        memset(&inventory,0,sizeof(inventory));
+        if (!sqlite3_open(":memory:",&memDB) &&
+            !cmeSQLRows(memDB,
+                        "BEGIN TRANSACTION;"
+                        "CREATE TABLE data (id INTEGER PRIMARY KEY,userId TEXT,orgId TEXT,salt TEXT,value TEXT,rowOrder TEXT,MAC TEXT,sign TEXT,MACProtected TEXT,signProtected TEXT,otphDKey TEXT);"
+                        "CREATE TABLE meta (id INTEGER PRIMARY KEY,userId TEXT,orgId TEXT,salt TEXT,attribute TEXT,attributeData TEXT);"
+                        "INSERT INTO data VALUES (1,'userA','orgA','','alpha','1','','','','','');"
+                        "INSERT INTO data VALUES (2,'userA','orgA','','beta','2','','','','','');"
+                        "INSERT INTO meta VALUES (1,'userA','orgA','','protect','aes-256-gcm');"
+                        "COMMIT;",NULL,NULL) &&
+            !cmeMemSecureDBProtect(memDB,oldKey) &&
+            !cmeInventoryMemSecureDBReprotect(memDB,oldKey,cmeOpenSSLLegacyStorageProfile,&inventory) &&
+            inventory.dataRows==2 && inventory.metaRows==1 && inventory.protectMetaRows==1 &&
+            inventory.protectedValueRows==2 && inventory.targetProfileRows==1 &&
+            inventory.legacyAESValueRows==2 && inventory.herraduraValueRows==0 &&
+            !strcmp(inventory.sourceProfile,cmeOpenSSLLegacyStorageProfile))
+        {
+            inventoryOK=1;
+        }
+        if (inventoryOK)
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), PASS: DB re-protect inventory reports AES protected row scope.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB re-protect inventory failed AES protected row scope.\n");
+        }
+        if (memDB)
+        {
+            sqlite3_close(memDB);
+        }
+    }
 }
 
 void testCryptoSymmetricGCM()

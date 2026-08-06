@@ -92,12 +92,31 @@ int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const cha
 // Function to unprotect+unsalt (decodify B64, unencrypt and remove salt from value) a salt+protected text string.
 int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const char *encAlg, char **salt,
                                const char *orgKey, int *valueLen);
+typedef struct
+{
+    int metaRows;
+    int dataRows;
+    int protectMetaRows;
+    int protectedValueRows;
+    int sourceProfileRows;
+    int targetProfileRows;
+    int legacyAESValueRows;
+    int herraduraValueRows;
+    int unknownValueRows;
+    char sourceProfile[64];
+    char targetProfile[64];
+} cmeReprotectDBInventory;
+
 // Function to strictly unprotect+reprotect one salted DB value for explicit key/profile rotation workflows.
 int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedValue,
                                const char *sourceEncAlg, const char *targetEncAlg,
                                char **sourceSalt, char **targetSalt,
                                const char *sourceOrgKey, const char *targetOrgKey,
                                int *reprotectedValueLen, int dryRun);
+// Function to inventory a protected in-memory column-file DB before explicit key/profile rotation.
+int cmeInventoryMemSecureDBReprotect (sqlite3 *memSecureDB, const char *orgKey,
+                                      const char *targetEncAlg,
+                                      cmeReprotectDBInventory *inventory);
 // Function to compute deterministic keyed lookup values for selected protected exact-match columns.
 int cmeGetProtectDBLookupValue (const char *columnName, const char *value, const char *orgKey,
                                 char **lookupValue);

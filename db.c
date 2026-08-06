@@ -2726,6 +2726,174 @@ int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedVal
     return (0);
 }
 
+static int cmeDBProtectedValueHasHerraduraFrame(const char *protectedValue)
+{
+    int written=0;
+    unsigned char *decodedValue=NULL;
+    int hasFrame=0;
+
+    if (!protectedValue)
+    {
+        return(0);
+    }
+    if (!cmeB64ToStr((unsigned char *)protectedValue,&decodedValue,strlen(protectedValue),&written))
+    {
+        if (written>=cmeHerraduraKExFrameHeaderLen &&
+            !memcmp(decodedValue,cmeHerraduraKExFrameMagic,cmeHerraduraKExFrameMagicLen))
+        {
+            hasFrame=1;
+        }
+    }
+    cmeFree(decodedValue);
+    return(hasFrame);
+}
+
+int cmeInventoryMemSecureDBReprotect (sqlite3 *memSecureDB, const char *orgKey,
+                                      const char *targetEncAlg,
+                                      cmeReprotectDBInventory *inventory)
+{
+    int cont,result,written=0;
+    int numColsData=0;
+    int numRowsData=0;
+    int numColsMeta=0;
+    int numRowsMeta=0;
+    char **memData=NULL;
+    char **memMeta=NULL;
+    char *currentMetaAttribute=NULL;
+    char *currentMetaAttributeData=NULL;
+    char *currentMetaSalt=NULL;
+    cmeCryptoProfile targetProfile;
+    #define cmeInventoryMemSecureDBReprotectFree() \
+        do { \
+            cmeFree(currentMetaAttribute); \
+            cmeFree(currentMetaAttributeData); \
+            cmeFree(currentMetaSalt); \
+            if (memData) \
+            { \
+                cmeMemTableFinal(memData); \
+                memData=NULL; \
+            } \
+            if (memMeta) \
+            { \
+                cmeMemTableFinal(memMeta); \
+                memMeta=NULL; \
+            } \
+        } while (0); //Local free() macro
+
+    if ((!memSecureDB)||(!orgKey)||(!targetEncAlg)||(!inventory))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeInventoryMemSecureDBReprotect(), Error, NULL parameter.\n");
+#endif
+        return(1);
+    }
+    memset(inventory,0,sizeof(*inventory));
+    snprintf(inventory->targetProfile,sizeof(inventory->targetProfile),"%s",targetEncAlg);
+    result=cmeGetCryptoProfile(&targetProfile,targetEncAlg);
+    if (result||(!targetProfile.implemented))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeInventoryMemSecureDBReprotect(), Error, target algorithm %s is not implemented.\n",
+                targetEncAlg);
+#endif
+        return(2);
+    }
+    result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memData,&numRowsData,&numColsData);
+    if (result)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeInventoryMemSecureDBReprotect(), cmeMemTable() Error"
+                " can't execute 'SELECT * FROM data;'!\n");
+#endif
+        cmeInventoryMemSecureDBReprotectFree();
+        return(3);
+    }
+    if (numColsData<cmeIDDColumnFileDataNumCols)
+    {
+        cmeInventoryMemSecureDBReprotectFree();
+        return(4);
+    }
+    inventory->dataRows=numRowsData;
+    for (cont=1;cont<=numRowsData;cont++)
+    {
+        if (cmeDBProtectedValueHasHerraduraFrame(memData[cont*numColsData+cmeIDDColumnFileData_value]))
+        {
+            inventory->herraduraValueRows++;
+        }
+        else if (memData[cont*numColsData+cmeIDDColumnFileData_value] &&
+                 memData[cont*numColsData+cmeIDDColumnFileData_value][0])
+        {
+            inventory->legacyAESValueRows++;
+        }
+        else
+        {
+            inventory->unknownValueRows++;
+        }
+    }
+    result=cmeMemTable(memSecureDB,"SELECT * FROM meta;",&memMeta,&numRowsMeta,&numColsMeta);
+    if (result)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeInventoryMemSecureDBReprotect(), cmeMemTable() Error"
+                " can't execute 'SELECT * FROM meta;'!\n");
+#endif
+        cmeInventoryMemSecureDBReprotectFree();
+        return(5);
+    }
+    if (numColsMeta<cmeIDDColumnFileMetaNumCols)
+    {
+        cmeInventoryMemSecureDBReprotectFree();
+        return(6);
+    }
+    inventory->metaRows=numRowsMeta;
+    for (cont=1;cont<=numRowsMeta;cont++)
+    {
+        cmeStrConstrAppend(&currentMetaSalt,"%s",memMeta[cont*numColsMeta+cmeIDDanydb_salt]);
+        result=cmeUnprotectDBSaltedValue(memMeta[cont*numColsMeta+cmeIDDColumnFileMeta_attribute],
+                                         &currentMetaAttribute,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
+        if (result)
+        {
+            cmeInventoryMemSecureDBReprotectFree();
+            return(7);
+        }
+        result=cmeUnprotectDBSaltedValue(memMeta[cont*numColsMeta+cmeIDDColumnFileMeta_attributeData],
+                                         &currentMetaAttributeData,cmeDefaultEncAlg,&currentMetaSalt,orgKey,&written);
+        if (result)
+        {
+            cmeInventoryMemSecureDBReprotectFree();
+            return(8);
+        }
+        if (!strcmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_2))
+        {
+            inventory->protectMetaRows++;
+            inventory->protectedValueRows+=numRowsData;
+            if (!inventory->sourceProfile[0])
+            {
+                snprintf(inventory->sourceProfile,sizeof(inventory->sourceProfile),"%s",currentMetaAttributeData);
+            }
+            if (!strcmp(currentMetaAttributeData,targetEncAlg))
+            {
+                inventory->targetProfileRows++;
+            }
+            else
+            {
+                inventory->sourceProfileRows++;
+            }
+        }
+        cmeFree(currentMetaAttribute);
+        cmeFree(currentMetaAttributeData);
+        cmeFree(currentMetaSalt);
+    }
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: cmeInventoryMemSecureDBReprotect(), rows=%d protectedValues=%d source=%s target=%s legacyAES=%d herradura=%d unknown=%d.\n",
+            inventory->dataRows,inventory->protectedValueRows,inventory->sourceProfile,
+            inventory->targetProfile,inventory->legacyAESValueRows,inventory->herraduraValueRows,
+            inventory->unknownValueRows);
+#endif
+    cmeInventoryMemSecureDBReprotectFree();
+    return(0);
+}
+
 int cmeGetProtectDBLookupValue (const char *columnName, const char *value, const char *orgKey,
                                 char **lookupValue)
 {

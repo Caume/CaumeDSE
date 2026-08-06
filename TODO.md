@@ -907,6 +907,7 @@
     - Add failure-safe journaling or resumable checkpoints so interrupted migrations do not leave ambiguous key/profile state.
     - Add DEBUG and live verifier coverage for key rotation, profile migration, wrong-key rejection, partial-scope migration, dry-run output, and rollback/readback behavior.
   - Batch 1: added `cmeReprotectDBSaltedValue()` as a strict per-value re-protect primitive for explicit workflows, including dry-run length reporting, source-key rejection, target profile selection, new salt generation, AES key rotation, and AES/Herradura migration/rollback DEBUG component markers when the provider is enabled.
+  - Batch 2: added `cmeInventoryMemSecureDBReprotect()` for read-only column-file dry-run inventory, reporting meta/data row counts, protect metadata rows, protected value scope, source/target profiles, and legacy AES versus Herradura-framed protected values without mutating the DB.
 
 - [ ] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
