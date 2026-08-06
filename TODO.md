@@ -952,6 +952,7 @@
     - Support restore into a fresh prefix with dry-run validation, manifest verification, profile compatibility checks, and explicit overwrite controls.
     - Preserve mixed AES/Herradura data without rewriting protected values unless the operator separately invokes the re-protect workflow.
     - Add verifier coverage for backup creation, tamper detection, wrong-key rejection, restore readback, redaction, and cleanup of temporary archive material.
+  - Batch 1: added `samples/encrypted-backup-restore/` with a portable manifest utility that inventories CaumeDSE data directories, records file sizes/SHA-256 hashes/classification, redacts identifier-like labels and paths, verifies tamper/missing-file status, renders dry-run restore plans, documents the workflow, and adds an offline verifier self-test.
 
 - [ ] #107 Add an operational health and readiness service.
   - Source: `engine_admin.c`, `webservice_interface.c`, `config.c`, `runtime.c`, parser policy configuration, storage path checks, TLS/auth configuration, and `AI_USAGE.md`.
