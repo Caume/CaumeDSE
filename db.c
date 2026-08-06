@@ -2614,6 +2614,118 @@ int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const c
     return (0);
 }
 
+int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedValue,
+                               const char *sourceEncAlg, const char *targetEncAlg,
+                               char **sourceSalt, char **targetSalt,
+                               const char *sourceOrgKey, const char *targetOrgKey,
+                               int *reprotectedValueLen, int dryRun)
+{
+    int result;
+    int saltedValueLen=0;
+    int valueLen=0;
+    char *saltedValue=NULL;
+    char *value=NULL;
+    cmeCryptoProfile sourceProfile;
+    cmeCryptoProfile targetProfile;
+    #define cmeReprotectDBSaltedValueFree() \
+        do { \
+            if (saltedValue) \
+            { \
+                OPENSSL_cleanse(saltedValue,saltedValueLen>0 ? saltedValueLen : 1); \
+            } \
+            if (value) \
+            { \
+                OPENSSL_cleanse(value,valueLen>0 ? valueLen : 1); \
+            } \
+            cmeFree(saltedValue); \
+            cmeFree(value); \
+        } while (0); //Local free() macro
+
+    if (reprotectedValueLen)
+    {
+        *reprotectedValueLen=0;
+    }
+    if (reprotectedValue)
+    {
+        *reprotectedValue=NULL;
+    }
+    if ((!protectedValue)||(!sourceEncAlg)||(!targetEncAlg)||(!sourceSalt)||
+        (!sourceOrgKey)||(!targetOrgKey)||(!reprotectedValueLen)||
+        ((!dryRun)&&((!reprotectedValue)||(!targetSalt))))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeReprotectDBSaltedValue(), Error, NULL parameter.\n");
+#endif
+        return(1);
+    }
+    result=cmeGetCryptoProfile(&sourceProfile,sourceEncAlg);
+    if (result||(!sourceProfile.implemented))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeReprotectDBSaltedValue(), Error, source algorithm %s is not implemented.\n",
+                sourceEncAlg);
+#endif
+        return(2);
+    }
+    result=cmeGetCryptoProfile(&targetProfile,targetEncAlg);
+    if (result||(!targetProfile.implemented))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeReprotectDBSaltedValue(), Error, target algorithm %s is not implemented.\n",
+                targetEncAlg);
+#endif
+        return(3);
+    }
+    result=cmeUnprotectByteString(protectedValue,&saltedValue,sourceEncAlg,sourceSalt,sourceOrgKey,
+                                  &saltedValueLen,strlen(protectedValue));
+    if (result)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeReprotectDBSaltedValue(), Error, source value could not be unprotected.\n");
+#endif
+        cmeReprotectDBSaltedValueFree();
+        return(4);
+    }
+    if (saltedValueLen<=cmeDefaultValueSaltCharLen)
+    {
+#ifdef DEBUG
+        fprintf(stderr,"CaumeDSE Debug: cmeReprotectDBSaltedValue(), Warning, source value decrypted to an ambiguous salted length.\n");
+#endif
+        cmeReprotectDBSaltedValueFree();
+        return(5);
+    }
+    if (saltedValueLen>cmeDefaultValueSaltCharLen)
+    {
+        cmeStrConstrAppend(&value,"%s",&(saltedValue[cmeDefaultValueSaltCharLen]));
+        valueLen=saltedValueLen-cmeDefaultValueSaltCharLen;
+    }
+    if (dryRun)
+    {
+        *reprotectedValueLen=valueLen;
+#ifdef DEBUG
+        fprintf(stdout,"CaumeDSE Debug: cmeReprotectDBSaltedValue(), dry-run verified valueLen=%d from %s to %s.\n",
+                valueLen,sourceEncAlg,targetEncAlg);
+#endif
+        cmeReprotectDBSaltedValueFree();
+        return(0);
+    }
+    result=cmeProtectDBSaltedValue(value,reprotectedValue,targetEncAlg,targetSalt,targetOrgKey,reprotectedValueLen);
+    if (result)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeReprotectDBSaltedValue(), Error, target value could not be protected.\n");
+#endif
+        cmeReprotectDBSaltedValueFree();
+        return(6);
+    }
+#ifdef DEBUG
+    fprintf(stdout,"CaumeDSE Debug: cmeReprotectDBSaltedValue(), re-protected valueLen=%d from %s to %s.\n",
+            valueLen,sourceEncAlg,targetEncAlg);
+#endif
+    cmeReprotectDBSaltedValueFree();
+    return (0);
+}
+
 int cmeGetProtectDBLookupValue (const char *columnName, const char *value, const char *orgKey,
                                 char **lookupValue)
 {

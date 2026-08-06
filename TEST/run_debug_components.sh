@@ -585,6 +585,27 @@ check_herradurakex_independent_component() {
         'TESTS: testHerraduraIndependent(), PASS: HFSCX-256-DS known-answer vector matches.'
 }
 
+check_key_rotation_component() {
+    local source="$1"
+
+    check_component key_rotation_reprotect 'testCryptoReprotectDBValue|re-protect' "$source" \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rotates key with AES profile.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value dry-run re-protect reports plaintext length without writing.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rejects wrong source key.'
+}
+
+check_key_rotation_herradurakex_component() {
+    local source="$1"
+
+    if [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+        record_skip key_rotation_herradurakex "HerraduraKEx provider not requested"
+        return 0
+    fi
+    check_component key_rotation_herradurakex 'testCryptoReprotectDBValue|Herradura.*re-protect' "$source" \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect migrates AES to Herradura profile.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rolls Herradura back to AES profile.'
+}
+
 check_live_herradurakex_storage_at_rest() {
     local protocol="$1"
     local storage_path="$2"
@@ -1722,6 +1743,8 @@ check_component crypto_streaming '---ctSize|---etSize|Decrypted text|Unprotected
 
 check_herradurakex_component "$FULL_LOG"
 check_herradurakex_independent_component "$FULL_LOG"
+check_key_rotation_component "$FULL_LOG"
+check_key_rotation_herradurakex_component "$FULL_LOG"
 
 check_component digest 'HASH parameters|HASH digest Size|HASH digest with integrated function|StrToB64|B64ToStr' "$FULL_LOG" \
     '--- HASH digest Size (bytes): 32' \

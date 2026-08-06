@@ -92,6 +92,12 @@ int cmeProtectDBSaltedValue (const char *value, char **protectedValue, const cha
 // Function to unprotect+unsalt (decodify B64, unencrypt and remove salt from value) a salt+protected text string.
 int cmeUnprotectDBSaltedValue (const char *protectedValue, char **value, const char *encAlg, char **salt,
                                const char *orgKey, int *valueLen);
+// Function to strictly unprotect+reprotect one salted DB value for explicit key/profile rotation workflows.
+int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedValue,
+                               const char *sourceEncAlg, const char *targetEncAlg,
+                               char **sourceSalt, char **targetSalt,
+                               const char *sourceOrgKey, const char *targetOrgKey,
+                               int *reprotectedValueLen, int dryRun);
 // Function to compute deterministic keyed lookup values for selected protected exact-match columns.
 int cmeGetProtectDBLookupValue (const char *columnName, const char *value, const char *orgKey,
                                 char **lookupValue);

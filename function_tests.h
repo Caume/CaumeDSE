@@ -47,6 +47,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 //Test functions for the rest of the engine functions
 void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut);
+void testCryptoReprotectDBValue(void);
 void testHerraduraIndependent(void);
 void testCryptoSymmetricGCM();
 void testCryptoSymmetricGCM_ByteString();
