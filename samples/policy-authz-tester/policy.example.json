@@ -1,0 +1,56 @@
+{
+  "policySchemaVersion": 1,
+  "name": "agent-readonly-csv-policy",
+  "subject": {
+    "organization": "PolicyTrialOrg",
+    "user": "PolicyTrialUser"
+  },
+  "resources": {
+    "storage": "PolicyTrialStorage",
+    "document": "policy-small.csv",
+    "documentType": "file.csv"
+  },
+  "roles": [
+    {
+      "resource": "documents",
+      "allowMethods": ["GET", "HEAD", "OPTIONS"]
+    }
+  ],
+  "filterWhitelist": [
+    {
+      "user": "PolicyTrialUser",
+      "resourcePattern": "policy-small\\.csv",
+      "allowMethods": ["GET", "HEAD", "OPTIONS"]
+    }
+  ],
+  "filterBlacklist": [
+    {
+      "user": "PolicyTrialUser",
+      "resourcePattern": "policy-small\\.csv",
+      "denyMethods": ["POST", "PUT", "DELETE"]
+    }
+  ],
+  "rules": [
+    {
+      "name": "allow_document_schema",
+      "method": "GET",
+      "route": "/organizations/PolicyTrialOrg/storage/PolicyTrialStorage/documentTypes/file.csv/documents/policy-small.csv/schema",
+      "decision": "allow",
+      "expectedStatus": 200
+    },
+    {
+      "name": "deny_document_delete",
+      "method": "DELETE",
+      "route": "/organizations/PolicyTrialOrg/storage/PolicyTrialStorage/documentTypes/file.csv/documents/policy-small.csv",
+      "decision": "deny",
+      "expectedStatus": 403
+    },
+    {
+      "name": "deny_blacklisted_post",
+      "method": "POST",
+      "route": "/organizations/PolicyTrialOrg/storage/PolicyTrialStorage/documentTypes/file.csv/documents/policy-small.csv",
+      "decision": "deny",
+      "expectedStatus": 403
+    }
+  ]
+}

@@ -448,6 +448,69 @@ run_audit_dashboard_self_test() {
     return 1
 }
 
+run_mcp_write_guard_self_test() {
+    local log="$LOG_ROOT/mcp_write_guard_self_test.log"
+    local start
+    local rc
+
+    note "RUN  mcp_write_guard_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/mcp-server/caumedse_mcp_server.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS MCP write guard self-test" "$log"; then
+        record_pass "mcp_write_guard_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail mcp_write_guard_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
+run_policy_authz_tester_self_test() {
+    local log="$LOG_ROOT/policy_authz_tester_self_test.log"
+    local start
+    local rc
+
+    note "RUN  policy_authz_tester_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/policy-authz-tester/policy_authz_tester.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS policy authz tester self-test" "$log"; then
+        record_pass "policy_authz_tester_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail policy_authz_tester_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
+run_backup_restore_self_test() {
+    local log="$LOG_ROOT/backup_restore_self_test.log"
+    local start
+    local rc
+
+    note "RUN  backup_restore_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/encrypted-backup-restore/cdse_backup_restore.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS encrypted backup restore self-test" "$log"; then
+        record_pass "backup_restore_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail backup_restore_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
 protocol_enabled() {
     local protocol="$1"
 
@@ -470,6 +533,76 @@ valid_tcp_port() {
             ;;
     esac
     [ "$port" -gt 0 ] && [ "$port" -le 65535 ]
+}
+
+run_webservice_preflight_self_test() {
+    local log="$LOG_ROOT/webservice-preflight-self-test.log"
+
+    : > "$log"
+    if valid_tcp_port 1 && valid_tcp_port 65535 &&
+       ! valid_tcp_port 0 && ! valid_tcp_port 65536 && ! valid_tcp_port abc; then
+        printf 'PASS valid_tcp_port boundary checks\n' > "$log"
+        record_pass webservice_preflight_self_test
+    else
+        printf 'FAIL valid_tcp_port boundary checks\n' > "$log"
+        record_fail webservice_preflight_self_test "log=$log"
+    fi
+}
+
+write_webservice_startup_preflight() {
+    local log="$LOG_ROOT/webservice-startup-preflight.log"
+    local protocol
+    local port
+    local file
+    local size
+
+    {
+        printf 'CaumeDSE webservice startup preflight\n'
+        printf 'root=%s\n' "$ROOT_DIR"
+        printf 'prefix=%s\n' "$PREFIX"
+        printf 'web_protocol=%s skip_web=%s live_only=%s\n' "$WEB_PROTOCOL" "$SKIP_WEB" "$LIVE_ONLY"
+        printf 'http_port=%s https_port=%s run_timeout=%s\n' "$HTTP_PORT" "$HTTPS_PORT" "$RUN_TIMEOUT"
+        printf 'curl=%s\n' "$(command -v curl 2>/dev/null || printf '<missing>')"
+        if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libmicrohttpd 2>/dev/null; then
+            printf 'libmicrohttpd=%s\n' "$(pkg-config --modversion libmicrohttpd 2>/dev/null)"
+        elif command -v microhttpd-config >/dev/null 2>&1; then
+            printf 'libmicrohttpd=%s\n' "$(microhttpd-config --version 2>/dev/null)"
+        else
+            printf 'libmicrohttpd=<version-unavailable>\n'
+        fi
+        for protocol in http https; do
+            if protocol_enabled "$protocol"; then
+                if [ "$protocol" = "http" ]; then
+                    port="$HTTP_PORT"
+                else
+                    port="$HTTPS_PORT"
+                fi
+                if valid_tcp_port "$port"; then
+                    printf '%s_port_valid=yes port=%s\n' "$protocol" "$port"
+                else
+                    printf '%s_port_valid=no port=%s\n' "$protocol" "$port"
+                fi
+                if command -v ss >/dev/null 2>&1; then
+                    printf '%s_port_listeners:\n' "$protocol"
+                    ss -ltnp 2>/dev/null | awk -v port="$port" '$4 ~ ":" port "$" { print $0 }'
+                else
+                    printf '%s_port_listeners=<ss-unavailable>\n' "$protocol"
+                fi
+            fi
+        done
+        if protocol_enabled https; then
+            for file in "$PREFIX/cdse/server.key" "$PREFIX/cdse/server.pem" "$PREFIX/cdse/ca.pem"; do
+                if [ -r "$file" ]; then
+                    size="$(wc -c < "$file" 2>/dev/null || printf '0')"
+                    printf 'certificate_file readable=yes bytes=%s path=%s\n' "$size" "$file"
+                else
+                    printf 'certificate_file readable=no bytes=0 path=%s\n' "$file"
+                fi
+            done
+        fi
+    } > "$log" 2>&1
+    redact_file_in_place "$log"
+    record_pass "webservice_startup_preflight log=$log"
 }
 
 check_required() {
@@ -583,6 +716,28 @@ check_herradurakex_independent_component() {
         'TESTS: testHerraduraIndependent(), PASS: HSKE direct APIs reject mutated auth inputs and wrong profile selection.' \
         'TESTS: testHerraduraIndependent(), PASS: HFSCX-256 known-answer vector matches.' \
         'TESTS: testHerraduraIndependent(), PASS: HFSCX-256-DS known-answer vector matches.'
+}
+
+check_key_rotation_component() {
+    local source="$1"
+
+    check_component key_rotation_reprotect 'testCryptoReprotectDBValue|re-protect' "$source" \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rotates key with AES profile.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value dry-run re-protect reports plaintext length without writing.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rejects wrong source key.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB re-protect inventory reports AES protected row scope.'
+}
+
+check_key_rotation_herradurakex_component() {
+    local source="$1"
+
+    if [ -z "$VERIFY_HERRADURAKEX_DIR" ]; then
+        record_skip key_rotation_herradurakex "HerraduraKEx provider not requested"
+        return 0
+    fi
+    check_component key_rotation_herradurakex 'testCryptoReprotectDBValue|Herradura.*re-protect' "$source" \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect migrates AES to Herradura profile.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rolls Herradura back to AES profile.'
 }
 
 check_live_herradurakex_storage_at_rest() {
@@ -1629,6 +1784,7 @@ else
 fi
 
 if [ "$SKIP_WEB" -eq 0 ]; then
+    write_webservice_startup_preflight
     if protocol_enabled http && ! valid_tcp_port "$HTTP_PORT"; then
         record_fail webservice_ports "HTTP port '$HTTP_PORT' is not a valid TCP port"
         exit 1
@@ -1655,6 +1811,7 @@ if [ "$SKIP_WEB" -eq 0 ]; then
     fi
 else
     record_skip webservice_ports "requested --skip-web"
+    record_skip webservice_startup_preflight "requested --skip-web"
 fi
 
 if command -v python3 >/dev/null 2>&1; then
@@ -1662,12 +1819,19 @@ if command -v python3 >/dev/null 2>&1; then
     run_agent_rag_connector_self_test
     run_review_workspace_self_test
     run_audit_dashboard_self_test
+    run_mcp_write_guard_self_test
+    run_policy_authz_tester_self_test
+    run_backup_restore_self_test
 else
     record_skip delegated_token_broker_self_test "python3 not available"
     record_skip agent_rag_connector_self_test "python3 not available"
     record_skip review_workspace_self_test "python3 not available"
     record_skip audit_dashboard_self_test "python3 not available"
+    record_skip mcp_write_guard_self_test "python3 not available"
+    record_skip policy_authz_tester_self_test "python3 not available"
+    record_skip backup_restore_self_test "python3 not available"
 fi
+run_webservice_preflight_self_test
 
 FULL_LOG="$LOG_ROOT/full-debug-run.log"
 if [ "$LIVE_ONLY" -eq 0 ]; then
@@ -1722,6 +1886,8 @@ check_component crypto_streaming '---ctSize|---etSize|Decrypted text|Unprotected
 
 check_herradurakex_component "$FULL_LOG"
 check_herradurakex_independent_component "$FULL_LOG"
+check_key_rotation_component "$FULL_LOG"
+check_key_rotation_herradurakex_component "$FULL_LOG"
 
 check_component digest 'HASH parameters|HASH digest Size|HASH digest with integrated function|StrToB64|B64ToStr' "$FULL_LOG" \
     '--- HASH digest Size (bytes): 32' \

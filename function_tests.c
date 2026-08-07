@@ -894,6 +894,166 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
     cmeFree(expectedKeyIv);
 }
 
+void testCryptoReprotectDBValue(void)
+{
+    const char *value="CaumeDSE explicit re-protect test value.";
+    const char *oldKey="OldRotationPassword";
+    const char *newKey="NewRotationPassword";
+    char *sourceSalt=NULL;
+    char *rotatedSalt=NULL;
+    char *dryRunSalt=NULL;
+    char *protectedValue=NULL;
+    char *rotatedValue=NULL;
+    char *readbackValue=NULL;
+    char *wrongKeyValue=NULL;
+    int protectedValueLen=0;
+    int rotatedValueLen=0;
+    int readbackValueLen=0;
+    int dryRunValueLen=0;
+
+    if (!cmeProtectDBSaltedValue(value,&protectedValue,cmeOpenSSLLegacyStorageProfile,
+                                 &sourceSalt,oldKey,&protectedValueLen) &&
+        !cmeReprotectDBSaltedValue(protectedValue,&rotatedValue,cmeOpenSSLLegacyStorageProfile,
+                                   cmeOpenSSLLegacyStorageProfile,&sourceSalt,&rotatedSalt,
+                                   oldKey,newKey,&rotatedValueLen,0) &&
+        rotatedSalt && strcmp(sourceSalt,rotatedSalt) &&
+        !cmeUnprotectDBSaltedValue(rotatedValue,&readbackValue,cmeOpenSSLLegacyStorageProfile,
+                                   &rotatedSalt,newKey,&readbackValueLen) &&
+        readbackValueLen==(int)strlen(value) && !strcmp(value,readbackValue))
+    {
+        printf("TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rotates key with AES profile.\n");
+    }
+    else
+    {
+        printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB value AES key rotation failed.\n");
+    }
+    cmeFree(readbackValue);
+    readbackValue=NULL;
+    readbackValueLen=0;
+
+    if (!cmeReprotectDBSaltedValue(protectedValue,NULL,cmeOpenSSLLegacyStorageProfile,
+                                   cmeOpenSSLLegacyStorageProfile,&sourceSalt,&dryRunSalt,
+                                   oldKey,newKey,&dryRunValueLen,1) &&
+        dryRunValueLen==(int)strlen(value) && dryRunSalt==NULL)
+    {
+        printf("TESTS: testCryptoReprotectDBValue(), PASS: DB value dry-run re-protect reports plaintext length without writing.\n");
+    }
+    else
+    {
+        printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB value dry-run re-protect failed.\n");
+    }
+
+    if (cmeReprotectDBSaltedValue(protectedValue,&wrongKeyValue,cmeOpenSSLLegacyStorageProfile,
+                                  cmeOpenSSLLegacyStorageProfile,&sourceSalt,&dryRunSalt,
+                                  "WrongRotationPassword",newKey,&rotatedValueLen,0))
+    {
+        printf("TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rejects wrong source key.\n");
+    }
+    else
+    {
+        printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB value re-protect accepted wrong source key.\n");
+    }
+    cmeFree(wrongKeyValue);
+    wrongKeyValue=NULL;
+
+    if (cmeUseHerraduraKEx)
+    {
+        char *hkxSalt=NULL;
+        char *hkxValue=NULL;
+        char *hkxReadback=NULL;
+        char *rollbackSalt=NULL;
+        char *rollbackValue=NULL;
+        char *rollbackReadback=NULL;
+        int hkxValueLen=0;
+        int hkxReadbackLen=0;
+        int rollbackValueLen=0;
+        int rollbackReadbackLen=0;
+
+        if (!cmeReprotectDBSaltedValue(protectedValue,&hkxValue,cmeOpenSSLLegacyStorageProfile,
+                                       cmeHerraduraKExProfileHSKENLA1AEAD256,&sourceSalt,&hkxSalt,
+                                       oldKey,newKey,&hkxValueLen,0) &&
+            !cmeUnprotectDBSaltedValue(hkxValue,&hkxReadback,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                       &hkxSalt,newKey,&hkxReadbackLen) &&
+            hkxReadbackLen==(int)strlen(value) && !strcmp(value,hkxReadback))
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect migrates AES to Herradura profile.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB value AES to Herradura re-protect failed.\n");
+        }
+        if (hkxValue &&
+            !cmeReprotectDBSaltedValue(hkxValue,&rollbackValue,cmeHerraduraKExProfileHSKENLA1AEAD256,
+                                       cmeOpenSSLLegacyStorageProfile,&hkxSalt,&rollbackSalt,
+                                       newKey,oldKey,&rollbackValueLen,0) &&
+            !cmeUnprotectDBSaltedValue(rollbackValue,&rollbackReadback,cmeOpenSSLLegacyStorageProfile,
+                                       &rollbackSalt,oldKey,&rollbackReadbackLen) &&
+            rollbackReadbackLen==(int)strlen(value) && !strcmp(value,rollbackReadback))
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rolls Herradura back to AES profile.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB value Herradura rollback re-protect failed.\n");
+        }
+        cmeFree(hkxSalt);
+        cmeFree(hkxValue);
+        cmeFree(hkxReadback);
+        cmeFree(rollbackSalt);
+        cmeFree(rollbackValue);
+        cmeFree(rollbackReadback);
+    }
+    else
+    {
+        printf("TESTS: testCryptoReprotectDBValue(), SKIP: HerraduraKEx provider is not compiled in.\n");
+    }
+
+    cmeFree(sourceSalt);
+    cmeFree(rotatedSalt);
+    cmeFree(dryRunSalt);
+    cmeFree(protectedValue);
+    cmeFree(rotatedValue);
+    cmeFree(readbackValue);
+
+    {
+        sqlite3 *memDB=NULL;
+        cmeReprotectDBInventory inventory;
+        int inventoryOK=0;
+
+        memset(&inventory,0,sizeof(inventory));
+        if (!sqlite3_open(":memory:",&memDB) &&
+            !cmeSQLRows(memDB,
+                        "BEGIN TRANSACTION;"
+                        "CREATE TABLE data (id INTEGER PRIMARY KEY,userId TEXT,orgId TEXT,salt TEXT,value TEXT,rowOrder TEXT,MAC TEXT,sign TEXT,MACProtected TEXT,signProtected TEXT,otphDKey TEXT);"
+                        "CREATE TABLE meta (id INTEGER PRIMARY KEY,userId TEXT,orgId TEXT,salt TEXT,attribute TEXT,attributeData TEXT);"
+                        "INSERT INTO data VALUES (1,'userA','orgA','','alpha','1','','','','','');"
+                        "INSERT INTO data VALUES (2,'userA','orgA','','beta','2','','','','','');"
+                        "INSERT INTO meta VALUES (1,'userA','orgA','','protect','aes-256-gcm');"
+                        "COMMIT;",NULL,NULL) &&
+            !cmeMemSecureDBProtect(memDB,oldKey) &&
+            !cmeInventoryMemSecureDBReprotect(memDB,oldKey,cmeOpenSSLLegacyStorageProfile,&inventory) &&
+            inventory.dataRows==2 && inventory.metaRows==1 && inventory.protectMetaRows==1 &&
+            inventory.protectedValueRows==2 && inventory.targetProfileRows==1 &&
+            inventory.legacyAESValueRows==2 && inventory.herraduraValueRows==0 &&
+            !strcmp(inventory.sourceProfile,cmeOpenSSLLegacyStorageProfile))
+        {
+            inventoryOK=1;
+        }
+        if (inventoryOK)
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), PASS: DB re-protect inventory reports AES protected row scope.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB re-protect inventory failed AES protected row scope.\n");
+        }
+        if (memDB)
+        {
+            sqlite3_close(memDB);
+        }
+    }
+}
+
 void testCryptoSymmetricGCM()
 {
     const unsigned char cleartext[] = "This is cleartext for GCM.";

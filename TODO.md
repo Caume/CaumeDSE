@@ -895,3 +895,72 @@
     has a separate `herradurakex_independent` component that skips without a
     requested Herradura provider and fails Herradura-enabled runs on vector/API
     drift.
+
+- [ ] #102 Add an explicit key rotation and re-protect service.
+  - Source: `crypto.c`, `db.c`, `engine_interface.c`, `webservice_interface.c`, ResourcesDB/ColumnFile DB metadata, `README.md`, `TUTORIAL.md`, and `TEST/run_debug_components.sh`.
+  - Goal: let operators rotate organization keys or migrate selected protected values between storage profiles, including AES-to-Herradura transitions, without automatic background migration.
+  - Plan:
+    - Define an explicit re-protect command/API workflow that requires current key material, new key material, target storage profile, and an operator-confirmed scope.
+    - Support dry-run inventory reporting for affected organizations, storage resources, documents, tables, row counts, profile ids, and legacy unframed AES values.
+    - Re-encrypt values through existing protect/unprotect wrappers so profile metadata, salts, `CDSEHKX1` frames, and legacy AES fallback behavior stay consistent.
+    - Preserve rollback expectations by allowing staged migration and mixed AES/Herradura data until the operator commits the final scope.
+    - Add failure-safe journaling or resumable checkpoints so interrupted migrations do not leave ambiguous key/profile state.
+    - Add DEBUG and live verifier coverage for key rotation, profile migration, wrong-key rejection, partial-scope migration, dry-run output, and rollback/readback behavior.
+  - Batch 1: added `cmeReprotectDBSaltedValue()` as a strict per-value re-protect primitive for explicit workflows, including dry-run length reporting, source-key rejection, target profile selection, new salt generation, AES key rotation, and AES/Herradura migration/rollback DEBUG component markers when the provider is enabled.
+  - Batch 2: added `cmeInventoryMemSecureDBReprotect()` for read-only column-file dry-run inventory, reporting meta/data row counts, protect metadata rows, protected value scope, source/target profiles, and legacy AES versus Herradura-framed protected values without mutating the DB.
+
+- [ ] #103 Harden verifier web startup diagnostics and reliability.
+  - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
+  - Goal: make HTTP/HTTPS verifier startup failures actionable and reduce false failures when local ports, daemon flags, certificates, or environment limits prevent `MHD_start_daemon()` from starting.
+  - Plan:
+    - Add preflight diagnostics for selected HTTP/HTTPS ports, bind address, process ownership, certificate/key/CA readability, libmicrohttpd version, and relevant daemon flags.
+    - Improve `cmeWebServiceSetup()` error reporting with errno-adjacent context where available and distinct diagnostics for HTTP, HTTPS, certificate loading, signal-handler setup, and daemon startup.
+    - Add fallback or configurable alternate port selection for verifier runs when the default ports are unavailable.
+    - Capture startup diagnostics into dedicated verifier logs and include concise failure hints in `summary.txt`.
+    - Add DEBUG component tests for expected startup failure redaction and verifier self-tests for port validation, timeout behavior, and skipped live-flow handling.
+  - Batch 1: added webservice preflight self-tests for TCP port validation, a dedicated `webservice-startup-preflight.log` with selected protocol/ports, curl/libmicrohttpd availability, listener diagnostics, and certificate readability/size checks, plus richer `cmeWebServiceSetup()` HTTP/HTTPS daemon-start failure diagnostics with daemon flags, thread limits, connection limits, and errno context.
+
+- [ ] #104 Add a guarded write-capable MCP service sample.
+  - Source: `samples/mcp-server/`, `samples/delegated-token-broker/`, `AI_USAGE.md`, `openapi.yaml`, live verifier routes, and delegated-token patterns.
+  - Goal: provide an MCP sample that can perform controlled writes while keeping organization keys out of model context and requiring explicit guardrails for mutations.
+  - Plan:
+    - Keep read-only MCP tools as the default and expose write tools only behind `CDSE_MCP_ENABLE_WRITE_TOOLS=1` plus delegated-token configuration.
+    - Add guarded tools for CSV upload, parser candidate upload, parser preview, reviewed metadata update, narrow document deletion, and cleanup of disposable resources.
+    - Require explicit tool arguments for organization, storage, document, user, scope, expected status, and idempotency key; reject broad or implicit writes.
+    - Integrate with the delegated-token broker sample so MCP clients never receive raw `orgKey` or `newOrgKey`.
+    - Add dry-run output, redacted audit correlation, and clear refusal messages for unsafe parser execution or broad data mutation.
+    - Add sample README guidance and verifier self-tests that prove write tools are hidden by default and guarded when enabled.
+  - Batch 1: tightened the MCP sample so write tools require both `CDSE_MCP_ENABLE_WRITE_TOOLS=1` and `CDSE_MCP_DELEGATED_TOKEN`, added per-call guard fields for exact organization/storage/user/scope, expected status, idempotency key, confirmation, and dry-run mode, documented the write boundary, and added an offline verifier self-test for hidden/default write tools and broad-scope rejection.
+
+- [ ] #105 Add a policy-as-code authorization tester.
+  - Source: roleTables, filterWhitelist/filterBlacklist handlers, `TEST/run_debug_components.sh`, `samples/`, `AI_USAGE.md`, and `API_EXAMPLES.md`.
+  - Goal: let operators and AI-assisted workflows declare intended access policy and verify that CaumeDSE role/filter resources enforce it before deployment.
+  - Plan:
+    - Define a simple JSON or YAML policy format for users, roles, allowed routes, denied routes, methods, storage/document scopes, and expected status codes.
+    - Build a CLI/sample runner that creates disposable organizations and resources, applies roleTables and whitelist/blacklist filters, and executes expected allow/deny probes.
+    - Emit a redacted report that maps each policy rule to observed HTTP status, request id, route, and relevant audit category.
+    - Add negative cases for overbroad roles, missing filters, conflicting whitelist/blacklist rows, unsupported methods, and cleanup failures.
+    - Add documentation for AI-generated policy review, including prompt-boundary rules and human approval before applying generated policies to real deployments.
+  - Batch 1: added `samples/policy-authz-tester/` with a JSON policy format, setup-plan rendering for roleTables/filterWhitelist/filterBlacklist intent, offline observed-status evaluation, redacted `safeForAgent` reports, documentation, and a verifier self-test for validation, mismatch detection, and secret redaction.
+
+- [x] #106 Add an encrypted backup and restore utility.
+  - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
+  - Goal: provide a portable, integrity-checked backup/restore workflow for CaumeDSE data directories and metadata, including mixed AES/Herradura protected data.
+  - Plan:
+    - Define a backup manifest containing schema version, file list, sizes, hashes, storage profile metadata, creation time, and redacted organization/storage identifiers.
+    - Encrypt backup payloads with the configured storage crypto profile while keeping key handling outside model-visible logs and command lines.
+    - Support restore into a fresh prefix with dry-run validation, manifest verification, profile compatibility checks, and explicit overwrite controls.
+    - Preserve mixed AES/Herradura data without rewriting protected values unless the operator separately invokes the re-protect workflow.
+    - Add verifier coverage for backup creation, tamper detection, wrong-key rejection, restore readback, redaction, and cleanup of temporary archive material.
+  - Batch 1: added `samples/encrypted-backup-restore/` with a portable manifest utility that inventories CaumeDSE data directories, records file sizes/SHA-256 hashes/classification, redacts identifier-like labels and paths, verifies tamper/missing-file status, renders dry-run restore plans, documents the workflow, and adds an offline verifier self-test.
+  - Batch 2: finished the sample workflow with encrypted backup packages, OpenSSL/PBKDF2 payload encryption with passphrases read from environment or key files, outer HMAC-SHA256 authentication for wrong-key/tamper rejection, restore execution into fresh prefixes with overwrite gates, expected-profile compatibility checks, byte-preserving restore of mixed AES/Herradura data, README operator examples, and expanded offline self-test coverage for backup creation, wrong-key rejection, tamper detection, restore readback, and temporary archive cleanup.
+
+- [ ] #107 Add an operational health and readiness service.
+  - Source: `engine_admin.c`, `webservice_interface.c`, `config.c`, `runtime.c`, parser policy configuration, storage path checks, TLS/auth configuration, and `AI_USAGE.md`.
+  - Goal: expose a safe readiness view for operators and automation without leaking secrets or protected data.
+  - Plan:
+    - Add a CLI command or authenticated endpoint that reports database accessibility, configured storage crypto profile, Herradura build availability, parser policy, temp-directory safety, TLS-auth state, build mode, storage path readability/writability, and verifier-relevant limits.
+    - Redact secret values and avoid returning organization keys, certificate private keys, access passwords, OAuth secrets, or document contents.
+    - Include machine-readable JSON output for monitoring and AI-agent preflight checks, plus concise human-readable output for operators.
+    - Return distinct status codes or readiness states for healthy, degraded, misconfigured, and unsafe DEBUG-only configurations.
+    - Add DEBUG and live verifier coverage for healthy readiness, missing storage path, unsafe parser temp directory, Herradura-disabled profile requests, and redacted output.

@@ -106,6 +106,7 @@ int main(int argc, char *argv[], char *env[])
     testCryptoSymmetricGCM_ByteString();
     testEngMgmnt();
     testCryptoSymmetric(bufIn,bufOut);
+    testCryptoReprotectDBValue();
     testHerraduraIndependent();
     testCryptoDigest_Str(bufIn);
     testCryptoHMAC();
