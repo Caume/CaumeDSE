@@ -943,7 +943,7 @@
     - Add documentation for AI-generated policy review, including prompt-boundary rules and human approval before applying generated policies to real deployments.
   - Batch 1: added `samples/policy-authz-tester/` with a JSON policy format, setup-plan rendering for roleTables/filterWhitelist/filterBlacklist intent, offline observed-status evaluation, redacted `safeForAgent` reports, documentation, and a verifier self-test for validation, mismatch detection, and secret redaction.
 
-- [ ] #106 Add an encrypted backup and restore utility.
+- [x] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
   - Goal: provide a portable, integrity-checked backup/restore workflow for CaumeDSE data directories and metadata, including mixed AES/Herradura protected data.
   - Plan:
@@ -953,6 +953,7 @@
     - Preserve mixed AES/Herradura data without rewriting protected values unless the operator separately invokes the re-protect workflow.
     - Add verifier coverage for backup creation, tamper detection, wrong-key rejection, restore readback, redaction, and cleanup of temporary archive material.
   - Batch 1: added `samples/encrypted-backup-restore/` with a portable manifest utility that inventories CaumeDSE data directories, records file sizes/SHA-256 hashes/classification, redacts identifier-like labels and paths, verifies tamper/missing-file status, renders dry-run restore plans, documents the workflow, and adds an offline verifier self-test.
+  - Batch 2: finished the sample workflow with encrypted backup packages, OpenSSL/PBKDF2 payload encryption with passphrases read from environment or key files, outer HMAC-SHA256 authentication for wrong-key/tamper rejection, restore execution into fresh prefixes with overwrite gates, expected-profile compatibility checks, byte-preserving restore of mixed AES/Herradura data, README operator examples, and expanded offline self-test coverage for backup creation, wrong-key rejection, tamper detection, restore readback, and temporary archive cleanup.
 
 - [ ] #107 Add an operational health and readiness service.
   - Source: `engine_admin.c`, `webservice_interface.c`, `config.c`, `runtime.c`, parser policy configuration, storage path checks, TLS/auth configuration, and `AI_USAGE.md`.
