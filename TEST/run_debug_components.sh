@@ -251,6 +251,10 @@ record_fail() {
     note "FAIL $1 - $2"
 }
 
+record_hint() {
+    note "HINT $1 - $2"
+}
+
 record_skip() {
     SKIPPED=$((SKIPPED + 1))
     note "SKIP $1 - $2"
@@ -1601,6 +1605,7 @@ run_live_web_flow() {
         stop_live_service "$service_pid"
         redact_file_in_place "$service_log"
         record_fail "live_${protocol}_api_flow" "service did not start log=$service_log"
+        record_hint "live_${protocol}_api_flow" "check webservice-startup-preflight.log, selected ${protocol} port $port, auto_ports=$VERIFY_AUTO_PORTS, and service log errno diagnostics"
         return 1
     fi
 
@@ -1865,31 +1870,38 @@ fi
 if [ "$SKIP_WEB" -eq 0 ]; then
     if ! resolve_webservice_ports; then
         record_fail webservice_ports "could not select alternate webservice ports from HTTP=$HTTP_PORT HTTPS=$HTTPS_PORT search_limit=$VERIFY_PORT_SEARCH_LIMIT"
+        record_hint webservice_ports "increase CDSE_VERIFY_PORT_SEARCH_LIMIT, set explicit CDSE_DEBUG_TEST_HTTP_PORT/CDSE_DEBUG_TEST_HTTPS_PORT, or free occupied local ports"
         exit 1
     fi
     write_webservice_startup_preflight
     if protocol_enabled http && ! valid_tcp_port "$HTTP_PORT"; then
         record_fail webservice_ports "HTTP port '$HTTP_PORT' is not a valid TCP port"
+        record_hint webservice_ports "set CDSE_DEBUG_TEST_HTTP_PORT to an integer between 1 and 65535"
         exit 1
     fi
     if protocol_enabled https && ! valid_tcp_port "$HTTPS_PORT"; then
         record_fail webservice_ports "HTTPS port '$HTTPS_PORT' is not a valid TCP port"
+        record_hint webservice_ports "set CDSE_DEBUG_TEST_HTTPS_PORT to an integer between 1 and 65535"
         exit 1
     fi
     if [ "$WEB_PROTOCOL" = "both" ] && [ "$HTTP_PORT" -eq "$HTTPS_PORT" ]; then
         record_fail webservice_ports "HTTP and HTTPS ports must be different"
+        record_hint webservice_ports "set different CDSE_DEBUG_TEST_HTTP_PORT and CDSE_DEBUG_TEST_HTTPS_PORT values"
         exit 1
     fi
     if protocol_enabled http && port_in_use "$HTTP_PORT"; then
         record_fail webservice_ports "HTTP port $HTTP_PORT is already in use"
+        record_hint webservice_ports "explicit HTTP port is occupied; unset CDSE_DEBUG_TEST_HTTP_PORT to allow auto fallback or choose another port"
         exit 1
     fi
     if protocol_enabled https && port_in_use "$HTTPS_PORT"; then
         record_fail webservice_ports "HTTPS port $HTTPS_PORT is already in use"
+        record_hint webservice_ports "explicit HTTPS port is occupied; unset CDSE_DEBUG_TEST_HTTPS_PORT to allow auto fallback or choose another port"
         exit 1
     fi
     if ! command -v curl >/dev/null 2>&1; then
         record_fail live_web_api_prerequisites "curl is required for live HTTP(S) API flow checks"
+        record_hint live_web_api_prerequisites "install curl or run with --skip-web when live API checks are not required"
         exit 1
     fi
 else

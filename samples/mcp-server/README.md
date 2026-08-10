@@ -66,6 +66,8 @@ export CDSE_MCP_STORAGE="McpTrialStorage"
 export CDSE_MCP_STORAGE_PATH="/tmp/caumedse-mcp-storage"
 export CDSE_MCP_ORG_KEY="$(openssl rand -hex 32)"
 export CDSE_MCP_DELEGATED_TOKEN="broker-minted-token-for-this-agent-session"
+# Optional: verify broker-style delegated tokens locally before writes.
+export CDSE_MCP_DELEGATED_TOKEN_SECRET="broker-signing-secret"
 ```
 
 For HTTPS, add the CA and client certificate paths used by the test service:
@@ -140,8 +142,11 @@ A typical local flow is:
   server so each tool call is authorized by a short-lived scoped token before
   the server forwards broker-held CaumeDSE credentials.
 - Write tools stay hidden unless both write-tool opt-in and delegated-token
-  configuration are present. Even then, each call must include the exact guard
-  fields, and `dry_run=true` should be used before every mutation.
+  configuration are present. When `CDSE_MCP_DELEGATED_TOKEN_SECRET` is set, the
+  server verifies the broker-style token signature, expiry, CaumeDSE
+  organization/user binding, and exact write scope before each mutation. Even
+  then, each call must include the exact guard fields, and `dry_run=true`
+  should be used before every mutation.
 - Do not expose this prototype directly to untrusted clients. Put any
   production MCP bridge behind authentication, authorization, audit logging,
   rate limits, and route-level allow lists.

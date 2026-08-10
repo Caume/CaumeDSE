@@ -909,6 +909,7 @@
   - Batch 1: added `cmeReprotectDBSaltedValue()` as a strict per-value re-protect primitive for explicit workflows, including dry-run length reporting, source-key rejection, target profile selection, new salt generation, AES key rotation, and AES/Herradura migration/rollback DEBUG component markers when the provider is enabled.
   - Batch 2: added `cmeInventoryMemSecureDBReprotect()` for read-only column-file dry-run inventory, reporting meta/data row counts, protect metadata rows, protected value scope, source/target profiles, and legacy AES versus Herradura-framed protected values without mutating the DB.
   - Batch 3: added `cmeReprotectMemSecureDB()` as an explicit DB-level re-protect service for protected column-file rows, with dry-run reporting, wrong source-key rejection, single-transaction mutation, target-profile metadata update, new row/meta salts, new-key readback coverage, and fail-closed rejection for MAC/sign metadata until the dedicated recomputation workflow is implemented.
+  - Batch 4: documented the operator-held backup/journal/checkpoint workflow for explicit key/profile rotation, including dry-run inventory review, per-ColumnFile checkpoints before mutation/after transaction/after readback, secret-free journal records, mixed AES/Herradura staged migration, and restore-or-old-checkpoint rollback expectations.
 
 - [ ] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
@@ -921,6 +922,7 @@
     - Add DEBUG component tests for expected startup failure redaction and verifier self-tests for port validation, timeout behavior, and skipped live-flow handling.
   - Batch 1: added webservice preflight self-tests for TCP port validation, a dedicated `webservice-startup-preflight.log` with selected protocol/ports, curl/libmicrohttpd availability, listener diagnostics, and certificate readability/size checks, plus richer `cmeWebServiceSetup()` HTTP/HTTPS daemon-start failure diagnostics with daemon flags, thread limits, connection limits, and errno context.
   - Batch 2: added verifier-side automatic alternate-port selection for occupied default HTTP/HTTPS ports, preserving explicit operator-selected ports as fail-fast choices, recording auto-port settings in the preflight log, and extending preflight helper self-tests for environment flag and avoid-port behavior.
+  - Batch 3: added concise `HINT` lines to verifier summaries for web startup, port-selection, invalid-port, occupied-port, and missing-curl failures so operators can jump directly to preflight logs, selected ports, auto-port settings, and errno diagnostics.
 
 - [ ] #104 Add a guarded write-capable MCP service sample.
   - Source: `samples/mcp-server/`, `samples/delegated-token-broker/`, `AI_USAGE.md`, `openapi.yaml`, live verifier routes, and delegated-token patterns.
@@ -934,6 +936,7 @@
     - Add sample README guidance and verifier self-tests that prove write tools are hidden by default and guarded when enabled.
   - Batch 1: tightened the MCP sample so write tools require both `CDSE_MCP_ENABLE_WRITE_TOOLS=1` and `CDSE_MCP_DELEGATED_TOKEN`, added per-call guard fields for exact organization/storage/user/scope, expected status, idempotency key, confirmation, and dry-run mode, documented the write boundary, and added an offline verifier self-test for hidden/default write tools and broad-scope rejection.
   - Batch 2: added guarded `promote_parser_review` and `delete_document` write tools with exact parser-review and document-delete scopes, reviewed metadata dry-run/update plans, request-id audit summaries, document-type limits for narrow deletion, README guidance, and offline self-test coverage for promotion, exact delete, broad delete rejection, and unsupported document-type rejection.
+  - Batch 3: integrated broker-style delegated token verification into the MCP write guard when `CDSE_MCP_DELEGATED_TOKEN_SECRET` is configured, checking HMAC signature, expiry, CaumeDSE organization/user binding, and exact write scope before each mutation, with README guidance and offline self-test coverage for accepted and missing-scope tokens.
 
 - [ ] #105 Add a policy-as-code authorization tester.
   - Source: roleTables, filterWhitelist/filterBlacklist handlers, `TEST/run_debug_components.sh`, `samples/`, `AI_USAGE.md`, and `API_EXAMPLES.md`.

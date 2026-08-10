@@ -9,6 +9,10 @@ run in constrained DEBUG/test environments.
 """
 
 import argparse
+import base64
+import fnmatch
+import hashlib
+import hmac
 import json
 import mimetypes
 import os
@@ -52,6 +56,7 @@ class Config:
         self.client_cert = os.environ.get("CDSE_MCP_CLIENT_CERT")
         self.client_key = os.environ.get("CDSE_MCP_CLIENT_KEY")
         self.delegated_token = os.environ.get("CDSE_MCP_DELEGATED_TOKEN")
+        self.delegated_token_secret = os.environ.get("CDSE_MCP_DELEGATED_TOKEN_SECRET")
         self.write_tools_requested = os.environ.get("CDSE_MCP_ENABLE_WRITE_TOOLS", "").lower() in {"1", "true", "yes", "on"}
         self.enable_write_tools = self.write_tools_requested and bool(self.delegated_token)
 
@@ -102,6 +107,49 @@ def ssl_context(cfg):
 
 def encode_query(params):
     return urllib.parse.urlencode(params, doseq=True, safe="*[]")
+
+
+def b64url_decode(text):
+    padding = "=" * ((4 - len(text) % 4) % 4)
+    return base64.urlsafe_b64decode((text + padding).encode("ascii"))
+
+
+def b64url_encode(data):
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def verify_delegated_token(cfg, required_scope):
+    if not cfg.delegated_token:
+        raise ToolError("Write tools require CDSE_MCP_DELEGATED_TOKEN in the server environment.")
+    if not cfg.delegated_token_secret:
+        return {"verified": False, "reason": "CDSE_MCP_DELEGATED_TOKEN_SECRET not configured"}
+    try:
+        payload, signature = cfg.delegated_token.split(".", 1)
+        expected = b64url_encode(hmac.new(
+            cfg.delegated_token_secret.encode("utf-8"),
+            payload.encode("ascii"),
+            hashlib.sha256,
+        ).digest())
+        if not hmac.compare_digest(signature, expected):
+            raise ToolError("Delegated token signature verification failed.")
+        claims = json.loads(b64url_decode(payload).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ToolError("Delegated token is malformed.") from exc
+    now = int(time.time())
+    if int(claims.get("exp", 0)) <= now:
+        raise ToolError("Delegated token is expired.")
+    cdse = claims.get("cdse", {})
+    if cdse.get("orgId") != cfg.org or cdse.get("userId") != cfg.user:
+        raise ToolError("Delegated token is not bound to the configured organization/user.")
+    scopes = claims.get("scope", [])
+    if not any(fnmatch.fnmatchcase(required_scope, scope) for scope in scopes):
+        raise ToolError(f"Delegated token is missing scope: {required_scope}")
+    return {
+        "verified": True,
+        "subject": claims.get("sub"),
+        "expiresAt": claims.get("exp"),
+        "scope": required_scope,
+    }
 
 
 def build_url(cfg, path, params=None):
@@ -199,6 +247,7 @@ def require_write_guard(cfg, args, action, allowed_statuses, document=None):
         raise ToolError("Write tool guard rejected request: idempotency_key must be at least 12 non-space characters.")
     if args["confirm"] != WRITE_CONFIRMATION:
         raise ToolError(f"Write tool guard rejected request: confirm must be {WRITE_CONFIRMATION}.")
+    token = verify_delegated_token(cfg, scope)
     return {
         "action": action,
         "scope": scope,
@@ -206,6 +255,7 @@ def require_write_guard(cfg, args, action, allowed_statuses, document=None):
         "idempotencyKey": idempotency_key,
         "dryRun": bool(args.get("dry_run")),
         "delegatedTokenConfigured": True,
+        "delegatedToken": token,
     }
 
 
@@ -846,10 +896,29 @@ def scoped_guard_args(cfg, action, document=None, expected_status=201):
     }
 
 
+def self_test_token(cfg, scopes, secret="self-test-secret"):
+    claims = {
+        "iss": "caumedse-delegated-token-broker-sample",
+        "sub": "mcp-self-test-agent",
+        "iat": 1000,
+        "exp": int(time.time()) + 600,
+        "jti": "mcp-self-test-jti",
+        "scope": sorted(set(scopes)),
+        "cdse": {
+            "orgId": cfg.org,
+            "userId": cfg.user,
+        },
+    }
+    payload = b64url_encode(json.dumps(claims, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    signature = b64url_encode(hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).digest())
+    return f"{payload}.{signature}"
+
+
 def self_test():
     saved_env = {key: os.environ.get(key) for key in (
         "CDSE_MCP_ENABLE_WRITE_TOOLS",
         "CDSE_MCP_DELEGATED_TOKEN",
+        "CDSE_MCP_DELEGATED_TOKEN_SECRET",
         "CDSE_MCP_ORG",
         "CDSE_MCP_STORAGE",
         "CDSE_MCP_USER",
@@ -870,6 +939,14 @@ def self_test():
         os.environ["CDSE_MCP_ORG"] = "SelfTestOrg"
         os.environ["CDSE_MCP_STORAGE"] = "SelfTestStorage"
         os.environ["CDSE_MCP_USER"] = "SelfTestUser"
+        cfg = Config()
+        os.environ["CDSE_MCP_DELEGATED_TOKEN_SECRET"] = "self-test-secret"
+        os.environ["CDSE_MCP_DELEGATED_TOKEN"] = self_test_token(cfg, [
+            write_scope("create_workspace", cfg),
+            write_scope("upload_csv", cfg, cfg.csv_doc),
+            write_scope("promote_parser_review", cfg, cfg.pending_parser_doc),
+            write_scope("delete_document", cfg, f"file.csv:{cfg.csv_doc}"),
+        ])
         cfg = Config()
         tools = available_tools(cfg)
         for name in WRITE_TOOLS:
@@ -919,6 +996,14 @@ def self_test():
         try:
             delete_document(cfg, bad_type_args)
             raise AssertionError("unsupported delete document_type was accepted")
+        except ToolError:
+            pass
+
+        os.environ["CDSE_MCP_DELEGATED_TOKEN"] = self_test_token(cfg, ["document:read:*"])
+        cfg = Config()
+        try:
+            create_workspace(cfg, args)
+            raise AssertionError("delegated token missing write scope was accepted")
         except ToolError:
             pass
     finally:
