@@ -942,6 +942,7 @@ void testCryptoReprotectDBValue(void)
     {
         printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB value dry-run re-protect failed.\n");
     }
+    fflush(stdout);
 
     if (cmeReprotectDBSaltedValue(protectedValue,&wrongKeyValue,cmeOpenSSLLegacyStorageProfile,
                                   cmeOpenSSLLegacyStorageProfile,&sourceSalt,&dryRunSalt,
@@ -1018,9 +1019,18 @@ void testCryptoReprotectDBValue(void)
     {
         sqlite3 *memDB=NULL;
         cmeReprotectDBInventory inventory;
+        cmeReprotectDBReport report;
+        char **readbackTable=NULL;
+        int readbackRows=0;
+        int readbackCols=0;
         int inventoryOK=0;
+        int dryRunOK=0;
+        int wrongKeyOK=0;
+        int rotationOK=0;
+        int readbackOK=0;
 
         memset(&inventory,0,sizeof(inventory));
+        memset(&report,0,sizeof(report));
         if (!sqlite3_open(":memory:",&memDB) &&
             !cmeSQLRows(memDB,
                         "BEGIN TRANSACTION;"
@@ -1039,6 +1049,41 @@ void testCryptoReprotectDBValue(void)
         {
             inventoryOK=1;
         }
+        if (inventoryOK &&
+            !cmeReprotectMemSecureDB(memDB,oldKey,newKey,cmeOpenSSLLegacyStorageProfile,&report,1) &&
+            report.dryRun==1 && report.dataRowsReprotected==2 && report.metaRowsReprotected==1 &&
+            report.before.protectedValueRows==2)
+        {
+            dryRunOK=1;
+        }
+        memset(&report,0,sizeof(report));
+        if (inventoryOK &&
+            cmeReprotectMemSecureDB(memDB,"WrongRotationPassword",newKey,
+                                    cmeOpenSSLLegacyStorageProfile,&report,0))
+        {
+            wrongKeyOK=1;
+        }
+        memset(&report,0,sizeof(report));
+        if (inventoryOK &&
+            !cmeReprotectMemSecureDB(memDB,oldKey,newKey,cmeOpenSSLLegacyStorageProfile,&report,0) &&
+            report.dryRun==0 && report.dataRowsReprotected==2 && report.metaRowsReprotected==1 &&
+            report.after.protectedValueRows==2 && report.after.targetProfileRows==1 &&
+            report.after.legacyAESValueRows==2)
+        {
+            rotationOK=1;
+        }
+        if (rotationOK &&
+            !cmeMemSecureDBUnprotect(memDB,newKey) &&
+            !cmeMemTable(memDB,"SELECT value,userId,orgId FROM data ORDER BY id;",
+                         &readbackTable,&readbackRows,&readbackCols) &&
+            readbackRows==2 && readbackCols==3 &&
+            !strcmp(readbackTable[readbackCols],"alpha") &&
+            !strcmp(readbackTable[readbackCols+1],"userA") &&
+            !strcmp(readbackTable[(2*readbackCols)],"beta") &&
+            !strcmp(readbackTable[(2*readbackCols)+2],"orgA"))
+        {
+            readbackOK=1;
+        }
         if (inventoryOK)
         {
             printf("TESTS: testCryptoReprotectDBValue(), PASS: DB re-protect inventory reports AES protected row scope.\n");
@@ -1046,6 +1091,34 @@ void testCryptoReprotectDBValue(void)
         else
         {
             printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB re-protect inventory failed AES protected row scope.\n");
+        }
+        if (dryRunOK)
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), PASS: DB-level re-protect dry-run reports row scope without mutation.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB-level re-protect dry-run failed.\n");
+        }
+        if (wrongKeyOK)
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), PASS: DB-level re-protect rejects wrong source key.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB-level re-protect accepted wrong source key.\n");
+        }
+        if (rotationOK && readbackOK)
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), PASS: DB-level re-protect rotates protected rows and reads back with new key.\n");
+        }
+        else
+        {
+            printf("TESTS: testCryptoReprotectDBValue(), FAIL: DB-level re-protect rotation/readback failed.\n");
+        }
+        if (readbackTable)
+        {
+            cmeMemTableFinal(readbackTable);
         }
         if (memDB)
         {

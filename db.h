@@ -107,6 +107,15 @@ typedef struct
     char targetProfile[64];
 } cmeReprotectDBInventory;
 
+typedef struct
+{
+    cmeReprotectDBInventory before;
+    cmeReprotectDBInventory after;
+    int dataRowsReprotected;
+    int metaRowsReprotected;
+    int dryRun;
+} cmeReprotectDBReport;
+
 // Function to strictly unprotect+reprotect one salted DB value for explicit key/profile rotation workflows.
 int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedValue,
                                const char *sourceEncAlg, const char *targetEncAlg,
@@ -117,6 +126,10 @@ int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedVal
 int cmeInventoryMemSecureDBReprotect (sqlite3 *memSecureDB, const char *orgKey,
                                       const char *targetEncAlg,
                                       cmeReprotectDBInventory *inventory);
+// Function to explicitly re-protect protected values in an in-memory column-file DB.
+int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
+                             const char *targetOrgKey, const char *targetEncAlg,
+                             cmeReprotectDBReport *report, int dryRun);
 // Function to compute deterministic keyed lookup values for selected protected exact-match columns.
 int cmeGetProtectDBLookupValue (const char *columnName, const char *value, const char *orgKey,
                                 char **lookupValue);
