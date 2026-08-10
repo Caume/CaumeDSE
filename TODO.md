@@ -911,7 +911,7 @@
   - Batch 3: added `cmeReprotectMemSecureDB()` as an explicit DB-level re-protect service for protected column-file rows, with dry-run reporting, wrong source-key rejection, single-transaction mutation, target-profile metadata update, new row/meta salts, new-key readback coverage, and fail-closed rejection for MAC/sign metadata until the dedicated recomputation workflow is implemented.
   - Batch 4: documented the operator-held backup/journal/checkpoint workflow for explicit key/profile rotation, including dry-run inventory review, per-ColumnFile checkpoints before mutation/after transaction/after readback, secret-free journal records, mixed AES/Herradura staged migration, and restore-or-old-checkpoint rollback expectations.
 
-- [ ] #103 Harden verifier web startup diagnostics and reliability.
+- [x] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
   - Goal: make HTTP/HTTPS verifier startup failures actionable and reduce false failures when local ports, daemon flags, certificates, or environment limits prevent `MHD_start_daemon()` from starting.
   - Plan:
@@ -924,7 +924,7 @@
   - Batch 2: added verifier-side automatic alternate-port selection for occupied default HTTP/HTTPS ports, preserving explicit operator-selected ports as fail-fast choices, recording auto-port settings in the preflight log, and extending preflight helper self-tests for environment flag and avoid-port behavior.
   - Batch 3: added concise `HINT` lines to verifier summaries for web startup, port-selection, invalid-port, occupied-port, and missing-curl failures so operators can jump directly to preflight logs, selected ports, auto-port settings, and errno diagnostics.
 
-- [ ] #104 Add a guarded write-capable MCP service sample.
+- [x] #104 Add a guarded write-capable MCP service sample.
   - Source: `samples/mcp-server/`, `samples/delegated-token-broker/`, `AI_USAGE.md`, `openapi.yaml`, live verifier routes, and delegated-token patterns.
   - Goal: provide an MCP sample that can perform controlled writes while keeping organization keys out of model context and requiring explicit guardrails for mutations.
   - Plan:
