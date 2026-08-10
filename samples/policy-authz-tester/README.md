@@ -4,11 +4,10 @@ This sample defines a small JSON policy format for intended role/filter
 authorization behavior and checks observed probe results against that policy.
 It is dependency-free and keeps credentials out of policy files and reports.
 
-Batch 1 is offline-oriented: it validates policy shape, renders the intended
-`roleTables`, `filterWhitelist`, and `filterBlacklist` setup plan, and compares
-recorded probe statuses to expected allow/deny outcomes. A later live workflow
-can use the same policy file to provision disposable resources and execute HTTP
-probes.
+The tester validates policy shape, renders the intended `roleTables`,
+`filterWhitelist`, and `filterBlacklist` setup plan, compares recorded probe
+statuses to expected allow/deny outcomes, and can execute policy rules against a
+live CaumeDSE base URL.
 
 ## Policy Shape
 
@@ -39,6 +38,20 @@ python3 samples/policy-authz-tester/policy_authz_tester.py report \
   --policy samples/policy-authz-tester/policy.example.json \
   --observations observed-policy-results.json
 ```
+
+Render live probe URLs without sending requests:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py probe \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --base-url http://127.0.0.1:8080 \
+  --auth-query "$CDSE_POLICY_AUTH_QUERY" \
+  --dry-run
+```
+
+Execute live probes by removing `--dry-run`. Keep `CDSE_POLICY_AUTH_QUERY`
+outside policy files and logs; the tester redacts credential-style query
+parameters from reports.
 
 Run offline validation, evaluation, and redaction checks:
 

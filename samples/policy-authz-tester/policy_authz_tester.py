@@ -13,6 +13,9 @@ import re
 import sys
 from collections import Counter
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
+from urllib.request import Request, urlopen
 
 
 SAMPLE_DIR = Path(__file__).resolve().parent
@@ -219,6 +222,62 @@ def evaluate(policy, observations):
     }
 
 
+def append_query(url, query):
+    if not query:
+        return url
+    parts = urlsplit(url)
+    existing = parse_qsl(parts.query, keep_blank_values=True)
+    extra = parse_qsl(query.lstrip("?"), keep_blank_values=True)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(existing + extra), parts.fragment))
+
+
+def probe_policy(policy, base_url, auth_query="", timeout=10, dry_run=False):
+    if not isinstance(base_url, str) or not base_url.startswith(("http://", "https://")):
+        raise PolicyError("base_url must start with http:// or https://.")
+    observations = []
+    plans = []
+    for rule in policy["rules"]:
+        method = rule["method"].upper()
+        url = append_query(base_url.rstrip("/") + rule["route"], auth_query)
+        plan = {
+            "rule": rule["name"],
+            "method": method,
+            "url": url,
+            "expectedStatus": rule["expectedStatus"],
+        }
+        plans.append(plan)
+        if dry_run:
+            continue
+        request = Request(url, method=method, headers={"Accept": "application/json"})
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                observations.append({
+                    "rule": rule["name"],
+                    "status": response.getcode(),
+                    "requestId": response.headers.get("X-CaumeDSE-Request-Id") or response.headers.get("X-Request-Id"),
+                    "auditCategory": "request" if response.getcode() < 400 else "authorization",
+                })
+        except HTTPError as exc:
+            observations.append({
+                "rule": rule["name"],
+                "status": exc.code,
+                "requestId": exc.headers.get("X-CaumeDSE-Request-Id") or exc.headers.get("X-Request-Id"),
+                "auditCategory": "authorization" if exc.code >= 400 else "request",
+            })
+        except URLError as exc:
+            raise PolicyError(f"probe failed for {rule['name']}: {exc.reason}") from exc
+    if dry_run:
+        return {
+            "safeForAgent": True,
+            "dryRun": True,
+            "policy": {"name": policy.get("name", "unnamed"), "ruleCount": len(policy["rules"])},
+            "probePlan": plans,
+        }
+    report = evaluate(policy, observations)
+    report["probePlan"] = plans
+    return report
+
+
 def validate_command(args):
     policy = validate_policy(load_json(args.policy))
     print(json.dumps(redact_value({"safeForAgent": True, "policy": policy, "setupPlan": setup_plan(policy)}), indent=2, sort_keys=True))
@@ -228,6 +287,12 @@ def report_command(args):
     policy = validate_policy(load_json(args.policy))
     observations = load_json(args.observations)
     print(json.dumps(redact_value(evaluate(policy, observations)), indent=2, sort_keys=True))
+
+
+def probe_command(args):
+    policy = validate_policy(load_json(args.policy))
+    result = probe_policy(policy, args.base_url, args.auth_query, args.timeout, args.dry_run)
+    print(json.dumps(redact_value(result), indent=2, sort_keys=True))
 
 
 def self_test():
@@ -246,6 +311,11 @@ def self_test():
     secret_report = redact_value({"route": "/x?orgKey=abc&newOrgKey=def", "authorization": "Bearer secret"})
     if "abc" in json.dumps(secret_report) or "secret" in json.dumps(secret_report):
         raise PolicyError("self-test report redaction leaked a secret marker.")
+    dry_probe = redact_value(probe_policy(policy, "http://127.0.0.1:8080", "orgKey=abc&newOrgKey=def", dry_run=True))
+    if dry_probe.get("safeForAgent") is not True or len(dry_probe.get("probePlan", [])) != 3:
+        raise PolicyError("self-test dry-run probe plan failed.")
+    if "abc" in json.dumps(dry_probe):
+        raise PolicyError("self-test dry-run probe redaction leaked an auth query.")
     print("PASS policy authz tester self-test")
 
 
@@ -257,6 +327,12 @@ def parse_args(argv):
     report = sub.add_parser("report", help="Compare observed probe results to policy expectations.")
     report.add_argument("--policy", default=str(DEFAULT_POLICY))
     report.add_argument("--observations", required=True)
+    probe = sub.add_parser("probe", help="Execute policy rules against a live CaumeDSE base URL.")
+    probe.add_argument("--policy", default=str(DEFAULT_POLICY))
+    probe.add_argument("--base-url", required=True)
+    probe.add_argument("--auth-query", default="", help="Optional auth query string; pass from environment, not policy files.")
+    probe.add_argument("--timeout", type=int, default=10)
+    probe.add_argument("--dry-run", action="store_true", help="Render probe URLs without sending HTTP requests.")
     sub.add_parser("self-test", help="Run offline validation, evaluation, and redaction checks.")
     return parser.parse_args(argv)
 
@@ -268,6 +344,8 @@ def main(argv=None):
             validate_command(args)
         elif args.command == "report":
             report_command(args)
+        elif args.command == "probe":
+            probe_command(args)
         elif args.command == "self-test":
             self_test()
     except PolicyError as exc:

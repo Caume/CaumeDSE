@@ -1,0 +1,36 @@
+{
+  "reprotectSchemaVersion": 1,
+  "targetProfile": "hsk-en-la-aead-256",
+  "operator": {
+    "organization": "RotationTrialOrg",
+    "confirmedScope": "storage:RotationTrialStorage/documentType:file.csv"
+  },
+  "databases": [
+    {
+      "name": "column-db-0001.sqlite",
+      "storage": "RotationTrialStorage",
+      "documentType": "file.csv",
+      "document": "legacy-customers.csv",
+      "sourceProfile": "aes-256-cbc",
+      "dataRows": 12,
+      "metaRows": 4,
+      "protectedValueRows": 12,
+      "legacyAESValueRows": 12,
+      "herraduraValueRows": 0,
+      "hasMacOrSignature": false
+    },
+    {
+      "name": "column-db-0002.sqlite",
+      "storage": "RotationTrialStorage",
+      "documentType": "file.csv",
+      "document": "mixed-orders.csv",
+      "sourceProfile": "hsk-en-la-aead-256",
+      "dataRows": 8,
+      "metaRows": 4,
+      "protectedValueRows": 8,
+      "legacyAESValueRows": 2,
+      "herraduraValueRows": 6,
+      "hasMacOrSignature": false
+    }
+  ]
+}

@@ -910,6 +910,7 @@
   - Batch 2: added `cmeInventoryMemSecureDBReprotect()` for read-only column-file dry-run inventory, reporting meta/data row counts, protect metadata rows, protected value scope, source/target profiles, and legacy AES versus Herradura-framed protected values without mutating the DB.
   - Batch 3: added `cmeReprotectMemSecureDB()` as an explicit DB-level re-protect service for protected column-file rows, with dry-run reporting, wrong source-key rejection, single-transaction mutation, target-profile metadata update, new row/meta salts, new-key readback coverage, and fail-closed rejection for MAC/sign metadata until the dedicated recomputation workflow is implemented.
   - Batch 4: documented the operator-held backup/journal/checkpoint workflow for explicit key/profile rotation, including dry-run inventory review, per-ColumnFile checkpoints before mutation/after transaction/after readback, secret-free journal records, mixed AES/Herradura staged migration, and restore-or-old-checkpoint rollback expectations.
+  - Batch 5: added `samples/reprotect-workflow/` with a secret-free scope format, redacted journal/checkpoint planning, mixed AES/Herradura inventory preservation, MAC/sign fail-closed validation, README guidance, and an offline verifier self-test.
 
 - [x] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
@@ -948,6 +949,7 @@
     - Add negative cases for overbroad roles, missing filters, conflicting whitelist/blacklist rows, unsupported methods, and cleanup failures.
     - Add documentation for AI-generated policy review, including prompt-boundary rules and human approval before applying generated policies to real deployments.
   - Batch 1: added `samples/policy-authz-tester/` with a JSON policy format, setup-plan rendering for roleTables/filterWhitelist/filterBlacklist intent, offline observed-status evaluation, redacted `safeForAgent` reports, documentation, and a verifier self-test for validation, mismatch detection, and secret redaction.
+  - Batch 2: added a live-capable `probe` command for executing policy rules against a CaumeDSE base URL, with dry-run URL rendering, auth query redaction, observed status/request-id collection, README guidance, and expanded offline self-test coverage for probe planning.
 
 - [x] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
