@@ -23,6 +23,13 @@ fail-closed checks:
 python3 samples/reprotect-workflow/reprotect_workflow.py self-test
 ```
 
+Summarize a saved plan or journal before resuming:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py journal-status \
+  --journal rotation-journal.json
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:
@@ -42,3 +49,7 @@ Each database step includes checkpoints before mutation, after the DB
 transaction, and after readback. Operators should keep those checkpoint paths
 outside model-visible context and retain the journal until the target key/profile
 has been verified for every selected database.
+
+Journal steps may include `state` values of `pending`, `readyToResume`,
+`complete`, or `blocked`. `journal-status` reports the next resumable step
+without exposing checkpoint paths or key material.

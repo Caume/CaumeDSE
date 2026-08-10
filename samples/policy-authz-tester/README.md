@@ -23,6 +23,9 @@ live CaumeDSE base URL.
 Do not include `orgKey`, `newOrgKey`, TLS private keys, delegated tokens, or
 authorization headers in policy files.
 
+The validator rejects broad role resources, unsupported methods, mutating roles
+without blacklist controls, and conflicting whitelist/blacklist method rules.
+
 ## Commands
 
 Validate the committed example and render setup intent:

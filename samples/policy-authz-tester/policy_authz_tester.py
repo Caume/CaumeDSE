@@ -125,7 +125,40 @@ def validate_policy(policy):
         if decision == "deny" and status < 400:
             raise PolicyError(f"{context} deny rule must expect an error status.")
         require_string(rule, "route", context)
+    validate_policy_risks(policy)
     return policy
+
+
+def methods_from_entries(entries, field):
+    result = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise PolicyError("role/filter entries must be objects.")
+        result.update(str(method).upper() for method in entry.get(field, []))
+    unknown = result - SUPPORTED_METHODS
+    if unknown:
+        raise PolicyError(f"Unsupported methods in role/filter entries: {', '.join(sorted(unknown))}")
+    return result
+
+
+def validate_policy_risks(policy):
+    role_resources = [entry.get("resource", "") for entry in policy.get("roles", []) if isinstance(entry, dict)]
+    role_methods = methods_from_entries(policy.get("roles", []), "allowMethods")
+    whitelist_methods = methods_from_entries(policy.get("filterWhitelist", []), "allowMethods")
+    blacklist_methods = methods_from_entries(policy.get("filterBlacklist", []), "denyMethods")
+    if "*" in role_resources:
+        raise PolicyError("overbroad role resource '*' is not allowed in this tester.")
+    if role_methods & {"POST", "PUT", "DELETE"} and not blacklist_methods:
+        raise PolicyError("mutating role methods require explicit blacklist negative controls.")
+    conflicts = whitelist_methods & blacklist_methods
+    if conflicts:
+        raise PolicyError(f"conflicting whitelist/blacklist methods: {', '.join(sorted(conflicts))}")
+    allowed_rules = {rule["method"].upper() for rule in policy["rules"] if rule["decision"].lower() == "allow"}
+    denied_rules = {rule["method"].upper() for rule in policy["rules"] if rule["decision"].lower() == "deny"}
+    if allowed_rules - role_methods:
+        raise PolicyError("allow rules must be backed by role allowMethods.")
+    if denied_rules and not blacklist_methods:
+        raise PolicyError("deny rules require blacklist controls in this tester.")
 
 
 def method_map(allowed_methods):
@@ -316,6 +349,22 @@ def self_test():
         raise PolicyError("self-test dry-run probe plan failed.")
     if "abc" in json.dumps(dry_probe):
         raise PolicyError("self-test dry-run probe redaction leaked an auth query.")
+    overbroad = dict(policy)
+    overbroad["roles"] = [dict(policy["roles"][0], resource="*")]
+    try:
+        validate_policy(overbroad)
+    except PolicyError:
+        pass
+    else:
+        raise PolicyError("self-test accepted an overbroad role.")
+    conflicting = dict(policy)
+    conflicting["filterBlacklist"] = [dict(policy["filterBlacklist"][0], denyMethods=["GET"])]
+    try:
+        validate_policy(conflicting)
+    except PolicyError:
+        pass
+    else:
+        raise PolicyError("self-test accepted conflicting whitelist/blacklist methods.")
     print("PASS policy authz tester self-test")
 
 

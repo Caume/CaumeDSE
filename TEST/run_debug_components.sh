@@ -551,6 +551,27 @@ run_reprotect_workflow_self_test() {
     return 1
 }
 
+run_operational_readiness_self_test() {
+    local log="$LOG_ROOT/operational_readiness_self_test.log"
+    local start
+    local rc
+
+    note "RUN  operational_readiness_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/operational-readiness/readiness_check.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS operational readiness self-test" "$log"; then
+        record_pass "operational_readiness_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail operational_readiness_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
 protocol_enabled() {
     local protocol="$1"
 
@@ -1939,6 +1960,7 @@ if command -v python3 >/dev/null 2>&1; then
     run_policy_authz_tester_self_test
     run_backup_restore_self_test
     run_reprotect_workflow_self_test
+    run_operational_readiness_self_test
 else
     record_skip delegated_token_broker_self_test "python3 not available"
     record_skip agent_rag_connector_self_test "python3 not available"
@@ -1948,6 +1970,7 @@ else
     record_skip policy_authz_tester_self_test "python3 not available"
     record_skip backup_restore_self_test "python3 not available"
     record_skip reprotect_workflow_self_test "python3 not available"
+    record_skip operational_readiness_self_test "python3 not available"
 fi
 run_webservice_preflight_self_test
 
