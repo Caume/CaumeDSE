@@ -933,6 +933,7 @@
     - Add dry-run output, redacted audit correlation, and clear refusal messages for unsafe parser execution or broad data mutation.
     - Add sample README guidance and verifier self-tests that prove write tools are hidden by default and guarded when enabled.
   - Batch 1: tightened the MCP sample so write tools require both `CDSE_MCP_ENABLE_WRITE_TOOLS=1` and `CDSE_MCP_DELEGATED_TOKEN`, added per-call guard fields for exact organization/storage/user/scope, expected status, idempotency key, confirmation, and dry-run mode, documented the write boundary, and added an offline verifier self-test for hidden/default write tools and broad-scope rejection.
+  - Batch 2: added guarded `promote_parser_review` and `delete_document` write tools with exact parser-review and document-delete scopes, reviewed metadata dry-run/update plans, request-id audit summaries, document-type limits for narrow deletion, README guidance, and offline self-test coverage for promotion, exact delete, broad delete rejection, and unsupported document-type rejection.
 
 - [ ] #105 Add a policy-as-code authorization tester.
   - Source: roleTables, filterWhitelist/filterBlacklist handlers, `TEST/run_debug_components.sh`, `samples/`, `AI_USAGE.md`, and `API_EXAMPLES.md`.

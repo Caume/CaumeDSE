@@ -35,6 +35,9 @@ server environment:
 - `upload_parser`: uploads a reviewed local Python parser as `script.python`.
 - `upload_parser_candidate`: uploads a generated parser candidate as pending
   review metadata.
+- `promote_parser_review`: updates one pending Python parser document with
+  reviewed parser metadata.
+- `delete_document`: deletes one exact `file.csv` or `script.python` document.
 - `cleanup_workspace`: deletes the sample documents, storage, and user.
 
 Every write call also requires explicit guard arguments:
@@ -42,6 +45,8 @@ Every write call also requires explicit guard arguments:
 - `organization`, `storage`, and `user` must match the server environment.
 - `scope` must match the exact resource scope reported by the tool schema or
   dry-run output, never `*`, `all`, or a broad organization/storage scope.
+- `delete_document` uses a narrow `document:delete:<type>:<name>` scope and
+  only accepts `file.csv` or `script.python`.
 - `expected_status` must be one of the status codes accepted by that helper.
 - `idempotency_key` must be a caller-generated non-space value of at least 12
   characters.
@@ -122,6 +127,10 @@ A typical local flow is:
 7. `dbTableColumns_read`
 8. `parserScripts_run`
 9. `parserScripts_preview` for pending parser candidates only.
+10. Use `promote_parser_review` only after human review, then run the reviewed
+    parser with `parserScripts_run`.
+11. Use `delete_document` for one exact document, or `cleanup_workspace` for
+    the disposable DEBUG workspace.
 
 ## Security Boundaries
 

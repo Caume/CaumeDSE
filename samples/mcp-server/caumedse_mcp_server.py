@@ -170,6 +170,8 @@ def write_scope(action, cfg, document=None):
         "upload_csv": f"document:file.csv:{document}",
         "upload_parser": f"document:script.python:{document}",
         "upload_parser_candidate": f"document:script.python.pending:{document}",
+        "promote_parser_review": f"document:script.python.reviewed:{document}",
+        "delete_document": f"document:delete:{document}",
         "cleanup_workspace": f"cleanup:{cfg.org}:{cfg.storage}:{cfg.user}",
     }
     return scopes[action]
@@ -204,6 +206,16 @@ def require_write_guard(cfg, args, action, allowed_statuses, document=None):
         "idempotencyKey": idempotency_key,
         "dryRun": bool(args.get("dry_run")),
         "delegatedTokenConfigured": True,
+    }
+
+
+def request_audit(method, path, status, headers):
+    return {
+        "method": method,
+        "path": path,
+        "status": status,
+        "requestId": headers.get("X-Request-Id") or headers.get("X-Request-ID"),
+        "safeForAgent": True,
     }
 
 
@@ -371,6 +383,57 @@ def upload_parser_candidate(cfg, args):
     return result
 
 
+def promote_parser_review(cfg, args):
+    doc_name = args.get("document") or cfg.pending_parser_doc
+    guard = require_write_guard(cfg, args, "promote_parser_review", {200, 404}, doc_name)
+    reviewer = args.get("reviewer") or cfg.user
+    review_time = args.get("review_time") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    resource_info = args.get("resource_info") or (
+        "reviewed MCP parser candidate parser.reviewStatus:reviewed parser.reviewed:true "
+        f"parser.reviewer:{reviewer} parser.reviewTime:{review_time} "
+        "parser.interpreter:/usr/bin/python3 parser.timeout:10 parser.isolation:none"
+    )
+    plan = {
+        "documentType": "script.python",
+        "document": doc_name,
+        "reviewStatus": "reviewed",
+        "reviewer": reviewer,
+    }
+    if guard["dryRun"]:
+        return {"guard": guard, "wouldUpdate": plan}
+    path = base_document_path(cfg, "script.python", doc_name)
+    status, headers, _ = request(
+        cfg,
+        "PUT",
+        path,
+        params={**cfg.auth_params(include_new_key=True), "*resourceInfo": resource_info},
+        expected=(guard["expectedStatus"],),
+    )
+    return {"guard": guard, "updated": plan, "audit": request_audit("PUT", path, status, headers)}
+
+
+def delete_document(cfg, args):
+    doc_name = args.get("document")
+    doc_type = args.get("document_type") or "file.csv"
+    if not doc_name:
+        raise ToolError("delete_document requires an exact document name.")
+    if doc_type not in {"file.csv", "script.python"}:
+        raise ToolError("delete_document only allows file.csv or script.python document_type.")
+    guard = require_write_guard(cfg, args, "delete_document", {200, 404}, f"{doc_type}:{doc_name}")
+    plan = {"documentType": doc_type, "document": doc_name}
+    if guard["dryRun"]:
+        return {"guard": guard, "wouldDelete": plan}
+    path = base_document_path(cfg, doc_type, doc_name)
+    status, headers, _ = request(
+        cfg,
+        "DELETE",
+        path,
+        params=cfg.auth_params(include_new_key=True),
+        expected=(guard["expectedStatus"],),
+    )
+    return {"guard": guard, "deleted": plan, "audit": request_audit("DELETE", path, status, headers)}
+
+
 def discover_schema(cfg, args):
     doc_name = args.get("document") or cfg.csv_doc
     path = f"{base_document_path(cfg, 'file.csv', doc_name)}/schema"
@@ -503,6 +566,8 @@ WRITE_TOOLS = {
     "upload_csv": upload_csv,
     "upload_parser": upload_parser,
     "upload_parser_candidate": upload_parser_candidate,
+    "promote_parser_review": promote_parser_review,
+    "delete_document": delete_document,
     "cleanup_workspace": cleanup_workspace,
 }
 
@@ -668,6 +733,28 @@ WRITE_TOOL_SCHEMAS = [
         },
     },
     {
+        "name": "promote_parser_review",
+        "description": "Local DEBUG helper: update one pending Python parser document with reviewed metadata.",
+        "inputSchema": {
+            **write_schema({
+                "document": {"type": "string"},
+                "reviewer": {"type": "string"},
+                "review_time": {"type": "string"},
+                "resource_info": {"type": "string"},
+            }),
+        },
+    },
+    {
+        "name": "delete_document",
+        "description": "Local DEBUG helper: delete one exact file.csv or script.python document.",
+        "inputSchema": {
+            **write_schema({
+                "document_type": {"type": "string", "enum": ["file.csv", "script.python"]},
+                "document": {"type": "string"},
+            }, required=["document"]),
+        },
+    },
+    {
         "name": "cleanup_workspace",
         "description": "Local DEBUG helper: delete the configured sample documents, storage, and user.",
         "inputSchema": {
@@ -806,6 +893,34 @@ def self_test():
         upload_result = upload_csv(cfg, upload_args)
         if upload_result.get("wouldUpload", {}).get("documentType") != "file.csv":
             raise AssertionError("guarded dry-run upload_csv did not report target document")
+
+        promote_args = scoped_guard_args(cfg, "promote_parser_review", cfg.pending_parser_doc, expected_status=200)
+        promote_result = promote_parser_review(cfg, promote_args)
+        if promote_result.get("wouldUpdate", {}).get("reviewStatus") != "reviewed":
+            raise AssertionError("guarded dry-run promote_parser_review did not report reviewed metadata")
+
+        delete_args = scoped_guard_args(cfg, "delete_document", f"file.csv:{cfg.csv_doc}", expected_status=200)
+        delete_args["document_type"] = "file.csv"
+        delete_args["document"] = cfg.csv_doc
+        delete_result = delete_document(cfg, delete_args)
+        if delete_result.get("wouldDelete", {}).get("document") != cfg.csv_doc:
+            raise AssertionError("guarded dry-run delete_document did not report exact target")
+
+        broad_delete_args = dict(delete_args)
+        broad_delete_args["scope"] = "document:delete:*"
+        try:
+            delete_document(cfg, broad_delete_args)
+            raise AssertionError("broad delete scope was accepted")
+        except ToolError:
+            pass
+
+        bad_type_args = dict(delete_args)
+        bad_type_args["document_type"] = "file.raw"
+        try:
+            delete_document(cfg, bad_type_args)
+            raise AssertionError("unsupported delete document_type was accepted")
+        except ToolError:
+            pass
     finally:
         for key, value in saved_env.items():
             if value is None:
