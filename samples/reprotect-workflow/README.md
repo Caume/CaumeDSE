@@ -16,6 +16,12 @@ Render the committed example plan:
 python3 samples/reprotect-workflow/reprotect_workflow.py plan
 ```
 
+Include command templates that refer to key files by environment variable:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py plan --include-commands
+```
+
 Run offline validation, redaction, mixed AES/Herradura inventory, and MAC/sign
 fail-closed checks:
 
@@ -42,6 +48,9 @@ python3 samples/reprotect-workflow/reprotect_workflow.py journal-status \
 
 The planner rejects scopes with MAC/sign metadata because those values require
 the dedicated recomputation workflow before key/profile rotation can proceed.
+Generated command templates use `$CDSE_SOURCE_ORG_KEY_FILE` and
+`$CDSE_TARGET_ORG_KEY_FILE`; do not replace those with raw keys in model-visible
+logs.
 
 ## Journal Semantics
 

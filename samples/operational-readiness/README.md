@@ -18,6 +18,17 @@ python3 samples/operational-readiness/readiness_check.py check \
   --parser-policy-enabled
 ```
 
+Load declared settings from JSON:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py check \
+  --config samples/operational-readiness/config.example.json
+```
+
+Environment variables such as `CDSE_READINESS_STORAGE_PATH`,
+`CDSE_READINESS_STORAGE_PROFILE`, `CDSE_READINESS_HERRADURA_AVAILABLE`, and
+`CDSE_READINESS_TLS_AUTH_STATE` override the config file.
+
 Render concise operator text:
 
 ```sh

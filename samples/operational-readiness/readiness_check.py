@@ -19,11 +19,24 @@ from pathlib import Path
 
 SENSITIVE_KEYS = {"orgKey", "newOrgKey", "accessPassword", "oauthConsumerSecret", "privateKey", "secret"}
 SECRET_PATTERNS = [
-    (re.compile(r"(?i)(orgKey|newOrgKey|accessPassword|oauthConsumerSecret|password)=([^&\s\"]+)"), r"\1=<redacted>"),
+    (re.compile(r"(?i)(orgKey|newOrgKey|accessPassword|oauthConsumerSecret|password)=([^&\s\"']+)"), r"\1=<redacted>"),
 ]
 HERRADURA_PROFILES = {"hsk-en-la-aead-256", "HERRADURAKEX_HSK_EN_LA_AEAD_256"}
 AES_PROFILES = {"aes-256-cbc", "CME_OPENSSL_AES256_CBC"}
 STATE_RANK = {"healthy": 0, "degraded": 1, "misconfigured": 2, "unsafe": 3}
+ENV_FIELDS = {
+    "CDSE_READINESS_STORAGE_PATH": "storage_path",
+    "CDSE_READINESS_PARSER_TEMP_DIR": "parser_temp_dir",
+    "CDSE_READINESS_STORAGE_PROFILE": "storage_profile",
+    "CDSE_READINESS_TLS_AUTH_STATE": "tls_auth_state",
+    "CDSE_READINESS_BUILD_MODE": "build_mode",
+    "CDSE_READINESS_MAX_CONNECTIONS": "max_connections",
+    "CDSE_READINESS_THREAD_POOL_SIZE": "thread_pool_size",
+}
+BOOL_ENV_FIELDS = {
+    "CDSE_READINESS_HERRADURA_AVAILABLE": "herradura_available",
+    "CDSE_READINESS_PARSER_POLICY_ENABLED": "parser_policy_enabled",
+}
 
 
 class ReadinessError(Exception):
@@ -49,6 +62,40 @@ def add_check(checks, name, state, message, **fields):
     item = {"name": name, "state": state, "message": message}
     item.update(fields)
     checks.append(item)
+
+
+def load_json(path):
+    try:
+        with Path(path).open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except OSError as exc:
+        raise ReadinessError(f"Cannot read {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise ReadinessError(f"Invalid JSON in {path}: {exc}") from exc
+
+
+def bool_from_text(value):
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def apply_config_and_env(args):
+    if args.config:
+        config = load_json(args.config)
+        if not isinstance(config, dict):
+            raise ReadinessError("config must be a JSON object.")
+        for key, value in config.items():
+            if hasattr(args, key):
+                setattr(args, key, value)
+    for env_name, field in ENV_FIELDS.items():
+        if env_name in os.environ:
+            value = os.environ[env_name]
+            if field in {"max_connections", "thread_pool_size"}:
+                value = int(value)
+            setattr(args, field, value)
+    for env_name, field in BOOL_ENV_FIELDS.items():
+        if env_name in os.environ:
+            setattr(args, field, bool_from_text(os.environ[env_name]))
+    return args
 
 
 def path_check(checks, name, path, require_write=False):
@@ -132,6 +179,7 @@ def print_text(report):
 
 
 def check_command(args):
+    args = apply_config_and_env(args)
     report = build_report(args)
     if args.output == "text":
         print_text(report)
@@ -172,6 +220,7 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(description="Render safe CaumeDSE operational readiness.")
     sub = parser.add_subparsers(dest="command", required=True)
     check = sub.add_parser("check", help="Run local readiness checks.")
+    check.add_argument("--config", help="Optional JSON config; environment variables override it.")
     check.add_argument("--storage-path", default=os.getcwd())
     check.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
     check.add_argument("--storage-profile", default="aes-256-cbc")

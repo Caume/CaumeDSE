@@ -10,6 +10,7 @@ outcomes. Uses only Python's standard library.
 import argparse
 import json
 import re
+import shlex
 import sys
 from collections import Counter
 from pathlib import Path
@@ -30,7 +31,7 @@ SENSITIVE_KEYS = {
     "privateKey",
 }
 SECRET_PATTERNS = [
-    (re.compile(r"(?i)(orgKey|newOrgKey|accessPassword|oauthConsumerSecret)=([^&\s\"]+)"), r"\1=<redacted>"),
+    (re.compile(r"(?i)(orgKey|newOrgKey|accessPassword|oauthConsumerSecret)=([^&\s\"']+)"), r"\1=<redacted>"),
     (re.compile(r"(?i)Authorization:\s*Bearer\s+[A-Za-z0-9._~-]+"), "Authorization: Bearer <redacted>"),
 ]
 SUPPORTED_METHODS = {"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"}
@@ -264,6 +265,29 @@ def append_query(url, query):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(existing + extra), parts.fragment))
 
 
+def build_setup_commands(policy, base_url, auth_query=""):
+    commands = []
+    for index, item in enumerate(setup_plan(policy), start=1):
+        url = append_query(base_url.rstrip("/") + item["path"], auth_query)
+        command = ["curl", "-fsS", "-X", item["method"], url]
+        for key, value in item["fields"].items():
+            command.extend(["-F", f"{key}={value}"])
+        if item.get("resourcePattern"):
+            command.extend(["-F", f"*resourceInfo={item['resourcePattern']}"])
+        commands.append({
+            "step": index,
+            "kind": item["kind"],
+            "path": item["path"],
+            "command": " ".join(shlex.quote(part) for part in command),
+        })
+    return {
+        "safeForAgent": True,
+        "policy": {"name": policy.get("name", "unnamed")},
+        "secretInputs": ["CDSE_POLICY_AUTH_QUERY"],
+        "commands": commands,
+    }
+
+
 def probe_policy(policy, base_url, auth_query="", timeout=10, dry_run=False):
     if not isinstance(base_url, str) or not base_url.startswith(("http://", "https://")):
         raise PolicyError("base_url must start with http:// or https://.")
@@ -328,6 +352,12 @@ def probe_command(args):
     print(json.dumps(redact_value(result), indent=2, sort_keys=True))
 
 
+def setup_script_command(args):
+    policy = validate_policy(load_json(args.policy))
+    result = build_setup_commands(policy, args.base_url, args.auth_query)
+    print(json.dumps(redact_value(result), indent=2, sort_keys=True))
+
+
 def self_test():
     policy = validate_policy(load_json(DEFAULT_POLICY))
     observations = [
@@ -365,6 +395,10 @@ def self_test():
         pass
     else:
         raise PolicyError("self-test accepted conflicting whitelist/blacklist methods.")
+    setup_commands = redact_value(build_setup_commands(policy, "http://127.0.0.1:8080", "orgKey=abc&newOrgKey=def"))
+    serialized_setup = json.dumps(setup_commands)
+    if "abc" in serialized_setup or len(setup_commands["commands"]) != 3:
+        raise PolicyError("self-test setup command rendering failed.")
     print("PASS policy authz tester self-test")
 
 
@@ -382,6 +416,10 @@ def parse_args(argv):
     probe.add_argument("--auth-query", default="", help="Optional auth query string; pass from environment, not policy files.")
     probe.add_argument("--timeout", type=int, default=10)
     probe.add_argument("--dry-run", action="store_true", help="Render probe URLs without sending HTTP requests.")
+    setup_script = sub.add_parser("setup-script", help="Render secret-free curl commands for policy setup resources.")
+    setup_script.add_argument("--policy", default=str(DEFAULT_POLICY))
+    setup_script.add_argument("--base-url", required=True)
+    setup_script.add_argument("--auth-query", default="", help="Optional auth query string; pass from environment, not policy files.")
     sub.add_parser("self-test", help="Run offline validation, evaluation, and redaction checks.")
     return parser.parse_args(argv)
 
@@ -395,6 +433,8 @@ def main(argv=None):
             report_command(args)
         elif args.command == "probe":
             probe_command(args)
+        elif args.command == "setup-script":
+            setup_script_command(args)
         elif args.command == "self-test":
             self_test()
     except PolicyError as exc:

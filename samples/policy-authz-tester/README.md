@@ -56,6 +56,15 @@ Execute live probes by removing `--dry-run`. Keep `CDSE_POLICY_AUTH_QUERY`
 outside policy files and logs; the tester redacts credential-style query
 parameters from reports.
 
+Render setup commands for the role/filter resources:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py setup-script \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --base-url http://127.0.0.1:8080 \
+  --auth-query "$CDSE_POLICY_AUTH_QUERY"
+```
+
 Run offline validation, evaluation, and redaction checks:
 
 ```sh

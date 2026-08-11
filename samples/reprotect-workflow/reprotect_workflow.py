@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,7 @@ SUPPORTED_PROFILES = {
 }
 SENSITIVE_KEYS = {"orgKey", "newOrgKey", "sourceOrgKey", "targetOrgKey", "key", "secret", "password"}
 SECRET_PATTERNS = [
-    (re.compile(r"(?i)(orgKey|newOrgKey|sourceOrgKey|targetOrgKey|password)=([^&\s\"]+)"), r"\1=<redacted>"),
+    (re.compile(r"(?i)(orgKey|newOrgKey|sourceOrgKey|targetOrgKey|password)=([^&\s\"']+)"), r"\1=<redacted>"),
 ]
 
 
@@ -165,6 +166,41 @@ def build_plan(scope, dry_run=True):
     }
 
 
+def build_operator_commands(plan):
+    def quote_command(parts):
+        rendered = []
+        for part in parts:
+            rendered.append(part if part.startswith("$CDSE_") else shlex.quote(part))
+        return " ".join(rendered)
+
+    commands = []
+    for step in plan["steps"]:
+        base = [
+            "caumedse-admin",
+            "reprotect-columnfile",
+            "--storage", step["storage"],
+            "--document-type", step["documentType"],
+            "--document", step["document"],
+            "--database", step["database"],
+            "--target-profile", step["targetProfile"],
+            "--confirmed-scope", plan["operator"]["confirmedScope"],
+            "--source-key-file", "$CDSE_SOURCE_ORG_KEY_FILE",
+            "--target-key-file", "$CDSE_TARGET_ORG_KEY_FILE",
+        ]
+        commands.append({
+            "step": step["step"],
+            "databaseId": step["databaseId"],
+            "dryRun": quote_command(base + ["--dry-run"]),
+            "commit": quote_command(base + ["--commit"]),
+        })
+    return {
+        "safeForAgent": True,
+        "journalId": plan["journalId"],
+        "secretInputs": ["CDSE_SOURCE_ORG_KEY_FILE", "CDSE_TARGET_ORG_KEY_FILE"],
+        "commands": commands,
+    }
+
+
 def load_journal(path):
     journal = load_json(path)
     if not isinstance(journal, dict) or journal.get("safeForAgent") is not True:
@@ -204,7 +240,10 @@ def summarize_journal(journal):
 
 
 def plan_command(args):
-    result = redact(build_plan(load_json(args.scope), dry_run=args.dry_run))
+    result = build_plan(load_json(args.scope), dry_run=args.dry_run)
+    if args.include_commands:
+        result["operatorCommands"] = build_operator_commands(result)
+    result = redact(result)
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
@@ -235,6 +274,10 @@ def self_test():
     summary = summarize_journal(staged)
     if summary["readiness"] != "readyToResume" or summary["nextStep"]["step"] != 2:
         raise ReprotectError("self-test journal resume summary failed.")
+    commands = redact(build_operator_commands(plan))
+    serialized_commands = json.dumps(commands)
+    if "CDSE_SOURCE_ORG_KEY_FILE" not in serialized_commands or "orgKey" in serialized_commands:
+        raise ReprotectError("self-test operator command rendering failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -244,6 +287,7 @@ def parse_args(argv):
     plan = sub.add_parser("plan", help="Validate scope and render a redacted journal/checkpoint plan.")
     plan.add_argument("--scope", default=str(DEFAULT_SCOPE))
     plan.add_argument("--dry-run", action="store_true", default=True)
+    plan.add_argument("--include-commands", action="store_true", help="Include secret-free operator command templates.")
     journal = sub.add_parser("journal-status", help="Summarize a saved plan or journal for resumable operation.")
     journal.add_argument("--journal", required=True)
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
