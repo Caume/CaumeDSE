@@ -339,6 +339,38 @@ def checkpoint_manifest(journal):
     }
 
 
+def runbook(plan):
+    commands = build_operator_commands(plan)["commands"]
+    steps = []
+    for step, command in zip(plan["steps"], commands):
+        steps.append({
+            "step": step["step"],
+            "databaseId": step["databaseId"],
+            "database": step["database"],
+            "phases": [
+                {"name": "preMutationCheckpoint", "action": "create checkpoint outside model-visible storage"},
+                {"name": "dryRun", "command": command["dryRun"]},
+                {"name": "commit", "command": command["commit"]},
+                {
+                    "name": "markComplete",
+                    "command": (
+                        "python3 samples/reprotect-workflow/reprotect_workflow.py journal-update "
+                        f"--journal rotation-journal.json --step {step['step']} --state complete "
+                        "--out rotation-journal.json"
+                    ),
+                },
+            ],
+        })
+    return {
+        "safeForAgent": True,
+        "journalId": plan["journalId"],
+        "humanApprovalRequired": True,
+        "secretInputs": ["CDSE_SOURCE_ORG_KEY_FILE", "CDSE_TARGET_ORG_KEY_FILE"],
+        "steps": steps,
+        "finalGate": "python3 samples/reprotect-workflow/reprotect_workflow.py gate --journal rotation-journal.json",
+    }
+
+
 def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
     if state not in {"pending", "readyToResume", "complete", "blocked"}:
         raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
@@ -402,6 +434,11 @@ def checkpoint_manifest_command(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def runbook_command(args):
+    result = redact(runbook(build_plan(load_json(args.scope), dry_run=True)))
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def self_test():
     plan = redact(build_plan(load_json(DEFAULT_SCOPE), dry_run=True))
     if plan.get("safeForAgent") is not True or plan["summary"]["databases"] != 2:
@@ -446,6 +483,9 @@ def self_test():
     manifest = checkpoint_manifest(complete)
     if manifest["checkpointCount"] != 6 or manifest["checkpoints"][0]["pathVisibleToAgent"] is not False:
         raise ReprotectError("self-test checkpoint manifest failed.")
+    rb = runbook(plan)
+    if rb["humanApprovalRequired"] is not True or len(rb["steps"]) != 2:
+        raise ReprotectError("self-test runbook rendering failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -473,6 +513,8 @@ def parse_args(argv):
     audit.add_argument("--journal", required=True)
     checkpoints = sub.add_parser("checkpoint-manifest", help="Render required checkpoint IDs without exposing paths.")
     checkpoints.add_argument("--journal", required=True)
+    runbook_parser = sub.add_parser("runbook", help="Render an ordered secret-free re-protect operator runbook.")
+    runbook_parser.add_argument("--scope", default=str(DEFAULT_SCOPE))
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -494,6 +536,8 @@ def main(argv=None):
             audit_events_command(args)
         elif args.command == "checkpoint-manifest":
             checkpoint_manifest_command(args)
+        elif args.command == "runbook":
+            runbook_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:

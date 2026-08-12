@@ -106,6 +106,15 @@ python3 samples/policy-authz-tester/policy_authz_tester.py review-pack \
   --base-url http://127.0.0.1:8080
 ```
 
+Render the full live authorization-test runbook:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py runbook \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --base-url http://127.0.0.1:8080 \
+  --auth-query "$CDSE_POLICY_AUTH_QUERY"
+```
+
 Run offline validation, evaluation, and redaction checks:
 
 ```sh

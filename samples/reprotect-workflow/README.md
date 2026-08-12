@@ -78,6 +78,12 @@ python3 samples/reprotect-workflow/reprotect_workflow.py checkpoint-manifest \
   --journal rotation-journal.updated.json
 ```
 
+Render an ordered operator runbook:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py runbook
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:

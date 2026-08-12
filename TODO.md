@@ -918,6 +918,7 @@
   - Batch 10: added a re-protect journal gate that exits non-zero until every selected ColumnFile step is marked complete, suitable for operator runbooks and CI checks.
   - Batch 11: added redacted re-protect audit event export for per-ColumnFile step state and journal closeout outcomes without key material or checkpoint paths.
   - Batch 12: added re-protect checkpoint manifests with stable checkpoint IDs for each ColumnFile phase while keeping local checkpoint paths out of model-visible output.
+  - Batch 13: added an ordered re-protect operator runbook that chains checkpoint, dry-run, commit, journal update, and final gate phases without embedding key material.
 
 - [x] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
@@ -964,6 +965,7 @@
   - Batch 7: added a policy gate command that exits non-zero when observed probe statuses violate expected allow/deny rules.
   - Batch 8: added JUnit XML output for policy probe results so CI systems can display authorization failures as test cases.
   - Batch 9: added Markdown policy probe reports for human review, including pass/fail totals and per-rule observed status/request IDs.
+  - Batch 10: added an ordered live authorization-test runbook that sequences human review, setup, probes, gate, and cleanup with redacted auth handling.
 
 - [x] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
@@ -993,3 +995,4 @@
   - Batch 5: added Prometheus-style readiness metrics for aggregate state, per-check state, and verifier/runtime limits.
   - Batch 6: added compact readiness state-count summaries for dashboards and CI logs.
   - Batch 7: added Nagios-compatible one-line readiness output with standard exit codes for healthy, degraded, misconfigured, and unsafe states.
+  - Batch 8: added an ordered readiness monitoring runbook covering JSON, agent context, Prometheus metrics, summaries, Nagios checks, and baseline comparison.

@@ -373,6 +373,41 @@ def build_review_pack(policy, base_url):
     }
 
 
+def build_runbook(policy, base_url, auth_query=""):
+    return {
+        "safeForAgent": True,
+        "humanApprovalRequired": True,
+        "policy": {"name": policy.get("name", "unnamed"), "ruleCount": len(policy["rules"])},
+        "secretInputs": ["CDSE_POLICY_AUTH_QUERY"],
+        "phases": [
+            {
+                "name": "review",
+                "command": (
+                    "python3 samples/policy-authz-tester/policy_authz_tester.py review-pack "
+                    f"--policy samples/policy-authz-tester/policy.example.json --base-url {shlex.quote(base_url)}"
+                ),
+            },
+            {"name": "setup", "commands": build_setup_commands(policy, base_url, auth_query)["commands"]},
+            {
+                "name": "probe",
+                "command": (
+                    "python3 samples/policy-authz-tester/policy_authz_tester.py probe "
+                    f"--policy samples/policy-authz-tester/policy.example.json --base-url {shlex.quote(base_url)} "
+                    "--auth-query \"$CDSE_POLICY_AUTH_QUERY\""
+                ),
+            },
+            {
+                "name": "gate",
+                "command": (
+                    "python3 samples/policy-authz-tester/policy_authz_tester.py gate "
+                    "--policy samples/policy-authz-tester/policy.example.json --observations observed-policy-results.json"
+                ),
+            },
+            {"name": "cleanup", "commands": build_cleanup_commands(policy, base_url, auth_query)["commands"]},
+        ],
+    }
+
+
 def probe_policy(policy, base_url, auth_query="", timeout=10, dry_run=False):
     if not isinstance(base_url, str) or not base_url.startswith(("http://", "https://")):
         raise PolicyError("base_url must start with http:// or https://.")
@@ -477,6 +512,12 @@ def review_pack_command(args):
     print(json.dumps(redact_value(result), indent=2, sort_keys=True))
 
 
+def runbook_command(args):
+    policy = validate_policy(load_json(args.policy))
+    result = build_runbook(policy, args.base_url, args.auth_query)
+    print(json.dumps(redact_value(result), indent=2, sort_keys=True))
+
+
 def self_test():
     policy = validate_policy(load_json(DEFAULT_POLICY))
     observations = [
@@ -533,6 +574,9 @@ def self_test():
     review = build_review_pack(policy, "http://127.0.0.1:8080")
     if review["humanApprovalRequired"] is not True or len(review["reviewChecklist"]) < 4:
         raise PolicyError("self-test review pack failed.")
+    rb = redact_value(build_runbook(policy, "http://127.0.0.1:8080", "orgKey=abc&newOrgKey=def"))
+    if rb["humanApprovalRequired"] is not True or "abc" in json.dumps(rb):
+        raise PolicyError("self-test runbook rendering failed.")
     print("PASS policy authz tester self-test")
 
 
@@ -570,6 +614,10 @@ def parse_args(argv):
     review_pack = sub.add_parser("review-pack", help="Render an agent-safe human approval pack before live setup/probes.")
     review_pack.add_argument("--policy", default=str(DEFAULT_POLICY))
     review_pack.add_argument("--base-url", required=True)
+    runbook_parser = sub.add_parser("runbook", help="Render an ordered live policy-test runbook.")
+    runbook_parser.add_argument("--policy", default=str(DEFAULT_POLICY))
+    runbook_parser.add_argument("--base-url", required=True)
+    runbook_parser.add_argument("--auth-query", default="", help="Optional auth query string; pass from environment, not policy files.")
     sub.add_parser("self-test", help="Run offline validation, evaluation, and redaction checks.")
     return parser.parse_args(argv)
 
@@ -595,6 +643,8 @@ def main(argv=None):
             cleanup_script_command(args)
         elif args.command == "review-pack":
             review_pack_command(args)
+        elif args.command == "runbook":
+            runbook_command(args)
         elif args.command == "self-test":
             self_test()
     except PolicyError as exc:

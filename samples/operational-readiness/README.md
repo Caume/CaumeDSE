@@ -71,6 +71,13 @@ python3 samples/operational-readiness/readiness_check.py nagios \
   --config samples/operational-readiness/config.example.json
 ```
 
+Render the monitoring runbook:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py runbook \
+  --config samples/operational-readiness/config.example.json
+```
+
 Run offline checks:
 
 ```sh

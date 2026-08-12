@@ -280,6 +280,22 @@ def nagios_line(report):
     return code, text
 
 
+def readiness_runbook(config_path=None):
+    config_arg = f" --config {config_path}" if config_path else ""
+    base = "python3 samples/operational-readiness/readiness_check.py"
+    return {
+        "safeForAgent": True,
+        "phases": [
+            {"name": "json", "command": f"{base} check{config_arg}"},
+            {"name": "agentContext", "command": f"{base} context{config_arg}"},
+            {"name": "prometheusMetrics", "command": f"{base} metrics{config_arg}"},
+            {"name": "stateSummary", "command": f"{base} summary{config_arg}"},
+            {"name": "nagios", "command": f"{base} nagios{config_arg}"},
+        ],
+        "baselineCompare": f"{base} compare --current readiness-current.json --baseline readiness-baseline.json",
+    }
+
+
 def check_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
@@ -318,6 +334,10 @@ def nagios_command(args):
     code, text = nagios_line(report)
     print(text)
     return code
+
+
+def runbook_command(args):
+    print(json.dumps(readiness_runbook(args.config), indent=2, sort_keys=True))
 
 
 def compare_command(args):
@@ -368,6 +388,9 @@ def self_test():
     code, line = nagios_line(report)
     if code != 2 or "UNSAFE" not in line:
         raise ReadinessError("self-test Nagios output failed.")
+    rb = readiness_runbook("samples/operational-readiness/config.example.json")
+    if len(rb["phases"]) != 5 or "check --config" not in rb["phases"][0]["command"]:
+        raise ReadinessError("self-test runbook output failed.")
     print("PASS operational readiness self-test")
 
 
@@ -434,6 +457,8 @@ def parse_args(argv):
     nagios.add_argument("--max-connections", type=int, default=0)
     nagios.add_argument("--thread-pool-size", type=int, default=0)
     nagios.set_defaults(output="json")
+    runbook_parser = sub.add_parser("runbook", help="Render an ordered readiness monitoring runbook.")
+    runbook_parser.add_argument("--config", help="Optional JSON config path to include in rendered commands.")
     compare = sub.add_parser("compare", help="Compare two JSON readiness reports for state drift.")
     compare.add_argument("--current", required=True)
     compare.add_argument("--baseline", required=True)
@@ -454,6 +479,9 @@ def main(argv=None):
             return summary_command(args)
         if args.command == "nagios":
             return nagios_command(args)
+        if args.command == "runbook":
+            runbook_command(args)
+            return 0
         if args.command == "compare":
             return compare_command(args)
         if args.command == "self-test":
