@@ -319,6 +319,26 @@ def audit_events(journal):
     return {"safeForAgent": True, "journalId": journal["journalId"], "events": events}
 
 
+def checkpoint_manifest(journal):
+    checkpoints = []
+    for step in journal["steps"]:
+        for phase in ("preMutation", "postTransaction", "postReadback"):
+            checkpoints.append({
+                "checkpointId": stable_id(journal["journalId"], step["databaseId"], phase),
+                "databaseId": step["databaseId"],
+                "step": step["step"],
+                "phase": phase,
+                "required": True,
+                "pathVisibleToAgent": False,
+            })
+    return {
+        "safeForAgent": True,
+        "journalId": journal["journalId"],
+        "checkpointCount": len(checkpoints),
+        "checkpoints": checkpoints,
+    }
+
+
 def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
     if state not in {"pending", "readyToResume", "complete", "blocked"}:
         raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
@@ -377,6 +397,11 @@ def audit_events_command(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def checkpoint_manifest_command(args):
+    result = redact(checkpoint_manifest(load_journal(args.journal)))
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def self_test():
     plan = redact(build_plan(load_json(DEFAULT_SCOPE), dry_run=True))
     if plan.get("safeForAgent") is not True or plan["summary"]["databases"] != 2:
@@ -418,6 +443,9 @@ def self_test():
     audit = audit_events(complete)
     if len(audit["events"]) != 3 or audit["events"][-1]["complete"] is not True:
         raise ReprotectError("self-test audit event rendering failed.")
+    manifest = checkpoint_manifest(complete)
+    if manifest["checkpointCount"] != 6 or manifest["checkpoints"][0]["pathVisibleToAgent"] is not False:
+        raise ReprotectError("self-test checkpoint manifest failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -443,6 +471,8 @@ def parse_args(argv):
     gate.add_argument("--journal", required=True)
     audit = sub.add_parser("audit-events", help="Render redacted JSON audit events for a re-protect journal.")
     audit.add_argument("--journal", required=True)
+    checkpoints = sub.add_parser("checkpoint-manifest", help="Render required checkpoint IDs without exposing paths.")
+    checkpoints.add_argument("--journal", required=True)
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -462,6 +492,8 @@ def main(argv=None):
             return gate_command(args)
         elif args.command == "audit-events":
             audit_events_command(args)
+        elif args.command == "checkpoint-manifest":
+            checkpoint_manifest_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:

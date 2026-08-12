@@ -58,6 +58,14 @@ python3 samples/policy-authz-tester/policy_authz_tester.py junit \
   --observations observed-policy-results.json
 ```
 
+Render a Markdown report for reviews:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py markdown \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --observations observed-policy-results.json
+```
+
 Render live probe URLs without sending requests:
 
 ```sh

@@ -64,6 +64,13 @@ python3 samples/operational-readiness/readiness_check.py summary \
   --config samples/operational-readiness/config.example.json
 ```
 
+Render a Nagios-compatible status line:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py nagios \
+  --config samples/operational-readiness/config.example.json
+```
+
 Run offline checks:
 
 ```sh

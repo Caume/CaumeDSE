@@ -268,6 +268,18 @@ def state_summary(report):
     })
 
 
+def nagios_line(report):
+    state = report.get("state", "degraded")
+    code = {"healthy": 0, "degraded": 1, "misconfigured": 2, "unsafe": 2}.get(state, 3)
+    counts = state_summary(report)["summary"]
+    text = (
+        f"CDSE READINESS {state.upper()} - "
+        f"healthy={counts['healthy']} degraded={counts['degraded']} "
+        f"misconfigured={counts['misconfigured']} unsafe={counts['unsafe']}"
+    )
+    return code, text
+
+
 def check_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
@@ -298,6 +310,14 @@ def summary_command(args):
     result = state_summary(report)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if report["state"] in {"healthy", "degraded"} else 2
+
+
+def nagios_command(args):
+    args = apply_config_and_env(args)
+    report = build_report(args)
+    code, text = nagios_line(report)
+    print(text)
+    return code
 
 
 def compare_command(args):
@@ -345,6 +365,9 @@ def self_test():
     summary = state_summary(report)
     if summary["summary"]["unsafe"] == 0:
         raise ReadinessError("self-test readiness summary failed.")
+    code, line = nagios_line(report)
+    if code != 2 or "UNSAFE" not in line:
+        raise ReadinessError("self-test Nagios output failed.")
     print("PASS operational readiness self-test")
 
 
@@ -399,6 +422,18 @@ def parse_args(argv):
     summary.add_argument("--max-connections", type=int, default=0)
     summary.add_argument("--thread-pool-size", type=int, default=0)
     summary.set_defaults(output="json")
+    nagios = sub.add_parser("nagios", help="Render a Nagios-compatible one-line readiness status.")
+    nagios.add_argument("--config", help="Optional JSON config; environment variables override it.")
+    nagios.add_argument("--storage-path", default=os.getcwd())
+    nagios.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
+    nagios.add_argument("--storage-profile", default="aes-256-cbc")
+    nagios.add_argument("--herradura-available", action="store_true")
+    nagios.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
+    nagios.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
+    nagios.add_argument("--parser-policy-enabled", action="store_true")
+    nagios.add_argument("--max-connections", type=int, default=0)
+    nagios.add_argument("--thread-pool-size", type=int, default=0)
+    nagios.set_defaults(output="json")
     compare = sub.add_parser("compare", help="Compare two JSON readiness reports for state drift.")
     compare.add_argument("--current", required=True)
     compare.add_argument("--baseline", required=True)
@@ -417,6 +452,8 @@ def main(argv=None):
             return metrics_command(args)
         if args.command == "summary":
             return summary_command(args)
+        if args.command == "nagios":
+            return nagios_command(args)
         if args.command == "compare":
             return compare_command(args)
         if args.command == "self-test":

@@ -279,6 +279,25 @@ def junit_report(report):
     return "\n".join(lines) + "\n"
 
 
+def markdown_report(report):
+    lines = [
+        f"# CaumeDSE Policy Authorization Report: {report.get('policy', {}).get('name', 'unnamed')}",
+        "",
+        f"Passed: {report.get('summary', {}).get('passed', 0)}",
+        f"Failed: {report.get('summary', {}).get('failed', 0)}",
+        "",
+        "| Rule | Method | Expected | Actual | Passed | Request ID |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for item in report.get("results", []):
+        request_id = item.get("requestId") or ""
+        lines.append(
+            f"| {item.get('rule')} | {item.get('method')} | {item.get('expectedStatus')} | "
+            f"{item.get('actualStatus')} | {str(item.get('passed')).lower()} | {request_id} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def append_query(url, query):
     if not query:
         return url
@@ -427,6 +446,13 @@ def junit_command(args):
     print(junit_report(result), end="")
 
 
+def markdown_command(args):
+    policy = validate_policy(load_json(args.policy))
+    observations = load_json(args.observations)
+    result = redact_value(evaluate(policy, observations))
+    print(markdown_report(result), end="")
+
+
 def probe_command(args):
     policy = validate_policy(load_json(args.policy))
     result = probe_policy(policy, args.base_url, args.auth_query, args.timeout, args.dry_run)
@@ -469,6 +495,9 @@ def self_test():
     junit = junit_report(report)
     if "<testsuite" not in junit or 'failures="0"' not in junit:
         raise PolicyError("self-test JUnit rendering failed.")
+    markdown = markdown_report(report)
+    if "| allow_document_schema |" not in markdown or "Passed: 3" not in markdown:
+        raise PolicyError("self-test Markdown rendering failed.")
     secret_report = redact_value({"route": "/x?orgKey=abc&newOrgKey=def", "authorization": "Bearer secret"})
     if "abc" in json.dumps(secret_report) or "secret" in json.dumps(secret_report):
         raise PolicyError("self-test report redaction leaked a secret marker.")
@@ -521,6 +550,9 @@ def parse_args(argv):
     junit = sub.add_parser("junit", help="Render JUnit XML for observed probe results.")
     junit.add_argument("--policy", default=str(DEFAULT_POLICY))
     junit.add_argument("--observations", required=True)
+    markdown = sub.add_parser("markdown", help="Render a Markdown report for observed probe results.")
+    markdown.add_argument("--policy", default=str(DEFAULT_POLICY))
+    markdown.add_argument("--observations", required=True)
     probe = sub.add_parser("probe", help="Execute policy rules against a live CaumeDSE base URL.")
     probe.add_argument("--policy", default=str(DEFAULT_POLICY))
     probe.add_argument("--base-url", required=True)
@@ -553,6 +585,8 @@ def main(argv=None):
             return gate_command(args)
         elif args.command == "junit":
             junit_command(args)
+        elif args.command == "markdown":
+            markdown_command(args)
         elif args.command == "probe":
             probe_command(args)
         elif args.command == "setup-script":

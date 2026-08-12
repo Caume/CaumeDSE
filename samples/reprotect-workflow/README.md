@@ -71,6 +71,13 @@ python3 samples/reprotect-workflow/reprotect_workflow.py audit-events \
   --journal rotation-journal.updated.json
 ```
 
+Render required checkpoint IDs without exposing local paths:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py checkpoint-manifest \
+  --journal rotation-journal.updated.json
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:
