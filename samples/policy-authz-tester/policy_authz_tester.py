@@ -256,6 +256,10 @@ def evaluate(policy, observations):
     }
 
 
+def gate_status(report):
+    return 0 if report.get("summary", {}).get("failed", 0) == 0 else 2
+
+
 def append_query(url, query):
     if not query:
         return url
@@ -389,6 +393,14 @@ def report_command(args):
     print(json.dumps(redact_value(evaluate(policy, observations)), indent=2, sort_keys=True))
 
 
+def gate_command(args):
+    policy = validate_policy(load_json(args.policy))
+    observations = load_json(args.observations)
+    result = redact_value(evaluate(policy, observations))
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["summary"]["failed"] == 0 else 2
+
+
 def probe_command(args):
     policy = validate_policy(load_json(args.policy))
     result = probe_policy(policy, args.base_url, args.auth_query, args.timeout, args.dry_run)
@@ -426,6 +438,8 @@ def self_test():
     failed = evaluate(policy, [{"rule": "allow_document_schema", "status": 403}])
     if failed["summary"]["failed"] == 0:
         raise PolicyError("self-test failed to detect a mismatched observation.")
+    if gate_status(evaluate(policy, observations)) != 0 or gate_status(failed) == 0:
+        raise PolicyError("self-test policy gate failed.")
     secret_report = redact_value({"route": "/x?orgKey=abc&newOrgKey=def", "authorization": "Bearer secret"})
     if "abc" in json.dumps(secret_report) or "secret" in json.dumps(secret_report):
         raise PolicyError("self-test report redaction leaked a secret marker.")
@@ -472,6 +486,9 @@ def parse_args(argv):
     report = sub.add_parser("report", help="Compare observed probe results to policy expectations.")
     report.add_argument("--policy", default=str(DEFAULT_POLICY))
     report.add_argument("--observations", required=True)
+    gate = sub.add_parser("gate", help="Exit non-zero when observed probe results violate the policy.")
+    gate.add_argument("--policy", default=str(DEFAULT_POLICY))
+    gate.add_argument("--observations", required=True)
     probe = sub.add_parser("probe", help="Execute policy rules against a live CaumeDSE base URL.")
     probe.add_argument("--policy", default=str(DEFAULT_POLICY))
     probe.add_argument("--base-url", required=True)
@@ -500,6 +517,8 @@ def main(argv=None):
             validate_command(args)
         elif args.command == "report":
             report_command(args)
+        elif args.command == "gate":
+            return gate_command(args)
         elif args.command == "probe":
             probe_command(args)
         elif args.command == "setup-script":

@@ -271,6 +271,18 @@ def final_report(journal):
     }
 
 
+def gate_journal(journal):
+    report = final_report(journal)
+    blocked = [step for step in report["incompleteSteps"] if step["state"] == "blocked"]
+    pending = [step for step in report["incompleteSteps"] if step["state"] != "blocked"]
+    report["gate"] = {
+        "passed": report["complete"],
+        "blockedSteps": len(blocked),
+        "pendingSteps": len(pending),
+    }
+    return report
+
+
 def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
     if state not in {"pending", "readyToResume", "complete", "blocked"}:
         raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
@@ -318,6 +330,12 @@ def final_report_command(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def gate_command(args):
+    result = redact(gate_journal(load_journal(args.journal)))
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["gate"]["passed"] else 2
+
+
 def self_test():
     plan = redact(build_plan(load_json(DEFAULT_SCOPE), dry_run=True))
     if plan.get("safeForAgent") is not True or plan["summary"]["databases"] != 2:
@@ -353,6 +371,9 @@ def self_test():
     closeout = final_report(complete)
     if closeout["complete"] is not True or closeout["summary"]["protectedValueRows"] != 20:
         raise ReprotectError("self-test final report failed.")
+    gate = gate_journal(staged)
+    if gate["gate"]["passed"] is True or gate["gate"]["blockedSteps"] != 1:
+        raise ReprotectError("self-test journal gate failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -374,6 +395,8 @@ def parse_args(argv):
     journal_update.add_argument("--out", help="Write updated journal to this path instead of stdout.")
     final = sub.add_parser("final-report", help="Render a closeout report for a completed re-protect journal.")
     final.add_argument("--journal", required=True)
+    gate = sub.add_parser("gate", help="Return non-zero until every journal step is complete.")
+    gate.add_argument("--journal", required=True)
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -389,6 +412,8 @@ def main(argv=None):
             journal_update_command(args)
         elif args.command == "final-report":
             final_report_command(args)
+        elif args.command == "gate":
+            return gate_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:

@@ -54,6 +54,16 @@ python3 samples/reprotect-workflow/reprotect_workflow.py final-report \
   --journal rotation-journal.updated.json
 ```
 
+Use a journal as a CI/operator gate:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py gate \
+  --journal rotation-journal.updated.json
+```
+
+The gate exits non-zero until every selected ColumnFile step is marked
+`complete`.
+
 ## Scope Shape
 
 `scope.example.json` contains:

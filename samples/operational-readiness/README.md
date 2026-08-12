@@ -50,6 +50,13 @@ python3 samples/operational-readiness/readiness_check.py context \
   --config samples/operational-readiness/config.example.json
 ```
 
+Render Prometheus-style metrics:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py metrics \
+  --config samples/operational-readiness/config.example.json
+```
+
 Run offline checks:
 
 ```sh

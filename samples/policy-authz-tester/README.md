@@ -42,6 +42,14 @@ python3 samples/policy-authz-tester/policy_authz_tester.py report \
   --observations observed-policy-results.json
 ```
 
+Fail a CI/operator gate when observed probes violate policy:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py gate \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --observations observed-policy-results.json
+```
+
 Render live probe URLs without sending requests:
 
 ```sh
