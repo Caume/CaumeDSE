@@ -43,6 +43,13 @@ python3 samples/operational-readiness/readiness_check.py compare \
   --baseline readiness-baseline.json
 ```
 
+Render compact context for AI-agent preflight decisions:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py context \
+  --config samples/operational-readiness/config.example.json
+```
+
 Run offline checks:
 
 ```sh

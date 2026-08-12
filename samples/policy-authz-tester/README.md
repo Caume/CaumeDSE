@@ -74,6 +74,14 @@ python3 samples/policy-authz-tester/policy_authz_tester.py cleanup-script \
   --auth-query "$CDSE_POLICY_AUTH_QUERY"
 ```
 
+Render a human approval pack before applying generated policy resources:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py review-pack \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --base-url http://127.0.0.1:8080
+```
+
 Run offline validation, evaluation, and redaction checks:
 
 ```sh

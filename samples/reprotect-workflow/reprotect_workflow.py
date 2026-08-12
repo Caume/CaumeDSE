@@ -239,6 +239,38 @@ def summarize_journal(journal):
     }
 
 
+def final_report(journal):
+    summary = summarize_journal(journal)
+    incomplete = [
+        {
+            "step": step["step"],
+            "databaseId": step["databaseId"],
+            "database": step["database"],
+            "state": step.get("state", "pending"),
+        }
+        for step in journal["steps"]
+        if step.get("state", "pending") != "complete"
+    ]
+    return {
+        "safeForAgent": True,
+        "journalId": journal["journalId"],
+        "complete": not incomplete,
+        "readiness": summary["readiness"],
+        "summary": {
+            "databases": len(journal["steps"]),
+            "dataRows": sum(step.get("dataRows", 0) for step in journal["steps"]),
+            "metaRows": sum(step.get("metaRows", 0) for step in journal["steps"]),
+            "protectedValueRows": sum(step.get("protectedValueRows", 0) for step in journal["steps"]),
+        },
+        "incompleteSteps": incomplete,
+        "operatorCloseout": [
+            "confirm target-key readback for every complete step",
+            "archive the final redacted journal with backup metadata",
+            "destroy old key material only after external recovery checks pass",
+        ],
+    }
+
+
 def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
     if state not in {"pending", "readyToResume", "complete", "blocked"}:
         raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
@@ -281,6 +313,11 @@ def journal_update_command(args):
         print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def final_report_command(args):
+    result = redact(final_report(load_journal(args.journal)))
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def self_test():
     plan = redact(build_plan(load_json(DEFAULT_SCOPE), dry_run=True))
     if plan.get("safeForAgent") is not True or plan["summary"]["databases"] != 2:
@@ -311,6 +348,11 @@ def self_test():
     updated_summary = summarize_journal(updated)
     if updated_summary["readiness"] != "blocked" or updated_summary["summary"]["blocked"] != 1:
         raise ReprotectError("self-test journal state update failed.")
+    complete = dict(plan)
+    complete["steps"] = [dict(step, state="complete") for step in complete["steps"]]
+    closeout = final_report(complete)
+    if closeout["complete"] is not True or closeout["summary"]["protectedValueRows"] != 20:
+        raise ReprotectError("self-test final report failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -330,6 +372,8 @@ def parse_args(argv):
     journal_update.add_argument("--state", required=True, choices=["pending", "readyToResume", "complete", "blocked"])
     journal_update.add_argument("--next-action")
     journal_update.add_argument("--out", help="Write updated journal to this path instead of stdout.")
+    final = sub.add_parser("final-report", help="Render a closeout report for a completed re-protect journal.")
+    final.add_argument("--journal", required=True)
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -343,6 +387,8 @@ def main(argv=None):
             journal_command(args)
         elif args.command == "journal-update":
             journal_update_command(args)
+        elif args.command == "final-report":
+            final_report_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:

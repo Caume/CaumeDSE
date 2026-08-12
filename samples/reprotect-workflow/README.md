@@ -47,6 +47,13 @@ python3 samples/reprotect-workflow/reprotect_workflow.py journal-update \
   --out rotation-journal.updated.json
 ```
 
+Render a final closeout report after every journal step is complete:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py final-report \
+  --journal rotation-journal.updated.json
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:

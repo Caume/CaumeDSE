@@ -205,6 +205,34 @@ def compare_reports(current, baseline):
     })
 
 
+def agent_context(report):
+    attention = [
+        {
+            "name": item["name"],
+            "state": item["state"],
+            "message": item["message"],
+        }
+        for item in report.get("checks", [])
+        if item.get("state") in {"misconfigured", "unsafe"}
+    ]
+    degraded = [
+        {
+            "name": item["name"],
+            "message": item["message"],
+        }
+        for item in report.get("checks", [])
+        if item.get("state") == "degraded"
+    ]
+    return redact({
+        "safeForAgent": True,
+        "state": report.get("state"),
+        "attentionRequired": attention,
+        "degradedChecks": degraded,
+        "limits": report.get("limits", {}),
+        "promptBoundary": "Use readiness context for preflight decisions only; do not request secrets or protected data.",
+    })
+
+
 def check_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
@@ -212,6 +240,13 @@ def check_command(args):
         print_text(report)
     else:
         print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report["state"] in {"healthy", "degraded"} else 2
+
+
+def context_command(args):
+    args = apply_config_and_env(args)
+    report = build_report(args)
+    print(json.dumps(agent_context(report), indent=2, sort_keys=True))
     return 0 if report["state"] in {"healthy", "degraded"} else 2
 
 
@@ -251,6 +286,9 @@ def self_test():
     comparison = compare_reports(bad_report, report)
     if comparison["summary"]["changes"] == 0:
         raise ReadinessError("self-test readiness comparison did not detect drift.")
+    context = agent_context(report)
+    if context["safeForAgent"] is not True or not context["attentionRequired"]:
+        raise ReadinessError("self-test agent context failed.")
     print("PASS operational readiness self-test")
 
 
@@ -269,6 +307,18 @@ def parse_args(argv):
     check.add_argument("--max-connections", type=int, default=0)
     check.add_argument("--thread-pool-size", type=int, default=0)
     check.add_argument("--output", choices=["json", "text"], default="json")
+    context = sub.add_parser("context", help="Render compact agent-safe readiness context.")
+    context.add_argument("--config", help="Optional JSON config; environment variables override it.")
+    context.add_argument("--storage-path", default=os.getcwd())
+    context.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
+    context.add_argument("--storage-profile", default="aes-256-cbc")
+    context.add_argument("--herradura-available", action="store_true")
+    context.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
+    context.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
+    context.add_argument("--parser-policy-enabled", action="store_true")
+    context.add_argument("--max-connections", type=int, default=0)
+    context.add_argument("--thread-pool-size", type=int, default=0)
+    context.set_defaults(output="json")
     compare = sub.add_parser("compare", help="Compare two JSON readiness reports for state drift.")
     compare.add_argument("--current", required=True)
     compare.add_argument("--baseline", required=True)
@@ -281,6 +331,8 @@ def main(argv=None):
     try:
         if args.command == "check":
             return check_command(args)
+        if args.command == "context":
+            return context_command(args)
         if args.command == "compare":
             return compare_command(args)
         if args.command == "self-test":

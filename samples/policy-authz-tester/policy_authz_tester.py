@@ -308,6 +308,29 @@ def build_cleanup_commands(policy, base_url, auth_query=""):
     }
 
 
+def build_review_pack(policy, base_url):
+    dry_probe = probe_policy(policy, base_url, dry_run=True)
+    return {
+        "safeForAgent": True,
+        "humanApprovalRequired": True,
+        "policy": {
+            "name": policy.get("name", "unnamed"),
+            "subject": policy["subject"],
+            "resources": policy["resources"],
+            "ruleCount": len(policy["rules"]),
+        },
+        "setupPlan": setup_plan(policy),
+        "probePlan": dry_probe["probePlan"],
+        "reviewChecklist": [
+            "confirm the disposable organization/user/storage names are not production resources",
+            "confirm allow rules are intentionally narrow",
+            "confirm deny rules cover mutating methods and cleanup failure cases",
+            "confirm auth query values are supplied from operator-held environment variables",
+        ],
+        "promptBoundary": "AI may summarize this review pack but must not alter policies or execute setup/probe/cleanup commands without human approval.",
+    }
+
+
 def probe_policy(policy, base_url, auth_query="", timeout=10, dry_run=False):
     if not isinstance(base_url, str) or not base_url.startswith(("http://", "https://")):
         raise PolicyError("base_url must start with http:// or https://.")
@@ -384,6 +407,12 @@ def cleanup_script_command(args):
     print(json.dumps(redact_value(result), indent=2, sort_keys=True))
 
 
+def review_pack_command(args):
+    policy = validate_policy(load_json(args.policy))
+    result = build_review_pack(policy, args.base_url)
+    print(json.dumps(redact_value(result), indent=2, sort_keys=True))
+
+
 def self_test():
     policy = validate_policy(load_json(DEFAULT_POLICY))
     observations = [
@@ -429,6 +458,9 @@ def self_test():
     serialized_cleanup = json.dumps(cleanup_commands)
     if "abc" in serialized_cleanup or cleanup_commands["commands"][0]["kind"] != "filterBlacklist":
         raise PolicyError("self-test cleanup command rendering failed.")
+    review = build_review_pack(policy, "http://127.0.0.1:8080")
+    if review["humanApprovalRequired"] is not True or len(review["reviewChecklist"]) < 4:
+        raise PolicyError("self-test review pack failed.")
     print("PASS policy authz tester self-test")
 
 
@@ -454,6 +486,9 @@ def parse_args(argv):
     cleanup_script.add_argument("--policy", default=str(DEFAULT_POLICY))
     cleanup_script.add_argument("--base-url", required=True)
     cleanup_script.add_argument("--auth-query", default="", help="Optional auth query string; pass from environment, not policy files.")
+    review_pack = sub.add_parser("review-pack", help="Render an agent-safe human approval pack before live setup/probes.")
+    review_pack.add_argument("--policy", default=str(DEFAULT_POLICY))
+    review_pack.add_argument("--base-url", required=True)
     sub.add_parser("self-test", help="Run offline validation, evaluation, and redaction checks.")
     return parser.parse_args(argv)
 
@@ -471,6 +506,8 @@ def main(argv=None):
             setup_script_command(args)
         elif args.command == "cleanup-script":
             cleanup_script_command(args)
+        elif args.command == "review-pack":
+            review_pack_command(args)
         elif args.command == "self-test":
             self_test()
     except PolicyError as exc:
