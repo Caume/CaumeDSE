@@ -239,6 +239,25 @@ def summarize_journal(journal):
     }
 
 
+def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
+    if state not in {"pending", "readyToResume", "complete", "blocked"}:
+        raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
+    matched = False
+    for step in journal["steps"]:
+        if (step_number is not None and step.get("step") == step_number) or \
+           (database_id is not None and step.get("databaseId") == database_id):
+            step["state"] = state
+            if next_action:
+                step["nextAction"] = next_action
+            step["updatedAt"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            matched = True
+            break
+    if not matched:
+        raise ReprotectError("no journal step matched the requested selector.")
+    journal["updatedAt"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return journal
+
+
 def plan_command(args):
     result = build_plan(load_json(args.scope), dry_run=args.dry_run)
     if args.include_commands:
@@ -250,6 +269,16 @@ def plan_command(args):
 def journal_command(args):
     result = redact(summarize_journal(load_journal(args.journal)))
     print(json.dumps(result, indent=2, sort_keys=True))
+
+
+def journal_update_command(args):
+    if args.step is None and not args.database_id:
+        raise ReprotectError("journal-update requires --step or --database-id.")
+    result = redact(update_journal(load_journal(args.journal), args.step, args.database_id, args.state, args.next_action))
+    if args.out:
+        Path(args.out).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    else:
+        print(json.dumps(result, indent=2, sort_keys=True))
 
 
 def self_test():
@@ -278,6 +307,10 @@ def self_test():
     serialized_commands = json.dumps(commands)
     if "CDSE_SOURCE_ORG_KEY_FILE" not in serialized_commands or "orgKey" in serialized_commands:
         raise ReprotectError("self-test operator command rendering failed.")
+    updated = update_journal(staged, step_number=2, state="blocked", next_action="restore pre-mutation checkpoint")
+    updated_summary = summarize_journal(updated)
+    if updated_summary["readiness"] != "blocked" or updated_summary["summary"]["blocked"] != 1:
+        raise ReprotectError("self-test journal state update failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -290,6 +323,13 @@ def parse_args(argv):
     plan.add_argument("--include-commands", action="store_true", help="Include secret-free operator command templates.")
     journal = sub.add_parser("journal-status", help="Summarize a saved plan or journal for resumable operation.")
     journal.add_argument("--journal", required=True)
+    journal_update = sub.add_parser("journal-update", help="Update one saved journal step state.")
+    journal_update.add_argument("--journal", required=True)
+    journal_update.add_argument("--step", type=int)
+    journal_update.add_argument("--database-id")
+    journal_update.add_argument("--state", required=True, choices=["pending", "readyToResume", "complete", "blocked"])
+    journal_update.add_argument("--next-action")
+    journal_update.add_argument("--out", help="Write updated journal to this path instead of stdout.")
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -301,6 +341,8 @@ def main(argv=None):
             plan_command(args)
         elif args.command == "journal-status":
             journal_command(args)
+        elif args.command == "journal-update":
+            journal_update_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:

@@ -65,6 +65,15 @@ python3 samples/policy-authz-tester/policy_authz_tester.py setup-script \
   --auth-query "$CDSE_POLICY_AUTH_QUERY"
 ```
 
+Render cleanup commands for disposable role/filter resources:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py cleanup-script \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --base-url http://127.0.0.1:8080 \
+  --auth-query "$CDSE_POLICY_AUTH_QUERY"
+```
+
 Run offline validation, evaluation, and redaction checks:
 
 ```sh

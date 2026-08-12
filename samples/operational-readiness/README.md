@@ -35,6 +35,14 @@ Render concise operator text:
 python3 samples/operational-readiness/readiness_check.py check --output text
 ```
 
+Compare a current report against a known-good baseline:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py compare \
+  --current readiness-current.json \
+  --baseline readiness-baseline.json
+```
+
 Run offline checks:
 
 ```sh

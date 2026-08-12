@@ -36,6 +36,17 @@ python3 samples/reprotect-workflow/reprotect_workflow.py journal-status \
   --journal rotation-journal.json
 ```
 
+Update a single journal step after a checkpoint, dry-run, mutation, or readback:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py journal-update \
+  --journal rotation-journal.json \
+  --step 2 \
+  --state readyToResume \
+  --next-action "verify readback with target key/profile" \
+  --out rotation-journal.updated.json
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:

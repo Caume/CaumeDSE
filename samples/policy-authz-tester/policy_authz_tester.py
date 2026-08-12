@@ -288,6 +288,26 @@ def build_setup_commands(policy, base_url, auth_query=""):
     }
 
 
+def build_cleanup_commands(policy, base_url, auth_query=""):
+    commands = []
+    plan = list(reversed(setup_plan(policy)))
+    for index, item in enumerate(plan, start=1):
+        url = append_query(base_url.rstrip("/") + item["path"], auth_query)
+        command = ["curl", "-fsS", "-X", "DELETE", url]
+        commands.append({
+            "step": index,
+            "kind": item["kind"],
+            "path": item["path"],
+            "command": " ".join(shlex.quote(part) for part in command),
+        })
+    return {
+        "safeForAgent": True,
+        "policy": {"name": policy.get("name", "unnamed")},
+        "secretInputs": ["CDSE_POLICY_AUTH_QUERY"],
+        "commands": commands,
+    }
+
+
 def probe_policy(policy, base_url, auth_query="", timeout=10, dry_run=False):
     if not isinstance(base_url, str) or not base_url.startswith(("http://", "https://")):
         raise PolicyError("base_url must start with http:// or https://.")
@@ -358,6 +378,12 @@ def setup_script_command(args):
     print(json.dumps(redact_value(result), indent=2, sort_keys=True))
 
 
+def cleanup_script_command(args):
+    policy = validate_policy(load_json(args.policy))
+    result = build_cleanup_commands(policy, args.base_url, args.auth_query)
+    print(json.dumps(redact_value(result), indent=2, sort_keys=True))
+
+
 def self_test():
     policy = validate_policy(load_json(DEFAULT_POLICY))
     observations = [
@@ -399,6 +425,10 @@ def self_test():
     serialized_setup = json.dumps(setup_commands)
     if "abc" in serialized_setup or len(setup_commands["commands"]) != 3:
         raise PolicyError("self-test setup command rendering failed.")
+    cleanup_commands = redact_value(build_cleanup_commands(policy, "http://127.0.0.1:8080", "orgKey=abc&newOrgKey=def"))
+    serialized_cleanup = json.dumps(cleanup_commands)
+    if "abc" in serialized_cleanup or cleanup_commands["commands"][0]["kind"] != "filterBlacklist":
+        raise PolicyError("self-test cleanup command rendering failed.")
     print("PASS policy authz tester self-test")
 
 
@@ -420,6 +450,10 @@ def parse_args(argv):
     setup_script.add_argument("--policy", default=str(DEFAULT_POLICY))
     setup_script.add_argument("--base-url", required=True)
     setup_script.add_argument("--auth-query", default="", help="Optional auth query string; pass from environment, not policy files.")
+    cleanup_script = sub.add_parser("cleanup-script", help="Render secret-free curl commands for disposable policy cleanup.")
+    cleanup_script.add_argument("--policy", default=str(DEFAULT_POLICY))
+    cleanup_script.add_argument("--base-url", required=True)
+    cleanup_script.add_argument("--auth-query", default="", help="Optional auth query string; pass from environment, not policy files.")
     sub.add_parser("self-test", help="Run offline validation, evaluation, and redaction checks.")
     return parser.parse_args(argv)
 
@@ -435,6 +469,8 @@ def main(argv=None):
             probe_command(args)
         elif args.command == "setup-script":
             setup_script_command(args)
+        elif args.command == "cleanup-script":
+            cleanup_script_command(args)
         elif args.command == "self-test":
             self_test()
     except PolicyError as exc:

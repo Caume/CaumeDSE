@@ -913,6 +913,7 @@
   - Batch 5: added `samples/reprotect-workflow/` with a secret-free scope format, redacted journal/checkpoint planning, mixed AES/Herradura inventory preservation, MAC/sign fail-closed validation, README guidance, and an offline verifier self-test.
   - Batch 6: added re-protect journal resume/status reporting so saved plans can identify pending, resumable, complete, and blocked ColumnFile steps without exposing checkpoint paths or key material.
   - Batch 7: added secret-free re-protect operator command templates for dry-run and commit phases, using key-file environment variables and exact storage/document/profile scope.
+  - Batch 8: added re-protect journal step updates so operators can record pending, resumable, complete, and blocked states after checkpoints, mutation, or readback without exposing secrets.
 
 - [x] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
@@ -954,6 +955,7 @@
   - Batch 2: added a live-capable `probe` command for executing policy rules against a CaumeDSE base URL, with dry-run URL rendering, auth query redaction, observed status/request-id collection, README guidance, and expanded offline self-test coverage for probe planning.
   - Batch 3: added static policy-risk validation for overbroad role resources, unsupported methods, mutating roles without blacklist controls, and conflicting whitelist/blacklist method rules before probe execution.
   - Batch 4: added `setup-script` rendering for secret-free curl commands that apply roleTables, filterWhitelist, and filterBlacklist setup resources before live authorization probes.
+  - Batch 5: added `cleanup-script` rendering for disposable role/filter teardown in reverse setup order with redacted auth query handling and self-test coverage.
 
 - [x] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
@@ -978,3 +980,4 @@
     - Add DEBUG and live verifier coverage for healthy readiness, missing storage path, unsafe parser temp directory, Herradura-disabled profile requests, and redacted output.
   - Batch 1: added `samples/operational-readiness/` with safe JSON/text readiness output, storage path and parser temp checks, storage-profile/Herradura availability checks, TLS-auth/build-mode/parser-policy state reporting, redaction, distinct readiness states, README guidance, and an offline verifier self-test.
   - Batch 2: added readiness JSON config loading plus environment overrides for storage path, parser temp path, crypto profile, Herradura availability, TLS-auth state, build mode, parser policy, and verifier limits.
+  - Batch 3: added readiness report comparison for baseline drift detection, including changed-check and regression counts suitable for monitoring gates.

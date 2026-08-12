@@ -178,6 +178,33 @@ def print_text(report):
         print(f"{item['state']}: {item['name']} - {item['message']}")
 
 
+def compare_reports(current, baseline):
+    current_checks = {item["name"]: item for item in current.get("checks", [])}
+    baseline_checks = {item["name"]: item for item in baseline.get("checks", [])}
+    drift = []
+    for name in sorted(set(current_checks) | set(baseline_checks)):
+        current_state = current_checks.get(name, {}).get("state")
+        baseline_state = baseline_checks.get(name, {}).get("state")
+        if current_state != baseline_state:
+            drift.append({
+                "check": name,
+                "baselineState": baseline_state,
+                "currentState": current_state,
+                "severity": "regression" if STATE_RANK.get(current_state, 9) > STATE_RANK.get(baseline_state, 9) else "change",
+            })
+    return redact({
+        "safeForAgent": True,
+        "readinessSchemaVersion": 1,
+        "baselineState": baseline.get("state"),
+        "currentState": current.get("state"),
+        "summary": {
+            "changes": len(drift),
+            "regressions": sum(1 for item in drift if item["severity"] == "regression"),
+        },
+        "drift": drift,
+    })
+
+
 def check_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
@@ -186,6 +213,14 @@ def check_command(args):
     else:
         print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["state"] in {"healthy", "degraded"} else 2
+
+
+def compare_command(args):
+    current = load_json(args.current)
+    baseline = load_json(args.baseline)
+    result = compare_reports(current, baseline)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["summary"]["regressions"] == 0 else 2
 
 
 def self_test():
@@ -213,6 +248,9 @@ def self_test():
     bad_report = build_report(bad_args)
     if bad_report["state"] not in {"misconfigured", "unsafe"}:
         raise ReadinessError("self-test missing storage path did not affect readiness.")
+    comparison = compare_reports(bad_report, report)
+    if comparison["summary"]["changes"] == 0:
+        raise ReadinessError("self-test readiness comparison did not detect drift.")
     print("PASS operational readiness self-test")
 
 
@@ -231,6 +269,9 @@ def parse_args(argv):
     check.add_argument("--max-connections", type=int, default=0)
     check.add_argument("--thread-pool-size", type=int, default=0)
     check.add_argument("--output", choices=["json", "text"], default="json")
+    compare = sub.add_parser("compare", help="Compare two JSON readiness reports for state drift.")
+    compare.add_argument("--current", required=True)
+    compare.add_argument("--baseline", required=True)
     sub.add_parser("self-test", help="Run offline readiness and redaction checks.")
     return parser.parse_args(argv)
 
@@ -240,6 +281,8 @@ def main(argv=None):
     try:
         if args.command == "check":
             return check_command(args)
+        if args.command == "compare":
+            return compare_command(args)
         if args.command == "self-test":
             self_test()
             return 0
