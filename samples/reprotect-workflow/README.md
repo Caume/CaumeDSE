@@ -64,6 +64,13 @@ python3 samples/reprotect-workflow/reprotect_workflow.py gate \
 The gate exits non-zero until every selected ColumnFile step is marked
 `complete`.
 
+Render redacted audit events for a journal:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py audit-events \
+  --journal rotation-journal.updated.json
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:

@@ -283,6 +283,42 @@ def gate_journal(journal):
     return report
 
 
+def audit_events(journal):
+    events = []
+    for step in journal["steps"]:
+        state = step.get("state", "pending")
+        events.append({
+            "auditSchemaVersion": 1,
+            "safeForAgent": True,
+            "category": "reprotect",
+            "event": "columnfile-step",
+            "outcome": "allow" if state == "complete" else "pending",
+            "journalId": journal["journalId"],
+            "step": step["step"],
+            "databaseId": step["databaseId"],
+            "storage": step["storage"],
+            "documentType": step["documentType"],
+            "document": step["document"],
+            "state": state,
+            "sourceProfile": step.get("sourceProfile"),
+            "targetProfile": step.get("targetProfile"),
+            "protectedValueRows": step.get("protectedValueRows", 0),
+        })
+    closeout = final_report(journal)
+    events.append({
+        "auditSchemaVersion": 1,
+        "safeForAgent": True,
+        "category": "reprotect",
+        "event": "journal-closeout",
+        "outcome": "allow" if closeout["complete"] else "deny",
+        "journalId": journal["journalId"],
+        "complete": closeout["complete"],
+        "incompleteSteps": len(closeout["incompleteSteps"]),
+        "protectedValueRows": closeout["summary"]["protectedValueRows"],
+    })
+    return {"safeForAgent": True, "journalId": journal["journalId"], "events": events}
+
+
 def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
     if state not in {"pending", "readyToResume", "complete", "blocked"}:
         raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
@@ -336,6 +372,11 @@ def gate_command(args):
     return 0 if result["gate"]["passed"] else 2
 
 
+def audit_events_command(args):
+    result = redact(audit_events(load_journal(args.journal)))
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def self_test():
     plan = redact(build_plan(load_json(DEFAULT_SCOPE), dry_run=True))
     if plan.get("safeForAgent") is not True or plan["summary"]["databases"] != 2:
@@ -374,6 +415,9 @@ def self_test():
     gate = gate_journal(staged)
     if gate["gate"]["passed"] is True or gate["gate"]["blockedSteps"] != 1:
         raise ReprotectError("self-test journal gate failed.")
+    audit = audit_events(complete)
+    if len(audit["events"]) != 3 or audit["events"][-1]["complete"] is not True:
+        raise ReprotectError("self-test audit event rendering failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -397,6 +441,8 @@ def parse_args(argv):
     final.add_argument("--journal", required=True)
     gate = sub.add_parser("gate", help="Return non-zero until every journal step is complete.")
     gate.add_argument("--journal", required=True)
+    audit = sub.add_parser("audit-events", help="Render redacted JSON audit events for a re-protect journal.")
+    audit.add_argument("--journal", required=True)
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -414,6 +460,8 @@ def main(argv=None):
             final_report_command(args)
         elif args.command == "gate":
             return gate_command(args)
+        elif args.command == "audit-events":
+            audit_events_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:

@@ -57,6 +57,13 @@ python3 samples/operational-readiness/readiness_check.py metrics \
   --config samples/operational-readiness/config.example.json
 ```
 
+Render compact state counts:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py summary \
+  --config samples/operational-readiness/config.example.json
+```
+
 Run offline checks:
 
 ```sh

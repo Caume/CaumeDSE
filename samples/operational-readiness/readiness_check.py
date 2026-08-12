@@ -255,6 +255,19 @@ def prometheus_metrics(report):
     return "\n".join(lines) + "\n"
 
 
+def state_summary(report):
+    counts = {state: 0 for state in STATE_RANK}
+    for item in report.get("checks", []):
+        state = item.get("state", "degraded")
+        counts[state if state in counts else "degraded"] += 1
+    return redact({
+        "safeForAgent": True,
+        "state": report.get("state"),
+        "summary": counts,
+        "limits": report.get("limits", {}),
+    })
+
+
 def check_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
@@ -276,6 +289,14 @@ def metrics_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
     print(prometheus_metrics(report), end="")
+    return 0 if report["state"] in {"healthy", "degraded"} else 2
+
+
+def summary_command(args):
+    args = apply_config_and_env(args)
+    report = build_report(args)
+    result = state_summary(report)
+    print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if report["state"] in {"healthy", "degraded"} else 2
 
 
@@ -321,6 +342,9 @@ def self_test():
     metrics = prometheus_metrics(report)
     if "cdse_readiness_state" not in metrics or "privateKey" in metrics:
         raise ReadinessError("self-test metrics output failed.")
+    summary = state_summary(report)
+    if summary["summary"]["unsafe"] == 0:
+        raise ReadinessError("self-test readiness summary failed.")
     print("PASS operational readiness self-test")
 
 
@@ -363,6 +387,18 @@ def parse_args(argv):
     metrics.add_argument("--max-connections", type=int, default=0)
     metrics.add_argument("--thread-pool-size", type=int, default=0)
     metrics.set_defaults(output="json")
+    summary = sub.add_parser("summary", help="Render compact readiness state counts.")
+    summary.add_argument("--config", help="Optional JSON config; environment variables override it.")
+    summary.add_argument("--storage-path", default=os.getcwd())
+    summary.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
+    summary.add_argument("--storage-profile", default="aes-256-cbc")
+    summary.add_argument("--herradura-available", action="store_true")
+    summary.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
+    summary.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
+    summary.add_argument("--parser-policy-enabled", action="store_true")
+    summary.add_argument("--max-connections", type=int, default=0)
+    summary.add_argument("--thread-pool-size", type=int, default=0)
+    summary.set_defaults(output="json")
     compare = sub.add_parser("compare", help="Compare two JSON readiness reports for state drift.")
     compare.add_argument("--current", required=True)
     compare.add_argument("--baseline", required=True)
@@ -379,6 +415,8 @@ def main(argv=None):
             return context_command(args)
         if args.command == "metrics":
             return metrics_command(args)
+        if args.command == "summary":
+            return summary_command(args)
         if args.command == "compare":
             return compare_command(args)
         if args.command == "self-test":

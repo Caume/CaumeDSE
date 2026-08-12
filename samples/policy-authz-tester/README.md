@@ -50,6 +50,14 @@ python3 samples/policy-authz-tester/policy_authz_tester.py gate \
   --observations observed-policy-results.json
 ```
 
+Render JUnit XML for CI test reports:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py junit \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --observations observed-policy-results.json
+```
+
 Render live probe URLs without sending requests:
 
 ```sh

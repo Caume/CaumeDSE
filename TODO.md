@@ -916,6 +916,7 @@
   - Batch 8: added re-protect journal step updates so operators can record pending, resumable, complete, and blocked states after checkpoints, mutation, or readback without exposing secrets.
   - Batch 9: added re-protect final closeout reporting for complete journals, including row totals, incomplete-step detection, and old-key destruction safeguards.
   - Batch 10: added a re-protect journal gate that exits non-zero until every selected ColumnFile step is marked complete, suitable for operator runbooks and CI checks.
+  - Batch 11: added redacted re-protect audit event export for per-ColumnFile step state and journal closeout outcomes without key material or checkpoint paths.
 
 - [x] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
@@ -960,6 +961,7 @@
   - Batch 5: added `cleanup-script` rendering for disposable role/filter teardown in reverse setup order with redacted auth query handling and self-test coverage.
   - Batch 6: added an agent-safe human approval review pack with setup/probe plans, policy scope summary, review checklist, and prompt-boundary guidance before live setup or probes.
   - Batch 7: added a policy gate command that exits non-zero when observed probe statuses violate expected allow/deny rules.
+  - Batch 8: added JUnit XML output for policy probe results so CI systems can display authorization failures as test cases.
 
 - [x] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
@@ -987,3 +989,4 @@
   - Batch 3: added readiness report comparison for baseline drift detection, including changed-check and regression counts suitable for monitoring gates.
   - Batch 4: added compact agent-safe readiness context output for preflight automation, highlighting only unsafe/misconfigured/degraded checks and prompt-boundary guidance.
   - Batch 5: added Prometheus-style readiness metrics for aggregate state, per-check state, and verifier/runtime limits.
+  - Batch 6: added compact readiness state-count summaries for dashboards and CI logs.

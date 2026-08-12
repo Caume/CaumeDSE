@@ -14,6 +14,7 @@ import shlex
 import sys
 from collections import Counter
 from pathlib import Path
+from xml.sax.saxutils import escape
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
 from urllib.request import Request, urlopen
@@ -260,6 +261,24 @@ def gate_status(report):
     return 0 if report.get("summary", {}).get("failed", 0) == 0 else 2
 
 
+def junit_report(report):
+    results = report.get("results", [])
+    failures = sum(1 for item in results if not item.get("passed"))
+    lines = [f'<testsuite name="caumedse-policy-authz" tests="{len(results)}" failures="{failures}">']
+    for item in results:
+        name = escape(str(item.get("rule", "unnamed")))
+        lines.append(f'  <testcase classname="policy-authz" name="{name}">')
+        if not item.get("passed"):
+            message = escape(
+                f"expected {item.get('expectedStatus')} got {item.get('actualStatus')} "
+                f"for {item.get('method')} {item.get('route')}"
+            )
+            lines.append(f'    <failure message="{message}"/>')
+        lines.append("  </testcase>")
+    lines.append("</testsuite>")
+    return "\n".join(lines) + "\n"
+
+
 def append_query(url, query):
     if not query:
         return url
@@ -401,6 +420,13 @@ def gate_command(args):
     return 0 if result["summary"]["failed"] == 0 else 2
 
 
+def junit_command(args):
+    policy = validate_policy(load_json(args.policy))
+    observations = load_json(args.observations)
+    result = redact_value(evaluate(policy, observations))
+    print(junit_report(result), end="")
+
+
 def probe_command(args):
     policy = validate_policy(load_json(args.policy))
     result = probe_policy(policy, args.base_url, args.auth_query, args.timeout, args.dry_run)
@@ -440,6 +466,9 @@ def self_test():
         raise PolicyError("self-test failed to detect a mismatched observation.")
     if gate_status(evaluate(policy, observations)) != 0 or gate_status(failed) == 0:
         raise PolicyError("self-test policy gate failed.")
+    junit = junit_report(report)
+    if "<testsuite" not in junit or 'failures="0"' not in junit:
+        raise PolicyError("self-test JUnit rendering failed.")
     secret_report = redact_value({"route": "/x?orgKey=abc&newOrgKey=def", "authorization": "Bearer secret"})
     if "abc" in json.dumps(secret_report) or "secret" in json.dumps(secret_report):
         raise PolicyError("self-test report redaction leaked a secret marker.")
@@ -489,6 +518,9 @@ def parse_args(argv):
     gate = sub.add_parser("gate", help="Exit non-zero when observed probe results violate the policy.")
     gate.add_argument("--policy", default=str(DEFAULT_POLICY))
     gate.add_argument("--observations", required=True)
+    junit = sub.add_parser("junit", help="Render JUnit XML for observed probe results.")
+    junit.add_argument("--policy", default=str(DEFAULT_POLICY))
+    junit.add_argument("--observations", required=True)
     probe = sub.add_parser("probe", help="Execute policy rules against a live CaumeDSE base URL.")
     probe.add_argument("--policy", default=str(DEFAULT_POLICY))
     probe.add_argument("--base-url", required=True)
@@ -519,6 +551,8 @@ def main(argv=None):
             report_command(args)
         elif args.command == "gate":
             return gate_command(args)
+        elif args.command == "junit":
+            junit_command(args)
         elif args.command == "probe":
             probe_command(args)
         elif args.command == "setup-script":
