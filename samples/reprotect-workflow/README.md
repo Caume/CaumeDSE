@@ -107,6 +107,13 @@ python3 samples/reprotect-workflow/reprotect_workflow.py handoff-pack \
   --journal rotation-journal.updated.json
 ```
 
+Verify the final closeout criteria before old key material is destroyed:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py completion-check \
+  --journal rotation-journal.updated.json
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:
@@ -133,3 +140,8 @@ has been verified for every selected database.
 Journal steps may include `state` values of `pending`, `readyToResume`,
 `complete`, or `blocked`. `journal-status` reports the next resumable step
 without exposing checkpoint paths or key material.
+
+`completion-check` exits zero only after every selected ColumnFile step is
+complete, post-readback checkpoint IDs exist, and the redacted audit stream
+contains an allow closeout event. It still leaves old key destruction as an
+operator-held action after external recovery checks.

@@ -896,7 +896,7 @@
     requested Herradura provider and fails Herradura-enabled runs on vector/API
     drift.
 
-- [ ] #102 Add an explicit key rotation and re-protect service.
+- [x] #102 Add an explicit key rotation and re-protect service.
   - Source: `crypto.c`, `db.c`, `engine_interface.c`, `webservice_interface.c`, ResourcesDB/ColumnFile DB metadata, `README.md`, `TUTORIAL.md`, and `TEST/run_debug_components.sh`.
   - Goal: let operators rotate organization keys or migrate selected protected values between storage profiles, including AES-to-Herradura transitions, without automatic background migration.
   - Plan:
@@ -922,6 +922,7 @@
   - Batch 14: added re-protect scope diffing so operators can compare current and baseline migration scopes before running key/profile changes.
   - Batch 15: added re-protect journal action-item export for incomplete or blocked ColumnFile steps.
   - Batch 16: added a re-protect handoff pack that bundles journal status, action items, checkpoint IDs, and audit event counts for operator/bot handoff.
+  - Batch 17: added a final re-protect completion check for all journal steps, post-readback checkpoint IDs, audit closeout events, and operator-held old-key destruction.
 
 - [x] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.

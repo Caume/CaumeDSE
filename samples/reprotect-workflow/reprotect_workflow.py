@@ -454,6 +454,45 @@ def handoff_pack(journal):
     })
 
 
+def completion_check(journal):
+    closeout = final_report(journal)
+    manifest = checkpoint_manifest(journal)
+    audit = audit_events(journal)
+    post_readback = [
+        item for item in manifest["checkpoints"]
+        if item["phase"] == "postReadback"
+    ]
+    requirements = [
+        {
+            "name": "allStepsComplete",
+            "passed": closeout["complete"],
+            "message": "every selected ColumnFile journal step is marked complete",
+        },
+        {
+            "name": "postReadbackCheckpoints",
+            "passed": len(post_readback) == closeout["summary"]["databases"],
+            "message": "each selected ColumnFile has a post-readback checkpoint id",
+        },
+        {
+            "name": "auditCloseoutEvent",
+            "passed": audit["events"][-1]["event"] == "journal-closeout" and audit["events"][-1]["complete"] is True,
+            "message": "the redacted audit stream ends with an allow closeout event",
+        },
+        {
+            "name": "oldKeyDestructionHold",
+            "passed": closeout["complete"],
+            "message": "old key destruction remains operator-held until external recovery checks pass",
+        },
+    ]
+    return redact({
+        "safeForAgent": True,
+        "journalId": journal["journalId"],
+        "complete": all(item["passed"] for item in requirements),
+        "requirements": requirements,
+        "operatorCloseout": closeout["operatorCloseout"],
+    })
+
+
 def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
     if state not in {"pending", "readyToResume", "complete", "blocked"}:
         raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
@@ -537,6 +576,12 @@ def handoff_pack_command(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def completion_check_command(args):
+    result = completion_check(load_journal(args.journal))
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["complete"] else 2
+
+
 def self_test():
     plan = redact(build_plan(load_json(DEFAULT_SCOPE), dry_run=True))
     if plan.get("safeForAgent") is not True or plan["summary"]["databases"] != 2:
@@ -596,6 +641,10 @@ def self_test():
     handoff = handoff_pack(updated)
     if handoff["readiness"] != "blocked" or handoff["checkpointManifest"]["checkpointCount"] != 6:
         raise ReprotectError("self-test handoff pack failed.")
+    incomplete_check = completion_check(updated)
+    complete_check = completion_check(complete)
+    if incomplete_check["complete"] is True or complete_check["complete"] is not True:
+        raise ReprotectError("self-test completion check failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -632,6 +681,8 @@ def parse_args(argv):
     action_parser.add_argument("--journal", required=True)
     handoff_parser = sub.add_parser("handoff-pack", help="Render a complete journal handoff pack for operators and bots.")
     handoff_parser.add_argument("--journal", required=True)
+    complete_parser = sub.add_parser("completion-check", help="Verify final re-protect closeout requirements.")
+    complete_parser.add_argument("--journal", required=True)
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -661,6 +712,8 @@ def main(argv=None):
             action_items_command(args)
         elif args.command == "handoff-pack":
             handoff_pack_command(args)
+        elif args.command == "completion-check":
+            return completion_check_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:
