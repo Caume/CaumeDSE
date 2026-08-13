@@ -371,6 +371,45 @@ def runbook(plan):
     }
 
 
+def step_key(step):
+    return "\x1f".join([
+        step.get("storage", ""),
+        step.get("documentType", ""),
+        step.get("document", ""),
+        step.get("database", ""),
+    ])
+
+
+def scope_diff(current_scope, baseline_scope):
+    current = build_plan(current_scope, dry_run=True)
+    baseline = build_plan(baseline_scope, dry_run=True)
+    current_steps = {step_key(step): step for step in current["steps"]}
+    baseline_steps = {step_key(step): step for step in baseline["steps"]}
+    added = sorted(set(current_steps) - set(baseline_steps))
+    removed = sorted(set(baseline_steps) - set(current_steps))
+    changed = []
+    for key in sorted(set(current_steps) & set(baseline_steps)):
+        current_step = current_steps[key]
+        baseline_step = baseline_steps[key]
+        fields = {}
+        for field in ("sourceProfile", "targetProfile", "dataRows", "metaRows", "protectedValueRows"):
+            if current_step.get(field) != baseline_step.get(field):
+                fields[field] = {"baseline": baseline_step.get(field), "current": current_step.get(field)}
+        if fields:
+            changed.append({
+                "databaseId": current_step["databaseId"],
+                "database": current_step["database"],
+                "changes": fields,
+            })
+    return {
+        "safeForAgent": True,
+        "summary": {"added": len(added), "removed": len(removed), "changed": len(changed)},
+        "addedDatabases": [current_steps[key]["database"] for key in added],
+        "removedDatabases": [baseline_steps[key]["database"] for key in removed],
+        "changedDatabases": changed,
+    }
+
+
 def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
     if state not in {"pending", "readyToResume", "complete", "blocked"}:
         raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
@@ -439,6 +478,11 @@ def runbook_command(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def scope_diff_command(args):
+    result = redact(scope_diff(load_json(args.current), load_json(args.baseline)))
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def self_test():
     plan = redact(build_plan(load_json(DEFAULT_SCOPE), dry_run=True))
     if plan.get("safeForAgent") is not True or plan["summary"]["databases"] != 2:
@@ -486,6 +530,12 @@ def self_test():
     rb = runbook(plan)
     if rb["humanApprovalRequired"] is not True or len(rb["steps"]) != 2:
         raise ReprotectError("self-test runbook rendering failed.")
+    changed_scope = dict(load_json(DEFAULT_SCOPE))
+    changed_scope["databases"] = [dict(item) for item in changed_scope["databases"]]
+    changed_scope["databases"][0]["protectedValueRows"] += 1
+    diff = scope_diff(changed_scope, load_json(DEFAULT_SCOPE))
+    if diff["summary"]["changed"] != 1:
+        raise ReprotectError("self-test scope diff failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -515,6 +565,9 @@ def parse_args(argv):
     checkpoints.add_argument("--journal", required=True)
     runbook_parser = sub.add_parser("runbook", help="Render an ordered secret-free re-protect operator runbook.")
     runbook_parser.add_argument("--scope", default=str(DEFAULT_SCOPE))
+    scope_diff_parser = sub.add_parser("scope-diff", help="Compare two re-protect scope files before migration.")
+    scope_diff_parser.add_argument("--current", required=True)
+    scope_diff_parser.add_argument("--baseline", required=True)
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -538,6 +591,8 @@ def main(argv=None):
             checkpoint_manifest_command(args)
         elif args.command == "runbook":
             runbook_command(args)
+        elif args.command == "scope-diff":
+            scope_diff_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:

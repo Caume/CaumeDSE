@@ -78,6 +78,13 @@ python3 samples/operational-readiness/readiness_check.py runbook \
   --config samples/operational-readiness/config.example.json
 ```
 
+Render SARIF findings for security review tooling:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py sarif \
+  --config samples/operational-readiness/config.example.json
+```
+
 Run offline checks:
 
 ```sh

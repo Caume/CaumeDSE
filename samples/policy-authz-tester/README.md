@@ -66,6 +66,14 @@ python3 samples/policy-authz-tester/policy_authz_tester.py markdown \
   --observations observed-policy-results.json
 ```
 
+Render a CSV report for spreadsheets:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py csv \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --observations observed-policy-results.json
+```
+
 Render live probe URLs without sending requests:
 
 ```sh

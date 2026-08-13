@@ -8,6 +8,8 @@ outcomes. Uses only Python's standard library.
 """
 
 import argparse
+import csv
+import io
 import json
 import re
 import shlex
@@ -298,6 +300,33 @@ def markdown_report(report):
     return "\n".join(lines) + "\n"
 
 
+def csv_report(report):
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=[
+        "rule",
+        "decision",
+        "method",
+        "expectedStatus",
+        "actualStatus",
+        "passed",
+        "requestId",
+        "auditCategory",
+    ])
+    writer.writeheader()
+    for item in report.get("results", []):
+        writer.writerow({
+            "rule": item.get("rule"),
+            "decision": item.get("decision"),
+            "method": item.get("method"),
+            "expectedStatus": item.get("expectedStatus"),
+            "actualStatus": item.get("actualStatus"),
+            "passed": item.get("passed"),
+            "requestId": item.get("requestId") or "",
+            "auditCategory": item.get("auditCategory") or "",
+        })
+    return output.getvalue()
+
+
 def append_query(url, query):
     if not query:
         return url
@@ -488,6 +517,13 @@ def markdown_command(args):
     print(markdown_report(result), end="")
 
 
+def csv_command(args):
+    policy = validate_policy(load_json(args.policy))
+    observations = load_json(args.observations)
+    result = redact_value(evaluate(policy, observations))
+    print(csv_report(result), end="")
+
+
 def probe_command(args):
     policy = validate_policy(load_json(args.policy))
     result = probe_policy(policy, args.base_url, args.auth_query, args.timeout, args.dry_run)
@@ -539,6 +575,9 @@ def self_test():
     markdown = markdown_report(report)
     if "| allow_document_schema |" not in markdown or "Passed: 3" not in markdown:
         raise PolicyError("self-test Markdown rendering failed.")
+    csv_text = csv_report(report)
+    if "allow_document_schema" not in csv_text or "authz-fixture-1" not in csv_text:
+        raise PolicyError("self-test CSV rendering failed.")
     secret_report = redact_value({"route": "/x?orgKey=abc&newOrgKey=def", "authorization": "Bearer secret"})
     if "abc" in json.dumps(secret_report) or "secret" in json.dumps(secret_report):
         raise PolicyError("self-test report redaction leaked a secret marker.")
@@ -597,6 +636,9 @@ def parse_args(argv):
     markdown = sub.add_parser("markdown", help="Render a Markdown report for observed probe results.")
     markdown.add_argument("--policy", default=str(DEFAULT_POLICY))
     markdown.add_argument("--observations", required=True)
+    csv_parser = sub.add_parser("csv", help="Render a CSV report for observed probe results.")
+    csv_parser.add_argument("--policy", default=str(DEFAULT_POLICY))
+    csv_parser.add_argument("--observations", required=True)
     probe = sub.add_parser("probe", help="Execute policy rules against a live CaumeDSE base URL.")
     probe.add_argument("--policy", default=str(DEFAULT_POLICY))
     probe.add_argument("--base-url", required=True)
@@ -635,6 +677,8 @@ def main(argv=None):
             junit_command(args)
         elif args.command == "markdown":
             markdown_command(args)
+        elif args.command == "csv":
+            csv_command(args)
         elif args.command == "probe":
             probe_command(args)
         elif args.command == "setup-script":

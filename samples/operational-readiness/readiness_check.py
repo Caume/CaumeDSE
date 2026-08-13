@@ -296,6 +296,29 @@ def readiness_runbook(config_path=None):
     }
 
 
+def sarif_report(report):
+    results = []
+    for item in report.get("checks", []):
+        state = item.get("state")
+        if state not in {"degraded", "misconfigured", "unsafe"}:
+            continue
+        level = "error" if state in {"misconfigured", "unsafe"} else "warning"
+        results.append({
+            "ruleId": f"cdse.readiness.{item.get('name', 'unknown')}",
+            "level": level,
+            "message": {"text": item.get("message", "")},
+            "properties": {"state": state, "safeForAgent": True},
+        })
+    return redact({
+        "version": "2.1.0",
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "runs": [{
+            "tool": {"driver": {"name": "CaumeDSE readiness sample", "informationUri": "https://github.com/openmindedtw/CaumeDSE"}},
+            "results": results,
+        }],
+    })
+
+
 def check_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
@@ -338,6 +361,13 @@ def nagios_command(args):
 
 def runbook_command(args):
     print(json.dumps(readiness_runbook(args.config), indent=2, sort_keys=True))
+
+
+def sarif_command(args):
+    args = apply_config_and_env(args)
+    report = build_report(args)
+    print(json.dumps(sarif_report(report), indent=2, sort_keys=True))
+    return 0 if report["state"] in {"healthy", "degraded"} else 2
 
 
 def compare_command(args):
@@ -391,6 +421,9 @@ def self_test():
     rb = readiness_runbook("samples/operational-readiness/config.example.json")
     if len(rb["phases"]) != 5 or "check --config" not in rb["phases"][0]["command"]:
         raise ReadinessError("self-test runbook output failed.")
+    sarif = sarif_report(report)
+    if sarif["version"] != "2.1.0" or not sarif["runs"][0]["results"]:
+        raise ReadinessError("self-test SARIF output failed.")
     print("PASS operational readiness self-test")
 
 
@@ -459,6 +492,18 @@ def parse_args(argv):
     nagios.set_defaults(output="json")
     runbook_parser = sub.add_parser("runbook", help="Render an ordered readiness monitoring runbook.")
     runbook_parser.add_argument("--config", help="Optional JSON config path to include in rendered commands.")
+    sarif = sub.add_parser("sarif", help="Render SARIF readiness findings for security review tooling.")
+    sarif.add_argument("--config", help="Optional JSON config; environment variables override it.")
+    sarif.add_argument("--storage-path", default=os.getcwd())
+    sarif.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
+    sarif.add_argument("--storage-profile", default="aes-256-cbc")
+    sarif.add_argument("--herradura-available", action="store_true")
+    sarif.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
+    sarif.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
+    sarif.add_argument("--parser-policy-enabled", action="store_true")
+    sarif.add_argument("--max-connections", type=int, default=0)
+    sarif.add_argument("--thread-pool-size", type=int, default=0)
+    sarif.set_defaults(output="json")
     compare = sub.add_parser("compare", help="Compare two JSON readiness reports for state drift.")
     compare.add_argument("--current", required=True)
     compare.add_argument("--baseline", required=True)
@@ -482,6 +527,8 @@ def main(argv=None):
         if args.command == "runbook":
             runbook_command(args)
             return 0
+        if args.command == "sarif":
+            return sarif_command(args)
         if args.command == "compare":
             return compare_command(args)
         if args.command == "self-test":

@@ -84,6 +84,14 @@ Render an ordered operator runbook:
 python3 samples/reprotect-workflow/reprotect_workflow.py runbook
 ```
 
+Compare two scope files before migration:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py scope-diff \
+  --current scope.updated.json \
+  --baseline samples/reprotect-workflow/scope.example.json
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:
