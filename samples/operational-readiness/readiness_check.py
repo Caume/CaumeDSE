@@ -377,6 +377,60 @@ def threshold_gate(report, max_state):
     })
 
 
+def completion_check(report, max_state):
+    threshold = threshold_gate(report, max_state)
+    context = agent_context(report)
+    metrics = prometheus_metrics(report)
+    summary = state_summary(report)
+    remediation = remediation_report(report)
+    sarif = sarif_report(report)
+    requirements = [
+        {
+            "name": "safeJsonOutput",
+            "passed": report.get("safeForAgent") is True and report.get("readinessSchemaVersion") == 1,
+            "message": "readiness JSON is machine-readable and marked safe for agents",
+        },
+        {
+            "name": "requiredChecksPresent",
+            "passed": {"storagePath", "parserTempDirectory", "storageCryptoProfile", "tlsAuth", "buildMode", "parserPolicy"}.issubset(
+                {item.get("name") for item in report.get("checks", [])}
+            ),
+            "message": "core storage, parser, crypto, TLS auth, build mode, and parser policy checks are present",
+        },
+        {
+            "name": "monitoringOutputsPresent",
+            "passed": "cdse_readiness_state" in metrics and summary.get("safeForAgent") is True and bool(sarif.get("runs")),
+            "message": "Prometheus, summary, and SARIF monitoring outputs can be derived",
+        },
+        {
+            "name": "agentContextRedacted",
+            "passed": context.get("safeForAgent") is True and "promptBoundary" in context,
+            "message": "agent context is bounded and excludes secret material",
+        },
+        {
+            "name": "remediationAvailable",
+            "passed": remediation.get("safeForAgent") is True,
+            "message": "unhealthy checks can be converted into remediation action items",
+        },
+        {
+            "name": "thresholdGate",
+            "passed": threshold["passed"],
+            "message": f"readiness is no worse than {max_state}",
+        },
+    ]
+    return redact({
+        "safeForAgent": True,
+        "readinessSchemaVersion": report.get("readinessSchemaVersion"),
+        "state": report.get("state"),
+        "maxAllowedState": max_state,
+        "complete": all(item["passed"] for item in requirements),
+        "requirements": requirements,
+        "threshold": threshold,
+        "remediation": remediation,
+        "promptBoundary": "AI may summarize this completion check but must not request secrets or protected data.",
+    })
+
+
 def check_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
@@ -443,6 +497,14 @@ def threshold_command(args):
     return 0 if result["passed"] else 2
 
 
+def completion_check_command(args):
+    args = apply_config_and_env(args)
+    report = build_report(args)
+    result = completion_check(report, args.max_state)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["complete"] else 2
+
+
 def compare_command(args):
     current = load_json(args.current)
     baseline = load_json(args.baseline)
@@ -503,6 +565,12 @@ def self_test():
     threshold = threshold_gate(report, "degraded")
     if threshold["passed"] is not False or not threshold["violations"]:
         raise ReadinessError("self-test threshold gate failed.")
+    completion = completion_check(report, "unsafe")
+    if completion["complete"] is not True or completion["threshold"]["passed"] is not True:
+        raise ReadinessError("self-test completion check failed.")
+    blocked_completion = completion_check(report, "degraded")
+    if blocked_completion["complete"] is not False or blocked_completion["threshold"]["passed"] is not False:
+        raise ReadinessError("self-test blocked completion check failed.")
     print("PASS operational readiness self-test")
 
 
@@ -608,6 +676,19 @@ def parse_args(argv):
     threshold.add_argument("--thread-pool-size", type=int, default=0)
     threshold.add_argument("--max-state", choices=list(STATE_RANK.keys()), default="degraded")
     threshold.set_defaults(output="json")
+    completion = sub.add_parser("completion-check", help="Verify final readiness workflow requirements.")
+    completion.add_argument("--config", help="Optional JSON config; environment variables override it.")
+    completion.add_argument("--storage-path", default=os.getcwd())
+    completion.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
+    completion.add_argument("--storage-profile", default="aes-256-cbc")
+    completion.add_argument("--herradura-available", action="store_true")
+    completion.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
+    completion.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
+    completion.add_argument("--parser-policy-enabled", action="store_true")
+    completion.add_argument("--max-connections", type=int, default=0)
+    completion.add_argument("--thread-pool-size", type=int, default=0)
+    completion.add_argument("--max-state", choices=list(STATE_RANK.keys()), default="degraded")
+    completion.set_defaults(output="json")
     compare = sub.add_parser("compare", help="Compare two JSON readiness reports for state drift.")
     compare.add_argument("--current", required=True)
     compare.add_argument("--baseline", required=True)
@@ -637,6 +718,8 @@ def main(argv=None):
             return remediation_command(args)
         if args.command == "threshold":
             return threshold_command(args)
+        if args.command == "completion-check":
+            return completion_check_command(args)
         if args.command == "compare":
             return compare_command(args)
         if args.command == "self-test":

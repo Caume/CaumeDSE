@@ -100,6 +100,14 @@ python3 samples/operational-readiness/readiness_check.py threshold \
   --max-state degraded
 ```
 
+Verify the full readiness workflow and threshold policy:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py completion-check \
+  --config samples/operational-readiness/config.example.json \
+  --max-state degraded
+```
+
 Run offline checks:
 
 ```sh
@@ -115,3 +123,7 @@ python3 samples/operational-readiness/readiness_check.py self-test
 
 The JSON output is marked `safeForAgent:true` and avoids organization keys,
 private keys, access passwords, OAuth secrets, and document contents.
+
+`completion-check` exits zero only when safe JSON, required checks, monitoring
+outputs, agent context, remediation output, and the selected threshold gate are
+all satisfied.

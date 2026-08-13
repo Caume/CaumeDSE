@@ -987,7 +987,7 @@
   - Batch 1: added `samples/encrypted-backup-restore/` with a portable manifest utility that inventories CaumeDSE data directories, records file sizes/SHA-256 hashes/classification, redacts identifier-like labels and paths, verifies tamper/missing-file status, renders dry-run restore plans, documents the workflow, and adds an offline verifier self-test.
   - Batch 2: finished the sample workflow with encrypted backup packages, OpenSSL/PBKDF2 payload encryption with passphrases read from environment or key files, outer HMAC-SHA256 authentication for wrong-key/tamper rejection, restore execution into fresh prefixes with overwrite gates, expected-profile compatibility checks, byte-preserving restore of mixed AES/Herradura data, README operator examples, and expanded offline self-test coverage for backup creation, wrong-key rejection, tamper detection, restore readback, and temporary archive cleanup.
 
-- [ ] #107 Add an operational health and readiness service.
+- [x] #107 Add an operational health and readiness service.
   - Source: `engine_admin.c`, `webservice_interface.c`, `config.c`, `runtime.c`, parser policy configuration, storage path checks, TLS/auth configuration, and `AI_USAGE.md`.
   - Goal: expose a safe readiness view for operators and automation without leaking secrets or protected data.
   - Plan:
@@ -1007,3 +1007,4 @@
   - Batch 9: added SARIF readiness findings for security review tooling, mapping degraded checks to warnings and misconfigured/unsafe checks to errors.
   - Batch 10: added readiness remediation action items for degraded, misconfigured, and unsafe checks.
   - Batch 11: added a configurable readiness threshold gate for CI and monitoring policies.
+  - Batch 12: added a final readiness completion check for safe JSON, required checks, monitoring outputs, agent context, remediation output, and threshold policy.
