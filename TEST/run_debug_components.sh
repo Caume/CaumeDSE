@@ -7,6 +7,10 @@ PREFIX="${CDSE_VERIFY_PREFIX:-/tmp/cdse-verify}"
 LOG_ROOT="${CDSE_VERIFY_LOG_DIR:-/tmp/cdse-debug-components-$(date +%Y%m%d-%H%M%S)}"
 HTTP_PORT="${CDSE_DEBUG_TEST_HTTP_PORT:-18080}"
 HTTPS_PORT="${CDSE_DEBUG_TEST_HTTPS_PORT:-18443}"
+HTTP_PORT_SET=0
+HTTPS_PORT_SET=0
+[ "${CDSE_DEBUG_TEST_HTTP_PORT+x}" = "x" ] && HTTP_PORT_SET=1
+[ "${CDSE_DEBUG_TEST_HTTPS_PORT+x}" = "x" ] && HTTPS_PORT_SET=1
 RUN_TIMEOUT="${CDSE_DEBUG_TEST_TIMEOUT:-120s}"
 SKIP_BUILD=0
 SKIP_WEB=0
@@ -23,6 +27,8 @@ VERIFY_PARSER_REQUIRE_REVIEWED="${CDSE_VERIFY_PARSER_REQUIRE_REVIEWED:-0}"
 VERIFY_PARSER_REQUIRE_POLICY_PROFILES="${CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES:-0}"
 VERIFY_HERRADURAKEX_DIR="${CDSE_VERIFY_HERRADURAKEX_DIR:-}"
 VERIFY_HERRADURAKEX_DEFAULT_PROFILE="${CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE:-}"
+VERIFY_AUTO_PORTS="${CDSE_VERIFY_AUTO_PORTS:-1}"
+VERIFY_PORT_SEARCH_LIMIT="${CDSE_VERIFY_PORT_SEARCH_LIMIT:-40}"
 
 PASSED=0
 FAILED=0
@@ -49,6 +55,8 @@ usage() {
     printf '  CDSE_DEBUG_TEST_HTTP_PORT  HTTP test port, default 18080\n'
     printf '  CDSE_DEBUG_TEST_HTTPS_PORT HTTPS test port, default 18443\n'
     printf '  CDSE_DEBUG_TEST_TIMEOUT    executable timeout, default 120s\n'
+    printf '  CDSE_VERIFY_AUTO_PORTS     choose alternate default web ports when occupied, default 1\n'
+    printf '  CDSE_VERIFY_PORT_SEARCH_LIMIT number of candidate alternate ports to scan, default 40\n'
     printf '  CDSE_VERIFY_REDACT         redact live verifier secrets from summaries and artifacts when set to 1/true/on\n'
     printf '  CDSE_VERIFY_PARSER_NO_NEW_PRIVS       run live parser children with Linux no_new_privs when set to 1/true/on\n'
     printf '  CDSE_VERIFY_PARSER_NETWORK_ISOLATION run optional network-isolation parser check when set to 1/true/on\n'
@@ -119,6 +127,13 @@ if [ "$CI_SMOKE" -eq 1 ] && [ "$SKIP_WEB" -eq 1 ]; then
     printf '%s\n' '--ci-smoke cannot be combined with --skip-web' >&2
     exit 2
 fi
+
+case "$VERIFY_PORT_SEARCH_LIMIT" in
+    ''|*[!0-9]*|0)
+        printf 'CDSE_VERIFY_PORT_SEARCH_LIMIT must be a positive integer: %s\n' "$VERIFY_PORT_SEARCH_LIMIT" >&2
+        exit 2
+        ;;
+esac
 
 if [ -n "$VERIFY_HERRADURAKEX_DIR" ] && [ ! -f "$VERIFY_HERRADURAKEX_DIR/herradura.h" ]; then
     printf 'CDSE_VERIFY_HERRADURAKEX_DIR must point to a directory containing herradura.h: %s\n' "$VERIFY_HERRADURAKEX_DIR" >&2
@@ -234,6 +249,10 @@ record_pass() {
 record_fail() {
     FAILED=$((FAILED + 1))
     note "FAIL $1 - $2"
+}
+
+record_hint() {
+    note "HINT $1 - $2"
 }
 
 record_skip() {
@@ -511,6 +530,48 @@ run_backup_restore_self_test() {
     return 1
 }
 
+run_reprotect_workflow_self_test() {
+    local log="$LOG_ROOT/reprotect_workflow_self_test.log"
+    local start
+    local rc
+
+    note "RUN  reprotect_workflow_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/reprotect-workflow/reprotect_workflow.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS re-protect workflow self-test" "$log"; then
+        record_pass "reprotect_workflow_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail reprotect_workflow_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
+run_operational_readiness_self_test() {
+    local log="$LOG_ROOT/operational_readiness_self_test.log"
+    local start
+    local rc
+
+    note "RUN  operational_readiness_self_test"
+    start="$(date +%s)"
+    (
+        cd "$ROOT_DIR" || exit 1
+        python3 samples/operational-readiness/readiness_check.py self-test
+    ) > "$log" 2>&1
+    rc=$?
+    redact_file_in_place "$log"
+    if [ "$rc" -eq 0 ] && grep -Fq "PASS operational readiness self-test" "$log"; then
+        record_pass "operational_readiness_self_test ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    record_fail operational_readiness_self_test "exit=$rc elapsed=$(elapsed_seconds "$start") log=$log"
+    return 1
+}
+
 protocol_enabled() {
     local protocol="$1"
 
@@ -535,16 +596,75 @@ valid_tcp_port() {
     [ "$port" -gt 0 ] && [ "$port" -le 65535 ]
 }
 
+env_enabled() {
+    case "${1:-}" in
+        1|true|TRUE|yes|YES|on|ON)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+find_available_port() {
+    local start="$1"
+    local limit="$2"
+    local avoid="${3:-}"
+    local candidate="$start"
+    local checked=0
+
+    while [ "$checked" -lt "$limit" ] && [ "$candidate" -le 65535 ]; do
+        if valid_tcp_port "$candidate" &&
+           { [ -z "$avoid" ] || [ "$candidate" -ne "$avoid" ]; } &&
+           ! port_in_use "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+        candidate=$((candidate + 1))
+        checked=$((checked + 1))
+    done
+    return 1
+}
+
+resolve_webservice_ports() {
+    local selected
+
+    if ! env_enabled "$VERIFY_AUTO_PORTS"; then
+        return 0
+    fi
+    if protocol_enabled http && [ "$HTTP_PORT_SET" -eq 0 ] && valid_tcp_port "$HTTP_PORT" && port_in_use "$HTTP_PORT"; then
+        selected="$(find_available_port "$((HTTP_PORT + 1))" "$VERIFY_PORT_SEARCH_LIMIT" "$HTTPS_PORT")" || return 1
+        note "webservice_ports fallback http original=$HTTP_PORT selected=$selected"
+        HTTP_PORT="$selected"
+    fi
+    if protocol_enabled https && [ "$HTTPS_PORT_SET" -eq 0 ] && valid_tcp_port "$HTTPS_PORT" && port_in_use "$HTTPS_PORT"; then
+        selected="$(find_available_port "$((HTTPS_PORT + 1))" "$VERIFY_PORT_SEARCH_LIMIT" "$HTTP_PORT")" || return 1
+        note "webservice_ports fallback https original=$HTTPS_PORT selected=$selected"
+        HTTPS_PORT="$selected"
+    fi
+    if [ "$WEB_PROTOCOL" = "both" ] && valid_tcp_port "$HTTP_PORT" && valid_tcp_port "$HTTPS_PORT" &&
+       [ "$HTTP_PORT" -eq "$HTTPS_PORT" ] && [ "$HTTPS_PORT_SET" -eq 0 ]; then
+        selected="$(find_available_port "$((HTTPS_PORT + 1))" "$VERIFY_PORT_SEARCH_LIMIT" "$HTTP_PORT")" || return 1
+        note "webservice_ports fallback https original=$HTTPS_PORT selected=$selected reason=same-as-http"
+        HTTPS_PORT="$selected"
+    fi
+    return 0
+}
+
 run_webservice_preflight_self_test() {
     local log="$LOG_ROOT/webservice-preflight-self-test.log"
 
     : > "$log"
     if valid_tcp_port 1 && valid_tcp_port 65535 &&
-       ! valid_tcp_port 0 && ! valid_tcp_port 65536 && ! valid_tcp_port abc; then
+       ! valid_tcp_port 0 && ! valid_tcp_port 65536 && ! valid_tcp_port abc &&
+       env_enabled 1 && env_enabled true && ! env_enabled 0 &&
+       ! find_available_port 65535 1 65535 >/dev/null 2>&1; then
         printf 'PASS valid_tcp_port boundary checks\n' > "$log"
+        printf 'PASS auto port helper checks\n' >> "$log"
         record_pass webservice_preflight_self_test
     else
-        printf 'FAIL valid_tcp_port boundary checks\n' > "$log"
+        printf 'FAIL webservice preflight helper checks\n' > "$log"
         record_fail webservice_preflight_self_test "log=$log"
     fi
 }
@@ -562,6 +682,8 @@ write_webservice_startup_preflight() {
         printf 'prefix=%s\n' "$PREFIX"
         printf 'web_protocol=%s skip_web=%s live_only=%s\n' "$WEB_PROTOCOL" "$SKIP_WEB" "$LIVE_ONLY"
         printf 'http_port=%s https_port=%s run_timeout=%s\n' "$HTTP_PORT" "$HTTPS_PORT" "$RUN_TIMEOUT"
+        printf 'auto_ports=%s port_search_limit=%s explicit_http_port=%s explicit_https_port=%s\n' \
+            "$VERIFY_AUTO_PORTS" "$VERIFY_PORT_SEARCH_LIMIT" "$HTTP_PORT_SET" "$HTTPS_PORT_SET"
         printf 'curl=%s\n' "$(command -v curl 2>/dev/null || printf '<missing>')"
         if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libmicrohttpd 2>/dev/null; then
             printf 'libmicrohttpd=%s\n' "$(pkg-config --modversion libmicrohttpd 2>/dev/null)"
@@ -725,7 +847,10 @@ check_key_rotation_component() {
         'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rotates key with AES profile.' \
         'TESTS: testCryptoReprotectDBValue(), PASS: DB value dry-run re-protect reports plaintext length without writing.' \
         'TESTS: testCryptoReprotectDBValue(), PASS: DB value re-protect rejects wrong source key.' \
-        'TESTS: testCryptoReprotectDBValue(), PASS: DB re-protect inventory reports AES protected row scope.'
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB re-protect inventory reports AES protected row scope.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB-level re-protect dry-run reports row scope without mutation.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB-level re-protect rejects wrong source key.' \
+        'TESTS: testCryptoReprotectDBValue(), PASS: DB-level re-protect rotates protected rows and reads back with new key.'
 }
 
 check_key_rotation_herradurakex_component() {
@@ -1522,6 +1647,7 @@ run_live_web_flow() {
         stop_live_service "$service_pid"
         redact_file_in_place "$service_log"
         record_fail "live_${protocol}_api_flow" "service did not start log=$service_log"
+        record_hint "live_${protocol}_api_flow" "check webservice-startup-preflight.log, selected ${protocol} port $port, auto_ports=$VERIFY_AUTO_PORTS, and service log errno diagnostics"
         return 1
     fi
 
@@ -1784,29 +1910,40 @@ else
 fi
 
 if [ "$SKIP_WEB" -eq 0 ]; then
+    if ! resolve_webservice_ports; then
+        record_fail webservice_ports "could not select alternate webservice ports from HTTP=$HTTP_PORT HTTPS=$HTTPS_PORT search_limit=$VERIFY_PORT_SEARCH_LIMIT"
+        record_hint webservice_ports "increase CDSE_VERIFY_PORT_SEARCH_LIMIT, set explicit CDSE_DEBUG_TEST_HTTP_PORT/CDSE_DEBUG_TEST_HTTPS_PORT, or free occupied local ports"
+        exit 1
+    fi
     write_webservice_startup_preflight
     if protocol_enabled http && ! valid_tcp_port "$HTTP_PORT"; then
         record_fail webservice_ports "HTTP port '$HTTP_PORT' is not a valid TCP port"
+        record_hint webservice_ports "set CDSE_DEBUG_TEST_HTTP_PORT to an integer between 1 and 65535"
         exit 1
     fi
     if protocol_enabled https && ! valid_tcp_port "$HTTPS_PORT"; then
         record_fail webservice_ports "HTTPS port '$HTTPS_PORT' is not a valid TCP port"
+        record_hint webservice_ports "set CDSE_DEBUG_TEST_HTTPS_PORT to an integer between 1 and 65535"
         exit 1
     fi
     if [ "$WEB_PROTOCOL" = "both" ] && [ "$HTTP_PORT" -eq "$HTTPS_PORT" ]; then
         record_fail webservice_ports "HTTP and HTTPS ports must be different"
+        record_hint webservice_ports "set different CDSE_DEBUG_TEST_HTTP_PORT and CDSE_DEBUG_TEST_HTTPS_PORT values"
         exit 1
     fi
     if protocol_enabled http && port_in_use "$HTTP_PORT"; then
         record_fail webservice_ports "HTTP port $HTTP_PORT is already in use"
+        record_hint webservice_ports "explicit HTTP port is occupied; unset CDSE_DEBUG_TEST_HTTP_PORT to allow auto fallback or choose another port"
         exit 1
     fi
     if protocol_enabled https && port_in_use "$HTTPS_PORT"; then
         record_fail webservice_ports "HTTPS port $HTTPS_PORT is already in use"
+        record_hint webservice_ports "explicit HTTPS port is occupied; unset CDSE_DEBUG_TEST_HTTPS_PORT to allow auto fallback or choose another port"
         exit 1
     fi
     if ! command -v curl >/dev/null 2>&1; then
         record_fail live_web_api_prerequisites "curl is required for live HTTP(S) API flow checks"
+        record_hint live_web_api_prerequisites "install curl or run with --skip-web when live API checks are not required"
         exit 1
     fi
 else
@@ -1822,6 +1959,8 @@ if command -v python3 >/dev/null 2>&1; then
     run_mcp_write_guard_self_test
     run_policy_authz_tester_self_test
     run_backup_restore_self_test
+    run_reprotect_workflow_self_test
+    run_operational_readiness_self_test
 else
     record_skip delegated_token_broker_self_test "python3 not available"
     record_skip agent_rag_connector_self_test "python3 not available"
@@ -1830,6 +1969,8 @@ else
     record_skip mcp_write_guard_self_test "python3 not available"
     record_skip policy_authz_tester_self_test "python3 not available"
     record_skip backup_restore_self_test "python3 not available"
+    record_skip reprotect_workflow_self_test "python3 not available"
+    record_skip operational_readiness_self_test "python3 not available"
 fi
 run_webservice_preflight_self_test
 

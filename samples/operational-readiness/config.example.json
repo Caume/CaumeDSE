@@ -1,0 +1,11 @@
+{
+  "storage_path": "TEST",
+  "parser_temp_dir": "/tmp",
+  "storage_profile": "aes-256-cbc",
+  "herradura_available": false,
+  "tls_auth_state": "required",
+  "build_mode": "release",
+  "parser_policy_enabled": true,
+  "max_connections": 64,
+  "thread_pool_size": 8
+}

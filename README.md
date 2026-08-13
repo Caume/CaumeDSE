@@ -2449,6 +2449,31 @@ filter-list rows enforce the same narrow permissions inside CaumeDSE.  See
 `samples/delegated-token-broker/` for a standard-library Python sample and
 offline allow/deny/expiry/revocation checks.
 
+### Explicit key rotation and re-protect workflow
+
+CaumeDSE does not automatically migrate protected SQLite values when an
+operator changes an organization key or storage crypto profile. Use an explicit
+re-protect workflow:
+
+1. Take an encrypted backup and record the target organization, storage,
+   document, source profile, target profile, and operator-approved scope.
+2. Run a dry-run inventory for the selected ColumnFile DBs and review row
+   counts, legacy AES rows, Herradura-framed rows, and unsupported MAC/sign
+   metadata before mutation.
+3. Create an operator-held journal outside model-visible logs. Record one
+   checkpoint per ColumnFile before mutation, after successful DB transaction,
+   and after readback with the new key/profile. Do not include org keys.
+4. Re-protect through the DB-level helper so salts and profile metadata are
+   updated in one SQLite transaction.
+5. Verify readback with the target key/profile before marking the checkpoint
+   complete. If verification fails, restore from backup or keep the old
+   checkpoint as the authoritative state.
+
+Mixed AES/Herradura data is allowed during staged migration. MAC/sign protected
+metadata currently fails closed in the DB-level helper until a dedicated
+recomputation workflow updates those integrity columns with the new ciphertext
+and key material.
+
 In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).
 

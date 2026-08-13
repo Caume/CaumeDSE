@@ -896,7 +896,7 @@
     requested Herradura provider and fails Herradura-enabled runs on vector/API
     drift.
 
-- [ ] #102 Add an explicit key rotation and re-protect service.
+- [x] #102 Add an explicit key rotation and re-protect service.
   - Source: `crypto.c`, `db.c`, `engine_interface.c`, `webservice_interface.c`, ResourcesDB/ColumnFile DB metadata, `README.md`, `TUTORIAL.md`, and `TEST/run_debug_components.sh`.
   - Goal: let operators rotate organization keys or migrate selected protected values between storage profiles, including AES-to-Herradura transitions, without automatic background migration.
   - Plan:
@@ -908,8 +908,23 @@
     - Add DEBUG and live verifier coverage for key rotation, profile migration, wrong-key rejection, partial-scope migration, dry-run output, and rollback/readback behavior.
   - Batch 1: added `cmeReprotectDBSaltedValue()` as a strict per-value re-protect primitive for explicit workflows, including dry-run length reporting, source-key rejection, target profile selection, new salt generation, AES key rotation, and AES/Herradura migration/rollback DEBUG component markers when the provider is enabled.
   - Batch 2: added `cmeInventoryMemSecureDBReprotect()` for read-only column-file dry-run inventory, reporting meta/data row counts, protect metadata rows, protected value scope, source/target profiles, and legacy AES versus Herradura-framed protected values without mutating the DB.
+  - Batch 3: added `cmeReprotectMemSecureDB()` as an explicit DB-level re-protect service for protected column-file rows, with dry-run reporting, wrong source-key rejection, single-transaction mutation, target-profile metadata update, new row/meta salts, new-key readback coverage, and fail-closed rejection for MAC/sign metadata until the dedicated recomputation workflow is implemented.
+  - Batch 4: documented the operator-held backup/journal/checkpoint workflow for explicit key/profile rotation, including dry-run inventory review, per-ColumnFile checkpoints before mutation/after transaction/after readback, secret-free journal records, mixed AES/Herradura staged migration, and restore-or-old-checkpoint rollback expectations.
+  - Batch 5: added `samples/reprotect-workflow/` with a secret-free scope format, redacted journal/checkpoint planning, mixed AES/Herradura inventory preservation, MAC/sign fail-closed validation, README guidance, and an offline verifier self-test.
+  - Batch 6: added re-protect journal resume/status reporting so saved plans can identify pending, resumable, complete, and blocked ColumnFile steps without exposing checkpoint paths or key material.
+  - Batch 7: added secret-free re-protect operator command templates for dry-run and commit phases, using key-file environment variables and exact storage/document/profile scope.
+  - Batch 8: added re-protect journal step updates so operators can record pending, resumable, complete, and blocked states after checkpoints, mutation, or readback without exposing secrets.
+  - Batch 9: added re-protect final closeout reporting for complete journals, including row totals, incomplete-step detection, and old-key destruction safeguards.
+  - Batch 10: added a re-protect journal gate that exits non-zero until every selected ColumnFile step is marked complete, suitable for operator runbooks and CI checks.
+  - Batch 11: added redacted re-protect audit event export for per-ColumnFile step state and journal closeout outcomes without key material or checkpoint paths.
+  - Batch 12: added re-protect checkpoint manifests with stable checkpoint IDs for each ColumnFile phase while keeping local checkpoint paths out of model-visible output.
+  - Batch 13: added an ordered re-protect operator runbook that chains checkpoint, dry-run, commit, journal update, and final gate phases without embedding key material.
+  - Batch 14: added re-protect scope diffing so operators can compare current and baseline migration scopes before running key/profile changes.
+  - Batch 15: added re-protect journal action-item export for incomplete or blocked ColumnFile steps.
+  - Batch 16: added a re-protect handoff pack that bundles journal status, action items, checkpoint IDs, and audit event counts for operator/bot handoff.
+  - Batch 17: added a final re-protect completion check for all journal steps, post-readback checkpoint IDs, audit closeout events, and operator-held old-key destruction.
 
-- [ ] #103 Harden verifier web startup diagnostics and reliability.
+- [x] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
   - Goal: make HTTP/HTTPS verifier startup failures actionable and reduce false failures when local ports, daemon flags, certificates, or environment limits prevent `MHD_start_daemon()` from starting.
   - Plan:
@@ -919,8 +934,10 @@
     - Capture startup diagnostics into dedicated verifier logs and include concise failure hints in `summary.txt`.
     - Add DEBUG component tests for expected startup failure redaction and verifier self-tests for port validation, timeout behavior, and skipped live-flow handling.
   - Batch 1: added webservice preflight self-tests for TCP port validation, a dedicated `webservice-startup-preflight.log` with selected protocol/ports, curl/libmicrohttpd availability, listener diagnostics, and certificate readability/size checks, plus richer `cmeWebServiceSetup()` HTTP/HTTPS daemon-start failure diagnostics with daemon flags, thread limits, connection limits, and errno context.
+  - Batch 2: added verifier-side automatic alternate-port selection for occupied default HTTP/HTTPS ports, preserving explicit operator-selected ports as fail-fast choices, recording auto-port settings in the preflight log, and extending preflight helper self-tests for environment flag and avoid-port behavior.
+  - Batch 3: added concise `HINT` lines to verifier summaries for web startup, port-selection, invalid-port, occupied-port, and missing-curl failures so operators can jump directly to preflight logs, selected ports, auto-port settings, and errno diagnostics.
 
-- [ ] #104 Add a guarded write-capable MCP service sample.
+- [x] #104 Add a guarded write-capable MCP service sample.
   - Source: `samples/mcp-server/`, `samples/delegated-token-broker/`, `AI_USAGE.md`, `openapi.yaml`, live verifier routes, and delegated-token patterns.
   - Goal: provide an MCP sample that can perform controlled writes while keeping organization keys out of model context and requiring explicit guardrails for mutations.
   - Plan:
@@ -931,8 +948,10 @@
     - Add dry-run output, redacted audit correlation, and clear refusal messages for unsafe parser execution or broad data mutation.
     - Add sample README guidance and verifier self-tests that prove write tools are hidden by default and guarded when enabled.
   - Batch 1: tightened the MCP sample so write tools require both `CDSE_MCP_ENABLE_WRITE_TOOLS=1` and `CDSE_MCP_DELEGATED_TOKEN`, added per-call guard fields for exact organization/storage/user/scope, expected status, idempotency key, confirmation, and dry-run mode, documented the write boundary, and added an offline verifier self-test for hidden/default write tools and broad-scope rejection.
+  - Batch 2: added guarded `promote_parser_review` and `delete_document` write tools with exact parser-review and document-delete scopes, reviewed metadata dry-run/update plans, request-id audit summaries, document-type limits for narrow deletion, README guidance, and offline self-test coverage for promotion, exact delete, broad delete rejection, and unsupported document-type rejection.
+  - Batch 3: integrated broker-style delegated token verification into the MCP write guard when `CDSE_MCP_DELEGATED_TOKEN_SECRET` is configured, checking HMAC signature, expiry, CaumeDSE organization/user binding, and exact write scope before each mutation, with README guidance and offline self-test coverage for accepted and missing-scope tokens.
 
-- [ ] #105 Add a policy-as-code authorization tester.
+- [x] #105 Add a policy-as-code authorization tester.
   - Source: roleTables, filterWhitelist/filterBlacklist handlers, `TEST/run_debug_components.sh`, `samples/`, `AI_USAGE.md`, and `API_EXAMPLES.md`.
   - Goal: let operators and AI-assisted workflows declare intended access policy and verify that CaumeDSE role/filter resources enforce it before deployment.
   - Plan:
@@ -942,6 +961,19 @@
     - Add negative cases for overbroad roles, missing filters, conflicting whitelist/blacklist rows, unsupported methods, and cleanup failures.
     - Add documentation for AI-generated policy review, including prompt-boundary rules and human approval before applying generated policies to real deployments.
   - Batch 1: added `samples/policy-authz-tester/` with a JSON policy format, setup-plan rendering for roleTables/filterWhitelist/filterBlacklist intent, offline observed-status evaluation, redacted `safeForAgent` reports, documentation, and a verifier self-test for validation, mismatch detection, and secret redaction.
+  - Batch 2: added a live-capable `probe` command for executing policy rules against a CaumeDSE base URL, with dry-run URL rendering, auth query redaction, observed status/request-id collection, README guidance, and expanded offline self-test coverage for probe planning.
+  - Batch 3: added static policy-risk validation for overbroad role resources, unsupported methods, mutating roles without blacklist controls, and conflicting whitelist/blacklist method rules before probe execution.
+  - Batch 4: added `setup-script` rendering for secret-free curl commands that apply roleTables, filterWhitelist, and filterBlacklist setup resources before live authorization probes.
+  - Batch 5: added `cleanup-script` rendering for disposable role/filter teardown in reverse setup order with redacted auth query handling and self-test coverage.
+  - Batch 6: added an agent-safe human approval review pack with setup/probe plans, policy scope summary, review checklist, and prompt-boundary guidance before live setup or probes.
+  - Batch 7: added a policy gate command that exits non-zero when observed probe statuses violate expected allow/deny rules.
+  - Batch 8: added JUnit XML output for policy probe results so CI systems can display authorization failures as test cases.
+  - Batch 9: added Markdown policy probe reports for human review, including pass/fail totals and per-rule observed status/request IDs.
+  - Batch 10: added an ordered live authorization-test runbook that sequences human review, setup, probes, gate, and cleanup with redacted auth handling.
+  - Batch 11: added CSV policy probe reports for spreadsheet review and audit handoff.
+  - Batch 12: added policy remediation plans that turn failed or missing probe observations into human-approved action items.
+  - Batch 13: added policy evidence attestations that summarize probe results, request IDs, gate outcome, and human-approval boundaries.
+  - Batch 14: added a final policy tester completion check for validation, setup/probe/cleanup coverage, gate outcome, and human-approval boundaries.
 
 - [x] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
@@ -955,7 +987,7 @@
   - Batch 1: added `samples/encrypted-backup-restore/` with a portable manifest utility that inventories CaumeDSE data directories, records file sizes/SHA-256 hashes/classification, redacts identifier-like labels and paths, verifies tamper/missing-file status, renders dry-run restore plans, documents the workflow, and adds an offline verifier self-test.
   - Batch 2: finished the sample workflow with encrypted backup packages, OpenSSL/PBKDF2 payload encryption with passphrases read from environment or key files, outer HMAC-SHA256 authentication for wrong-key/tamper rejection, restore execution into fresh prefixes with overwrite gates, expected-profile compatibility checks, byte-preserving restore of mixed AES/Herradura data, README operator examples, and expanded offline self-test coverage for backup creation, wrong-key rejection, tamper detection, restore readback, and temporary archive cleanup.
 
-- [ ] #107 Add an operational health and readiness service.
+- [x] #107 Add an operational health and readiness service.
   - Source: `engine_admin.c`, `webservice_interface.c`, `config.c`, `runtime.c`, parser policy configuration, storage path checks, TLS/auth configuration, and `AI_USAGE.md`.
   - Goal: expose a safe readiness view for operators and automation without leaking secrets or protected data.
   - Plan:
@@ -964,3 +996,15 @@
     - Include machine-readable JSON output for monitoring and AI-agent preflight checks, plus concise human-readable output for operators.
     - Return distinct status codes or readiness states for healthy, degraded, misconfigured, and unsafe DEBUG-only configurations.
     - Add DEBUG and live verifier coverage for healthy readiness, missing storage path, unsafe parser temp directory, Herradura-disabled profile requests, and redacted output.
+  - Batch 1: added `samples/operational-readiness/` with safe JSON/text readiness output, storage path and parser temp checks, storage-profile/Herradura availability checks, TLS-auth/build-mode/parser-policy state reporting, redaction, distinct readiness states, README guidance, and an offline verifier self-test.
+  - Batch 2: added readiness JSON config loading plus environment overrides for storage path, parser temp path, crypto profile, Herradura availability, TLS-auth state, build mode, parser policy, and verifier limits.
+  - Batch 3: added readiness report comparison for baseline drift detection, including changed-check and regression counts suitable for monitoring gates.
+  - Batch 4: added compact agent-safe readiness context output for preflight automation, highlighting only unsafe/misconfigured/degraded checks and prompt-boundary guidance.
+  - Batch 5: added Prometheus-style readiness metrics for aggregate state, per-check state, and verifier/runtime limits.
+  - Batch 6: added compact readiness state-count summaries for dashboards and CI logs.
+  - Batch 7: added Nagios-compatible one-line readiness output with standard exit codes for healthy, degraded, misconfigured, and unsafe states.
+  - Batch 8: added an ordered readiness monitoring runbook covering JSON, agent context, Prometheus metrics, summaries, Nagios checks, and baseline comparison.
+  - Batch 9: added SARIF readiness findings for security review tooling, mapping degraded checks to warnings and misconfigured/unsafe checks to errors.
+  - Batch 10: added readiness remediation action items for degraded, misconfigured, and unsafe checks.
+  - Batch 11: added a configurable readiness threshold gate for CI and monitoring policies.
+  - Batch 12: added a final readiness completion check for safe JSON, required checks, monitoring outputs, agent context, remediation output, and threshold policy.
