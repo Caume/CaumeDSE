@@ -4,7 +4,11 @@
 /* Enables (1) or disables (0) bypassing TLS authentication when it is
    required and protocol is not a TLS/HTTPS session (e.g. when testing HTTP)
    */
-#define BYPASS_TLS_IN_HTTP 0
+#define BYPASS_TLS_IN_HTTP 1
+
+/* Enables (1) or disables (0) optional HerraduraKEx at-rest crypto provider
+   integration */
+#define CDSE_ENABLE_HERRADURAKEX 0
 
 /* Maximum number of concurrent HTTP/HTTPS worker threads */
 #define CDSE_MAX_THREADS 4
@@ -24,53 +28,56 @@
 /* Define to 1 if you have the <gnutls/x509.h> header file. */
 #define HAVE_GNUTLS_X509_H 1
 
+/* Define to 1 if you have the <herradura.h> header file. */
+/* #undef HAVE_HERRADURA_H */
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
 
-/* Define to 1 if you have the `c' library (-lc). */
+/* Define to 1 if you have the 'c' library (-lc). */
 #define HAVE_LIBC 1
 
-/* Define to 1 if you have the `crypt' library (-lcrypt). */
+/* Define to 1 if you have the 'crypt' library (-lcrypt). */
 #define HAVE_LIBCRYPT 1
 
-/* Define to 1 if you have the `crypto' library (-lcrypto). */
+/* Define to 1 if you have the 'crypto' library (-lcrypto). */
 #define HAVE_LIBCRYPTO 1
 
-/* Define to 1 if you have the `dl' library (-ldl). */
+/* Define to 1 if you have the 'dl' library (-ldl). */
 #define HAVE_LIBDL 1
 
-/* Define to 1 if you have the `gnutls' library (-lgnutls). */
+/* Define to 1 if you have the 'gnutls' library (-lgnutls). */
 #define HAVE_LIBGNUTLS 1
 
-/* Define to 1 if you have the `m' library (-lm). */
+/* Define to 1 if you have the 'm' library (-lm). */
 #define HAVE_LIBM 1
 
-/* Define to 1 if you have the `microhttpd' library (-lmicrohttpd). */
+/* Define to 1 if you have the 'microhttpd' library (-lmicrohttpd). */
 #define HAVE_LIBMICROHTTPD 1
 
-/* Define to 1 if you have the `nsl' library (-lnsl). */
+/* Define to 1 if you have the 'nsl' library (-lnsl). */
 #define HAVE_LIBNSL 1
 
-/* Define to 1 if you have the `perl' library (-lperl). */
+/* Define to 1 if you have the 'perl' library (-lperl). */
 #define HAVE_LIBPERL 1
 
-/* Define to 1 if you have the `pthread' library (-lpthread). */
+/* Define to 1 if you have the 'pthread' library (-lpthread). */
 #define HAVE_LIBPTHREAD 1
 
-/* Define to 1 if you have the `sqlite3' library (-lsqlite3). */
+/* Define to 1 if you have the 'sqlite3' library (-lsqlite3). */
 #define HAVE_LIBSQLITE3 1
 
-/* Define to 1 if you have the `util' library (-lutil). */
+/* Define to 1 if you have the 'util' library (-lutil). */
 #define HAVE_LIBUTIL 1
 
 /* Define to 1 if you have the <locale.h> header file. */
 #define HAVE_LOCALE_H 1
 
-/* Define to 1 if your system has a GNU libc compatible `malloc' function, and
+/* Define to 1 if your system has a GNU libc compatible 'malloc' function, and
    to 0 otherwise. */
 #define HAVE_MALLOC 1
 
-/* Define to 1 if you have the `memset' function. */
+/* Define to 1 if you have the 'memset' function. */
 #define HAVE_MEMSET 1
 
 /* Define to 1 if you have the <microhttpd.h> header file. */
@@ -100,11 +107,11 @@
 /* Define to 1 if you have the <perl.h> header file. */
 #define HAVE_PERL_H 1
 
-/* Define to 1 if your system has a GNU libc compatible `realloc' function,
+/* Define to 1 if your system has a GNU libc compatible 'realloc' function,
    and to 0 otherwise. */
 #define HAVE_REALLOC 1
 
-/* Define to 1 if you have the `setlocale' function. */
+/* Define to 1 if you have the 'setlocale' function. */
 #define HAVE_SETLOCALE 1
 
 /* Define to 1 if you have the <sqlite3ext.h> header file. */
@@ -131,7 +138,7 @@
 /* Define to 1 if you have the <string.h> header file. */
 #define HAVE_STRING_H 1
 
-/* Define to 1 if you have the `strndup' function. */
+/* Define to 1 if you have the 'strndup' function. */
 #define HAVE_STRNDUP 1
 
 /* Define to 1 if you have the <sys/select.h> header file. */
@@ -165,7 +172,7 @@
 #define PACKAGE_NAME "CaumeDSE"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "CaumeDSE 1.0.7"
+#define PACKAGE_STRING "CaumeDSE 1.0.10"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "caumedse"
@@ -174,7 +181,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.0.7"
+#define PACKAGE_VERSION "1.0.10"
 
 /* Path for default data and system databases. */
 #define PATH_DATADIR "/tmp/cdse-verify/cdse"
@@ -183,13 +190,13 @@
    Function (PKCS5v1.5) */
 #define PBKDF1_OPENSSL_CLI_COMPATIBILITY 2
 
-/* Define to 1 if all of the C90 standard headers exist (not just the ones
+/* Define to 1 if all of the C89 standard headers exist (not just the ones
    required in a freestanding environment). This macro is provided for
    backward compatibility; new code need not use it. */
 #define STDC_HEADERS 1
 
 /* Version number of package */
-#define VERSION "1.0.7"
+#define VERSION "1.0.10"
 
 /* Define for Solaris 2.5.1 so the uint64_t typedef from <sys/synch.h>,
    <pthread.h>, or <semaphore.h> is not used. If the typedef were allowed, the
@@ -202,10 +209,10 @@
 /* Define to rpl_realloc if the replacement function should be used. */
 /* #undef realloc */
 
-/* Define to `unsigned int' if <sys/types.h> does not define. */
+/* Define as 'unsigned int' if <stddef.h> doesn't define. */
 /* #undef size_t */
 
-/* Define to `int' if <sys/types.h> does not define. */
+/* Define as 'int' if <sys/types.h> doesn't define. */
 /* #undef ssize_t */
 
 /* Define to the type of an unsigned integer type of width exactly 64 bits if
