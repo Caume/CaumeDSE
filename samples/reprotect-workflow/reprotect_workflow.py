@@ -410,6 +410,33 @@ def scope_diff(current_scope, baseline_scope):
     }
 
 
+def action_items(journal):
+    items = []
+    for step in journal["steps"]:
+        state = step.get("state", "pending")
+        if state == "complete":
+            continue
+        priority = "high" if state == "blocked" else "normal"
+        items.append({
+            "step": step["step"],
+            "databaseId": step["databaseId"],
+            "database": step["database"],
+            "state": state,
+            "priority": priority,
+            "nextAction": step.get("nextAction", step["actions"][0]),
+            "requiresHumanApproval": state == "blocked",
+        })
+    return redact({
+        "safeForAgent": True,
+        "journalId": journal["journalId"],
+        "summary": {
+            "actionItems": len(items),
+            "blocked": sum(1 for item in items if item["state"] == "blocked"),
+        },
+        "items": items,
+    })
+
+
 def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
     if state not in {"pending", "readyToResume", "complete", "blocked"}:
         raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
@@ -483,6 +510,11 @@ def scope_diff_command(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def action_items_command(args):
+    result = action_items(load_journal(args.journal))
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def self_test():
     plan = redact(build_plan(load_json(DEFAULT_SCOPE), dry_run=True))
     if plan.get("safeForAgent") is not True or plan["summary"]["databases"] != 2:
@@ -536,6 +568,9 @@ def self_test():
     diff = scope_diff(changed_scope, load_json(DEFAULT_SCOPE))
     if diff["summary"]["changed"] != 1:
         raise ReprotectError("self-test scope diff failed.")
+    actions = action_items(updated)
+    if actions["summary"]["actionItems"] != 1 or actions["items"][0]["priority"] != "high":
+        raise ReprotectError("self-test action items failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -568,6 +603,8 @@ def parse_args(argv):
     scope_diff_parser = sub.add_parser("scope-diff", help="Compare two re-protect scope files before migration.")
     scope_diff_parser.add_argument("--current", required=True)
     scope_diff_parser.add_argument("--baseline", required=True)
+    action_parser = sub.add_parser("action-items", help="Render operator action items for incomplete journal steps.")
+    action_parser.add_argument("--journal", required=True)
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -593,6 +630,8 @@ def main(argv=None):
             runbook_command(args)
         elif args.command == "scope-diff":
             scope_diff_command(args)
+        elif args.command == "action-items":
+            action_items_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:

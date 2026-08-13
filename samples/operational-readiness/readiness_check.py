@@ -319,6 +319,41 @@ def sarif_report(report):
     })
 
 
+def remediation_report(report):
+    actions = {
+        "storagePath": "verify the configured storage path exists and is readable/writable by the CaumeDSE process",
+        "parserTempDirectory": "create a dedicated writable parser temp directory owned by the service account",
+        "parserTempDirectorySafety": "set the sticky bit or move parser temp files to a private directory",
+        "storageCryptoProfile": "select an available storage crypto profile or enable the required provider",
+        "herraduraBuild": "install or enable HerraduraKEx support before selecting Herradura storage profiles",
+        "tlsAuth": "require TLS client authentication outside DEBUG-only verifier runs",
+        "buildMode": "use a release build for production readiness",
+        "parserPolicy": "enable parser policy controls before accepting generated parser scripts",
+    }
+    items = []
+    for item in report.get("checks", []):
+        state = item.get("state")
+        if state == "healthy":
+            continue
+        name = item.get("name", "unknown")
+        items.append({
+            "check": name,
+            "state": state,
+            "priority": "high" if state in {"misconfigured", "unsafe"} else "normal",
+            "message": item.get("message", ""),
+            "recommendedAction": actions.get(name, "review the readiness check and update local configuration"),
+        })
+    return redact({
+        "safeForAgent": True,
+        "state": report.get("state"),
+        "summary": {
+            "actionItems": len(items),
+            "highPriority": sum(1 for item in items if item["priority"] == "high"),
+        },
+        "items": items,
+    })
+
+
 def check_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
@@ -367,6 +402,13 @@ def sarif_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
     print(json.dumps(sarif_report(report), indent=2, sort_keys=True))
+    return 0 if report["state"] in {"healthy", "degraded"} else 2
+
+
+def remediation_command(args):
+    args = apply_config_and_env(args)
+    report = build_report(args)
+    print(json.dumps(remediation_report(report), indent=2, sort_keys=True))
     return 0 if report["state"] in {"healthy", "degraded"} else 2
 
 
@@ -424,6 +466,9 @@ def self_test():
     sarif = sarif_report(report)
     if sarif["version"] != "2.1.0" or not sarif["runs"][0]["results"]:
         raise ReadinessError("self-test SARIF output failed.")
+    remediation = remediation_report(report)
+    if remediation["summary"]["highPriority"] == 0 or not remediation["items"]:
+        raise ReadinessError("self-test remediation report failed.")
     print("PASS operational readiness self-test")
 
 
@@ -504,6 +549,18 @@ def parse_args(argv):
     sarif.add_argument("--max-connections", type=int, default=0)
     sarif.add_argument("--thread-pool-size", type=int, default=0)
     sarif.set_defaults(output="json")
+    remediation = sub.add_parser("remediation", help="Render action items for degraded, misconfigured, or unsafe checks.")
+    remediation.add_argument("--config", help="Optional JSON config; environment variables override it.")
+    remediation.add_argument("--storage-path", default=os.getcwd())
+    remediation.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
+    remediation.add_argument("--storage-profile", default="aes-256-cbc")
+    remediation.add_argument("--herradura-available", action="store_true")
+    remediation.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
+    remediation.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
+    remediation.add_argument("--parser-policy-enabled", action="store_true")
+    remediation.add_argument("--max-connections", type=int, default=0)
+    remediation.add_argument("--thread-pool-size", type=int, default=0)
+    remediation.set_defaults(output="json")
     compare = sub.add_parser("compare", help="Compare two JSON readiness reports for state drift.")
     compare.add_argument("--current", required=True)
     compare.add_argument("--baseline", required=True)
@@ -529,6 +586,8 @@ def main(argv=None):
             return 0
         if args.command == "sarif":
             return sarif_command(args)
+        if args.command == "remediation":
+            return remediation_command(args)
         if args.command == "compare":
             return compare_command(args)
         if args.command == "self-test":

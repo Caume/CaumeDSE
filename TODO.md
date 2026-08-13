@@ -920,6 +920,7 @@
   - Batch 12: added re-protect checkpoint manifests with stable checkpoint IDs for each ColumnFile phase while keeping local checkpoint paths out of model-visible output.
   - Batch 13: added an ordered re-protect operator runbook that chains checkpoint, dry-run, commit, journal update, and final gate phases without embedding key material.
   - Batch 14: added re-protect scope diffing so operators can compare current and baseline migration scopes before running key/profile changes.
+  - Batch 15: added re-protect journal action-item export for incomplete or blocked ColumnFile steps.
 
 - [x] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
@@ -968,6 +969,7 @@
   - Batch 9: added Markdown policy probe reports for human review, including pass/fail totals and per-rule observed status/request IDs.
   - Batch 10: added an ordered live authorization-test runbook that sequences human review, setup, probes, gate, and cleanup with redacted auth handling.
   - Batch 11: added CSV policy probe reports for spreadsheet review and audit handoff.
+  - Batch 12: added policy remediation plans that turn failed or missing probe observations into human-approved action items.
 
 - [x] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
@@ -999,3 +1001,4 @@
   - Batch 7: added Nagios-compatible one-line readiness output with standard exit codes for healthy, degraded, misconfigured, and unsafe states.
   - Batch 8: added an ordered readiness monitoring runbook covering JSON, agent context, Prometheus metrics, summaries, Nagios checks, and baseline comparison.
   - Batch 9: added SARIF readiness findings for security review tooling, mapping degraded checks to warnings and misconfigured/unsafe checks to errors.
+  - Batch 10: added readiness remediation action items for degraded, misconfigured, and unsafe checks.

@@ -74,6 +74,14 @@ python3 samples/policy-authz-tester/policy_authz_tester.py csv \
   --observations observed-policy-results.json
 ```
 
+Render action items for failed or missing policy observations:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py remediation-plan \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --observations observed-policy-results.json
+```
+
 Render live probe URLs without sending requests:
 
 ```sh

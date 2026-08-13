@@ -85,6 +85,13 @@ python3 samples/operational-readiness/readiness_check.py sarif \
   --config samples/operational-readiness/config.example.json
 ```
 
+Render remediation action items for unhealthy checks:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py remediation \
+  --config samples/operational-readiness/config.example.json
+```
+
 Run offline checks:
 
 ```sh

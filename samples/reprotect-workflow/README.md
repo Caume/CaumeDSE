@@ -92,6 +92,13 @@ python3 samples/reprotect-workflow/reprotect_workflow.py scope-diff \
   --baseline samples/reprotect-workflow/scope.example.json
 ```
 
+Render incomplete journal steps as operator action items:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py action-items \
+  --journal rotation-journal.updated.json
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:

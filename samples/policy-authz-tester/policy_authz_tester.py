@@ -327,6 +327,41 @@ def csv_report(report):
     return output.getvalue()
 
 
+def remediation_plan(report):
+    items = []
+    for item in report.get("results", []):
+        if item.get("passed"):
+            continue
+        expected = item.get("expectedStatus")
+        actual = item.get("actualStatus")
+        if actual is None:
+            action = "run the live probe and capture an observation for this rule"
+        elif expected < 400 <= actual:
+            action = "review roleTables and whitelist rows for the intended allow path"
+        elif expected >= 400 and actual < 400:
+            action = "tighten blacklist or role scope before deploying this policy"
+        else:
+            action = "inspect request logs and audit category for unexpected status mapping"
+        items.append({
+            "rule": item.get("rule"),
+            "decision": item.get("decision"),
+            "method": item.get("method"),
+            "route": item.get("route"),
+            "expectedStatus": expected,
+            "actualStatus": actual,
+            "requestId": item.get("requestId"),
+            "auditCategory": item.get("auditCategory"),
+            "recommendedAction": action,
+            "requiresHumanApproval": True,
+        })
+    return redact_value({
+        "safeForAgent": True,
+        "policy": report.get("policy", {}),
+        "summary": {"actionItems": len(items)},
+        "items": items,
+    })
+
+
 def append_query(url, query):
     if not query:
         return url
@@ -524,6 +559,13 @@ def csv_command(args):
     print(csv_report(result), end="")
 
 
+def remediation_plan_command(args):
+    policy = validate_policy(load_json(args.policy))
+    observations = load_json(args.observations)
+    result = remediation_plan(evaluate(policy, observations))
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def probe_command(args):
     policy = validate_policy(load_json(args.policy))
     result = probe_policy(policy, args.base_url, args.auth_query, args.timeout, args.dry_run)
@@ -578,6 +620,9 @@ def self_test():
     csv_text = csv_report(report)
     if "allow_document_schema" not in csv_text or "authz-fixture-1" not in csv_text:
         raise PolicyError("self-test CSV rendering failed.")
+    remediation = remediation_plan(failed)
+    if remediation["summary"]["actionItems"] != 3 or not remediation["items"][0]["requiresHumanApproval"]:
+        raise PolicyError("self-test remediation plan failed.")
     secret_report = redact_value({"route": "/x?orgKey=abc&newOrgKey=def", "authorization": "Bearer secret"})
     if "abc" in json.dumps(secret_report) or "secret" in json.dumps(secret_report):
         raise PolicyError("self-test report redaction leaked a secret marker.")
@@ -639,6 +684,9 @@ def parse_args(argv):
     csv_parser = sub.add_parser("csv", help="Render a CSV report for observed probe results.")
     csv_parser.add_argument("--policy", default=str(DEFAULT_POLICY))
     csv_parser.add_argument("--observations", required=True)
+    remediation = sub.add_parser("remediation-plan", help="Render action items for failed policy probes.")
+    remediation.add_argument("--policy", default=str(DEFAULT_POLICY))
+    remediation.add_argument("--observations", required=True)
     probe = sub.add_parser("probe", help="Execute policy rules against a live CaumeDSE base URL.")
     probe.add_argument("--policy", default=str(DEFAULT_POLICY))
     probe.add_argument("--base-url", required=True)
@@ -679,6 +727,8 @@ def main(argv=None):
             markdown_command(args)
         elif args.command == "csv":
             csv_command(args)
+        elif args.command == "remediation-plan":
+            remediation_plan_command(args)
         elif args.command == "probe":
             probe_command(args)
         elif args.command == "setup-script":
