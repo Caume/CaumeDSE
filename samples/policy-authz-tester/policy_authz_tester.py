@@ -388,6 +388,55 @@ def attestation(report):
     })
 
 
+def completion_check(policy, observations, base_url):
+    report = evaluate(policy, observations)
+    review = build_review_pack(policy, base_url)
+    setup = build_setup_commands(policy, base_url)
+    cleanup = build_cleanup_commands(policy, base_url)
+    attest = attestation(report)
+    requirements = [
+        {
+            "name": "policyValid",
+            "passed": True,
+            "message": "policy shape and static risk checks passed",
+        },
+        {
+            "name": "setupCoverage",
+            "passed": len(setup["commands"]) >= 3,
+            "message": "roleTables, filterWhitelist, and filterBlacklist setup commands are available",
+        },
+        {
+            "name": "probeCoverage",
+            "passed": len(report["results"]) == len(policy["rules"]),
+            "message": "every policy rule has an evaluated probe result",
+        },
+        {
+            "name": "gatePassed",
+            "passed": attest["gatePassed"],
+            "message": "observed probe statuses match expected allow/deny decisions",
+        },
+        {
+            "name": "cleanupCoverage",
+            "passed": len(cleanup["commands"]) == len(setup["commands"]),
+            "message": "disposable setup resources have matching cleanup commands",
+        },
+        {
+            "name": "humanApprovalBoundary",
+            "passed": review["humanApprovalRequired"] is True and attest["humanApprovalRequired"] is True,
+            "message": "generated policy workflows require human approval before live mutation",
+        },
+    ]
+    return redact_value({
+        "safeForAgent": True,
+        "policy": report["policy"],
+        "complete": all(item["passed"] for item in requirements),
+        "requirements": requirements,
+        "attestation": attest,
+        "remediation": remediation_plan(report),
+        "promptBoundary": "AI may summarize this completion check but must not approve or apply production policy changes.",
+    })
+
+
 def append_query(url, query):
     if not query:
         return url
@@ -600,6 +649,14 @@ def attestation_command(args):
     return 0 if result["gatePassed"] else 2
 
 
+def completion_check_command(args):
+    policy = validate_policy(load_json(args.policy))
+    observations = load_json(args.observations)
+    result = completion_check(policy, observations, args.base_url)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["complete"] else 2
+
+
 def probe_command(args):
     policy = validate_policy(load_json(args.policy))
     result = probe_policy(policy, args.base_url, args.auth_query, args.timeout, args.dry_run)
@@ -663,6 +720,12 @@ def self_test():
     blocked_attestation = attestation(failed)
     if blocked_attestation["gatePassed"] is not False or blocked_attestation["deploymentDecision"] != "blocked":
         raise PolicyError("self-test blocked attestation failed.")
+    completion = completion_check(policy, observations, "http://127.0.0.1:8080")
+    if completion["complete"] is not True or completion["remediation"]["summary"]["actionItems"] != 0:
+        raise PolicyError("self-test completion check failed.")
+    blocked_completion = completion_check(policy, [{"rule": "allow_document_schema", "status": 403}], "http://127.0.0.1:8080")
+    if blocked_completion["complete"] is not False or blocked_completion["remediation"]["summary"]["actionItems"] == 0:
+        raise PolicyError("self-test blocked completion check failed.")
     secret_report = redact_value({"route": "/x?orgKey=abc&newOrgKey=def", "authorization": "Bearer secret"})
     if "abc" in json.dumps(secret_report) or "secret" in json.dumps(secret_report):
         raise PolicyError("self-test report redaction leaked a secret marker.")
@@ -730,6 +793,10 @@ def parse_args(argv):
     attestation_parser = sub.add_parser("attestation", help="Render a human-approved evidence artifact for policy probes.")
     attestation_parser.add_argument("--policy", default=str(DEFAULT_POLICY))
     attestation_parser.add_argument("--observations", required=True)
+    completion = sub.add_parser("completion-check", help="Verify final policy tester workflow requirements.")
+    completion.add_argument("--policy", default=str(DEFAULT_POLICY))
+    completion.add_argument("--observations", required=True)
+    completion.add_argument("--base-url", required=True)
     probe = sub.add_parser("probe", help="Execute policy rules against a live CaumeDSE base URL.")
     probe.add_argument("--policy", default=str(DEFAULT_POLICY))
     probe.add_argument("--base-url", required=True)
@@ -774,6 +841,8 @@ def main(argv=None):
             remediation_plan_command(args)
         elif args.command == "attestation":
             return attestation_command(args)
+        elif args.command == "completion-check":
+            return completion_check_command(args)
         elif args.command == "probe":
             probe_command(args)
         elif args.command == "setup-script":

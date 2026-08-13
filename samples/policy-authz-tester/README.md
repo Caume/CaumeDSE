@@ -90,6 +90,15 @@ python3 samples/policy-authz-tester/policy_authz_tester.py attestation \
   --observations observed-policy-results.json
 ```
 
+Verify the full policy tester workflow before deployment:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py completion-check \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --observations observed-policy-results.json \
+  --base-url http://127.0.0.1:8080
+```
+
 Render live probe URLs without sending requests:
 
 ```sh
@@ -160,3 +169,7 @@ Observation files are JSON arrays:
 
 Reports are marked `safeForAgent:true`, include pass/fail counts, and redact
 credential-style values from routes and structured fields.
+
+`completion-check` exits zero only when the policy validates, setup/probe and
+cleanup coverage are present, observed statuses match expectations, and the
+human approval boundary remains explicit.

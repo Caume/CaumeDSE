@@ -951,7 +951,7 @@
   - Batch 2: added guarded `promote_parser_review` and `delete_document` write tools with exact parser-review and document-delete scopes, reviewed metadata dry-run/update plans, request-id audit summaries, document-type limits for narrow deletion, README guidance, and offline self-test coverage for promotion, exact delete, broad delete rejection, and unsupported document-type rejection.
   - Batch 3: integrated broker-style delegated token verification into the MCP write guard when `CDSE_MCP_DELEGATED_TOKEN_SECRET` is configured, checking HMAC signature, expiry, CaumeDSE organization/user binding, and exact write scope before each mutation, with README guidance and offline self-test coverage for accepted and missing-scope tokens.
 
-- [ ] #105 Add a policy-as-code authorization tester.
+- [x] #105 Add a policy-as-code authorization tester.
   - Source: roleTables, filterWhitelist/filterBlacklist handlers, `TEST/run_debug_components.sh`, `samples/`, `AI_USAGE.md`, and `API_EXAMPLES.md`.
   - Goal: let operators and AI-assisted workflows declare intended access policy and verify that CaumeDSE role/filter resources enforce it before deployment.
   - Plan:
@@ -973,6 +973,7 @@
   - Batch 11: added CSV policy probe reports for spreadsheet review and audit handoff.
   - Batch 12: added policy remediation plans that turn failed or missing probe observations into human-approved action items.
   - Batch 13: added policy evidence attestations that summarize probe results, request IDs, gate outcome, and human-approval boundaries.
+  - Batch 14: added a final policy tester completion check for validation, setup/probe/cleanup coverage, gate outcome, and human-approval boundaries.
 
 - [x] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
