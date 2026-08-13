@@ -99,6 +99,14 @@ python3 samples/reprotect-workflow/reprotect_workflow.py action-items \
   --journal rotation-journal.updated.json
 ```
 
+Render a handoff pack with journal status, action items, checkpoint IDs, and
+audit event counts:
+
+```sh
+python3 samples/reprotect-workflow/reprotect_workflow.py handoff-pack \
+  --journal rotation-journal.updated.json
+```
+
 ## Scope Shape
 
 `scope.example.json` contains:

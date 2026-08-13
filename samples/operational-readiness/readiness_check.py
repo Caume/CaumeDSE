@@ -354,6 +354,29 @@ def remediation_report(report):
     })
 
 
+def threshold_gate(report, max_state):
+    if max_state not in STATE_RANK:
+        raise ReadinessError(f"unsupported readiness threshold: {max_state}")
+    rank = STATE_RANK.get(report.get("state"), 9)
+    threshold = STATE_RANK[max_state]
+    return redact({
+        "safeForAgent": True,
+        "state": report.get("state"),
+        "maxAllowedState": max_state,
+        "passed": rank <= threshold,
+        "summary": state_summary(report)["summary"],
+        "violations": [
+            {
+                "check": item.get("name"),
+                "state": item.get("state"),
+                "message": item.get("message"),
+            }
+            for item in report.get("checks", [])
+            if STATE_RANK.get(item.get("state"), 9) > threshold
+        ],
+    })
+
+
 def check_command(args):
     args = apply_config_and_env(args)
     report = build_report(args)
@@ -410,6 +433,14 @@ def remediation_command(args):
     report = build_report(args)
     print(json.dumps(remediation_report(report), indent=2, sort_keys=True))
     return 0 if report["state"] in {"healthy", "degraded"} else 2
+
+
+def threshold_command(args):
+    args = apply_config_and_env(args)
+    report = build_report(args)
+    result = threshold_gate(report, args.max_state)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["passed"] else 2
 
 
 def compare_command(args):
@@ -469,6 +500,9 @@ def self_test():
     remediation = remediation_report(report)
     if remediation["summary"]["highPriority"] == 0 or not remediation["items"]:
         raise ReadinessError("self-test remediation report failed.")
+    threshold = threshold_gate(report, "degraded")
+    if threshold["passed"] is not False or not threshold["violations"]:
+        raise ReadinessError("self-test threshold gate failed.")
     print("PASS operational readiness self-test")
 
 
@@ -561,6 +595,19 @@ def parse_args(argv):
     remediation.add_argument("--max-connections", type=int, default=0)
     remediation.add_argument("--thread-pool-size", type=int, default=0)
     remediation.set_defaults(output="json")
+    threshold = sub.add_parser("threshold", help="Fail when readiness is worse than the selected maximum state.")
+    threshold.add_argument("--config", help="Optional JSON config; environment variables override it.")
+    threshold.add_argument("--storage-path", default=os.getcwd())
+    threshold.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
+    threshold.add_argument("--storage-profile", default="aes-256-cbc")
+    threshold.add_argument("--herradura-available", action="store_true")
+    threshold.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
+    threshold.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
+    threshold.add_argument("--parser-policy-enabled", action="store_true")
+    threshold.add_argument("--max-connections", type=int, default=0)
+    threshold.add_argument("--thread-pool-size", type=int, default=0)
+    threshold.add_argument("--max-state", choices=list(STATE_RANK.keys()), default="degraded")
+    threshold.set_defaults(output="json")
     compare = sub.add_parser("compare", help="Compare two JSON readiness reports for state drift.")
     compare.add_argument("--current", required=True)
     compare.add_argument("--baseline", required=True)
@@ -588,6 +635,8 @@ def main(argv=None):
             return sarif_command(args)
         if args.command == "remediation":
             return remediation_command(args)
+        if args.command == "threshold":
+            return threshold_command(args)
         if args.command == "compare":
             return compare_command(args)
         if args.command == "self-test":

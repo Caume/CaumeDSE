@@ -92,6 +92,14 @@ python3 samples/operational-readiness/readiness_check.py remediation \
   --config samples/operational-readiness/config.example.json
 ```
 
+Fail when readiness is worse than an operator-selected maximum state:
+
+```sh
+python3 samples/operational-readiness/readiness_check.py threshold \
+  --config samples/operational-readiness/config.example.json \
+  --max-state degraded
+```
+
 Run offline checks:
 
 ```sh

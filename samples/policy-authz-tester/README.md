@@ -82,6 +82,14 @@ python3 samples/policy-authz-tester/policy_authz_tester.py remediation-plan \
   --observations observed-policy-results.json
 ```
 
+Render a policy evidence attestation for human approval records:
+
+```sh
+python3 samples/policy-authz-tester/policy_authz_tester.py attestation \
+  --policy samples/policy-authz-tester/policy.example.json \
+  --observations observed-policy-results.json
+```
+
 Render live probe URLs without sending requests:
 
 ```sh

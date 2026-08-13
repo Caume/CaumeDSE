@@ -437,6 +437,23 @@ def action_items(journal):
     })
 
 
+def handoff_pack(journal):
+    status = summarize_journal(journal)
+    closeout = final_report(journal)
+    return redact({
+        "safeForAgent": True,
+        "journalId": journal["journalId"],
+        "readiness": status["readiness"],
+        "summary": closeout["summary"],
+        "nextStep": status["nextStep"],
+        "actionItems": action_items(journal)["items"],
+        "checkpointManifest": checkpoint_manifest(journal),
+        "auditEventCount": len(audit_events(journal)["events"]),
+        "operatorCloseout": closeout["operatorCloseout"],
+        "promptBoundary": "AI may summarize this handoff pack but must not request key material or checkpoint paths.",
+    })
+
+
 def update_journal(journal, step_number=None, database_id=None, state=None, next_action=None):
     if state not in {"pending", "readyToResume", "complete", "blocked"}:
         raise ReprotectError("state must be pending, readyToResume, complete, or blocked.")
@@ -515,6 +532,11 @@ def action_items_command(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def handoff_pack_command(args):
+    result = handoff_pack(load_journal(args.journal))
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
 def self_test():
     plan = redact(build_plan(load_json(DEFAULT_SCOPE), dry_run=True))
     if plan.get("safeForAgent") is not True or plan["summary"]["databases"] != 2:
@@ -571,6 +593,9 @@ def self_test():
     actions = action_items(updated)
     if actions["summary"]["actionItems"] != 1 or actions["items"][0]["priority"] != "high":
         raise ReprotectError("self-test action items failed.")
+    handoff = handoff_pack(updated)
+    if handoff["readiness"] != "blocked" or handoff["checkpointManifest"]["checkpointCount"] != 6:
+        raise ReprotectError("self-test handoff pack failed.")
     print("PASS re-protect workflow self-test")
 
 
@@ -605,6 +630,8 @@ def parse_args(argv):
     scope_diff_parser.add_argument("--baseline", required=True)
     action_parser = sub.add_parser("action-items", help="Render operator action items for incomplete journal steps.")
     action_parser.add_argument("--journal", required=True)
+    handoff_parser = sub.add_parser("handoff-pack", help="Render a complete journal handoff pack for operators and bots.")
+    handoff_parser.add_argument("--journal", required=True)
     sub.add_parser("self-test", help="Run offline plan, redaction, and fail-closed checks.")
     return parser.parse_args(argv)
 
@@ -632,6 +659,8 @@ def main(argv=None):
             scope_diff_command(args)
         elif args.command == "action-items":
             action_items_command(args)
+        elif args.command == "handoff-pack":
+            handoff_pack_command(args)
         elif args.command == "self-test":
             self_test()
     except ReprotectError as exc:

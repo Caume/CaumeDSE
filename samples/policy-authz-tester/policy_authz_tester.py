@@ -362,6 +362,32 @@ def remediation_plan(report):
     })
 
 
+def attestation(report):
+    failures = [item for item in report.get("results", []) if not item.get("passed")]
+    evidence = [
+        {
+            "rule": item.get("rule"),
+            "method": item.get("method"),
+            "expectedStatus": item.get("expectedStatus"),
+            "actualStatus": item.get("actualStatus"),
+            "requestId": item.get("requestId"),
+            "auditCategory": item.get("auditCategory"),
+        }
+        for item in report.get("results", [])
+    ]
+    return redact_value({
+        "safeForAgent": True,
+        "attestationSchemaVersion": 1,
+        "policy": report.get("policy", {}),
+        "gatePassed": not failures,
+        "summary": report.get("summary", {}),
+        "evidence": evidence,
+        "humanApprovalRequired": True,
+        "deploymentDecision": "approved-for-disposable-scope" if not failures else "blocked",
+        "promptBoundary": "AI may summarize evidence but must not approve production authorization policy changes.",
+    })
+
+
 def append_query(url, query):
     if not query:
         return url
@@ -566,6 +592,14 @@ def remediation_plan_command(args):
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
+def attestation_command(args):
+    policy = validate_policy(load_json(args.policy))
+    observations = load_json(args.observations)
+    result = attestation(evaluate(policy, observations))
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["gatePassed"] else 2
+
+
 def probe_command(args):
     policy = validate_policy(load_json(args.policy))
     result = probe_policy(policy, args.base_url, args.auth_query, args.timeout, args.dry_run)
@@ -623,6 +657,12 @@ def self_test():
     remediation = remediation_plan(failed)
     if remediation["summary"]["actionItems"] != 3 or not remediation["items"][0]["requiresHumanApproval"]:
         raise PolicyError("self-test remediation plan failed.")
+    attested = attestation(report)
+    if attested["gatePassed"] is not True or len(attested["evidence"]) != 3:
+        raise PolicyError("self-test attestation failed.")
+    blocked_attestation = attestation(failed)
+    if blocked_attestation["gatePassed"] is not False or blocked_attestation["deploymentDecision"] != "blocked":
+        raise PolicyError("self-test blocked attestation failed.")
     secret_report = redact_value({"route": "/x?orgKey=abc&newOrgKey=def", "authorization": "Bearer secret"})
     if "abc" in json.dumps(secret_report) or "secret" in json.dumps(secret_report):
         raise PolicyError("self-test report redaction leaked a secret marker.")
@@ -687,6 +727,9 @@ def parse_args(argv):
     remediation = sub.add_parser("remediation-plan", help="Render action items for failed policy probes.")
     remediation.add_argument("--policy", default=str(DEFAULT_POLICY))
     remediation.add_argument("--observations", required=True)
+    attestation_parser = sub.add_parser("attestation", help="Render a human-approved evidence artifact for policy probes.")
+    attestation_parser.add_argument("--policy", default=str(DEFAULT_POLICY))
+    attestation_parser.add_argument("--observations", required=True)
     probe = sub.add_parser("probe", help="Execute policy rules against a live CaumeDSE base URL.")
     probe.add_argument("--policy", default=str(DEFAULT_POLICY))
     probe.add_argument("--base-url", required=True)
@@ -729,6 +772,8 @@ def main(argv=None):
             csv_command(args)
         elif args.command == "remediation-plan":
             remediation_plan_command(args)
+        elif args.command == "attestation":
+            return attestation_command(args)
         elif args.command == "probe":
             probe_command(args)
         elif args.command == "setup-script":

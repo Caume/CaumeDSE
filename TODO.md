@@ -921,6 +921,7 @@
   - Batch 13: added an ordered re-protect operator runbook that chains checkpoint, dry-run, commit, journal update, and final gate phases without embedding key material.
   - Batch 14: added re-protect scope diffing so operators can compare current and baseline migration scopes before running key/profile changes.
   - Batch 15: added re-protect journal action-item export for incomplete or blocked ColumnFile steps.
+  - Batch 16: added a re-protect handoff pack that bundles journal status, action items, checkpoint IDs, and audit event counts for operator/bot handoff.
 
 - [x] #103 Harden verifier web startup diagnostics and reliability.
   - Source: `engine_admin.c`, `debug_tests.c`, `TEST/run_debug_components.sh`, libmicrohttpd startup options, generated test certificates, and live verifier logs.
@@ -970,6 +971,7 @@
   - Batch 10: added an ordered live authorization-test runbook that sequences human review, setup, probes, gate, and cleanup with redacted auth handling.
   - Batch 11: added CSV policy probe reports for spreadsheet review and audit handoff.
   - Batch 12: added policy remediation plans that turn failed or missing probe observations into human-approved action items.
+  - Batch 13: added policy evidence attestations that summarize probe results, request IDs, gate outcome, and human-approval boundaries.
 
 - [x] #106 Add an encrypted backup and restore utility.
   - Source: storage path layout, ResourcesDB/ColumnFile DB handling, `filehandling.c`, `crypto.c`, `samples/`, `README.md`, and verifier fixtures.
@@ -1002,3 +1004,4 @@
   - Batch 8: added an ordered readiness monitoring runbook covering JSON, agent context, Prometheus metrics, summaries, Nagios checks, and baseline comparison.
   - Batch 9: added SARIF readiness findings for security review tooling, mapping degraded checks to warnings and misconfigured/unsafe checks to errors.
   - Batch 10: added readiness remediation action items for degraded, misconfigured, and unsafe checks.
+  - Batch 11: added a configurable readiness threshold gate for CI and monitoring policies.
