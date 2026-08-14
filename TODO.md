@@ -1022,3 +1022,4 @@
   - Batch 1: added `.github/workflows/pr-ci.yml` with pull-request change classification, lightweight documentation checks, DEBUG configure/build/check coverage, standalone sample self-tests, redacted non-web verifier coverage, web-smoke fallback for socket-denied runners, uploaded verifier artifacts, README CI guidance, and local syntax validation.
   - Batch 2: refreshed autotools files in CI with the runner-provided toolchain before the build, reconfigured afterward, cleaned generated outputs before compilation, and enabled verbose make logs for clearer PR failure diagnostics.
   - Batch 3: installed the DEBUG build before running the `--skip-build --skip-web` component verifier so installed harness paths under `CDSE_VERIFY_PREFIX` are available in CI.
+  - Batch 4: reused the installed DEBUG prefix for CI web-smoke verification and capped the smoke step runtime so GitHub PR checks do not linger indefinitely.

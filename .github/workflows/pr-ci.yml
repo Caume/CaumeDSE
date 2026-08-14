@@ -148,13 +148,14 @@ jobs:
 
       - name: Try CI web smoke verifier
         id: web_smoke
+        timeout-minutes: 8
         shell: bash
         run: |
           set -euo pipefail
           rm -rf /tmp/cdse-ci-web-smoke
           export CDSE_VERIFY_LOG_DIR=/tmp/cdse-ci-web-smoke
           set +e
-          TEST/run_debug_components.sh --ci-smoke
+          TEST/run_debug_components.sh --skip-build --ci-smoke
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then
