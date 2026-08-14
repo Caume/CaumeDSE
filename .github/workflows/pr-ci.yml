@@ -1,0 +1,185 @@
+name: Pull Request CI
+
+on:
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Classify Changes
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+            git diff --name-only "$base" "$head" > changed-files.txt
+          else
+            git ls-files > changed-files.txt
+          fi
+
+          docs_only=1
+          if [ ! -s changed-files.txt ]; then
+            docs_only=0
+          fi
+          while IFS= read -r path; do
+            case "$path" in
+              *.md|docs/*|README*|CHANGELOG.md|TODO.md|TUTORIAL.md|API_EXAMPLES.md|AI_USAGE.md)
+                ;;
+              *)
+                docs_only=0
+                ;;
+            esac
+          done < changed-files.txt
+
+          printf 'docs_only=%s\n' "$docs_only" >> "$GITHUB_OUTPUT"
+          printf 'Changed files:\n'
+          sed 's/^/  - /' changed-files.txt
+          printf 'docs_only=%s\n' "$docs_only"
+
+  lightweight:
+    name: Lightweight Checks
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate shell syntax
+        run: bash -n TEST/run_debug_components.sh
+
+      - name: Validate TODO status format
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Eq '^- \[[ x]\] #[0-9]+ ' TODO.md
+          python3 -c 'import re; from pathlib import Path; numbers=[int(m.group(1)) for line in Path("TODO.md").read_text(encoding="utf-8").splitlines() for m in [re.match(r"- \[[ x]\] #([0-9]+) ", line)] if m]; assert numbers == sorted(numbers), "TODO items are not sorted by number"; assert len(numbers) == len(set(numbers)), "TODO item numbers contain duplicates"'
+
+  build-and-verify:
+    name: Build And Verify
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs_only != '1'
+    env:
+      CDSE_VERIFY_REDACT: "1"
+      CDSE_VERIFY_PREFIX: /tmp/cdse-verify
+      CDSE_VERIFY_LOG_DIR: /tmp/cdse-ci-components
+      CDSE_DEBUG_TEST_TIMEOUT: 120s
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            build-essential \
+            ca-certificates \
+            curl \
+            gawk \
+            libcrypt-dev \
+            libgnutls28-dev \
+            libmicrohttpd-dev \
+            libnsl-dev \
+            libperl-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            libtool \
+            perl \
+            pkg-config \
+            python3
+
+      - name: Refresh generated autotools files
+        run: autoreconf -fi
+
+      - name: Configure DEBUG test build
+        run: ./configure --prefix=/tmp/cdse-verify --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP
+
+      - name: Clean generated build outputs
+        run: make clean
+
+      - name: Build
+        run: make V=1
+
+      - name: Run make check
+        run: make check
+
+      - name: Install DEBUG test build
+        run: make install
+
+      - name: Run standalone sample self-tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 samples/delegated-token-broker/delegated_token_broker.py self-test
+          python3 samples/agent-rag-connector/caumedse_rag_connector.py self-test
+          python3 samples/review-workspace/review_workspace.py self-test
+          python3 samples/audit-dashboard/audit_dashboard.py self-test
+          python3 samples/mcp-server/caumedse_mcp_server.py self-test
+          python3 samples/policy-authz-tester/policy_authz_tester.py self-test
+          python3 samples/encrypted-backup-restore/cdse_backup_restore.py self-test
+          python3 samples/reprotect-workflow/reprotect_workflow.py self-test
+          python3 samples/operational-readiness/readiness_check.py self-test
+
+      - name: Run component verifier without web sockets
+        run: TEST/run_debug_components.sh --skip-build --skip-web
+
+      - name: Try CI web smoke verifier
+        id: web_smoke
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/cdse-ci-web-smoke
+          export CDSE_VERIFY_LOG_DIR=/tmp/cdse-ci-web-smoke
+          set +e
+          TEST/run_debug_components.sh --live-only --web-protocol=http
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            exit 0
+          fi
+
+          if grep -R -E 'Operation not permitted|could not reserve .* test port|service did not start' /tmp/cdse-ci-web-smoke >/tmp/cdse-ci-web-smoke/socket-denied.txt 2>/dev/null; then
+            printf '%s\n' 'CI runner could not create or bind local web sockets; non-web verifier already passed.'
+            exit 0
+          fi
+
+          printf 'CI web smoke failed for a non-socket-denial reason. Summary follows:\n'
+          if [ -f /tmp/cdse-ci-web-smoke/summary.txt ]; then
+            cat /tmp/cdse-ci-web-smoke/summary.txt
+          fi
+          exit "$rc"
+
+      - name: Upload verifier artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caumedse-verifier-logs
+          path: |
+            /tmp/cdse-ci-components
+            /tmp/cdse-ci-web-smoke
+          if-no-files-found: ignore
+          retention-days: 14

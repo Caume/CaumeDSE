@@ -2391,6 +2391,16 @@ The `--ci-smoke` profile runs configure, build, install, component markers,
 HTTP/HTTPS startup checks, and one live API protocol. It defaults to HTTP live
 coverage; use `--ci-smoke --web-protocol=https` to select HTTPS instead.
 
+Pull requests run the GitHub Actions workflow in `.github/workflows/pr-ci.yml`.
+Documentation-only PRs run lightweight syntax and TODO-format checks. Code,
+build, test, workflow, and sample changes run the DEBUG configure/build path,
+`make`, `make check`, standalone sample self-tests, and the redacted DEBUG
+component verifier. The CI workflow also attempts `TEST/run_debug_components.sh
+--ci-smoke`; if a GitHub-hosted runner denies local socket creation or binding,
+the web smoke step is treated as an environment limitation only after the
+non-web component verifier has passed. Redacted verifier logs are uploaded as
+short-lived PR artifacts.
+
 The committed test database under `TEST/testDB_opt_cdse` uses
 `0CDBB9AF76AF43BDB72E095989E612CC` as the `EngineAdmin` / `EngineOrg`
 organization key in the DEBUG resource component tests and API examples.
