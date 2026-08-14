@@ -1008,3 +1008,15 @@
   - Batch 10: added readiness remediation action items for degraded, misconfigured, and unsafe checks.
   - Batch 11: added a configurable readiness threshold gate for CI and monitoring policies.
   - Batch 12: added a final readiness completion check for safe JSON, required checks, monitoring outputs, agent context, remediation output, and threshold policy.
+
+- [x] #108 Add automated GitHub Actions CI tests for pull requests.
+  - Source: `.github/workflows/`, `configure.ac`, `Makefile.am`, `TEST/run_debug_components.sh`, sample self-tests under `samples/`, and project documentation.
+  - Goal: run repeatable automated checks for every pull request so build, DEBUG component coverage, sample workflows, and verifier regressions are caught before merge.
+  - Plan:
+    - Add a pull-request GitHub Actions workflow that installs required Linux packages for CaumeDSE, configures the DEBUG test build, runs `make`, and runs `make check`.
+    - Run the CI-friendly verifier profile, preferring `TEST/run_debug_components.sh --ci-smoke` when GitHub-hosted runners permit local web sockets and falling back to a documented `--skip-web` component profile when networking is unavailable.
+    - Run standalone sample self-tests for re-protect workflow, policy authorization tester, operational readiness, encrypted backup/restore, MCP write guards, agent RAG connector, review workspace, audit dashboard, and delegated token broker.
+    - Upload redacted verifier summaries/logs as CI artifacts, using `CDSE_VERIFY_REDACT=1` for shared logs and preserving enough failure context for PR review.
+    - Add workflow path filters or job grouping so documentation-only PRs can run lightweight checks while code, build, test, and sample changes run the full suite.
+    - Document local parity commands and GitHub runner limitations in the contributor guidance.
+  - Batch 1: added `.github/workflows/pr-ci.yml` with pull-request change classification, lightweight documentation checks, DEBUG configure/build/check coverage, standalone sample self-tests, redacted non-web verifier coverage, web-smoke fallback for socket-denied runners, uploaded verifier artifacts, README CI guidance, and local syntax validation.
