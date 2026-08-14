@@ -1020,3 +1020,4 @@
     - Add workflow path filters or job grouping so documentation-only PRs can run lightweight checks while code, build, test, and sample changes run the full suite.
     - Document local parity commands and GitHub runner limitations in the contributor guidance.
   - Batch 1: added `.github/workflows/pr-ci.yml` with pull-request change classification, lightweight documentation checks, DEBUG configure/build/check coverage, standalone sample self-tests, redacted non-web verifier coverage, web-smoke fallback for socket-denied runners, uploaded verifier artifacts, README CI guidance, and local syntax validation.
+  - Batch 2: refreshed autotools files in CI with the runner-provided toolchain before the build, reconfigured afterward, cleaned generated outputs before compilation, and enabled verbose make logs for clearer PR failure diagnostics.

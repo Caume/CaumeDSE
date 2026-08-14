@@ -111,11 +111,17 @@ jobs:
             pkg-config \
             python3
 
+      - name: Refresh generated autotools files
+        run: autoreconf -fi
+
       - name: Configure DEBUG test build
         run: ./configure --prefix=/tmp/cdse-verify --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP
 
+      - name: Clean generated build outputs
+        run: make clean
+
       - name: Build
-        run: make
+        run: make V=1
 
       - name: Run make check
         run: make check
