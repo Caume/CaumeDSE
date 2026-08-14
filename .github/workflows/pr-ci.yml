@@ -126,6 +126,9 @@ jobs:
       - name: Run make check
         run: make check
 
+      - name: Install DEBUG test build
+        run: make install
+
       - name: Run standalone sample self-tests
         shell: bash
         run: |
