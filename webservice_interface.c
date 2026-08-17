@@ -910,6 +910,14 @@ static int cmeWebServiceHasUnsafeRequestInput(const char **urlElements, int numU
     return(0);
 }
 
+#if defined(DEBUG) || defined(CDSE_FUZZING)
+int cmeWebServiceHasUnsafeRequestInputForTest(const char **urlElements, int numUrlElements,
+                                              const char **argumentElements)
+{
+    return(cmeWebServiceHasUnsafeRequestInput(urlElements,numUrlElements,argumentElements));
+}
+#endif
+
 static int cmeWebServiceIsFalseValue(const char *value)
 {
     return((value)&&((!strcmp(value,"0"))||(!strcasecmp(value,"false"))||

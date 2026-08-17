@@ -1,0 +1,4 @@
+/organizations/x';DROP/users/y
+userId=a'b
+orgId=../../x
+outputType=<script>

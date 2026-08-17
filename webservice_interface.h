@@ -80,6 +80,11 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
 int cmeWebServiceParseKeys(void *cls, enum MHD_ValueKind kind, const char *key, const char *value);
 //IN-Callback function to parse elements of a URI/URL.
 int cmeWebServiceParseURL(const char *url, char ***urlElements, int *numUrlElements);
+#if defined(DEBUG) || defined(CDSE_FUZZING)
+// DEBUG/fuzz-only wrapper for request input safety validation.
+int cmeWebServiceHasUnsafeRequestInputForTest(const char **urlElements, int numUrlElements,
+                                              const char **argumentElements);
+#endif
 //IN-Callback function to process Web service requests.
 int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, char ***responseHeaders, int *responseCode,
                                  const char *url, const char **urlElements, int numUrlElements,

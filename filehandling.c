@@ -517,6 +517,7 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
     char curElement[cmeMaxCSVElemSize];
     char *curRow=NULL;                   // Buffer for current row, allocated dynamically
     size_t curRowSize=0;                 // Current size of curRow buffer
+    int maxElements=0;
 
     if(rowEnd<rowStart) //Error, incorrect start/end row; Rows are inclusive, starting from row 0
                         //i.e., if rowEnd==rowStart, then that row (one only) is read.
@@ -542,6 +543,26 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
 #endif
     lineLen = getline(&curRow,&curRowSize,fp);
     resStr=(lineLen==-1)?NULL:curRow;
+    if (resStr==NULL)
+    {
+        if (feof(fp)==0)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeCSVFileRowsToMem(), getline() Error, can't "
+                    "read first row from CSV file: %s!\n",fName);
+#endif
+            cmeStorageFileClose(fp);
+            cmeFree(curRow);
+            return(4);
+        }
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeCSVFileRowsToMem(), getline() Error, reached "
+                "EOF before getting # of columns, in CSV file: %s!\n",fName);
+#endif
+        cmeStorageFileClose(fp);
+        cmeFree(curRow);
+        return(5);
+    }
     cont=0;
     cont2=1;
     {
@@ -572,9 +593,9 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
         }while (cont<rowLen);
     }
     *numCols=cont2;
-    colNames=(char **)malloc(sizeof(char **) * (*numCols));  //reserve memory for column name pointers
-    *elements=(char **)malloc(sizeof(char **) * (*numCols) *
-              (rowEnd-rowStart+2));  //reserve memory for element pointers
+    colNames=(char **)calloc((size_t)(*numCols),sizeof(char *));  //reserve memory for column name pointers
+    maxElements=(*numCols)*(rowEnd-rowStart+2);
+    *elements=(char **)calloc((size_t)maxElements,sizeof(char *));  //reserve memory for element pointers
     rowEnd++;       //increment to include header row.
     rowStart++;
     if (hasColNames)    //get Column names from first row first if CSV contains headers in 1st row.
@@ -615,6 +636,17 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                     cont++;
                     while ((curRow[cont]!='\"')&&(cont<(int)strlen(curRow)))
                     {
+                        if (cont2>=(cmeMaxCSVElemSize-1))
+                        {
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), Error, quoted "
+                                    "element exceeds maximum size at first row (column names), in CSV file: "
+                                    "%s !\n",fName);
+#endif
+                            cmeStorageFileClose(fp);
+                            cmeFree(curRow);
+                            return(10);
+                        }
                         curElement[cont2]=curRow[cont];
                         cont2++;
                         cont++;
@@ -632,6 +664,17 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                     else
                     {
                         curElement[cont2]='\0';
+                        if (cont3>=*numCols)
+                        {
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), Error, "
+                                    "column-name count exceeds detected column capacity in CSV file: "
+                                    "%s !\n",fName);
+#endif
+                            cmeStorageFileClose(fp);
+                            cmeFree(curRow);
+                            return(11);
+                        }
                         colNames[cont3]=(char *)malloc(sizeof(char) * (cont2+1));  //reserve memory for column name
                         memcpy(colNames[cont3],curElement,cont2+1);
                         cont3++;
@@ -647,11 +690,33 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                     while ((curRow[cont]!=',')&&(cont<(int)strlen(curRow))&&
                            (curRow[cont]!='\n')&&(curRow[cont]!='\r'))
                     {
+                        if (cont2>=(cmeMaxCSVElemSize-1))
+                        {
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), Error, "
+                                    "element exceeds maximum size at first row (column names), in CSV file: "
+                                    "%s !\n",fName);
+#endif
+                            cmeStorageFileClose(fp);
+                            cmeFree(curRow);
+                            return(10);
+                        }
                         curElement[cont2]=curRow[cont];
                         cont2++;
                         cont++;
                     }
                     curElement[cont2]='\0';
+                    if (cont3>=*numCols)
+                    {
+#ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), Error, "
+                                "column-name count exceeds detected column capacity in CSV file: "
+                                "%s !\n",fName);
+#endif
+                        cmeStorageFileClose(fp);
+                        cmeFree(curRow);
+                        return(11);
+                    }
                     colNames[cont3]=(char *)malloc(sizeof(char) * (cont2+1));  //reserve memory for column name
                     memcpy(colNames[cont3],curElement,cont2+1);
                     cont3++;
@@ -750,6 +815,17 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                     cont++;
                     while ((curRow[cont]!='\"')&&(cont<(int)strlen(curRow)))
                     {
+                        if (cont2>=(cmeMaxCSVElemSize-1))
+                        {
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), Error, quoted "
+                                    "element exceeds maximum size at processed row %d, in CSV file: "
+                                    "%s !\n",*processedRows,fName);
+#endif
+                            cmeStorageFileClose(fp);
+                            cmeFree(curRow);
+                            return(10);
+                        }
                         curElement[cont2]=curRow[cont];
                         cont2++;
                         cont++;
@@ -767,6 +843,17 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                     else
                     {
                         curElement[cont2]='\0';
+                        if (elemCont>=maxElements)
+                        {
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), Error, "
+                                    "row has more elements than allocated table capacity in CSV file: "
+                                    "%s !\n",fName);
+#endif
+                            cmeStorageFileClose(fp);
+                            cmeFree(curRow);
+                            return(11);
+                        }
                         (*elements)[elemCont]=(char *)malloc(sizeof(char) *
                                               (cont2+1));  //reserve memory for element
                         memcpy((*elements)[elemCont],curElement,cont2+1);
@@ -783,11 +870,33 @@ int cmeCSVFileRowsToMemTable (const char *fName, char ***elements, int *numCols,
                     while ((curRow[cont]!=',')&&(cont<(int)strlen(curRow))&&
                            (curRow[cont]!='\n')&&(curRow[cont]!='\r'))
                     {
+                        if (cont2>=(cmeMaxCSVElemSize-1))
+                        {
+#ifdef ERROR_LOG
+                            fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), Error, "
+                                    "element exceeds maximum size at processed row %d, in CSV file: "
+                                    "%s !\n",*processedRows,fName);
+#endif
+                            cmeStorageFileClose(fp);
+                            cmeFree(curRow);
+                            return(10);
+                        }
                         curElement[cont2]=curRow[cont];
                         cont2++;
                         cont++;
                     }
                     curElement[cont2]='\0';
+                    if (elemCont>=maxElements)
+                    {
+#ifdef ERROR_LOG
+                        fprintf(stderr,"CaumeDSE Error: cmeCSVFileToMem(), Error, "
+                                "row has more elements than allocated table capacity in CSV file: "
+                                "%s !\n",fName);
+#endif
+                        cmeStorageFileClose(fp);
+                        cmeFree(curRow);
+                        return(11);
+                    }
                     (*elements)[elemCont]=(char *)malloc(sizeof(char) * (cont2+1));  //reserve memory for element
                     memcpy((*elements)[elemCont],curElement,cont2+1);
                     elemCont++;
