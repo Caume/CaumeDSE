@@ -25,6 +25,10 @@ external clients are under `samples/`. User-facing documentation is in
   focused live API flow and writes `live-api-coverage.csv`.
 - `TEST/run_debug_components.sh --ci-smoke` runs the CI-friendly build,
   component-marker, startup, and single-protocol live profile.
+- `CC=clang ./configure --enable-DEBUG --enable-TESTDATABASE
+  --enable-BYPASSTLSAUTHINHTTP --enable-SANITIZERS=address,undefined
+  --disable-HARDENING` configures a DEBUG sanitizer build for ASAN/UBSAN
+  checks.
 - Prefix verifier runs with `CDSE_VERIFY_REDACT=1` before sharing logs; it masks
   org keys, `newOrgKey`, selected credential-style request parameters, and
   generated certificate/key paths in retained artifacts.
@@ -41,8 +45,10 @@ short and useful; avoid broad refactors in focused fixes.
 
 Add or update DEBUG component checks for C behavior and live verifier checks for
 HTTP(S) API behavior. Keep test fixtures in `TEST/testfiles/`. Validate shell
-changes with `bash -n TEST/run_debug_components.sh`. For live API work, run at
-least the focused HTTP and HTTPS verifier modes when practical.
+changes with `bash -n TEST/run_debug_components.sh`. For sanitizer work, run a
+Clang `--enable-SANITIZERS=address,undefined` build plus `make check` and the
+non-web component verifier when practical. For live API work, run at least the
+focused HTTP and HTTPS verifier modes when practical.
 
 ## Commit & Pull Request Guidelines
 

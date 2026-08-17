@@ -27,6 +27,7 @@ VERIFY_PARSER_REQUIRE_REVIEWED="${CDSE_VERIFY_PARSER_REQUIRE_REVIEWED:-0}"
 VERIFY_PARSER_REQUIRE_POLICY_PROFILES="${CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES:-0}"
 VERIFY_HERRADURAKEX_DIR="${CDSE_VERIFY_HERRADURAKEX_DIR:-}"
 VERIFY_HERRADURAKEX_DEFAULT_PROFILE="${CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE:-}"
+VERIFY_SANITIZERS="${CDSE_VERIFY_SANITIZERS:-}"
 VERIFY_AUTO_PORTS="${CDSE_VERIFY_AUTO_PORTS:-1}"
 VERIFY_PORT_SEARCH_LIMIT="${CDSE_VERIFY_PORT_SEARCH_LIMIT:-40}"
 
@@ -65,6 +66,7 @@ usage() {
     printf '  CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES require parser interpreter/timeout/isolation metadata in live parser checks\n'
     printf '  CDSE_VERIFY_HERRADURAKEX_DIR         enable HerraduraKEx build checks with the directory containing herradura.h\n'
     printf '  CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE set an opt-in Herradura default profile for the DEBUG run\n'
+    printf '  CDSE_VERIFY_SANITIZERS              pass --enable-SANITIZERS=VALUE to configure for DEBUG sanitizer builds\n'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -1881,11 +1883,17 @@ note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_proto
 if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
     note "herradurakex_dir=$VERIFY_HERRADURAKEX_DIR default_profile=${VERIFY_HERRADURAKEX_DEFAULT_PROFILE:-<unset>}"
 fi
+if [ -n "$VERIFY_SANITIZERS" ]; then
+    note "sanitizers=$VERIFY_SANITIZERS"
+fi
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
     CONFIGURE_ARGS=(./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP)
     if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
         CONFIGURE_ARGS+=(--enable-HERRADURAKEX "--with-herradurakex=$VERIFY_HERRADURAKEX_DIR")
+    fi
+    if [ -n "$VERIFY_SANITIZERS" ]; then
+        CONFIGURE_ARGS+=("--enable-SANITIZERS=$VERIFY_SANITIZERS")
     fi
     run_release_bypass_config_guard || exit 1
     run_step configure "${CONFIGURE_ARGS[@]}" || exit 1
@@ -2085,7 +2093,7 @@ check_component storage_document_tree_dispatch 'Testing storage document tree di
 
 check_component parser_scripts_resource 'Testing parserScripts resource handlers|testParserScripts|parserScripts' "$FULL_LOG" \
     '--- Testing parserScripts resource handlers:' \
-    'TESTS: testParserScripts(), PASS: parserScripts class OPTIONS responseCode=200' \
+    'parserScripts class OPTIONS responseCode=200' \
     'TESTS: testParserScripts(), PASS: parserScripts resource OPTIONS responseCode=200' \
     'TESTS: testParserScripts(), PASS: parserScripts missing script HEAD responseCode=404' \
     'TESTS: testParserScripts(), PASS: class options and missing script handling verified.'

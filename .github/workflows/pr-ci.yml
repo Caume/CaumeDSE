@@ -189,3 +189,74 @@ jobs:
             /tmp/cdse-ci-web-smoke
           if-no-files-found: ignore
           retention-days: 14
+
+  sanitizer-build-and-verify:
+    name: Sanitizer Build And Verify
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs_only != '1'
+    env:
+      CC: clang
+      CDSE_VERIFY_REDACT: "1"
+      CDSE_VERIFY_PREFIX: /tmp/cdse-sanitize
+      CDSE_VERIFY_LOG_DIR: /tmp/cdse-ci-sanitizers
+      CDSE_VERIFY_SANITIZERS: address,undefined
+      CDSE_DEBUG_TEST_TIMEOUT: 120s
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            build-essential \
+            ca-certificates \
+            clang \
+            curl \
+            gawk \
+            libcrypt-dev \
+            libgnutls28-dev \
+            libmicrohttpd-dev \
+            libnsl-dev \
+            libperl-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            libtool \
+            perl \
+            pkg-config \
+            python3
+
+      - name: Refresh generated autotools files
+        run: autoreconf -fi
+
+      - name: Configure sanitizer DEBUG test build
+        run: ./configure --prefix="$CDSE_VERIFY_PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP --enable-SANITIZERS="$CDSE_VERIFY_SANITIZERS" --disable-HARDENING
+
+      - name: Clean generated build outputs
+        run: make clean
+
+      - name: Build with sanitizers
+        run: make V=1
+
+      - name: Run make check with sanitizers
+        run: make check
+
+      - name: Install sanitizer DEBUG test build
+        run: make install
+
+      - name: Run non-web component verifier with sanitizers
+        run: TEST/run_debug_components.sh --skip-build --skip-web
+
+      - name: Upload sanitizer verifier artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caumedse-sanitizer-logs
+          path: /tmp/cdse-ci-sanitizers
+          if-no-files-found: ignore
+          retention-days: 14

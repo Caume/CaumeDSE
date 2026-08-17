@@ -2635,12 +2635,15 @@ static int cmeTestParserScriptsRequest(const char *method, const char *url,
         cmeTestFreeResponseHeaders(responseHeaders);
         return(1);
     }
-    printf("TESTS: testParserScripts(), PASS: %s responseCode=%d",marker,responseCode);
     if (responseHeaders[0]&&responseHeaders[1])
     {
-        printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
+        printf("TESTS: testParserScripts(), PASS: %s responseCode=%d %s=%s\n",
+               marker,responseCode,responseHeaders[0],responseHeaders[1]);
     }
-    printf("\n");
+    else
+    {
+        printf("TESTS: testParserScripts(), PASS: %s responseCode=%d\n",marker,responseCode);
+    }
     cmeFree(responseText);
     cmeTestFreeResponseHeaders(responseHeaders);
     return(0);

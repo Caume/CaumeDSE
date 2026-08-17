@@ -1045,7 +1045,7 @@
     bounded fuzz smoke step into pull-request CI and documented local usage,
     corpus handling, and crash triage in `TEST/fuzz/README.md`.
 
-- [ ] #110 Add AddressSanitizer and UndefinedBehaviorSanitizer CI profiles.
+- [x] #110 Add AddressSanitizer and UndefinedBehaviorSanitizer CI profiles.
   - Source: `.github/workflows/`, `configure.ac`, `Makefile.am`, `TEST/run_debug_components.sh`, and DEBUG test harnesses.
   - Goal: run memory and undefined-behavior checks automatically for C changes, covering core unit/component tests and a bounded verifier profile without making normal release builds depend on sanitizer flags.
   - Plan:
@@ -1054,6 +1054,18 @@
     - Batch 3: add GitHub Actions jobs that run sanitizer builds for code/test changes, upload redacted failure logs, and preserve existing non-sanitizer CI as the compatibility baseline.
     - Batch 4: add sanitizer runtime options that fail on leaks, invalid accesses, integer undefined behavior, and use-after-scope where supported.
     - Batch 5: document local parity commands, known platform limits, and how to reproduce sanitizer failures from CI artifacts.
+  - Done: added DEBUG-only `--enable-SANITIZERS=address,undefined` configure
+    support with sanitizer compile/link flag checks, frame pointers,
+    undefined-behavior fail-fast, and stack use-after-scope checking where the
+    compiler supports it. `Makefile.am` now keeps sanitizer flags separate from
+    normal build flags, and `TEST/run_debug_components.sh` accepts
+    `CDSE_VERIFY_SANITIZERS` for verifier-managed sanitizer builds. Added a
+    separate GitHub Actions sanitizer job using `CC=clang`, DEBUG/test
+    configuration, redacted logs, ASAN/UBSAN runtime options, `make`,
+    `make check`, installation, and `TEST/run_debug_components.sh --skip-build
+    --skip-web`, while preserving the existing non-sanitizer CI baseline.
+    Documented local parity commands, LeakSanitizer platform limits, and CI
+    artifact expectations in README and AGENTS.
 
 - [ ] #111 Add structured runtime metrics for operational visibility.
   - Source: `webservice_interface.c`, `engine_admin.c`, `runtime.c`, transaction logging, parser policy code, readiness samples, `README.md`, and `AI_USAGE.md`.

@@ -183,6 +183,49 @@ AC_ARG_ENABLE([DEBUG],
 	[ADDITIONAL_CFLAGS="$RELEASE_CFLAGS" compile_mode="RELEASE" TESTFILES=''])
 AC_SUBST(ADDITIONAL_CFLAGS)
 AC_SUBST(TESTFILES)
+AC_ARG_ENABLE([SANITIZERS],
+	[AS_HELP_STRING([--enable-SANITIZERS@<:@=address,undefined@:>@],
+		[enable AddressSanitizer/UndefinedBehaviorSanitizer DEBUG build flags; accepted values: yes, address, undefined, address,undefined (default: no)])],
+	[ENABLE_SANITIZERS="$enableval"],
+	[ENABLE_SANITIZERS="no"])
+SANITIZER_CFLAGS=""
+SANITIZER_LDFLAGS=""
+CDSE_SANITIZER_LIST="none"
+AS_IF([test "x$ENABLE_SANITIZERS" != "xno"], [
+	AS_IF([test "$compile_mode" != "DEBUG"],
+		[AC_MSG_ERROR([--enable-SANITIZERS requires --enable-DEBUG])])
+	case "$ENABLE_SANITIZERS" in
+		yes)
+			CDSE_SANITIZER_LIST="address,undefined"
+			;;
+		address|undefined|address,undefined|undefined,address)
+			CDSE_SANITIZER_LIST="$ENABLE_SANITIZERS"
+			;;
+		*)
+			AC_MSG_ERROR([unsupported --enable-SANITIZERS value: $ENABLE_SANITIZERS])
+			;;
+	esac
+	AC_MSG_NOTICE([ ----- Looking for supported sanitizer parameters: $CDSE_SANITIZER_LIST -----])
+	check_cc_flag([-fsanitize=$CDSE_SANITIZER_LIST],
+		[SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fsanitize=$CDSE_SANITIZER_LIST"],
+		[AC_MSG_ERROR([compiler does not support -fsanitize=$CDSE_SANITIZER_LIST])],
+		[-fsanitize=$CDSE_SANITIZER_LIST])
+	check_link_flag([-fsanitize=$CDSE_SANITIZER_LIST],
+		[SANITIZER_LDFLAGS="$SANITIZER_LDFLAGS -fsanitize=$CDSE_SANITIZER_LIST"],
+		[AC_MSG_ERROR([linker does not support -fsanitize=$CDSE_SANITIZER_LIST])],
+		[-fsanitize=$CDSE_SANITIZER_LIST])
+	check_cc_flag([-fno-omit-frame-pointer],
+		[SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fno-omit-frame-pointer"], [],
+		[-fno-omit-frame-pointer])
+	check_cc_flag([-fno-sanitize-recover=undefined],
+		[SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fno-sanitize-recover=undefined"], [],
+		[-fno-sanitize-recover=undefined])
+	check_cc_flag([-fsanitize-address-use-after-scope],
+		[SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fsanitize-address-use-after-scope"], [],
+		[-fsanitize-address-use-after-scope])
+])
+AC_SUBST([SANITIZER_CFLAGS])
+AC_SUBST([SANITIZER_LDFLAGS])
 AC_ARG_ENABLE([TESTDATABASE],
 	[  --enable-TESTDATABASE			copy TEST DATABASE files to Data directory],
 	[TESTDB="$DATADIR"],
@@ -294,6 +337,7 @@ echo \
 	Build mode: 	'${compile_mode}'
 	Max threads:	'${CDSE_MAX_THREADS}'
 	HerraduraKEx:	'${CDSE_ENABLE_HERRADURAKEX}'
+	Sanitizers:	'${CDSE_SANITIZER_LIST}'
 
  Now type 'make @<:@<target>@:>@' where the optional <target> is:
      all                - build all binaries

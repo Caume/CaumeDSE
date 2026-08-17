@@ -10441,8 +10441,11 @@ int cmeWebServiceProcessParserScriptResource (char **responseText, char ***respo
 #endif
                         cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
                         cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",0);
-                        cmeFileOverwriteAndDelete(tmpRAWFile);
-                        tmpRAWFile=NULL;
+                        if (tmpRAWFile)
+                        {
+                            cmeFileOverwriteAndDelete(tmpRAWFile);
+                            tmpRAWFile=NULL;
+                        }
                         cmeWebServiceProcessParserScriptResourceFree();
                         *responseCode=404;
                         return(0);
