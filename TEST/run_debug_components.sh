@@ -257,6 +257,43 @@ record_hint() {
     note "HINT $1 - $2"
 }
 
+record_timeout_diagnostics() {
+    local name="$1"
+    local log="$2"
+    local diag="$LOG_ROOT/${name}-timeout-diagnostics.log"
+    local lines="0"
+    local bytes="0"
+
+    {
+        printf 'name=%s\n' "$name"
+        printf 'timestamp_utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        printf 'timeout=%s\n' "$RUN_TIMEOUT"
+        printf 'full_log=%s\n' "$log"
+
+        if [ -f "$log" ]; then
+            lines="$(wc -l < "$log" 2>/dev/null | tr -d '[:space:]')"
+            bytes="$(wc -c < "$log" 2>/dev/null | tr -d '[:space:]')"
+            printf 'full_log_lines=%s\n' "${lines:-0}"
+            printf 'full_log_bytes=%s\n' "${bytes:-0}"
+            printf '\n== recent test markers ==\n'
+            grep -nE -- '^(--- Testing|TESTS:)' "$log" | tail -n 80 || true
+            printf '\n== full log tail ==\n'
+            tail -n 200 "$log" || true
+        else
+            printf 'full_log_missing=1\n'
+        fi
+
+        if command -v ps >/dev/null 2>&1; then
+            printf '\n== related processes ==\n'
+            ps -eo pid,ppid,stat,etime,comm,args | \
+                grep -E 'CaumeDSE|debug-tests|timeout' | \
+                grep -v 'grep -E' || true
+        fi
+    } > "$diag" 2>&1
+    redact_file_in_place "$diag"
+    record_hint "$name" "timeout diagnostics log=$diag"
+}
+
 record_skip() {
     SKIPPED=$((SKIPPED + 1))
     note "SKIP $1 - $2"
@@ -2005,6 +2042,9 @@ if [ "$LIVE_ONLY" -eq 0 ]; then
         record_pass "debug_engine ($(elapsed_seconds "$DEBUG_ENGINE_START"))"
     else
         record_fail debug_engine "exit=$ENGINE_RC elapsed=$(elapsed_seconds "$DEBUG_ENGINE_START") log=$FULL_LOG"
+        if [ "$ENGINE_RC" -eq 124 ]; then
+            record_timeout_diagnostics debug_engine "$FULL_LOG"
+        fi
     fi
 
     if check_forbidden "$FULL_LOG"; then
