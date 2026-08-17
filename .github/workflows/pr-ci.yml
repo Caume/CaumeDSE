@@ -107,6 +107,7 @@ jobs:
             libsqlite3-dev \
             libssl-dev \
             libtool \
+            clang \
             perl \
             pkg-config \
             python3
@@ -125,6 +126,11 @@ jobs:
 
       - name: Run make check
         run: make check
+
+      - name: Run fuzz smoke
+        env:
+          CDSE_FUZZ_MAX_TOTAL_TIME: "3"
+        run: TEST/fuzz/run_fuzz_smoke.sh
 
       - name: Install DEBUG test build
         run: make install

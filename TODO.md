@@ -1023,3 +1023,64 @@
   - Batch 2: refreshed autotools files in CI with the runner-provided toolchain before the build, reconfigured afterward, cleaned generated outputs before compilation, and enabled verbose make logs for clearer PR failure diagnostics.
   - Batch 3: installed the DEBUG build before running the `--skip-build --skip-web` component verifier so installed harness paths under `CDSE_VERIFY_PREFIX` are available in CI.
   - Batch 4: reused the installed DEBUG prefix for focused live HTTP web-smoke verification and capped the smoke step runtime so GitHub PR checks do not linger indefinitely.
+
+- [x] #109 Add fuzz testing for request parsing and CSV handling.
+  - Source: `webservice_interface.c`, `strhandling.c`, `filehandling.c`, `debug_tests.c`, `function_tests.c`, `TEST/`, and `.github/workflows/`.
+  - Goal: catch malformed-input crashes, parser inconsistencies, bounds bugs, and memory-safety defects in URL/query parsing, CSV import, secure DB reconstruction, and parser-script request handling before they reach live deployments.
+  - Plan:
+    - Batch 1: identify pure or near-pure entry points for URL token validation, query-parameter parsing, response-format selection, CSV row/column import, and secure DB metadata loading; add small harness wrappers where current functions require full engine state.
+    - Batch 2: add libFuzzer-compatible harnesses under `TEST/fuzz/` with seed corpora built from committed API verifier URLs, CSV fixtures, parser-script requests, and known negative cases.
+    - Batch 3: add sanitizer-friendly build flags and local scripts for short smoke fuzz runs plus longer developer runs, keeping generated corpora and crash artifacts out of commits.
+    - Batch 4: add regression tests for any discovered crashes or hangs, then document triage steps, corpus refresh rules, and expected resource limits.
+    - Batch 5: wire a bounded fuzz smoke profile into CI when compiler support is available, with clean skip behavior on unsupported runners.
+  - Done: added focused libFuzzer-compatible harnesses under `TEST/fuzz/` for
+    URL/query parsing and unsafe-input validation, CSV row loading, and
+    response/table formatting. Added committed seed corpora from representative
+    API, CSV, quoted CSV, malformed CSV, and output-format inputs. Added
+    `TEST/fuzz/run_fuzz_smoke.sh`, which compiles with
+    `clang -fsanitize=fuzzer,address,undefined` when available and falls back
+    to standalone ASAN/UBSAN seed execution when libFuzzer is unavailable.
+    Hardened CSV loading against empty files, oversized cells, short rows, wide
+    rows, and malformed headers discovered during harness review. Wired a
+    bounded fuzz smoke step into pull-request CI and documented local usage,
+    corpus handling, and crash triage in `TEST/fuzz/README.md`.
+
+- [ ] #110 Add AddressSanitizer and UndefinedBehaviorSanitizer CI profiles.
+  - Source: `.github/workflows/`, `configure.ac`, `Makefile.am`, `TEST/run_debug_components.sh`, and DEBUG test harnesses.
+  - Goal: run memory and undefined-behavior checks automatically for C changes, covering core unit/component tests and a bounded verifier profile without making normal release builds depend on sanitizer flags.
+  - Plan:
+    - Batch 1: add documented configure/build flags for `ASAN` and `UBSAN` DEBUG builds, including frame pointers, no-omit settings, and clear interaction with optimization levels.
+    - Batch 2: verify `make`, `make check`, and `TEST/run_debug_components.sh --skip-web` under sanitizer builds; suppress or fix legitimate third-party noise only when it is clearly external.
+    - Batch 3: add GitHub Actions jobs that run sanitizer builds for code/test changes, upload redacted failure logs, and preserve existing non-sanitizer CI as the compatibility baseline.
+    - Batch 4: add sanitizer runtime options that fail on leaks, invalid accesses, integer undefined behavior, and use-after-scope where supported.
+    - Batch 5: document local parity commands, known platform limits, and how to reproduce sanitizer failures from CI artifacts.
+
+- [ ] #111 Add structured runtime metrics for operational visibility.
+  - Source: `webservice_interface.c`, `engine_admin.c`, `runtime.c`, transaction logging, parser policy code, readiness samples, `README.md`, and `AI_USAGE.md`.
+  - Goal: expose secret-free counters and gauges for operators, CI, and AI-assisted monitoring without requiring log scraping.
+  - Plan:
+    - Batch 1: define a small metrics schema for request totals by method/status, authentication failures, authorization denials, parser policy denials, parser timeouts, DB open/save failures, crypto verification failures, readiness state, and verifier/runtime limits.
+    - Batch 2: add thread-safe in-process counters with low overhead and no sensitive labels such as organization keys, document contents, raw URLs, certificate paths, or user-provided query values.
+    - Batch 3: expose metrics through an authenticated or explicitly public-safe endpoint and a CLI/readiness sample output, supporting Prometheus text and compact JSON formats.
+    - Batch 4: add DEBUG/live verifier coverage that exercises representative success/failure paths and checks counter increments, redaction, and stable field names.
+    - Batch 5: document deployment guidance, retention expectations, and how metrics relate to existing LogsDB and `CaumeDSE AuditJSON` events.
+
+- [ ] #112 Add explicit internal database schema versioning and migration checks.
+  - Source: ResourcesDB, AdminDB, RolesDB, LogsDB, ColumnFile DB creation/open paths, `db.c`, `engine_admin.c`, `engine_interface.c`, `filehandling.c`, docs, and verifier fixtures.
+  - Goal: make schema compatibility explicit so future table or metadata changes fail clearly, support planned migrations safely, and avoid implicit assumptions when opening older or partially upgraded databases.
+  - Plan:
+    - Batch 1: inventory current schemas for ResourcesDB, AdminDB, RolesDB, LogsDB, and secure ColumnFile DBs, including required tables, columns, indexes, metadata rows, and crypto profile fields.
+    - Batch 2: add version metadata to newly created databases and strict startup/open validation for existing databases, with distinct diagnostics for missing version, unsupported future version, legacy compatible version, and corrupt schema.
+    - Batch 3: define migration policy for each database class: read-compatible legacy opens, explicit upgrade command/sample workflow, and fail-closed behavior for ambiguous or partially migrated states.
+    - Batch 4: add DEBUG/component fixtures for current, legacy, missing-version, future-version, missing-column, wrong-type, and partial-migration cases.
+    - Batch 5: document operator upgrade and rollback expectations, including how schema versioning interacts with key re-protect, backups, Herradura profiles, and CI verifier data.
+
+- [ ] #113 Add negative and tamper fixtures for secure database files.
+  - Source: `TEST/testfiles/`, `debug_tests.c`, `function_tests.c`, `filehandling.c`, `db.c`, `crypto.c`, and `TEST/run_debug_components.sh`.
+  - Goal: prove protected SQLite-backed storage fails closed with useful diagnostics when salts, MACs, signatures, profile metadata, frames, column files, or SQLite contents are modified or truncated.
+  - Plan:
+    - Batch 1: create a small fixture generator that starts from a known secure CSV document and produces deterministic tamper cases for row salts, protected values, `MAC`, `MACProtected`, `sign`, `signProtected`, missing metadata, malformed profile ids, truncated `CDSEHKX1` frames, and missing ColumnFile DBs.
+    - Batch 2: commit only compact, non-secret fixture databases or generator inputs that can be reproduced under DEBUG test keys; keep generated build/runtime artifacts out of source control.
+    - Batch 3: add DEBUG tests that attempt normal read, content row/column read, DB browsing, parser execution, and delete/cleanup paths against each tampered fixture and assert authentication or integrity failure.
+    - Batch 4: extend live verifier coverage with a focused tamper profile that operates on disposable storage, mutates backing files between requests, and verifies safe HTTP error envelopes for JSON clients.
+    - Batch 5: document expected failure diagnostics and maintain a fixture matrix so new storage profiles, schema versions, and integrity attributes add matching tamper coverage.
