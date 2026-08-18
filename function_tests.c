@@ -1948,7 +1948,7 @@ void testJSONResponses(void)
     }
     else
     {
-        printf("TESTS: testJSONResponses(), PASS: table response JSON outputType.\n");
+        cmeTestPrintMarker("TESTS: testJSONResponses(), PASS: table response JSON outputType.\n");
     }
     cmeFree(jsonTable);
     cmeTestFreeResponseHeaders(responseHeaders);
@@ -1971,14 +1971,14 @@ void testJSONResponses(void)
     }
     else
     {
-        printf("TESTS: testJSONResponses(), PASS: count response JSON outputType.\n");
+        cmeTestPrintMarker("TESTS: testJSONResponses(), PASS: count response JSON outputType.\n");
     }
     cmeFree(jsonCount);
     cmeTestFreeResponseHeaders(responseHeaders);
 
     if (!errors)
     {
-        printf("TESTS: testJSONResponses(), PASS: JSON response formatting verified.\n");
+        cmeTestPrintMarker("TESTS: testJSONResponses(), PASS: JSON response formatting verified.\n");
     }
 }
 
