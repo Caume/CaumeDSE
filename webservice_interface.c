@@ -62,6 +62,80 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeWSLogRedactedValue "<redacted>"
 #define cmeWSLogTruncatedMarker "...<truncated>"
 
+static long long cmeWSMonotonicMillis(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC,&ts);
+    return(((long long)ts.tv_sec*1000LL)+(ts.tv_nsec/1000000LL));
+}
+
+static int cmeWSDebugTestsNonInteractiveEnabled(void)
+{
+    const char *env=getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
+    return((env)&&(*env)&&(strcmp(env,"0")));
+}
+
+static int cmeWebServiceDeleteMatchedDocumentRows(sqlite3 *pDB, const char *tableName, char **resultRegisterCols,
+                                                  int numResultRegisterCols, int numResultRegisters,
+                                                  const char *storagePath, int *deletedRegisters)
+{
+    int cont;
+    int result;
+    int fileResult;
+    char *sqlQuery=NULL;
+    char *columnFileFullPath=NULL;
+    const char *effectiveStoragePath=storagePath?storagePath:cmeDefaultFilePath;
+
+    if (deletedRegisters)
+    {
+        *deletedRegisters=0;
+    }
+    if ((!pDB)||(!tableName)||(!resultRegisterCols)||(numResultRegisterCols<=cmeIDDResourcesDBDocuments_columnFile))
+    {
+        return(1);
+    }
+    for (cont=1;cont<=numResultRegisters;cont++)
+    {
+        cmeFree(sqlQuery);
+        cmeStrConstrAppend(&sqlQuery,"BEGIN TRANSACTION; DELETE FROM \"%s\" WHERE id=%d; COMMIT;",
+                           tableName,atoi(resultRegisterCols[cont*numResultRegisterCols+cmeIDDanydb_id]));
+        result=cmeSQLRows(pDB,sqlQuery,NULL,NULL);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeWebServiceDeleteMatchedDocumentRows(), cmeSQLRows() error %d, "
+                    "can't delete document register id '%s'.\n",result,
+                    resultRegisterCols[cont*numResultRegisterCols+cmeIDDanydb_id]);
+#endif
+            cmeFree(sqlQuery);
+            cmeFree(columnFileFullPath);
+            return(2);
+        }
+        if (deletedRegisters)
+        {
+            (*deletedRegisters)++;
+        }
+        if (resultRegisterCols[cont*numResultRegisterCols+cmeIDDResourcesDBDocuments_columnFile])
+        {
+            cmeFree(columnFileFullPath);
+            cmeStrConstrAppend(&columnFileFullPath,"%s%s",effectiveStoragePath,
+                               resultRegisterCols[cont*numResultRegisterCols+cmeIDDResourcesDBDocuments_columnFile]);
+            fileResult=cmeFileOverwriteAndDelete(columnFileFullPath);
+            if (fileResult)
+            {
+#ifdef ERROR_LOG
+                fprintf(stderr,"CaumeDSE Error: cmeWebServiceDeleteMatchedDocumentRows(), cmeFileOverwriteAndDelete() error %d, "
+                        "can't remove column file: '%s' !\n",fileResult,columnFileFullPath);
+#endif
+            }
+        }
+    }
+    cmeFree(sqlQuery);
+    cmeFree(columnFileFullPath);
+    return(0);
+}
+
 static void cmeWebServiceGenerateRequestId(char **requestId)
 {
     struct timespec ts;
@@ -13062,7 +13136,8 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                                                const char *url, const char **urlElements, const char **argumentElements, const char *method,
                                                const char *storagePath)
 {   //IDD ver. 1.0.21 definitions.
-    int cont,cont2,result;
+    int cont,cont2,result=0;
+    long long cmeContentColumnTraceStart=cmeWSMonotonicMillis();
     int columnExists=0;
     int numColsContentRow=0;
     int keyArg=0;
@@ -13076,6 +13151,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     int requestedColNameIDX=0;
     int numSecureDBAttributes=0;
     int vacuumDB=0;
+    int deletedRegisters=0;
     sqlite3 *pDB=NULL;
     sqlite3 *resultDB=NULL;             //Result DB for unprotected DB (before parsing)
     char *orgKey=NULL;                  //requester orgKey.
@@ -13105,6 +13181,12 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     const char *attributesData[2]={NULL,NULL};
     #define cmeWebServiceProcessContentColumnResourceFree() \
         do { \
+            if (cmeWSDebugTestsNonInteractiveEnabled()) \
+            { \
+                fprintf(stdout,"TRACE: cmeWebServiceProcessContentColumnResource(), method=%s responseCode=%d result=%d elapsedMs=%lld url=%s\n", \
+                        method,*responseCode,result,cmeWSMonotonicMillis()-cmeContentColumnTraceStart,url); \
+                fflush(stdout); \
+            } \
             cmeFree(orgKey); \
             cmeFree(userId); \
             cmeFree(orgId); \
@@ -13306,7 +13388,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentColumnResourceFree();
                 *responseCode=500;
                 return(4);
             }
@@ -13358,7 +13440,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                     fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                             " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                    cmeWebServiceProcessContentClassFree();
+                    cmeWebServiceProcessContentColumnResourceFree();
                     *responseCode=500;
                     return(5);
                 }
@@ -13403,7 +13485,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                     fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                             " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                    cmeWebServiceProcessContentClassFree();
+                    cmeWebServiceProcessContentColumnResourceFree();
                     *responseCode=500;
                     return(7);
                 }
@@ -13421,7 +13503,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                     fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                             " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                    cmeWebServiceProcessContentClassFree();
+                    cmeWebServiceProcessContentColumnResourceFree();
                     *responseCode=500;
                     return(8);
                 }
@@ -13527,7 +13609,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentColumnResourceFree();
                 *responseCode=500;
                 return(11);
             }
@@ -13563,7 +13645,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                     fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                             " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                    cmeWebServiceProcessContentClassFree();
+                    cmeWebServiceProcessContentColumnResourceFree();
                     *responseCode=500;
                     return(12);
                 }
@@ -13627,7 +13709,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                     fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                             " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                    cmeWebServiceProcessContentClassFree();
+                    cmeWebServiceProcessContentColumnResourceFree();
                     *responseCode=500;
                     return(13);
                 }
@@ -13770,7 +13852,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentColumnResourceFree();
                 *responseCode=500;
                 return(16);
             }
@@ -13804,7 +13886,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentColumnResourceFree();
                 *responseCode=500;
                 return(17);
             }
@@ -13944,7 +14026,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                         " Method: '%s', URL: '%s', cmeGetUnprotectDBRegisters() error!\n",result,method,url);
 #endif
-                cmeWebServiceProcessContentClassFree();
+                cmeWebServiceProcessContentColumnResourceFree();
                 *responseCode=500;
                 return(22);
             }
@@ -13982,7 +14064,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                     fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                             " Method: '%s', URL: '%s', cmeSecureDBToMemDB() error!\n",result,method,url);
 #endif
-                    cmeWebServiceProcessContentClassFree();
+                    cmeWebServiceProcessContentColumnResourceFree();
                     *responseCode=500;
                     return(23);
                 }
@@ -14046,7 +14128,7 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                     fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), Error, internal server error '%d'."
                             " Method: '%s', URL: '%s', cmeSQLRows error!\n",result,method,url);
 #endif
-                    cmeWebServiceProcessContentClassFree();
+                    cmeWebServiceProcessContentColumnResourceFree();
                     *responseCode=500;
                     return(24);
                 }
@@ -14056,10 +14138,9 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                     result=cmeMemTableWithTableColumnNames(resultDB,"data");
                     if (cmeResultMemTableCols<=2)//Deleting last column? then we must delete the whole document
                     {
-                        //Delete the whole document:
-                        result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                             numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                             &numResultRegisters,orgKey);
+                        //Delete the whole document using the already-matched, unprotected document rows.
+                        result=cmeWebServiceDeleteMatchedDocumentRows(pDB,tableName,resultRegisterCols,numResultRegisterCols,
+                                                                      numResultRegisters,storagePath,&deletedRegisters);
                         if (result) //Error
                         {
                             *responseCode=500;
@@ -14070,30 +14151,17 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                                                 cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                             fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), DELETE error!, "
-                                    "cmeDeleteUnporotectDBRegisters error!\n");
+                                    "cmeWebServiceDeleteMatchedDocumentRows error!\n");
 #endif
-                            cmeWebServiceProcessDocumentResourceFree();
+                            cmeWebServiceProcessContentColumnResourceFree();
                             return(25);
                         }
-                        if (numResultRegisters) // Deleted 1 or + register(s)
+                        if (deletedRegisters) // Deleted 1 or + register(s)
                         {
                             *responseCode=200;
 #ifdef DEBUG
                             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful.\n");
 #endif
-                            for (cont=1;cont<=numResultRegisters;cont++) //Delete corresponding column files. Skip headers (cont=1).
-                            {
-                                cmeStrConstrAppend(&columnFileFullPath,"%s%s",storagePath,resultRegisterCols[cont*cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_columnFile]);
-                                result=cmeFileOverwriteAndDelete(columnFileFullPath);
-                                if (result) //Error
-                                {
-#ifdef ERROR_LOG
-                                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), cmeFileOverwriteAndDelete() error, "
-                                            "can't remove columnId file: '%s' !\n",columnFileFullPath);
-#endif
-                                }
-                                cmeFree(columnFileFullPath); //Clear for next iteration.
-                            }
                         }
                         else // Deleted 0 registers
                         {
@@ -14102,10 +14170,10 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful, but resource not found.\n");
 #endif
                         }
-                        cmeStrConstrAppend(responseText,"<p>Deleted documentId '%s'; registers: %d</p><br>",urlElements[7],numResultRegisters);
+                        cmeStrConstrAppend(responseText,"<p>Deleted documentId '%s'; registers: %d</p><br>",urlElements[7],deletedRegisters);
                         cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
-                        cmeWebServiceProcessDocumentResourceFree();
+                        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",deletedRegisters);
+                        cmeWebServiceProcessContentColumnResourceFree();
                         return(0);
                     }
                     cmeFree(cmeResultMemTable[requestedColNameIDX]); //Delete column in every row.
@@ -14127,10 +14195,9 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                 {
                     if (cmeResultMemTableCols<=2)//Deleting last column? then we must delete the whole document
                     {
-                        //Delete the whole document:
-                        result=cmeDeleteUnprotectDBRegisters(pDB,tableName,(const char **)columnNamesToMatch,(const char **)columnValuesToMatch,
-                                                             numMatchArgs,&resultRegisterCols,&numResultRegisterCols,
-                                                             &numResultRegisters,orgKey);
+                        //Delete the whole document using the already-matched, unprotected document rows.
+                        result=cmeWebServiceDeleteMatchedDocumentRows(pDB,tableName,resultRegisterCols,numResultRegisterCols,
+                                                                      numResultRegisters,storagePath,&deletedRegisters);
                         if (result) //Error
                         {
                             *responseCode=500;
@@ -14141,30 +14208,17 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                                                 cmeInternalDBDefinitionsVersion);
 #ifdef ERROR_LOG
                             fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), DELETE error!, "
-                                    "cmeDeleteUnporotectDBRegisters error!\n");
+                                    "cmeWebServiceDeleteMatchedDocumentRows error!\n");
 #endif
-                            cmeWebServiceProcessDocumentResourceFree();
+                            cmeWebServiceProcessContentColumnResourceFree();
                             return(26);
                         }
-                        if (numResultRegisters) // Deleted 1 or + register(s)
+                        if (deletedRegisters) // Deleted 1 or + register(s)
                         {
                             *responseCode=200;
 #ifdef DEBUG
                             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful.\n");
 #endif
-                            for (cont=1;cont<=numResultRegisters;cont++) //Delete corresponding column files. Skip headers (cont=1).
-                            {
-                                cmeStrConstrAppend(&columnFileFullPath,"%s%s",storagePath,resultRegisterCols[cont*cmeIDDResourcesDBDocumentsNumCols+cmeIDDResourcesDBDocuments_columnFile]);
-                                result=cmeFileOverwriteAndDelete(columnFileFullPath);
-                                if (result) //Error
-                                {
-#ifdef ERROR_LOG
-                                    fprintf(stderr,"CaumeDSE Error: cmeWebServiceProcessContentColumnResource(), cmeFileOverwriteAndDelete() error, "
-                                            "can't remove columnId file: '%s' !\n",columnFileFullPath);
-#endif
-                                }
-                                cmeFree(columnFileFullPath); //Clear for next iteration.
-                            }
                         }
                         else // Deleted 0 registers
                         {
@@ -14173,10 +14227,10 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                             fprintf(stdout,"CaumeDSE Debug: cmeWebServiceProcessContentColumnResource(), DELETE successful, but resource not found.\n");
 #endif
                         }
-                        cmeStrConstrAppend(responseText,"<p>Deleted documentId; registers: %d</p><br>",numResultRegisters);
+                        cmeStrConstrAppend(responseText,"<p>Deleted documentId; registers: %d</p><br>",deletedRegisters);
                         cmeStrConstrAppend(&((*responseHeaders)[0]),"Engine-results");
-                        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",numResultRegisters);
-                        cmeWebServiceProcessDocumentResourceFree();
+                        cmeStrConstrAppend(&((*responseHeaders)[1]),"%d",deletedRegisters);
+                        cmeWebServiceProcessContentColumnResourceFree();
                         return(0);
                     }
                     //Delete the requested contentColumn.

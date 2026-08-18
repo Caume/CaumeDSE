@@ -1096,3 +1096,48 @@
     - Batch 3: add DEBUG tests that attempt normal read, content row/column read, DB browsing, parser execution, and delete/cleanup paths against each tampered fixture and assert authentication or integrity failure.
     - Batch 4: extend live verifier coverage with a focused tamper profile that operates on disposable storage, mutates backing files between requests, and verifies safe HTTP error envelopes for JSON clients.
     - Batch 5: document expected failure diagnostics and maintain a fixture matrix so new storage profiles, schema versions, and integrity attributes add matching tamper coverage.
+
+- [x] #114 Add focused content-column DEBUG progress tracing.
+  - Source: `function_tests.c`.
+  - Goal: identify the exact `testContentColumns()` request that causes sanitizer CI to run until the verifier timeout.
+  - Plan:
+    - Add `TRACE: testContentColumns()` lines before and after each major request.
+    - Include method, marker, expected response code, actual response code, result, and elapsed milliseconds.
+    - Keep traces scoped to DEBUG test output so production behavior is unchanged.
+  - Done: added request-level `TRACE` output around the content-column test helper.
+
+- [x] #115 Add content-column route elapsed-time diagnostics.
+  - Source: `webservice_interface.c`.
+  - Goal: distinguish slow test harness calls from slow internal content-column route processing under sanitizer builds.
+  - Plan:
+    - Time `cmeWebServiceProcessContentColumnResource()` with a monotonic clock.
+    - Emit a DEBUG/noninteractive trace line during resource cleanup with method, response code, result, elapsed milliseconds, and URL.
+    - Preserve current response behavior and cleanup ownership.
+  - Done: added route-level elapsed tracing on content-column resource cleanup.
+
+- [x] #116 Expand verifier timeout diagnostic artifacts.
+  - Source: `TEST/run_debug_components.sh`.
+  - Goal: make CI timeout artifacts show the last useful progress markers and repeated log tail patterns without requiring manual full-log downloads.
+  - Plan:
+    - Include the last 150 `TRACE`, `TESTS`, and section markers.
+    - Include the last 300 lines of the full debug log.
+    - Add a compact frequency summary for repeated lines in the log tail.
+  - Done: expanded timeout diagnostics to include trace markers, a larger log tail, and repeated-tail summaries.
+
+- [x] #117 Reproduce and isolate sanitizer content-column timeout.
+  - Source: sanitizer CI artifacts, local sanitizer build, `function_tests.c`, and `webservice_interface.c`.
+  - Goal: use the added traces to determine whether the timeout is a single route call, repeated MAC/HMAC scanning, excessive DEBUG output, or a test data cleanup issue.
+  - Plan:
+    - Rerun sanitizer CI and inspect `debug_engine-timeout-diagnostics.log`.
+    - Compare local and CI sanitizer traces for the last completed request and the first missing request.
+    - If needed, run a focused local sanitizer DEBUG test around content-column calls.
+  - Done: CI timeout diagnostics isolated the hang to the `contentColumns last column DELETE` request after the preceding missing-column HEAD completed; the repeated tail showed MAC/HMAC work inside the protected DB delete path rather than an ASAN/UBSAN/LSAN crash.
+
+- [x] #118 Fix the confirmed sanitizer content-column timeout cause.
+  - Source: the component identified by #117.
+  - Goal: make sanitizer CI pass for the content-column verifier without hiding real memory or undefined-behavior defects.
+  - Plan:
+    - If tracing shows legitimate sanitizer overhead, adjust only the sanitizer verifier timeout or split the verifier profile.
+    - If tracing shows repeated DB/HMAC scanning or a loop, bound or optimize the route path.
+    - If tracing shows marker interleaving only, relax markers to stable substrings while keeping meaningful coverage.
+  - Done: optimized last-content-column DELETE to delete the already-matched document rows directly by SQLite id and remove their column files, avoiding a second generic protected DB scan; corrected content-column cleanup exits so route traces are emitted consistently.

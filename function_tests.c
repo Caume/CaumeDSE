@@ -66,6 +66,14 @@ static int cmeDebugTestsNonInteractiveEnabled(void)
     return (env && *env && strcmp(env,"0"));
 }
 
+static long long cmeTestMonotonicMillis(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC,&ts);
+    return(((long long)ts.tv_sec*1000LL)+(ts.tv_nsec/1000000LL));
+}
+
 static void cmeTestPrintMarker(const char *marker)
 {
     const char *current;
@@ -2934,9 +2942,16 @@ static int cmeTestContentColumnsRequest(const char *method, const char *url,
                                         const char *marker)
 {
     int result,responseCode=0;
+    long long startMillis=cmeTestMonotonicMillis();
     char *responseText=NULL;
     char **responseHeaders=cmeTestAllocResponseHeaders();
 
+    if (cmeDebugTestsNonInteractiveEnabled())
+    {
+        printf("TRACE: testContentColumns(), START marker=\"%s\" method=%s expected=%d url=%s\n",
+               marker,method,expectedCode,url);
+        fflush(stdout);
+    }
     if (!responseHeaders)
     {
         fprintf(stderr,"CaumeDSE Error: testContentColumns(), can't allocate response headers for %s.\n",marker);
@@ -2956,6 +2971,12 @@ static int cmeTestContentColumnsRequest(const char *method, const char *url,
     {
         fprintf(stderr,"CaumeDSE Error: testContentColumns(), %s failed: result=%d responseCode=%d expected=%d.\n",
                 marker,result,responseCode,expectedCode);
+        if (cmeDebugTestsNonInteractiveEnabled())
+        {
+            printf("TRACE: testContentColumns(), END marker=\"%s\" method=%s result=%d responseCode=%d expected=%d elapsedMs=%lld status=FAIL\n",
+                   marker,method,result,responseCode,expectedCode,cmeTestMonotonicMillis()-startMillis);
+            fflush(stdout);
+        }
         cmeFree(responseText);
         cmeTestFreeResponseHeaders(responseHeaders);
         return(1);
@@ -2966,6 +2987,12 @@ static int cmeTestContentColumnsRequest(const char *method, const char *url,
         printf(" %s=%s",responseHeaders[0],responseHeaders[1]);
     }
     printf("\n");
+    if (cmeDebugTestsNonInteractiveEnabled())
+    {
+        printf("TRACE: testContentColumns(), END marker=\"%s\" method=%s result=%d responseCode=%d expected=%d elapsedMs=%lld status=PASS\n",
+               marker,method,result,responseCode,expectedCode,cmeTestMonotonicMillis()-startMillis);
+        fflush(stdout);
+    }
     cmeFree(responseText);
     cmeTestFreeResponseHeaders(responseHeaders);
     return(0);

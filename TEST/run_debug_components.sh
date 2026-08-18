@@ -275,10 +275,12 @@ record_timeout_diagnostics() {
             bytes="$(wc -c < "$log" 2>/dev/null | tr -d '[:space:]')"
             printf 'full_log_lines=%s\n' "${lines:-0}"
             printf 'full_log_bytes=%s\n' "${bytes:-0}"
-            printf '\n== recent test markers ==\n'
-            grep -nE -- '^(--- Testing|TESTS:)' "$log" | tail -n 80 || true
+            printf '\n== recent trace and test markers ==\n'
+            grep -nE -- '^(--- Testing|TESTS:|TRACE:)' "$log" | tail -n 150 || true
             printf '\n== full log tail ==\n'
-            tail -n 200 "$log" || true
+            tail -n 300 "$log" || true
+            printf '\n== repeated lines in final 300 log lines ==\n'
+            tail -n 300 "$log" | sort | uniq -c | sort -rn | head -n 40 || true
         else
             printf 'full_log_missing=1\n'
         fi
