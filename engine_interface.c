@@ -288,7 +288,7 @@ int cmeSecureDBToMemDB (sqlite3 **resultDB, sqlite3 *pResourcesDB,const char *do
             colSQLDBfNames=(char **)realloc(colSQLDBfNames,sizeof(char *)*(dbNumCols+1));
             colSQLDBfSalts=(char **)realloc(colSQLDBfSalts,sizeof(char *)*(dbNumCols+1));
             memFilePartsMACs=(char **)realloc(memFilePartsMACs,sizeof(char *)*(dbNumCols+1));
-            memDBcol=(sqlite3 **)malloc(sizeof(sqlite3 *)*(dbNumCols+1));
+            memDBcol=(sqlite3 **)realloc(memDBcol,sizeof(sqlite3 *)*(dbNumCols+1));
             //Initialize recently allocated memory:
             memDBcol[dbNumCols]=NULL;
             colSQLDBfNames[dbNumCols]=NULL;
