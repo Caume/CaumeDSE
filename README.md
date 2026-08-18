@@ -2401,16 +2401,16 @@ sanitizer configure option:
     CDSE_VERIFY_PREFIX=/tmp/cdse-sanitize \
       CDSE_VERIFY_LOG_DIR=/tmp/cdse-sanitize-components \
       CDSE_VERIFY_REDACT=1 \
-      ASAN_OPTIONS=detect_leaks=1:abort_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1 \
+      ASAN_OPTIONS=detect_leaks=0:abort_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1 \
       UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
       TEST/run_debug_components.sh --skip-build --skip-web
 
 `--enable-SANITIZERS` accepts `address`, `undefined`, or
 `address,undefined`; `yes` selects both. Sanitizer builds are intentionally
-DEBUG-only and do not change normal release or default DEBUG builds. If a local
-supervisor, debugger, or container prevents LeakSanitizer from running, rerun
-locally with `ASAN_OPTIONS=detect_leaks=0:abort_on_error=1` and keep CI as the
-leak-detecting authority.
+DEBUG-only and do not change normal release or default DEBUG builds. The full
+DEBUG verifier embeds Perl and currently runs with LeakSanitizer disabled to
+avoid external interpreter noise; use `detect_leaks=1` only for focused C-only
+reproductions where the embedded interpreter is not part of the signal.
 
 Pull requests run the GitHub Actions workflow in `.github/workflows/pr-ci.yml`.
 Documentation-only PRs run lightweight syntax and TODO-format checks. Code,
@@ -2422,8 +2422,9 @@ the web smoke step is treated as an environment limitation only after the
 non-web component verifier has passed. A separate sanitizer job runs a Clang
 DEBUG build with AddressSanitizer and UndefinedBehaviorSanitizer, then executes
 `make`, `make check`, installation, and the non-web component verifier with
-redacted logs. Redacted verifier and sanitizer logs are uploaded as short-lived
-PR artifacts.
+redacted logs. The sanitizer job fails on invalid accesses and undefined
+behavior; LeakSanitizer is disabled for the full embedded-Perl verifier profile.
+Redacted verifier and sanitizer logs are uploaded as short-lived PR artifacts.
 
 The committed test database under `TEST/testDB_opt_cdse` uses
 `0CDBB9AF76AF43BDB72E095989E612CC` as the `EngineAdmin` / `EngineOrg`
