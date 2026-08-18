@@ -75,6 +75,13 @@ int cmeDirectoryExists (const char *dirPath)
 
 FILE *cmeStorageFileOpen (const char *filePath, const char *mode)
 {
+    if ((!filePath)||(!mode))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeStorageFileOpen(), file path and mode are required.\n");
+#endif
+        return(NULL);
+    }
     switch (cmeStorageProvider)
     {
     case 0:

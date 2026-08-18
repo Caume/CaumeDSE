@@ -646,6 +646,8 @@ am__EXEEXT_TRUE
 LTLIBOBJS
 HERRADURAKEX_CPPFLAGS
 TESTDB
+SANITIZER_LDFLAGS
+SANITIZER_CFLAGS
 TESTFILES
 ADDITIONAL_CFLAGS
 SECUREDIR
@@ -771,6 +773,7 @@ enable_silent_rules
 enable_dependency_tracking
 enable_HARDENING
 enable_DEBUG
+enable_SANITIZERS
 enable_TESTDATABASE
 enable_BYPASSTLSAUTHINHTTP
 enable_OLDPBKDF1
@@ -1425,6 +1428,10 @@ Optional Features:
                           speeds up one-time build
   --disable-HARDENING			disable compiler and linker hardening paramters (for testing; NOT RECOMMENDED!)
   --enable-DEBUG			enable DEBUG output to console (for testing; NOT RECOMMENDED!)
+  --enable-SANITIZERS[=address,undefined]
+                          enable AddressSanitizer/UndefinedBehaviorSanitizer
+                          DEBUG build flags; accepted values: yes, address,
+                          undefined, address,undefined (default: no)
   --enable-TESTDATABASE			copy TEST DATABASE files to Data directory
   --enable-BYPASSTLSAUTHINHTTP		Accepts sessions in HTTP when TLS authentication is used (for testing; NOT RECOMMENDED!)
   --enable-OLDPBKDF1			Uses PBKDF1 (i.e. PKCS5v1.5, compatible with openssl's command line tool) instead of PBKDF2 (for testing; NOT RECOMMENDED!)
@@ -8044,6 +8051,252 @@ fi
 
 
 
+# Check whether --enable-SANITIZERS was given.
+if test ${enable_SANITIZERS+y}
+then :
+  enableval=$enable_SANITIZERS; ENABLE_SANITIZERS="$enableval"
+else case e in #(
+  e) ENABLE_SANITIZERS="no" ;;
+esac
+fi
+
+SANITIZER_CFLAGS=""
+SANITIZER_LDFLAGS=""
+CDSE_SANITIZER_LIST="none"
+if test "x$ENABLE_SANITIZERS" != "xno"
+then :
+
+	if test "$compile_mode" != "DEBUG"
+then :
+  as_fn_error $? "--enable-SANITIZERS requires --enable-DEBUG" "$LINENO" 5
+fi
+	case "$ENABLE_SANITIZERS" in
+		yes)
+			CDSE_SANITIZER_LIST="address,undefined"
+			;;
+		address|undefined|address,undefined|undefined,address)
+			CDSE_SANITIZER_LIST="$ENABLE_SANITIZERS"
+			;;
+		*)
+			as_fn_error $? "unsupported --enable-SANITIZERS value: $ENABLE_SANITIZERS" "$LINENO" 5
+			;;
+	esac
+	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}:  ----- Looking for supported sanitizer parameters: $CDSE_SANITIZER_LIST -----" >&5
+printf "%s\n" "$as_me:  ----- Looking for supported sanitizer parameters: $CDSE_SANITIZER_LIST -----" >&6;}
+	as_CACHEVAR=`printf "%s\n" "ax_cv_check_cflags_-Werror -fsanitize=$CDSE_SANITIZER_LIST_-fsanitize=$CDSE_SANITIZER_LIST" | sed "$as_sed_sh"`
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fsanitize=$CDSE_SANITIZER_LIST" >&5
+printf %s "checking whether C compiler accepts -fsanitize=$CDSE_SANITIZER_LIST... " >&6; }
+if eval test \${$as_CACHEVAR+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e)
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -fsanitize=$CDSE_SANITIZER_LIST -fsanitize=$CDSE_SANITIZER_LIST"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main (void)
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"
+then :
+  eval "$as_CACHEVAR=yes"
+else case e in #(
+  e) eval "$as_CACHEVAR=no" ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags ;;
+esac
+fi
+eval ac_res=\$$as_CACHEVAR
+	       { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+printf "%s\n" "$ac_res" >&6; }
+if test x"`eval 'as_val=${'$as_CACHEVAR'};printf "%s\n" "$as_val"'`" = xyes
+then :
+  SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fsanitize=$CDSE_SANITIZER_LIST"
+else case e in #(
+  e) as_fn_error $? "compiler does not support -fsanitize=$CDSE_SANITIZER_LIST" "$LINENO" 5 ;;
+esac
+fi
+
+	as_CACHEVAR=`printf "%s\n" "ax_cv_check_ldflags_-Werror -fsanitize=$CDSE_SANITIZER_LIST_-fsanitize=$CDSE_SANITIZER_LIST" | sed "$as_sed_sh"`
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether the linker accepts -fsanitize=$CDSE_SANITIZER_LIST" >&5
+printf %s "checking whether the linker accepts -fsanitize=$CDSE_SANITIZER_LIST... " >&6; }
+if eval test \${$as_CACHEVAR+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e)
+  ax_check_save_flags=$LDFLAGS
+  LDFLAGS="$LDFLAGS -Werror -fsanitize=$CDSE_SANITIZER_LIST -fsanitize=$CDSE_SANITIZER_LIST"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main (void)
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"
+then :
+  eval "$as_CACHEVAR=yes"
+else case e in #(
+  e) eval "$as_CACHEVAR=no" ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam \
+    conftest$ac_exeext conftest.$ac_ext
+  LDFLAGS=$ax_check_save_flags ;;
+esac
+fi
+eval ac_res=\$$as_CACHEVAR
+	       { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
+printf "%s\n" "$ac_res" >&6; }
+if test x"`eval 'as_val=${'$as_CACHEVAR'};printf "%s\n" "$as_val"'`" = xyes
+then :
+  SANITIZER_LDFLAGS="$SANITIZER_LDFLAGS -fsanitize=$CDSE_SANITIZER_LIST"
+else case e in #(
+  e) as_fn_error $? "linker does not support -fsanitize=$CDSE_SANITIZER_LIST" "$LINENO" 5 ;;
+esac
+fi
+
+	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fno-omit-frame-pointer" >&5
+printf %s "checking whether C compiler accepts -fno-omit-frame-pointer... " >&6; }
+if test ${ax_cv_check_cflags__Werror__fno_omit_frame_pointer__fno_omit_frame_pointer+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e)
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -fno-omit-frame-pointer -fno-omit-frame-pointer"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main (void)
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"
+then :
+  ax_cv_check_cflags__Werror__fno_omit_frame_pointer__fno_omit_frame_pointer=yes
+else case e in #(
+  e) ax_cv_check_cflags__Werror__fno_omit_frame_pointer__fno_omit_frame_pointer=no ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags ;;
+esac
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fno_omit_frame_pointer__fno_omit_frame_pointer" >&5
+printf "%s\n" "$ax_cv_check_cflags__Werror__fno_omit_frame_pointer__fno_omit_frame_pointer" >&6; }
+if test x"$ax_cv_check_cflags__Werror__fno_omit_frame_pointer__fno_omit_frame_pointer" = xyes
+then :
+  SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fno-omit-frame-pointer"
+else case e in #(
+  e) : ;;
+esac
+fi
+
+	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fno-sanitize-recover=undefined" >&5
+printf %s "checking whether C compiler accepts -fno-sanitize-recover=undefined... " >&6; }
+if test ${ax_cv_check_cflags__Werror__fno_sanitize_recover_undefined__fno_sanitize_recover_undefined+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e)
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -fno-sanitize-recover=undefined -fno-sanitize-recover=undefined"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main (void)
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"
+then :
+  ax_cv_check_cflags__Werror__fno_sanitize_recover_undefined__fno_sanitize_recover_undefined=yes
+else case e in #(
+  e) ax_cv_check_cflags__Werror__fno_sanitize_recover_undefined__fno_sanitize_recover_undefined=no ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags ;;
+esac
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fno_sanitize_recover_undefined__fno_sanitize_recover_undefined" >&5
+printf "%s\n" "$ax_cv_check_cflags__Werror__fno_sanitize_recover_undefined__fno_sanitize_recover_undefined" >&6; }
+if test x"$ax_cv_check_cflags__Werror__fno_sanitize_recover_undefined__fno_sanitize_recover_undefined" = xyes
+then :
+  SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fno-sanitize-recover=undefined"
+else case e in #(
+  e) : ;;
+esac
+fi
+
+	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -fsanitize-address-use-after-scope" >&5
+printf %s "checking whether C compiler accepts -fsanitize-address-use-after-scope... " >&6; }
+if test ${ax_cv_check_cflags__Werror__fsanitize_address_use_after_scope__fsanitize_address_use_after_scope+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e)
+  ax_check_save_flags=$CFLAGS
+  CFLAGS="$CFLAGS -Werror -fsanitize-address-use-after-scope -fsanitize-address-use-after-scope"
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main (void)
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"
+then :
+  ax_cv_check_cflags__Werror__fsanitize_address_use_after_scope__fsanitize_address_use_after_scope=yes
+else case e in #(
+  e) ax_cv_check_cflags__Werror__fsanitize_address_use_after_scope__fsanitize_address_use_after_scope=no ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
+  CFLAGS=$ax_check_save_flags ;;
+esac
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__fsanitize_address_use_after_scope__fsanitize_address_use_after_scope" >&5
+printf "%s\n" "$ax_cv_check_cflags__Werror__fsanitize_address_use_after_scope__fsanitize_address_use_after_scope" >&6; }
+if test x"$ax_cv_check_cflags__Werror__fsanitize_address_use_after_scope__fsanitize_address_use_after_scope" = xyes
+then :
+  SANITIZER_CFLAGS="$SANITIZER_CFLAGS -fsanitize-address-use-after-scope"
+else case e in #(
+  e) : ;;
+esac
+fi
+
+
+fi
+
+
 # Check whether --enable-TESTDATABASE was given.
 if test ${enable_TESTDATABASE+y}
 then :
@@ -9713,6 +9966,7 @@ echo \
 	Build mode: 	'${compile_mode}'
 	Max threads:	'${CDSE_MAX_THREADS}'
 	HerraduraKEx:	'${CDSE_ENABLE_HERRADURAKEX}'
+	Sanitizers:	'${CDSE_SANITIZER_LIST}'
 
  Now type 'make [<target>]' where the optional <target> is:
      all                - build all binaries

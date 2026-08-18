@@ -27,6 +27,7 @@ VERIFY_PARSER_REQUIRE_REVIEWED="${CDSE_VERIFY_PARSER_REQUIRE_REVIEWED:-0}"
 VERIFY_PARSER_REQUIRE_POLICY_PROFILES="${CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES:-0}"
 VERIFY_HERRADURAKEX_DIR="${CDSE_VERIFY_HERRADURAKEX_DIR:-}"
 VERIFY_HERRADURAKEX_DEFAULT_PROFILE="${CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE:-}"
+VERIFY_SANITIZERS="${CDSE_VERIFY_SANITIZERS:-}"
 VERIFY_AUTO_PORTS="${CDSE_VERIFY_AUTO_PORTS:-1}"
 VERIFY_PORT_SEARCH_LIMIT="${CDSE_VERIFY_PORT_SEARCH_LIMIT:-40}"
 
@@ -65,6 +66,7 @@ usage() {
     printf '  CDSE_VERIFY_PARSER_REQUIRE_POLICY_PROFILES require parser interpreter/timeout/isolation metadata in live parser checks\n'
     printf '  CDSE_VERIFY_HERRADURAKEX_DIR         enable HerraduraKEx build checks with the directory containing herradura.h\n'
     printf '  CDSE_VERIFY_HERRADURAKEX_DEFAULT_PROFILE set an opt-in Herradura default profile for the DEBUG run\n'
+    printf '  CDSE_VERIFY_SANITIZERS              pass --enable-SANITIZERS=VALUE to configure for DEBUG sanitizer builds\n'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -253,6 +255,45 @@ record_fail() {
 
 record_hint() {
     note "HINT $1 - $2"
+}
+
+record_timeout_diagnostics() {
+    local name="$1"
+    local log="$2"
+    local diag="$LOG_ROOT/${name}-timeout-diagnostics.log"
+    local lines="0"
+    local bytes="0"
+
+    {
+        printf 'name=%s\n' "$name"
+        printf 'timestamp_utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        printf 'timeout=%s\n' "$RUN_TIMEOUT"
+        printf 'full_log=%s\n' "$log"
+
+        if [ -f "$log" ]; then
+            lines="$(wc -l < "$log" 2>/dev/null | tr -d '[:space:]')"
+            bytes="$(wc -c < "$log" 2>/dev/null | tr -d '[:space:]')"
+            printf 'full_log_lines=%s\n' "${lines:-0}"
+            printf 'full_log_bytes=%s\n' "${bytes:-0}"
+            printf '\n== recent test markers ==\n'
+            grep -nE -- '^(--- Testing|TESTS:)' "$log" | tail -n 150 || true
+            printf '\n== full log tail ==\n'
+            tail -n 300 "$log" || true
+            printf '\n== repeated lines in final 300 log lines ==\n'
+            tail -n 300 "$log" | sort | uniq -c | sort -rn | head -n 40 || true
+        else
+            printf 'full_log_missing=1\n'
+        fi
+
+        if command -v ps >/dev/null 2>&1; then
+            printf '\n== related processes ==\n'
+            ps -eo pid,ppid,stat,etime,comm,args | \
+                grep -E 'CaumeDSE|debug-tests|timeout' | \
+                grep -v 'grep -E' || true
+        fi
+    } > "$diag" 2>&1
+    redact_file_in_place "$diag"
+    record_hint "$name" "timeout diagnostics log=$diag"
 }
 
 record_skip() {
@@ -1881,11 +1922,17 @@ note "http_port=$HTTP_PORT https_port=$HTTPS_PORT timeout=$RUN_TIMEOUT web_proto
 if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
     note "herradurakex_dir=$VERIFY_HERRADURAKEX_DIR default_profile=${VERIFY_HERRADURAKEX_DEFAULT_PROFILE:-<unset>}"
 fi
+if [ -n "$VERIFY_SANITIZERS" ]; then
+    note "sanitizers=$VERIFY_SANITIZERS"
+fi
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
     CONFIGURE_ARGS=(./configure --prefix="$PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP)
     if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
         CONFIGURE_ARGS+=(--enable-HERRADURAKEX "--with-herradurakex=$VERIFY_HERRADURAKEX_DIR")
+    fi
+    if [ -n "$VERIFY_SANITIZERS" ]; then
+        CONFIGURE_ARGS+=("--enable-SANITIZERS=$VERIFY_SANITIZERS")
     fi
     run_release_bypass_config_guard || exit 1
     run_step configure "${CONFIGURE_ARGS[@]}" || exit 1
@@ -1997,6 +2044,9 @@ if [ "$LIVE_ONLY" -eq 0 ]; then
         record_pass "debug_engine ($(elapsed_seconds "$DEBUG_ENGINE_START"))"
     else
         record_fail debug_engine "exit=$ENGINE_RC elapsed=$(elapsed_seconds "$DEBUG_ENGINE_START") log=$FULL_LOG"
+        if [ "$ENGINE_RC" -eq 124 ]; then
+            record_timeout_diagnostics debug_engine "$FULL_LOG"
+        fi
     fi
 
     if check_forbidden "$FULL_LOG"; then
@@ -2085,9 +2135,9 @@ check_component storage_document_tree_dispatch 'Testing storage document tree di
 
 check_component parser_scripts_resource 'Testing parserScripts resource handlers|testParserScripts|parserScripts' "$FULL_LOG" \
     '--- Testing parserScripts resource handlers:' \
-    'TESTS: testParserScripts(), PASS: parserScripts class OPTIONS responseCode=200' \
     'TESTS: testParserScripts(), PASS: parserScripts resource OPTIONS responseCode=200' \
     'TESTS: testParserScripts(), PASS: parserScripts missing script HEAD responseCode=404' \
+    'TESTS: testParserScripts(), PASS: parserScripts missing script GET responseCode=404' \
     'TESTS: testParserScripts(), PASS: class options and missing script handling verified.'
 
 check_component parser_temp_files 'Testing parser temporary file hardening|testParserTempFiles|parser temp' "$FULL_LOG" \
