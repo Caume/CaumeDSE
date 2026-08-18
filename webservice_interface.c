@@ -62,20 +62,6 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeWSLogRedactedValue "<redacted>"
 #define cmeWSLogTruncatedMarker "...<truncated>"
 
-static long long cmeWSMonotonicMillis(void)
-{
-    struct timespec ts;
-
-    clock_gettime(CLOCK_MONOTONIC,&ts);
-    return(((long long)ts.tv_sec*1000LL)+(ts.tv_nsec/1000000LL));
-}
-
-static int cmeWSDebugTestsNonInteractiveEnabled(void)
-{
-    const char *env=getenv("CDSE_DEBUG_TESTS_NONINTERACTIVE");
-    return((env)&&(*env)&&(strcmp(env,"0")));
-}
-
 static int cmeWebServiceDeleteMatchedDocumentRows(sqlite3 *pDB, const char *tableName, char **resultRegisterCols,
                                                   int numResultRegisterCols, int numResultRegisters,
                                                   const char *storagePath, int *deletedRegisters)
@@ -12027,7 +12013,6 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
                                             const char *storagePath)
 {   //IDD ver. 1.0.21 definitions.
     int cont,result=0;
-    long long cmeContentRowTraceStart=cmeWSMonotonicMillis();
     int numColsContentRow=0;
     int keyArg=0;
     int orgArg=0;
@@ -12070,12 +12055,6 @@ int cmeWebServiceProcessContentRowResource (char **responseText, char ***respons
     const char *attributesData[2]={NULL,NULL};
     #define cmeWebServiceProcessContentRowResourceFree() \
         do { \
-            if (cmeWSDebugTestsNonInteractiveEnabled()) \
-            { \
-                fprintf(stdout,"TRACE: cmeWebServiceProcessContentRowResource(), method=%s responseCode=%d result=%d elapsedMs=%lld url=%s\n", \
-                        method,*responseCode,result,cmeWSMonotonicMillis()-cmeContentRowTraceStart,url); \
-                fflush(stdout); \
-            } \
             cmeFree(orgKey); \
             cmeFree(userId); \
             cmeFree(orgId); \
@@ -13242,7 +13221,6 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
                                                const char *storagePath)
 {   //IDD ver. 1.0.21 definitions.
     int cont,cont2,result=0;
-    long long cmeContentColumnTraceStart=cmeWSMonotonicMillis();
     int columnExists=0;
     int numColsContentRow=0;
     int keyArg=0;
@@ -13286,12 +13264,6 @@ int cmeWebServiceProcessContentColumnResource (char **responseText, char ***resp
     const char *attributesData[2]={NULL,NULL};
     #define cmeWebServiceProcessContentColumnResourceFree() \
         do { \
-            if (cmeWSDebugTestsNonInteractiveEnabled()) \
-            { \
-                fprintf(stdout,"TRACE: cmeWebServiceProcessContentColumnResource(), method=%s responseCode=%d result=%d elapsedMs=%lld url=%s\n", \
-                        method,*responseCode,result,cmeWSMonotonicMillis()-cmeContentColumnTraceStart,url); \
-                fflush(stdout); \
-            } \
             cmeFree(orgKey); \
             cmeFree(userId); \
             cmeFree(orgId); \
