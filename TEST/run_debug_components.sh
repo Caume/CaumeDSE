@@ -2135,9 +2135,9 @@ check_component storage_document_tree_dispatch 'Testing storage document tree di
 
 check_component parser_scripts_resource 'Testing parserScripts resource handlers|testParserScripts|parserScripts' "$FULL_LOG" \
     '--- Testing parserScripts resource handlers:' \
-    'TESTS: testParserScripts(), PASS: parserScripts class GET not allowed responseCode=405' \
     'TESTS: testParserScripts(), PASS: parserScripts resource OPTIONS responseCode=200' \
     'TESTS: testParserScripts(), PASS: parserScripts missing script HEAD responseCode=404' \
+    'TESTS: testParserScripts(), PASS: parserScripts missing script GET responseCode=404' \
     'TESTS: testParserScripts(), PASS: class options and missing script handling verified.'
 
 check_component parser_temp_files 'Testing parser temporary file hardening|testParserTempFiles|parser temp' "$FULL_LOG" \
