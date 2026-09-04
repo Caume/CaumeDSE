@@ -33,19 +33,22 @@ Use the same shape as the live verifier:
 
 1. Call `GET /agentCapabilities` to discover supported formats, auth
    requirements, parser policy, documentation links, and route templates.
-2. Create a temporary organization, storage resource, and least-privilege user.
-3. Add only the role/filter resources needed for the task.
-4. For real agent sessions, mint a short-lived delegated token that names only
+2. Call `GET /metrics` to capture process-local request, denial, parser, and
+   runtime-limit counters before the workflow starts.
+3. Create a temporary organization, storage resource, and least-privilege user.
+4. Add only the role/filter resources needed for the task.
+5. For real agent sessions, mint a short-lived delegated token that names only
    the scopes needed for the task.
-5. Have the broker validate each requested scope before forwarding to CaumeDSE
+6. Have the broker validate each requested scope before forwarding to CaumeDSE
    with the delegated `userId`, `orgId`, and broker-held `orgKey`.
-6. Upload test CSV or script fixtures from known local paths.
-7. Read schema metadata for CSV documents or exposed secure DB tables before
+7. Upload test CSV or script fixtures from known local paths.
+8. Read schema metadata for CSV documents or exposed secure DB tables before
    selecting rows, columns, or parser output.
-8. Query narrow resources such as a specific row, column, table, or parser
+9. Query narrow resources such as a specific row, column, table, or parser
    output.
-9. Delete temporary documents, role/filter rows, users, and storage artifacts.
-10. Review `summary.txt` and `live-api-coverage.csv` with redaction enabled.
+10. Delete temporary documents, role/filter rows, users, and storage artifacts.
+11. Compare `GET /metrics` after the workflow with the starting snapshot.
+12. Review `summary.txt` and `live-api-coverage.csv` with redaction enabled.
 
 For failures that an agent must parse, include `outputType=json`. Non-HEAD
 error responses include `error.code`, `error.message`, `error.httpStatus`,
@@ -315,6 +318,8 @@ Before deploying an agent or MCP bridge:
   developer, authorization, cleanup, TLS, logging, or parser-review rules.
 - Auditability: log request IDs and review `CaumeDSE AuditJSON` events for
   auth, authorization, parser policy, parser execution, and cleanup outcomes.
+- Metrics: use `/metrics` for process-local counters and runtime limits, but
+  keep request IDs and audit records for per-request evidence and retention.
 - Cleanup: define an owner and deadline for deleting temporary organizations,
   storage paths, users, documents, parser scripts, and delegated tokens.
 

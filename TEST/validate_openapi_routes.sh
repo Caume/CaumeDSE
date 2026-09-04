@@ -43,6 +43,7 @@ require_pattern "$VERIFIER" "validate_openapi_routes.sh" "verifier OpenAPI valid
 
 required_paths=(
     "/agentCapabilities:"
+    "/metrics:"
     "/organizations:"
     "/organizations/{organization}:"
     "/organizations/{organization}/users/{user}:"
@@ -70,6 +71,8 @@ done
 
 live_markers=(
     "agent_capabilities"
+    "metrics_json"
+    "metrics_prometheus"
     "create_org"
     "create_storage"
     "create_user"

@@ -1693,6 +1693,8 @@ run_live_web_flow() {
     fi
 
     live_api_check "$protocol" agent_capabilities 200 "$base_url/agentCapabilities" '"capabilityManifestVersion":1' "${curl_tls_args[@]}"
+    live_api_check "$protocol" metrics_json 200 "$base_url/metrics" '"metricsSchemaVersion":1' "${curl_tls_args[@]}"
+    live_api_check "$protocol" metrics_prometheus 200 "$base_url/metrics?outputType=prometheus" 'cdse_requests_total' "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_all 401 "$base_url/organizations/$org_name" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_org_key 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" json_error_auth_missing_org_key 401 "$base_url/organizations/$org_name?userId=$user_id&orgId=$org_name&outputType=json" '"code":"authentication_required"' "${curl_tls_args[@]}"

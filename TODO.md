@@ -1071,7 +1071,7 @@
     parity commands, LeakSanitizer scope limits, and CI artifact expectations in
     README and AGENTS.
 
-- [ ] #111 Add structured runtime metrics for operational visibility.
+- [x] #111 Add structured runtime metrics for operational visibility.
   - Source: `webservice_interface.c`, `engine_admin.c`, `runtime.c`, transaction logging, parser policy code, readiness samples, `README.md`, and `AI_USAGE.md`.
   - Goal: expose secret-free counters and gauges for operators, CI, and AI-assisted monitoring without requiring log scraping.
   - Plan:
@@ -1080,6 +1080,7 @@
     - Batch 3: expose metrics through an authenticated or explicitly public-safe endpoint and a CLI/readiness sample output, supporting Prometheus text and compact JSON formats.
     - Batch 4: add DEBUG/live verifier coverage that exercises representative success/failure paths and checks counter increments, redaction, and stable field names.
     - Batch 5: document deployment guidance, retention expectations, and how metrics relate to existing LogsDB and `CaumeDSE AuditJSON` events.
+  - Done: added public-safe in-process runtime metrics with fixed method/status labels only, covering request totals, authentication failures, authorization denials, parser policy denials, parser timeouts, parser limit rejections, placeholder DB/crypto failure counters, uptime, and runtime/parser limits. Exposed `/metrics` with JSON by default and Prometheus text via `outputType=prometheus`, advertised it from `/agentCapabilities` and OpenAPI, documented process-local retention and LogsDB/AuditJSON correlation boundaries, and added live HTTP(S) verifier checks for both formats.
 
 - [ ] #112 Add explicit internal database schema versioning and migration checks.
   - Source: ResourcesDB, AdminDB, RolesDB, LogsDB, ColumnFile DB creation/open paths, `db.c`, `engine_admin.c`, `engine_interface.c`, `filehandling.c`, docs, and verifier fixtures.

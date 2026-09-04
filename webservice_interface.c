@@ -62,6 +62,184 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeWSLogRedactedValue "<redacted>"
 #define cmeWSLogTruncatedMarker "...<truncated>"
 
+struct cmeWebServiceMetricsStruct
+{
+    unsigned long long requestsTotal;
+    unsigned long long requestsByMethod[7];
+    unsigned long long responsesByStatusClass[6];
+    unsigned long long authFailures;
+    unsigned long long authorizationDenials;
+    unsigned long long parserPolicyDenials;
+    unsigned long long parserTimeouts;
+    unsigned long long parserLimitRejections;
+    unsigned long long dbOpenFailures;
+    unsigned long long dbSaveFailures;
+    unsigned long long cryptoVerificationFailures;
+    time_t startedAt;
+};
+
+static pthread_mutex_t cmeWebServiceMetricsMutex=PTHREAD_MUTEX_INITIALIZER;
+static struct cmeWebServiceMetricsStruct cmeWebServiceMetrics={0};
+
+static void cmeWebServiceMetricsEnsureStarted(void)
+{
+    if (!cmeWebServiceMetrics.startedAt)
+    {
+        cmeWebServiceMetrics.startedAt=time(NULL);
+    }
+}
+
+static int cmeWebServiceMetricsMethodIndex(const char *method)
+{
+    if (!method)
+    {
+        return(6);
+    }
+    if (!strcmp(method,"GET"))
+    {
+        return(0);
+    }
+    if (!strcmp(method,"POST"))
+    {
+        return(1);
+    }
+    if (!strcmp(method,"PUT"))
+    {
+        return(2);
+    }
+    if (!strcmp(method,"DELETE"))
+    {
+        return(3);
+    }
+    if (!strcmp(method,"HEAD"))
+    {
+        return(4);
+    }
+    if (!strcmp(method,"OPTIONS"))
+    {
+        return(5);
+    }
+    return(6);
+}
+
+static const char *cmeWebServiceMetricsMethodName(int idx)
+{
+    static const char *names[7]={"GET","POST","PUT","DELETE","HEAD","OPTIONS","OTHER"};
+
+    if ((idx<0)||(idx>6))
+    {
+        return("OTHER");
+    }
+    return(names[idx]);
+}
+
+static int cmeWebServiceMetricsStatusClassIndex(int responseCode)
+{
+    if ((responseCode>=100)&&(responseCode<200))
+    {
+        return(1);
+    }
+    if ((responseCode>=200)&&(responseCode<300))
+    {
+        return(2);
+    }
+    if ((responseCode>=300)&&(responseCode<400))
+    {
+        return(3);
+    }
+    if ((responseCode>=400)&&(responseCode<500))
+    {
+        return(4);
+    }
+    if ((responseCode>=500)&&(responseCode<600))
+    {
+        return(5);
+    }
+    return(0);
+}
+
+static const char *cmeWebServiceMetricsStatusClassName(int idx)
+{
+    static const char *names[6]={"unknown","1xx","2xx","3xx","4xx","5xx"};
+
+    if ((idx<0)||(idx>5))
+    {
+        return("unknown");
+    }
+    return(names[idx]);
+}
+
+static void cmeWebServiceMetricsRecordRequest(const char *method, int responseCode)
+{
+    int methodIdx=cmeWebServiceMetricsMethodIndex(method);
+    int statusIdx=cmeWebServiceMetricsStatusClassIndex(responseCode);
+
+    pthread_mutex_lock(&cmeWebServiceMetricsMutex);
+    cmeWebServiceMetricsEnsureStarted();
+    cmeWebServiceMetrics.requestsTotal++;
+    cmeWebServiceMetrics.requestsByMethod[methodIdx]++;
+    cmeWebServiceMetrics.responsesByStatusClass[statusIdx]++;
+    if (responseCode==401)
+    {
+        cmeWebServiceMetrics.authFailures++;
+    }
+    else if (responseCode==403)
+    {
+        cmeWebServiceMetrics.authorizationDenials++;
+    }
+    pthread_mutex_unlock(&cmeWebServiceMetricsMutex);
+}
+
+static void cmeWebServiceMetricsRecordAuditEvent(const char *category, const char *event,
+                                                 const char *outcome)
+{
+    pthread_mutex_lock(&cmeWebServiceMetricsMutex);
+    cmeWebServiceMetricsEnsureStarted();
+    if (category&&(!strcmp(category,"parserPolicy"))&&outcome&&(!strcmp(outcome,"deny")))
+    {
+        cmeWebServiceMetrics.parserPolicyDenials++;
+    }
+    if (category&&(!strcmp(category,"parserExecution"))&&event)
+    {
+        if (strstr(event,"timeout"))
+        {
+            cmeWebServiceMetrics.parserTimeouts++;
+        }
+        if (strstr(event,"limit"))
+        {
+            cmeWebServiceMetrics.parserLimitRejections++;
+        }
+    }
+    pthread_mutex_unlock(&cmeWebServiceMetricsMutex);
+}
+
+static void cmeWebServiceMetricsRecordDBOpenFailure(void)
+{
+    pthread_mutex_lock(&cmeWebServiceMetricsMutex);
+    cmeWebServiceMetricsEnsureStarted();
+    cmeWebServiceMetrics.dbOpenFailures++;
+    pthread_mutex_unlock(&cmeWebServiceMetricsMutex);
+}
+
+static void cmeWebServiceMetricsRecordCryptoVerificationFailure(void)
+{
+    pthread_mutex_lock(&cmeWebServiceMetricsMutex);
+    cmeWebServiceMetricsEnsureStarted();
+    cmeWebServiceMetrics.cryptoVerificationFailures++;
+    pthread_mutex_unlock(&cmeWebServiceMetricsMutex);
+}
+
+static void cmeWebServiceMetricsSnapshot(struct cmeWebServiceMetricsStruct *snapshot)
+{
+    pthread_mutex_lock(&cmeWebServiceMetricsMutex);
+    cmeWebServiceMetricsEnsureStarted();
+    if (snapshot)
+    {
+        *snapshot=cmeWebServiceMetrics;
+    }
+    pthread_mutex_unlock(&cmeWebServiceMetricsMutex);
+}
+
 static int cmeWebServiceDeleteMatchedDocumentRows(sqlite3 *pDB, const char *tableName, char **resultRegisterCols,
                                                   int numResultRegisterCols, int numResultRegisters,
                                                   const char *storagePath, int *deletedRegisters)
@@ -347,6 +525,162 @@ static void cmeWebServiceAppendJSONStringValue(char **dst, const char *src)
     cmeStrConstrAppend(dst,"\"");
 }
 
+static int cmeWebServiceConstructMetricsResponse(char **responseText, char ***responseHeaders,
+                                                 int *responseCode, const char **argumentElements,
+                                                 const char *method)
+{
+    int cont;
+    struct cmeWebServiceMetricsStruct snapshot;
+    const char *outputType=NULL;
+    long long now=(long long)time(NULL);
+    long long uptimeSeconds=0;
+
+    if ((strcmp(method,"GET"))&&(strcmp(method,"HEAD"))&&(strcmp(method,"OPTIONS")))
+    {
+        cmeStrConstrAppend(responseText,
+                           "{\"error\":{\"code\":\"method_not_allowed\","
+                           "\"message\":\"Only GET, HEAD and OPTIONS are supported for metrics.\"}}");
+        cmeWebServiceSetResponseHeader(responseHeaders,"Content-Type","application/json");
+        *responseCode=405;
+        return(1);
+    }
+    if (!strcmp(method,"OPTIONS"))
+    {
+        cmeStrConstrAppend(responseText,
+                           "{\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],"
+                           "\"formats\":[\"json\",\"prometheus\"]}");
+        cmeWebServiceSetResponseHeader(responseHeaders,"Content-Type","application/json");
+        *responseCode=200;
+        return(0);
+    }
+    cmeWebServiceMetricsSnapshot(&snapshot);
+    uptimeSeconds=now-(long long)snapshot.startedAt;
+    if (uptimeSeconds<0)
+    {
+        uptimeSeconds=0;
+    }
+    if (!strcmp(method,"HEAD"))
+    {
+        cmeWebServiceSetResponseHeader(responseHeaders,"Engine-results","1");
+        *responseCode=200;
+        return(0);
+    }
+    if (argumentElements)
+    {
+        cmeFindInArgPairList(argumentElements,"outputType",&outputType);
+    }
+    if (outputType&&(!strcmp(outputType,"prometheus")))
+    {
+        cmeWebServiceSetResponseHeader(responseHeaders,"Content-Type","text/plain; version=0.0.4; charset=utf-8");
+        cmeStrConstrAppend(responseText,
+                           "# HELP cdse_uptime_seconds Seconds since in-process metrics started.\n"
+                           "# TYPE cdse_uptime_seconds gauge\n"
+                           "cdse_uptime_seconds %lld\n"
+                           "# HELP cdse_requests_total Total HTTP requests completed by CaumeDSE.\n"
+                           "# TYPE cdse_requests_total counter\n"
+                           "cdse_requests_total %llu\n",
+                           uptimeSeconds,snapshot.requestsTotal);
+        for (cont=0;cont<7;cont++)
+        {
+            cmeStrConstrAppend(responseText,
+                               "cdse_requests_by_method_total{method=\"%s\"} %llu\n",
+                               cmeWebServiceMetricsMethodName(cont),
+                               snapshot.requestsByMethod[cont]);
+        }
+        for (cont=0;cont<6;cont++)
+        {
+            cmeStrConstrAppend(responseText,
+                               "cdse_responses_by_status_class_total{status_class=\"%s\"} %llu\n",
+                               cmeWebServiceMetricsStatusClassName(cont),
+                               snapshot.responsesByStatusClass[cont]);
+        }
+        cmeStrConstrAppend(responseText,
+                           "cdse_auth_failures_total %llu\n"
+                           "cdse_authorization_denials_total %llu\n"
+                           "cdse_parser_policy_denials_total %llu\n"
+                           "cdse_parser_timeouts_total %llu\n"
+                           "cdse_parser_limit_rejections_total %llu\n"
+                           "cdse_db_open_failures_total %llu\n"
+                           "cdse_db_save_failures_total %llu\n"
+                           "cdse_crypto_verification_failures_total %llu\n"
+                           "cdse_runtime_max_threads %d\n"
+                           "cdse_runtime_max_connections %d\n"
+                           "cdse_parser_timeout_seconds %d\n"
+                           "cdse_parser_max_output_bytes %d\n"
+                           "cdse_parser_max_result_cells %d\n",
+                           snapshot.authFailures,
+                           snapshot.authorizationDenials,
+                           snapshot.parserPolicyDenials,
+                           snapshot.parserTimeouts,
+                           snapshot.parserLimitRejections,
+                           snapshot.dbOpenFailures,
+                           snapshot.dbSaveFailures,
+                           snapshot.cryptoVerificationFailures,
+                           cmeDefaultMaxThreads,
+                           cmeDefaultMaxConnections,
+                           CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS,
+                           CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES,
+                           CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS);
+        *responseCode=200;
+        return(0);
+    }
+    cmeWebServiceSetResponseHeader(responseHeaders,"Content-Type","application/json");
+    cmeStrConstrAppend(responseText,
+                       "{\"metricsSchemaVersion\":1,\"safeForAgent\":true,"
+                       "\"startedAt\":%lld,\"now\":%lld,\"uptimeSeconds\":%lld,"
+                       "\"requests\":{\"total\":%llu,\"byMethod\":{",
+                       (long long)snapshot.startedAt,now,uptimeSeconds,
+                       snapshot.requestsTotal);
+    for (cont=0;cont<7;cont++)
+    {
+        cmeWebServiceAppendJSONStringValue(responseText,cmeWebServiceMetricsMethodName(cont));
+        cmeStrConstrAppend(responseText,":%llu%s",
+                           snapshot.requestsByMethod[cont],
+                           (cont<6)?",":"");
+    }
+    cmeStrConstrAppend(responseText,"},\"byStatusClass\":{");
+    for (cont=0;cont<6;cont++)
+    {
+        cmeWebServiceAppendJSONStringValue(responseText,cmeWebServiceMetricsStatusClassName(cont));
+        cmeStrConstrAppend(responseText,":%llu%s",
+                           snapshot.responsesByStatusClass[cont],
+                           (cont<5)?",":"");
+    }
+    cmeStrConstrAppend(responseText,
+                       "}},\"security\":{\"authFailures\":%llu,"
+                       "\"authorizationDenials\":%llu,"
+                       "\"parserPolicyDenials\":%llu,"
+                       "\"parserTimeouts\":%llu,"
+                       "\"parserLimitRejections\":%llu,"
+                       "\"dbOpenFailures\":%llu,"
+                       "\"dbSaveFailures\":%llu,"
+                       "\"cryptoVerificationFailures\":%llu},"
+                       "\"runtime\":{\"maxThreads\":%d,\"maxConnections\":%d,"
+                       "\"parserTimeoutSeconds\":%d,"
+                       "\"parserMaxOutputBytes\":%d,"
+                       "\"parserMaxResultCells\":%d,"
+                       "\"tlsClientCertificateAuthentication\":%s,"
+                       "\"httpTlsAuthBypass\":%s},"
+                       "\"labels\":\"fixed-method-and-status-only\"}",
+                       snapshot.authFailures,
+                       snapshot.authorizationDenials,
+                       snapshot.parserPolicyDenials,
+                       snapshot.parserTimeouts,
+                       snapshot.parserLimitRejections,
+                       snapshot.dbOpenFailures,
+                       snapshot.dbSaveFailures,
+                       snapshot.cryptoVerificationFailures,
+                       cmeDefaultMaxThreads,
+                       cmeDefaultMaxConnections,
+                       CDSE_PARSER_SCRIPT_TIMEOUT_SECONDS,
+                       CDSE_PARSER_SCRIPT_MAX_OUTPUT_BYTES,
+                       CDSE_PARSER_SCRIPT_MAX_RESULT_CELLS,
+                       cmeUseTLSAuthentication?"true":"false",
+                       cmeBypassTLSAuthenticationInHTTP?"true":"false");
+    *responseCode=200;
+    return(0);
+}
+
 static void cmeWebServiceAuditJSON(const char *category, const char *event, const char *outcome,
                                    const char *reason, int result, const char *requestId,
                                    const char *userId, const char *orgId, const char *storageId,
@@ -354,6 +688,7 @@ static void cmeWebServiceAuditJSON(const char *category, const char *event, cons
                                    const char *method, const char *route, const char *authenticated,
                                    const char *responseCode, int previewOnly)
 {
+    cmeWebServiceMetricsRecordAuditEvent(category,event,outcome);
 #ifdef ERROR_LOG
     char *jsonLine=NULL;
 
@@ -850,6 +1185,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
         exitcode=MHD_queue_response (connection, responseCode, response);
     }
     cmeWebServiceSetThreadStatus(con_info,2); //Now the POST handling routing thread can free memory and finish.
+    cmeWebServiceMetricsRecordRequest(method,responseCode);
     result=cmeWebServiceLogConnection (connection,con_info,con_info->connectionStartTime,method,url,con_info->requestDataSize,responseDataSize,
                                        (const char **)headerElements,(const char **)responseHeaders,(const char **)argumentElements,
                                        (const char **)urlElements,numUrlElements);
@@ -2400,7 +2736,8 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
                     "{\"name\":\"documentSchema\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/schema\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
                     "{\"name\":\"parserScripts\",\"path\":\"/organizations/{org}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts/{script}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
                     "{\"name\":\"dbBrowsing\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
-                    "{\"name\":\"dbTableSchema\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}/schema\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true}"
+                    "{\"name\":\"dbTableSchema\",\"path\":\"/organizations/{org}/storage/{storage}/dbNames/{db}/dbTables/{table}/schema\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":true},"
+                    "{\"name\":\"metrics\",\"path\":\"/metrics\",\"methods\":[\"GET\",\"HEAD\",\"OPTIONS\"],\"authRequired\":false}"
                 "],"
                 "\"docs\":[\"README.md\",\"AI_USAGE.md\",\"AI_USAGE.md#agent-cookbook\","
                     "\"AI_USAGE.md#operational-checklist\",\"API_EXAMPLES.md\",\"openapi.yaml\","
@@ -2431,6 +2768,13 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         *responseCode=405;
         cmeWebServiceProcessRequestFree();
         return(1);
+    }
+    if ((numUrlElements==1)&&(strcmp("metrics",urlElements[0])==0)) //Public-safe in-process metrics; no user, org, route, or secret labels.
+    {
+        result=cmeWebServiceConstructMetricsResponse(responseText,responseHeaders,responseCode,
+                                                     argumentElements,method);
+        cmeWebServiceProcessRequestFree();
+        return(result);
     }
     if (numUrlElements==0) //Error; depth does not match a valid value
     {
@@ -14773,6 +15117,7 @@ int cmeWebServiceProcessDocumentSchemaResource(char **responseText, char ***resp
     result=cmeDBOpen(dbFilePath,&resourcesDB);
     if (result)
     {
+        cmeWebServiceMetricsRecordDBOpenFailure();
         *responseCode=500;
         cmeWebServiceProcessDocumentSchemaResourceFree();
         return(5);
@@ -14804,6 +15149,7 @@ int cmeWebServiceProcessDocumentSchemaResource(char **responseText, char ***resp
     result=cmeSecureDBToMemDB(&memDB,resourcesDB,urlElements[7],orgKey,storagePath);
     if (result)
     {
+        cmeWebServiceMetricsRecordCryptoVerificationFailure();
         *responseCode=500;
         cmeWebServiceProcessDocumentSchemaResourceFree();
         return(7);
@@ -14944,6 +15290,7 @@ int cmeWebServiceProcessDBBrowseResource (char **responseText, char ***responseH
     result=cmeDBOpen(dbFilePath,&resourcesDB);
     if (result)
     {
+        cmeWebServiceMetricsRecordDBOpenFailure();
         cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
                            "Internal server error number '%d'. METHOD: '%s' URL: '%s'."
                            " Latest IDD version: <code>%s</code>",result,method,url,cmeInternalDBDefinitionsVersion);
@@ -15054,6 +15401,7 @@ int cmeWebServiceProcessDBBrowseResource (char **responseText, char ***responseH
     result=cmeSecureDBToMemDB(&memDB,resourcesDB,dbName,orgKey,storagePath);
     if (result)
     {
+        cmeWebServiceMetricsRecordCryptoVerificationFailure();
         cmeStrConstrAppend(responseText,"<b>500 ERROR Internal server error.</b><br>"
                            "Secure DB verification failed with error '%d'. METHOD: '%s' URL: '%s'."
                            " Latest IDD version: <code>%s</code>",result,method,url,cmeInternalDBDefinitionsVersion);
@@ -15305,6 +15653,7 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
     result=cmeDBOpen(dbFilePath,&pDB);
     if (result) //Error
     {
+        cmeWebServiceMetricsRecordDBOpenFailure();
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeWebServiceLogRequest(), can't open LogsDB!"
                     " File: '%s'!\n",dbFilePath);

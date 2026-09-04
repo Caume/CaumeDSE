@@ -20,6 +20,7 @@ servers:
     description: DEBUG HTTPS verifier server
 tags:
   - name: Agent capabilities
+  - name: Runtime metrics
   - name: Authentication
   - name: Organizations
   - name: Users
@@ -85,6 +86,68 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/JsonResponse"
+
+  /metrics:
+    get:
+      tags: [Runtime metrics]
+      summary: Return public-safe in-process runtime metrics.
+      description: |
+        Exposes process-local counters and gauges without organization, user,
+        document, raw URL, certificate-path, or query-value labels. JSON is the
+        default response format; `outputType=prometheus` returns Prometheus text.
+        Counters reset when the CaumeDSE process restarts.
+      parameters:
+        - in: query
+          name: outputType
+          schema:
+            type: string
+            enum: [json, prometheus]
+          required: false
+      responses:
+        "200":
+          description: Runtime metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [metricsSchemaVersion, safeForAgent, requests, security, runtime]
+                properties:
+                  metricsSchemaVersion:
+                    type: integer
+                    example: 1
+                  safeForAgent:
+                    type: boolean
+                    example: true
+                  startedAt:
+                    type: integer
+                  now:
+                    type: integer
+                  uptimeSeconds:
+                    type: integer
+                  requests:
+                    type: object
+                  security:
+                    type: object
+                  runtime:
+                    type: object
+                  labels:
+                    type: string
+                    example: fixed-method-and-status-only
+            text/plain:
+              schema:
+                type: string
+    head:
+      tags: [Runtime metrics]
+      summary: Check that runtime metrics are available.
+      responses:
+        "200":
+          description: Metrics endpoint exists.
+    options:
+      tags: [Runtime metrics]
+      summary: Return supported metrics methods and formats.
+      responses:
+        "200":
+          description: Metrics options.
 
   /organizations:
     get:

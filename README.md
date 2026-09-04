@@ -1133,6 +1133,22 @@ Use this endpoint before invoking data routes so an agent can choose JSON
 responses, avoid passing organization keys to an LLM, and respect parser-review
 policy before uploading or executing scripts.
 
+## Runtime Metrics
+
+`GET /metrics` returns public-safe in-process runtime metrics without requiring
+`userId`, `orgId`, or `orgKey`. The endpoint intentionally avoids organization,
+user, document, URL, certificate-path, and query-value labels. JSON is the
+default response format; Prometheus text is available with
+`outputType=prometheus`.
+
+The metrics include request totals by fixed method and status class,
+authentication failures, authorization denials, parser policy denials, parser
+timeouts, parser limit rejections, placeholder counters for DB/crypto failure
+classes, service uptime, and configured runtime/parser limits. Treat these
+counters as process-local: they reset when the CaumeDSE process restarts.
+Use LogsDB and `CaumeDSE AuditJSON` records when per-request correlation or
+longer retention is required.
+
 ## REST Resource API Reference
 
 
