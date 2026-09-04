@@ -59,6 +59,10 @@ explicitly required. Pull requests should summarize behavior changes, security
 impact, touched routes/files, and exact validation commands with pass/fail
 counts.
 
+For this project, always make and test changes on the local `devtest` branch.
+When the user asks to publish or create a PR, push the tested `devtest` branch
+to `master` unless the user explicitly gives a different destination.
+
 ## Security & Configuration Tips
 
 Do not commit real organization keys, private certificates, or production data.
