@@ -60,8 +60,9 @@ impact, touched routes/files, and exact validation commands with pass/fail
 counts.
 
 For this project, always make and test changes on the local `devtest` branch.
-When the user asks to publish or create a PR, push the tested `devtest` branch
-to `master` unless the user explicitly gives a different destination.
+When the user asks to publish or create a PR, push the tested local `devtest`
+branch to remote `devtest`, then promote `devtest` to `master` through a pull
+request unless the user explicitly gives a different destination.
 
 ## Security & Configuration Tips
 
