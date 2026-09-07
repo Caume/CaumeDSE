@@ -135,6 +135,12 @@ int cmeGetProtectDBLookupValue (const char *columnName, const char *value, const
                                 char **lookupValue);
 // Function to ensure optional ResourcesDB document lookup columns and indexes exist.
 int cmeEnsureResourcesDBDocumentLookups (sqlite3 *pDB);
+// Function to write current internal schema metadata after explicit create/upgrade.
+int cmeSetInternalDBSchemaVersion(sqlite3 *pDB, const char *dbClass);
+// Function to fail closed on incompatible internal schemas. allowLegacy accepts structurally valid DBs without metadata.
+int cmeCheckInternalDBSchema(sqlite3 *pDB, const char *dbClass, int allowLegacy);
+// Function to explicitly upgrade legacy LogsDB transaction columns to the current schema.
+int cmeEnsureLogsDBTransactionsSchema(sqlite3 *pDB);
 // Function to reintegrate (before unprotecting) sliced DB columns of secure DB column files in memory.
 int cmeMemSecureDBReintegrate (sqlite3 **memSecureDB, const char *orgKey,
                                const int dbNumCols, int *dbNumReintegratedCols);

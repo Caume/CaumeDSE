@@ -2525,6 +2525,23 @@ metadata currently fails closed in the DB-level helper until a dedicated
 recomputation workflow updates those integrity columns with the new ciphertext
 and key material.
 
+### Internal database schema versioning
+
+New internal SQLite databases include a `schema_meta` table with `schemaClass`,
+`schemaVersion`, `definitionsVersion`, and `migrationState=complete`. Startup
+validates ResourcesDB, RolesDB, and LogsDB before use; secure ColumnFile DBs can
+be checked with the same DB helper when an explicit workflow needs to assert
+storage compatibility.
+
+Legacy databases without `schema_meta` remain readable when their required
+tables and columns match a known compatible layout. Startup explicitly upgrades
+legacy ResourcesDB lookup columns and legacy LogsDB transaction columns, then
+writes current schema metadata. Databases with future schema versions, missing
+metadata rows, `migrationState` values other than `complete`, missing required
+columns, or wrong column types fail closed with schema diagnostics. Take an
+encrypted backup before schema or key/profile migration and keep the old
+checkpoint authoritative until readback succeeds after upgrade.
+
 In release mode the software enters and infinite loop to answer connections;
 right now you need to kill the process to stop it).
 

@@ -59,6 +59,7 @@ void testContentRows(void);
 void testContentColumns(void);
 void testDBBrowsing(void);
 void testParserTempFiles(void);
+void testInternalDBSchemaVersioning(void);
 
 static int cmeDebugTestsNonInteractiveEnabled(void)
 {
@@ -74,6 +75,7 @@ static void cmeTestPrintMarker(const char *marker)
 
     if (marker)
     {
+        fflush(stdout);
         current=marker;
         remaining=strlen(marker);
         while (remaining)
@@ -86,6 +88,7 @@ static void cmeTestPrintMarker(const char *marker)
             current+=written;
             remaining-=written;
         }
+        fflush(stdout);
     }
 }
 
@@ -1458,6 +1461,155 @@ void testDB (PerlInterpreter* myPerl)
     cmeResultMemTableClean();
     cmeDBClose(DB);
     cmeFree(testScriptPath);
+    testInternalDBSchemaVersioning();
+}
+
+static int cmeTestCreateLogsSchema(sqlite3 *db, int wrongType, int missingColumn)
+{
+    char *sql=NULL;
+    int result;
+
+    cmeStrConstrAppend(&sql,
+                       "BEGIN TRANSACTION;"
+                       "CREATE TABLE transactions (id %s PRIMARY KEY,"
+                       " userId TEXT, orgId TEXT, salt TEXT,"
+                       " requestMethod TEXT, requestUrl TEXT, requestHeaders TEXT, startTimestamp TEXT,"
+                       " endTimestamp TEXT, requestDataSize TEXT, responseDataSize TEXT, orgResourceId TEXT,"
+                       " requestIPAddress TEXT, responseCode %s%s);"
+                       "COMMIT;",
+                       wrongType?"TEXT":"INTEGER",
+                       wrongType?"INTEGER":"TEXT",
+                       missingColumn?"":", authenticated TEXT");
+    result=cmeSQLRows(db,sql,NULL,NULL);
+    cmeFree(sql);
+    return(result);
+}
+
+static int cmeTestCreateColumnFileSchema(sqlite3 *db)
+{
+    return(cmeSQLRows(db,
+                      "BEGIN TRANSACTION;"
+                      "CREATE TABLE data (id INTEGER PRIMARY KEY,userId TEXT,orgId TEXT,salt TEXT,value TEXT,rowOrder TEXT,MAC TEXT,sign TEXT,MACProtected TEXT,signProtected TEXT,otphDKey TEXT);"
+                      "CREATE TABLE meta (id INTEGER PRIMARY KEY,userId TEXT,orgId TEXT,salt TEXT,attribute TEXT,attributeData TEXT);"
+                      "COMMIT;",NULL,NULL));
+}
+
+void testInternalDBSchemaVersioning(void)
+{
+    int errors=0;
+    sqlite3 *db=NULL;
+
+    printf("--- Testing internal database schema versioning and migration checks:\n");
+    setenv("CDSE_SUPPRESS_SCHEMA_ERROR_LOG","1",1);
+    if (!cmeMemDBCreateOpen(&db) &&
+        !cmeTestCreateLogsSchema(db,0,0) &&
+        !cmeSetInternalDBSchemaVersion(db,cmeInternalDBSchemaClassLogs) &&
+        !cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassLogs,0))
+    {
+        printf("TESTS: testInternalDBSchemaVersioning(), PASS: current schema metadata accepted.\n");
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testInternalDBSchemaVersioning(), FAIL: current schema metadata rejected.\n");
+    }
+    if (db) { cmeDBClose(db); db=NULL; }
+
+    if (!cmeMemDBCreateOpen(&db) &&
+        !cmeTestCreateLogsSchema(db,0,0) &&
+        !cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassLogs,1) &&
+        cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassLogs,0))
+    {
+        printf("TESTS: testInternalDBSchemaVersioning(), PASS: legacy missing-version policy enforced.\n");
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testInternalDBSchemaVersioning(), FAIL: legacy missing-version policy not enforced.\n");
+    }
+    if (db) { cmeDBClose(db); db=NULL; }
+
+    if (!cmeMemDBCreateOpen(&db) &&
+        !cmeTestCreateLogsSchema(db,0,0) &&
+        !cmeSetInternalDBSchemaVersion(db,cmeInternalDBSchemaClassLogs) &&
+        !cmeSQLRows(db,"UPDATE schema_meta SET value='999' WHERE key='schemaVersion';",NULL,NULL) &&
+        cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassLogs,1))
+    {
+        printf("TESTS: testInternalDBSchemaVersioning(), PASS: future schema version rejected.\n");
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testInternalDBSchemaVersioning(), FAIL: future schema version accepted.\n");
+    }
+    if (db) { cmeDBClose(db); db=NULL; }
+
+    if (!cmeMemDBCreateOpen(&db) &&
+        !cmeTestCreateLogsSchema(db,0,1) &&
+        !cmeSetInternalDBSchemaVersion(db,cmeInternalDBSchemaClassLogs) &&
+        cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassLogs,1))
+    {
+        printf("TESTS: testInternalDBSchemaVersioning(), PASS: missing-column schema rejected.\n");
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testInternalDBSchemaVersioning(), FAIL: missing-column schema accepted.\n");
+    }
+    if (db) { cmeDBClose(db); db=NULL; }
+
+    if (!cmeMemDBCreateOpen(&db) &&
+        !cmeTestCreateLogsSchema(db,1,0) &&
+        !cmeSetInternalDBSchemaVersion(db,cmeInternalDBSchemaClassLogs) &&
+        cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassLogs,1))
+    {
+        printf("TESTS: testInternalDBSchemaVersioning(), PASS: wrong-type schema rejected.\n");
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testInternalDBSchemaVersioning(), FAIL: wrong-type schema accepted.\n");
+    }
+    if (db) { cmeDBClose(db); db=NULL; }
+
+    if (!cmeMemDBCreateOpen(&db) &&
+        !cmeTestCreateLogsSchema(db,0,0) &&
+        !cmeSetInternalDBSchemaVersion(db,cmeInternalDBSchemaClassLogs) &&
+        !cmeSQLRows(db,"UPDATE schema_meta SET value='pending' WHERE key='migrationState';",NULL,NULL) &&
+        cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassLogs,1))
+    {
+        printf("TESTS: testInternalDBSchemaVersioning(), PASS: partial migration state rejected.\n");
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testInternalDBSchemaVersioning(), FAIL: partial migration state accepted.\n");
+    }
+    if (db) { cmeDBClose(db); db=NULL; }
+
+    if (!cmeMemDBCreateOpen(&db) &&
+        !cmeTestCreateColumnFileSchema(db) &&
+        !cmeSetInternalDBSchemaVersion(db,cmeInternalDBSchemaClassColumnFile) &&
+        !cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassColumnFile,0))
+    {
+        printf("TESTS: testInternalDBSchemaVersioning(), PASS: ColumnFile schema metadata accepted.\n");
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testInternalDBSchemaVersioning(), FAIL: ColumnFile schema metadata rejected.\n");
+    }
+    if (db) { cmeDBClose(db); db=NULL; }
+
+    if (errors)
+    {
+        printf("TESTS: testInternalDBSchemaVersioning(), FAIL: %d schema cases failed.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testInternalDBSchemaVersioning(), PASS: current, legacy, future, missing-column, wrong-type, partial-migration, and ColumnFile cases verified.\n");
+    }
+    unsetenv("CDSE_SUPPRESS_SCHEMA_ERROR_LOG");
 }
 
 void testCSV ()
@@ -2464,6 +2616,7 @@ static int cmeTestDocumentTypesRequest(const char *method, const char *url,
     char *responseText=NULL;
     char *responseFilePath=NULL;
     char **responseHeaders=cmeTestAllocResponseHeaders();
+    char markerLine[512];
 
     if (!responseHeaders)
     {
@@ -2490,7 +2643,9 @@ static int cmeTestDocumentTypesRequest(const char *method, const char *url,
         cmeTestFreeResponseHeaders(responseHeaders);
         return(1);
     }
-    printf("TESTS: testDocumentTypes(), PASS: %s responseCode=%d\n",marker,responseCode);
+    snprintf(markerLine,sizeof(markerLine),
+             "TESTS: testDocumentTypes(), PASS: %s responseCode=%d\n",marker,responseCode);
+    cmeTestPrintMarker(markerLine);
     cmeFree(responseText);
     cmeFree(responseFilePath);
     cmeTestFreeResponseHeaders(responseHeaders);
@@ -2611,6 +2766,7 @@ static int cmeTestParserScriptsRequest(const char *method, const char *url,
     int result,responseCode=0;
     char *responseText=NULL;
     char **responseHeaders=cmeTestAllocResponseHeaders();
+    char markerLine[512];
 
     if (!responseHeaders)
     {
@@ -2637,13 +2793,16 @@ static int cmeTestParserScriptsRequest(const char *method, const char *url,
     }
     if (responseHeaders[0]&&responseHeaders[1])
     {
-        printf("TESTS: testParserScripts(), PASS: %s responseCode=%d %s=%s\n",
-               marker,responseCode,responseHeaders[0],responseHeaders[1]);
+        snprintf(markerLine,sizeof(markerLine),
+                 "TESTS: testParserScripts(), PASS: %s responseCode=%d %s=%s\n",
+                 marker,responseCode,responseHeaders[0],responseHeaders[1]);
     }
     else
     {
-        printf("TESTS: testParserScripts(), PASS: %s responseCode=%d\n",marker,responseCode);
+        snprintf(markerLine,sizeof(markerLine),
+                 "TESTS: testParserScripts(), PASS: %s responseCode=%d\n",marker,responseCode);
     }
+    cmeTestPrintMarker(markerLine);
     cmeFree(responseText);
     cmeTestFreeResponseHeaders(responseHeaders);
     return(0);

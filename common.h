@@ -191,6 +191,12 @@ void cmeInitDefaultEncAlg();                //Initialize default algorithm from 
                                                        //Note that there is NO default orgKey for EngineOrg... it will be generated randomly the first time the engine is run and won't be stored in clear {so take note!}.
 
 #define cmeInternalDBDefinitionsVersion "1.0.21_1 Jul 2012" //Version of internal DB definitions for engine
+#define cmeInternalDBSchemaVersion 1                         //Current internal SQLite schema version.
+#define cmeInternalDBSchemaMetaTableName "schema_meta"       //Table for internal SQLite schema metadata.
+#define cmeInternalDBSchemaClassResources "ResourcesDB"      //Schema class for ResourcesDB.
+#define cmeInternalDBSchemaClassRoles "RolesDB"              //Schema class for RolesDB.
+#define cmeInternalDBSchemaClassLogs "LogsDB"                //Schema class for LogsDB.
+#define cmeInternalDBSchemaClassColumnFile "ColumnFile"      //Schema class for secure DB column files.
 #define cmeIDDMatchName(columnName) "_" columnName           //URL match parameter name for a protected DB column.
 #define cmeIDDRequiredSaveName(columnName) "*" columnName    //URL save parameter name for a required protected DB column.
 #define cmeIDDColumnFileDataTableName "data"                 //Table name for ColumnFile data tables.

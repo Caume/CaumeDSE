@@ -63,6 +63,425 @@ static int cmeDBApplyPragmas(sqlite3 *pDB, const char *functionName, const char 
     return(0);
 }
 
+typedef struct
+{
+    const char *tableName;
+    const char *columnName;
+    const char *columnType;
+} cmeInternalDBColumnSpec;
+
+static int cmeDBTableExists(sqlite3 *pDB, const char *tableName, int *exists)
+{
+    int result;
+    sqlite3_stmt *stmt=NULL;
+
+    *exists=0;
+    result=sqlite3_prepare_v2(pDB,
+                              "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1;",
+                              -1,&stmt,NULL);
+    if (result!=SQLITE_OK)
+    {
+        return(1);
+    }
+    sqlite3_bind_text(stmt,1,tableName,-1,SQLITE_TRANSIENT);
+    result=sqlite3_step(stmt);
+    if (result==SQLITE_ROW)
+    {
+        *exists=1;
+        result=SQLITE_DONE;
+    }
+    sqlite3_finalize(stmt);
+    return((result==SQLITE_DONE)?0:2);
+}
+
+static int cmeDBColumnMatches(sqlite3 *pDB, const cmeInternalDBColumnSpec *columnSpec, int *matches)
+{
+    int result;
+    sqlite3_stmt *stmt=NULL;
+    char *query=NULL;
+    const unsigned char *name=NULL;
+    const unsigned char *type=NULL;
+    #define cmeDBColumnMatchesFree() \
+        do { \
+            cmeFree(query); \
+            if (stmt) { sqlite3_finalize(stmt); stmt=NULL; } \
+        } while (0); //Local free() macro.
+
+    *matches=0;
+    cmeStrConstrAppend(&query,"PRAGMA table_info(\"%s\");",columnSpec->tableName);
+    result=sqlite3_prepare_v2(pDB,query,-1,&stmt,NULL);
+    if (result!=SQLITE_OK)
+    {
+        cmeDBColumnMatchesFree();
+        return(1);
+    }
+    while ((result=sqlite3_step(stmt))==SQLITE_ROW)
+    {
+        name=sqlite3_column_text(stmt,1);
+        type=sqlite3_column_text(stmt,2);
+        if ((name)&&(!strcmp((const char *)name,columnSpec->columnName)))
+        {
+            if ((type)&&(!strcasecmp((const char *)type,columnSpec->columnType)))
+            {
+                *matches=1;
+            }
+            cmeDBColumnMatchesFree();
+            return(0);
+        }
+    }
+    cmeDBColumnMatchesFree();
+    return((result==SQLITE_DONE)?0:2);
+}
+
+static int cmeCheckInternalDBColumns(sqlite3 *pDB, const cmeInternalDBColumnSpec *columns,
+                                     int numColumns, const char *dbClass)
+{
+    int cont,result,matches=0,exists=0;
+
+    for (cont=0;cont<numColumns;cont++)
+    {
+        result=cmeDBTableExists(pDB,columns[cont].tableName,&exists);
+        if ((result)||(!exists))
+        {
+#ifdef ERROR_LOG
+            if (!getenv("CDSE_SUPPRESS_SCHEMA_ERROR_LOG"))
+            {
+                fprintf(stderr,"CaumeDSE Error: cmeCheckInternalDBSchema(), missing table '%s' in %s.\n",
+                        columns[cont].tableName,dbClass);
+            }
+#endif
+            return(1);
+        }
+        result=cmeDBColumnMatches(pDB,&columns[cont],&matches);
+        if ((result)||(!matches))
+        {
+#ifdef ERROR_LOG
+            if (!getenv("CDSE_SUPPRESS_SCHEMA_ERROR_LOG"))
+            {
+                fprintf(stderr,"CaumeDSE Error: cmeCheckInternalDBSchema(), missing or wrong-type column '%s.%s' in %s.\n",
+                        columns[cont].tableName,columns[cont].columnName,dbClass);
+            }
+#endif
+            return(2);
+        }
+    }
+    return(0);
+}
+
+static int cmeGetInternalDBSchemaValue(sqlite3 *pDB, const char *key, char **value)
+{
+    int result;
+    sqlite3_stmt *stmt=NULL;
+    const unsigned char *dbValue=NULL;
+
+    *value=NULL;
+    result=sqlite3_prepare_v2(pDB,
+                              "SELECT value FROM " cmeInternalDBSchemaMetaTableName
+                              " WHERE key=? LIMIT 1;",-1,&stmt,NULL);
+    if (result!=SQLITE_OK)
+    {
+        return(1);
+    }
+    sqlite3_bind_text(stmt,1,key,-1,SQLITE_TRANSIENT);
+    result=sqlite3_step(stmt);
+    if (result==SQLITE_ROW)
+    {
+        dbValue=sqlite3_column_text(stmt,0);
+        if (dbValue)
+        {
+            cmeStrConstrAppend(value,"%s",(const char *)dbValue);
+        }
+        sqlite3_finalize(stmt);
+        return(0);
+    }
+    sqlite3_finalize(stmt);
+    return((result==SQLITE_DONE)?2:3);
+}
+
+static int cmeCheckInternalDBSchemaMetadata(sqlite3 *pDB, const char *dbClass)
+{
+    int result,version;
+    char *schemaClass=NULL;
+    char *schemaVersion=NULL;
+    char *migrationState=NULL;
+    #define cmeCheckInternalDBSchemaMetadataFree() \
+        do { \
+            cmeFree(schemaClass); \
+            cmeFree(schemaVersion); \
+            cmeFree(migrationState); \
+        } while (0); //Local free() macro.
+
+    result=cmeGetInternalDBSchemaValue(pDB,"schemaClass",&schemaClass);
+    result|=cmeGetInternalDBSchemaValue(pDB,"schemaVersion",&schemaVersion);
+    result|=cmeGetInternalDBSchemaValue(pDB,"migrationState",&migrationState);
+    if ((result)||(!schemaClass)||(!schemaVersion)||(!migrationState))
+    {
+#ifdef ERROR_LOG
+        if (!getenv("CDSE_SUPPRESS_SCHEMA_ERROR_LOG"))
+        {
+            fprintf(stderr,"CaumeDSE Error: cmeCheckInternalDBSchema(), incomplete schema metadata for %s.\n",
+                    dbClass);
+        }
+#endif
+        cmeCheckInternalDBSchemaMetadataFree();
+        return(1);
+    }
+    version=atoi(schemaVersion);
+    if ((!schemaVersion[0])||(version<1)||(version>cmeInternalDBSchemaVersion))
+    {
+#ifdef ERROR_LOG
+        if (!getenv("CDSE_SUPPRESS_SCHEMA_ERROR_LOG"))
+        {
+            fprintf(stderr,"CaumeDSE Error: cmeCheckInternalDBSchema(), incompatible schema version '%s' for %s; current is %d.\n",
+                    schemaVersion,dbClass,cmeInternalDBSchemaVersion);
+        }
+#endif
+        cmeCheckInternalDBSchemaMetadataFree();
+        return(2);
+    }
+    if ((strcmp(schemaClass,dbClass))||(strcmp(migrationState,"complete")))
+    {
+#ifdef ERROR_LOG
+        if (!getenv("CDSE_SUPPRESS_SCHEMA_ERROR_LOG"))
+        {
+            fprintf(stderr,"CaumeDSE Error: cmeCheckInternalDBSchema(), schema metadata mismatch for %s.\n",
+                    dbClass);
+        }
+#endif
+        cmeCheckInternalDBSchemaMetadataFree();
+        return(3);
+    }
+    cmeCheckInternalDBSchemaMetadataFree();
+    return(0);
+}
+
+static const cmeInternalDBColumnSpec cmeInternalDBLogsColumns[]={
+    {cmeIDDLogsDBTransactionsTableName,cmeIDDanydb_id_name,"INTEGER"},
+    {cmeIDDLogsDBTransactionsTableName,cmeIDDanydb_userId_name,"TEXT"},
+    {cmeIDDLogsDBTransactionsTableName,cmeIDDLogsDBTransactions_requestMethod_name,"TEXT"},
+    {cmeIDDLogsDBTransactionsTableName,cmeIDDLogsDBTransactions_responseCode_name,"TEXT"},
+    {cmeIDDLogsDBTransactionsTableName,cmeIDDLogsDBTransactions_authenticated_name,"TEXT"}
+};
+
+static const cmeInternalDBColumnSpec cmeInternalDBResourcesColumns[]={
+    {cmeIDDResourcesDBDocumentsTableName,cmeIDDanydb_id_name,"INTEGER"},
+    {cmeIDDResourcesDBDocumentsTableName,cmeIDDResourcesDBDocuments_documentId_name,"TEXT"},
+    {cmeIDDResourcesDBDocumentsTableName,cmeIDDResourcesDBDocuments_documentIdLookup_name,"TEXT"},
+    {cmeIDDResourcesDBUsersTableName,cmeIDDResourcesDBUsers_basicAuthPwdHash_name,"TEXT"},
+    {cmeIDDResourcesDBStorageTableName,cmeIDDResourcesDBStorage_accessPath_name,"TEXT"},
+    {cmeIDDResourcesDBOrganizationsTableName,cmeIDDResourcesDBOrganizations_publicKey_name,"TEXT"}
+};
+
+static const cmeInternalDBColumnSpec cmeInternalDBResourcesLegacyColumns[]={
+    {cmeIDDResourcesDBDocumentsTableName,cmeIDDanydb_id_name,"INTEGER"},
+    {cmeIDDResourcesDBDocumentsTableName,cmeIDDResourcesDBDocuments_documentId_name,"TEXT"},
+    {cmeIDDResourcesDBUsersTableName,cmeIDDResourcesDBUsers_basicAuthPwdHash_name,"TEXT"},
+    {cmeIDDResourcesDBStorageTableName,cmeIDDResourcesDBStorage_accessPath_name,"TEXT"},
+    {cmeIDDResourcesDBOrganizationsTableName,cmeIDDResourcesDBOrganizations_publicKey_name,"TEXT"}
+};
+
+static const cmeInternalDBColumnSpec cmeInternalDBRolesColumns[]={
+    {cmeIDDResourcesDBDocumentsTableName,cmeIDDRolesDBAnyTable__get_name,"TEXT"},
+    {cmeIDDResourcesDBUsersTableName,cmeIDDRolesDBAnyTable__post_name,"TEXT"},
+    {cmeIDDResourcesDBOrganizationsTableName,cmeIDDRolesDBAnyTable__delete_name,"TEXT"},
+    {cmeIDDResourcesDBStorageTableName,cmeIDDRolesDBAnyTable__options_name,"TEXT"},
+    {cmeIDDLogsDBTransactionsTableName,cmeIDDRolesDBAnyTable_orgResourceId_name,"TEXT"},
+    {"meta",cmeIDDRolesDBAnyTable_userResourceId_name,"TEXT"}
+};
+
+static const cmeInternalDBColumnSpec cmeInternalDBColumnFileColumns[]={
+    {cmeIDDColumnFileDataTableName,cmeIDDColumnFileData_value_name,"TEXT"},
+    {cmeIDDColumnFileDataTableName,cmeIDDColumnFileData_rowOrder_name,"TEXT"},
+    {cmeIDDColumnFileMetaTableName,cmeIDDColumnFileMeta_attribute_name,"TEXT"},
+    {cmeIDDColumnFileMetaTableName,cmeIDDColumnFileMeta_attributeData_name,"TEXT"}
+};
+
+static int cmeCheckInternalDBClassColumns(sqlite3 *pDB, const char *dbClass, int useLegacy)
+{
+    if (!strcmp(dbClass,cmeInternalDBSchemaClassLogs))
+    {
+        return(cmeCheckInternalDBColumns(pDB,cmeInternalDBLogsColumns,
+               sizeof(cmeInternalDBLogsColumns)/sizeof(cmeInternalDBLogsColumns[0]),dbClass));
+    }
+    if (!strcmp(dbClass,cmeInternalDBSchemaClassResources))
+    {
+        if (useLegacy)
+        {
+            return(cmeCheckInternalDBColumns(pDB,cmeInternalDBResourcesLegacyColumns,
+                   sizeof(cmeInternalDBResourcesLegacyColumns)/sizeof(cmeInternalDBResourcesLegacyColumns[0]),dbClass));
+        }
+        return(cmeCheckInternalDBColumns(pDB,cmeInternalDBResourcesColumns,
+               sizeof(cmeInternalDBResourcesColumns)/sizeof(cmeInternalDBResourcesColumns[0]),dbClass));
+    }
+    if (!strcmp(dbClass,cmeInternalDBSchemaClassRoles))
+    {
+        return(cmeCheckInternalDBColumns(pDB,cmeInternalDBRolesColumns,
+               sizeof(cmeInternalDBRolesColumns)/sizeof(cmeInternalDBRolesColumns[0]),dbClass));
+    }
+    if (!strcmp(dbClass,cmeInternalDBSchemaClassColumnFile))
+    {
+        return(cmeCheckInternalDBColumns(pDB,cmeInternalDBColumnFileColumns,
+               sizeof(cmeInternalDBColumnFileColumns)/sizeof(cmeInternalDBColumnFileColumns[0]),dbClass));
+    }
+    return(1);
+}
+
+int cmeSetInternalDBSchemaVersion(sqlite3 *pDB, const char *dbClass)
+{
+    int result;
+    char *sqlQuery=NULL;
+    #define cmeSetInternalDBSchemaVersionFree() \
+        do { \
+            cmeFree(sqlQuery); \
+        } while (0); //Local free() macro.
+
+    cmeStrConstrAppend(&sqlQuery,
+                       "BEGIN TRANSACTION; "
+                       "CREATE TABLE IF NOT EXISTS " cmeInternalDBSchemaMetaTableName
+                       " (key TEXT PRIMARY KEY, value TEXT NOT NULL); "
+                       "INSERT OR REPLACE INTO " cmeInternalDBSchemaMetaTableName
+                       " (key,value) VALUES "
+                       "('schemaClass','%s'),"
+                       "('schemaVersion','%d'),"
+                       "('definitionsVersion','%s'),"
+                       "('migrationState','complete'); "
+                       "COMMIT;",
+                       dbClass,cmeInternalDBSchemaVersion,cmeInternalDBDefinitionsVersion);
+    result=cmeSQLRows(pDB,sqlQuery,NULL,NULL);
+    cmeSetInternalDBSchemaVersionFree();
+    return(result?1:0);
+}
+
+int cmeCheckInternalDBSchema(sqlite3 *pDB, const char *dbClass, int allowLegacy)
+{
+    int result,hasMeta=0;
+
+    result=cmeDBTableExists(pDB,cmeInternalDBSchemaMetaTableName,&hasMeta);
+    if (result)
+    {
+        return(1);
+    }
+    if (!hasMeta)
+    {
+        if (!allowLegacy)
+        {
+#ifdef ERROR_LOG
+            if (!getenv("CDSE_SUPPRESS_SCHEMA_ERROR_LOG"))
+            {
+                fprintf(stderr,"CaumeDSE Error: cmeCheckInternalDBSchema(), missing schema metadata for %s.\n",
+                        dbClass);
+            }
+#endif
+            return(2);
+        }
+        return(cmeCheckInternalDBClassColumns(pDB,dbClass,1)?3:0);
+    }
+    result=cmeCheckInternalDBSchemaMetadata(pDB,dbClass);
+    if (result)
+    {
+        return(4);
+    }
+    return(cmeCheckInternalDBClassColumns(pDB,dbClass,0)?5:0);
+}
+
+static int cmeEnsureLogsDBTextColumn(sqlite3 *pDB, const char *columnName)
+{
+    int result,matches=0;
+    char *sqlQuery=NULL;
+    cmeInternalDBColumnSpec columnSpec={cmeIDDLogsDBTransactionsTableName,columnName,"TEXT"};
+    #define cmeEnsureLogsDBTextColumnFree() \
+        do { \
+            cmeFree(sqlQuery); \
+        } while (0); //Local free() macro.
+
+    result=cmeDBColumnMatches(pDB,&columnSpec,&matches);
+    if ((!result)&&(matches))
+    {
+        return(0);
+    }
+    cmeStrConstrAppend(&sqlQuery,"ALTER TABLE " cmeIDDLogsDBTransactionsTableName " ADD COLUMN %s TEXT;",
+                       columnName);
+    result=sqlite3_exec(pDB,sqlQuery,NULL,NULL,NULL);
+    if (result!=SQLITE_OK)
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeEnsureLogsDBTransactionsSchema(), can't add LogsDB column '%s': %s.\n",
+                columnName,sqlite3_errmsg(pDB));
+#endif
+        cmeEnsureLogsDBTextColumnFree();
+        return(1);
+    }
+    cmeEnsureLogsDBTextColumnFree();
+    return(0);
+}
+
+int cmeEnsureLogsDBTransactionsSchema(sqlite3 *pDB)
+{
+    int cont,result,exists=0;
+    char *sqlQuery=NULL;
+    const char *columns[]={
+        cmeIDDanydb_userId_name,
+        cmeIDDanydb_orgId_name,
+        cmeIDDanydb_salt_name,
+        cmeIDDLogsDBTransactions_requestMethod_name,
+        cmeIDDLogsDBTransactions_requestUrl_name,
+        cmeIDDLogsDBTransactions_requestHeaders_name,
+        cmeIDDLogsDBTransactions_startTimestamp_name,
+        cmeIDDLogsDBTransactions_endTimestamp_name,
+        cmeIDDLogsDBTransactions_requestDataSize_name,
+        cmeIDDLogsDBTransactions_responseDataSize_name,
+        cmeIDDLogsDBTransactions_orgResourceId_name,
+        cmeIDDLogsDBTransactions_requestIPAddress_name,
+        cmeIDDLogsDBTransactions_responseCode_name,
+        cmeIDDLogsDBTransactions_responseHeaders_name,
+        cmeIDDLogsDBTransactions_authenticated_name
+    };
+    #define cmeEnsureLogsDBTransactionsSchemaFree() \
+        do { \
+            cmeFree(sqlQuery); \
+        } while (0); //Local free() macro.
+
+    result=cmeDBTableExists(pDB,cmeIDDLogsDBTransactionsTableName,&exists);
+    if (result)
+    {
+        return(1);
+    }
+    if (!exists)
+    {
+        cmeStrConstrAppend(&sqlQuery,
+                           "CREATE TABLE " cmeIDDLogsDBTransactionsTableName
+                           " (id INTEGER PRIMARY KEY, userId TEXT, orgId TEXT, salt TEXT,"
+                           " requestMethod TEXT, requestUrl TEXT, requestHeaders TEXT, startTimestamp TEXT,"
+                           " endTimestamp TEXT, requestDataSize TEXT, responseDataSize TEXT, orgResourceId TEXT,"
+                           " requestIPAddress TEXT, responseCode TEXT, responseHeaders TEXT, authenticated TEXT);");
+        result=sqlite3_exec(pDB,sqlQuery,NULL,NULL,NULL);
+        if (result!=SQLITE_OK)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeEnsureLogsDBTransactionsSchema(), can't create LogsDB transactions table: %s.\n",
+                    sqlite3_errmsg(pDB));
+#endif
+            cmeEnsureLogsDBTransactionsSchemaFree();
+            return(2);
+        }
+        cmeFree(sqlQuery);
+    }
+    for (cont=0;cont<(int)(sizeof(columns)/sizeof(columns[0]));cont++)
+    {
+        if (cmeEnsureLogsDBTextColumn(pDB,columns[cont]))
+        {
+            cmeEnsureLogsDBTransactionsSchemaFree();
+            return(3);
+        }
+    }
+    cmeStrConstrAppend(&sqlQuery,
+                       "CREATE INDEX IF NOT EXISTS idx_log_transactions_uo ON "
+                       cmeIDDLogsDBTransactionsTableName "(orgId,userId);");
+    result=sqlite3_exec(pDB,sqlQuery,NULL,NULL,NULL);
+    cmeEnsureLogsDBTransactionsSchemaFree();
+    return((result==SQLITE_OK)?0:4);
+}
+
 int cmeDBCreateOpen (const char *filename, sqlite3 **ppDB)
 {
     int result;

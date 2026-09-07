@@ -2543,14 +2543,7 @@ static int cmeLogsSchemaReady=0;
 
 static int cmeWebServiceEnsureLogsTransactionsTable(sqlite3 *pDB)
 {
-    int cont,result=0,found=0;
-    char *sqlCreate=NULL;
-    const char *tableName=cmeIDDLogsDBTransactionsTableName;
-    #define cmeWebServiceEnsureLogsTransactionsTableFree() \
-        do { \
-            cmeFree(sqlCreate); \
-            cmeResultMemTableClean(); \
-        } while (0); //Local free() macro.
+    int result=0;
 
     pthread_mutex_lock(&cmeLogsSchemaMutex);
     if (cmeLogsSchemaReady)
@@ -2558,56 +2551,16 @@ static int cmeWebServiceEnsureLogsTransactionsTable(sqlite3 *pDB)
         pthread_mutex_unlock(&cmeLogsSchemaMutex);
         return(0);
     }
-    result=cmeMemTableWithTableColumnNames(pDB,tableName);
-    if (!result)
+    result=cmeEnsureLogsDBTransactionsSchema(pDB);
+    if (result)
     {
-        for (cont=0; cont<cmeResultMemTableCols; cont++)
-        {
-            if (!strcmp(cmeResultMemTable[cont],cmeIDDLogsDBTransactions_requestMethod_name))
-            {
-                found=1;
-                break;
-            }
-        }
-        cmeResultMemTableClean();
-    }
-    if (result || !found)
-    {
-        cmeStrConstrAppend(&sqlCreate,
-                           "BEGIN TRANSACTION; DROP TABLE IF EXISTS \"%s\"; ",
-                           tableName);
-        cmeStrConstrAppend(&sqlCreate,
-                           "CREATE TABLE \"%s\" (" cmeIDDanydb_id_name " INTEGER PRIMARY KEY, "
-                           cmeIDDanydb_userId_name " TEXT, " cmeIDDanydb_orgId_name " TEXT, "
-                           cmeIDDanydb_salt_name " TEXT, " cmeIDDLogsDBTransactions_requestMethod_name " TEXT, "
-                           cmeIDDLogsDBTransactions_requestUrl_name " TEXT, "
-                           cmeIDDLogsDBTransactions_requestHeaders_name " TEXT, "
-                           cmeIDDLogsDBTransactions_startTimestamp_name " TEXT, "
-                           cmeIDDLogsDBTransactions_endTimestamp_name " TEXT, "
-                           cmeIDDLogsDBTransactions_requestDataSize_name " TEXT, "
-                           cmeIDDLogsDBTransactions_responseDataSize_name " TEXT, "
-                           cmeIDDLogsDBTransactions_orgResourceId_name " TEXT, "
-                           cmeIDDLogsDBTransactions_requestIPAddress_name " TEXT, "
-                           cmeIDDLogsDBTransactions_responseCode_name " TEXT, "
-                           cmeIDDLogsDBTransactions_responseHeaders_name " TEXT, "
-                           cmeIDDLogsDBTransactions_authenticated_name " TEXT); "
-                           "CREATE INDEX \"idx_log_%s_uo\" ON \"%s\"("
-                           cmeIDDanydb_orgId_name "," cmeIDDanydb_userId_name "); COMMIT;",
-                           tableName,tableName,tableName);
-        result=cmeSQLRows(pDB,sqlCreate,NULL,NULL);
-        if (result)
-        {
 #ifdef ERROR_LOG
-            fprintf(stderr,"CaumeDSE Error: cmeWebServiceEnsureLogsTransactionsTable(), can't create table %s!\n",
-                    tableName);
+        fprintf(stderr,"CaumeDSE Error: cmeWebServiceEnsureLogsTransactionsTable(), can't ensure LogsDB transactions schema!\n");
 #endif
-            cmeWebServiceEnsureLogsTransactionsTableFree();
-            pthread_mutex_unlock(&cmeLogsSchemaMutex);
-            return(1);
-        }
+        pthread_mutex_unlock(&cmeLogsSchemaMutex);
+        return(1);
     }
     cmeLogsSchemaReady=1;
-    cmeWebServiceEnsureLogsTransactionsTableFree();
     pthread_mutex_unlock(&cmeLogsSchemaMutex);
     return(0);
 }
@@ -15661,6 +15614,18 @@ int cmeWebServiceLogRequest (const char *userId, const char *orgId, const char *
                 return(1);
     }
     result=cmeWebServiceEnsureLogsTransactionsTable(pDB);
+    if (result)
+    {
+        cmeWebServiceLogRequestFree();
+        return(2);
+    }
+    result=cmeCheckInternalDBSchema(pDB,cmeInternalDBSchemaClassLogs,1);
+    if (result)
+    {
+        cmeWebServiceLogRequestFree();
+        return(2);
+    }
+    result=cmeSetInternalDBSchemaVersion(pDB,cmeInternalDBSchemaClassLogs);
     if (result)
     {
         cmeWebServiceLogRequestFree();

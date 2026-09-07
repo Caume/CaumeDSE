@@ -2099,6 +2099,15 @@ check_component engine_admin_db 'cmeSetupEngineAdminDBs|ResourcesDB|RolesDB|Logs
     'RolesDB' \
     'LogsDB'
 
+check_component internal_db_schema_versioning 'testInternalDBSchemaVersioning|schema version|migration state|ColumnFile' "$FULL_LOG" \
+    'current schema metadata accepted' \
+    'legacy missing-version policy enforced' \
+    'future schema version rejected' \
+    'missing-column schema rejected' \
+    'wrong-type schema rejected' \
+    'partial migration state rejected' \
+    'ColumnFile schema metadata accepted'
+
 check_component role_tables_resource 'Testing roleTables resource handlers|testRoleTables|roleTables resource' "$FULL_LOG" \
     '--- Testing roleTables resource handlers:' \
     'TESTS: testRoleTables(), PASS: roleTables resource POST responseCode=201' \

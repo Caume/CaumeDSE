@@ -332,12 +332,32 @@ int cmeSetupEngineAdminDBs ()
         fprintf(stdout,"CaumeDSE Debug: cmeSetupEngineAdminDBs(), DB file %s already exists;"
                 " skipping.\n",currentDBName);
 #endif
+        result=cmeCheckInternalDBSchema(currentDB,cmeInternalDBSchemaClassResources,1);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), incompatible ResourcesDB schema "
+                    "in DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(1);
+        }
         result=cmeEnsureResourcesDBDocumentLookups(currentDB);
         if (result)
         {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), cmeEnsureResourcesDBDocumentLookups() failed "
                     "with Engine Admin. DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(1);
+        }
+        result=cmeSetInternalDBSchemaVersion(currentDB,cmeInternalDBSchemaClassResources);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), can't write ResourcesDB schema metadata "
+                    "in DB file: %s!\n",currentDBName);
 #endif
             cmeSetupEngineAdminDBsFree();
             return(1);
@@ -405,6 +425,16 @@ int cmeSetupEngineAdminDBs ()
             cmeSetupEngineAdminDBsFree();
             return(3);
         }
+        result=cmeSetInternalDBSchemaVersion(currentDB,cmeInternalDBSchemaClassResources);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), can't write ResourcesDB schema metadata "
+                    "in DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(3);
+        }
         createAdmin=1; //We set flag to create default admin userId, userId's roles, orgId and storageId.
         cmeSetupEngineAdminDBsFree();
     }
@@ -417,6 +447,26 @@ int cmeSetupEngineAdminDBs ()
         fprintf(stdout,"CaumeDSE Debug: cmeSetupEngineAdminDBs(), DB file %s already exists;"
                 " skipping.\n",currentDBName);
 #endif
+        result=cmeCheckInternalDBSchema(currentDB,cmeInternalDBSchemaClassRoles,1);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), incompatible RolesDB schema "
+                    "in DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(4);
+        }
+        result=cmeSetInternalDBSchemaVersion(currentDB,cmeInternalDBSchemaClassRoles);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), can't write RolesDB schema metadata "
+                    "in DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(4);
+        }
         cmeSetupEngineAdminDBsFree();
     }
     else
@@ -547,6 +597,16 @@ int cmeSetupEngineAdminDBs ()
             cmeSetupEngineAdminDBsFree();
             return(6);
         }
+        result=cmeSetInternalDBSchemaVersion(currentDB,cmeInternalDBSchemaClassRoles);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), can't write RolesDB schema metadata "
+                    "in DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(6);
+        }
         createAdmin=1; //We set flag to create default admin userId, userId's roles, orgId and storageId.
         cmeSetupEngineAdminDBsFree();
     }
@@ -559,6 +619,36 @@ int cmeSetupEngineAdminDBs ()
         fprintf(stdout,"CaumeDSE Debug: cmeSetupEngineAdminDBs(), DB file %s already exists;"
                 " skipping.\n",currentDBName);
 #endif
+        result=cmeEnsureLogsDBTransactionsSchema(currentDB);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), can't upgrade LogsDB schema "
+                    "in DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(7);
+        }
+        result=cmeCheckInternalDBSchema(currentDB,cmeInternalDBSchemaClassLogs,1);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), incompatible LogsDB schema "
+                    "in DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(7);
+        }
+        result=cmeSetInternalDBSchemaVersion(currentDB,cmeInternalDBSchemaClassLogs);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), can't write LogsDB schema metadata "
+                    "in DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(7);
+        }
         cmeSetupEngineAdminDBsFree();
     }
     else
@@ -594,6 +684,16 @@ int cmeSetupEngineAdminDBs ()
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), cmeSQLRows() Error, can't "
                     "create tables in DB file: %s!\n",currentDBName);
+#endif
+            cmeSetupEngineAdminDBsFree();
+            return(9);
+        }
+        result=cmeSetInternalDBSchemaVersion(currentDB,cmeInternalDBSchemaClassLogs);
+        if (result)
+        {
+#ifdef ERROR_LOG
+            fprintf(stderr,"CaumeDSE Error: cmeSetupEngineAdminDBs(), can't write LogsDB schema metadata "
+                    "in DB file: %s!\n",currentDBName);
 #endif
             cmeSetupEngineAdminDBsFree();
             return(9);

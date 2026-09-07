@@ -1082,7 +1082,7 @@
     - Batch 5: document deployment guidance, retention expectations, and how metrics relate to existing LogsDB and `CaumeDSE AuditJSON` events.
   - Done: added public-safe in-process runtime metrics with fixed method/status labels only, covering request totals, authentication failures, authorization denials, parser policy denials, parser timeouts, parser limit rejections, placeholder DB/crypto failure counters, uptime, and runtime/parser limits. Exposed `/metrics` with JSON by default and Prometheus text via `outputType=prometheus`, advertised it from `/agentCapabilities` and OpenAPI, documented process-local retention and LogsDB/AuditJSON correlation boundaries, and added live HTTP(S) verifier checks for both formats.
 
-- [ ] #112 Add explicit internal database schema versioning and migration checks.
+- [x] #112 Add explicit internal database schema versioning and migration checks.
   - Source: ResourcesDB, AdminDB, RolesDB, LogsDB, ColumnFile DB creation/open paths, `db.c`, `engine_admin.c`, `engine_interface.c`, `filehandling.c`, docs, and verifier fixtures.
   - Goal: make schema compatibility explicit so future table or metadata changes fail clearly, support planned migrations safely, and avoid implicit assumptions when opening older or partially upgraded databases.
   - Plan:
@@ -1091,6 +1091,7 @@
     - Batch 3: define migration policy for each database class: read-compatible legacy opens, explicit upgrade command/sample workflow, and fail-closed behavior for ambiguous or partially migrated states.
     - Batch 4: add DEBUG/component fixtures for current, legacy, missing-version, future-version, missing-column, wrong-type, and partial-migration cases.
     - Batch 5: document operator upgrade and rollback expectations, including how schema versioning interacts with key re-protect, backups, Herradura profiles, and CI verifier data.
+  - Done: added `schema_meta` metadata with schema class/version/definitions/state fields, public DB helpers for stamping and validating internal SQLite schemas, startup validation for ResourcesDB/RolesDB/LogsDB, explicit legacy upgrade handling for ResourcesDB lookup columns and LogsDB transaction columns, and strict failure for future versions, incomplete metadata, partial migration state, missing columns, and wrong column types. Added DEBUG/component fixtures for current, legacy missing-version, future-version, missing-column, wrong-type, partial-migration, and ColumnFile cases, plus README operator guidance for backup/readback/rollback expectations.
 
 - [ ] #113 Add negative and tamper fixtures for secure database files.
   - Source: `TEST/testfiles/`, `debug_tests.c`, `function_tests.c`, `filehandling.c`, `db.c`, `crypto.c`, and `TEST/run_debug_components.sh`.
