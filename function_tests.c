@@ -60,6 +60,7 @@ void testContentColumns(void);
 void testDBBrowsing(void);
 void testParserTempFiles(void);
 void testInternalDBSchemaVersioning(void);
+void testSecureDBTamperFixtures(void);
 
 static int cmeDebugTestsNonInteractiveEnabled(void)
 {
@@ -89,6 +90,44 @@ static void cmeTestPrintMarker(const char *marker)
             remaining-=written;
         }
         fflush(stdout);
+    }
+}
+
+static int cmeTestSuppressStderrBegin(int *savedStderr)
+{
+    int nullFd;
+
+    fflush(stderr);
+    *savedStderr=dup(STDERR_FILENO);
+    if (*savedStderr<0)
+    {
+        return(1);
+    }
+    nullFd=open("/dev/null",O_WRONLY);
+    if (nullFd<0)
+    {
+        close(*savedStderr);
+        *savedStderr=-1;
+        return(2);
+    }
+    if (dup2(nullFd,STDERR_FILENO)<0)
+    {
+        close(nullFd);
+        close(*savedStderr);
+        *savedStderr=-1;
+        return(3);
+    }
+    close(nullFd);
+    return(0);
+}
+
+static void cmeTestSuppressStderrEnd(int savedStderr)
+{
+    if (savedStderr>=0)
+    {
+        fflush(stderr);
+        dup2(savedStderr,STDERR_FILENO);
+        close(savedStderr);
     }
 }
 
@@ -1612,6 +1651,188 @@ void testInternalDBSchemaVersioning(void)
     unsetenv("CDSE_SUPPRESS_SCHEMA_ERROR_LOG");
 }
 
+static int cmeTestCreateSecureDBTamperFixture(sqlite3 **db, const char *profile)
+{
+    int result;
+    char *sql=NULL;
+
+    *db=NULL;
+    if (cmeMemDBCreateOpen(db))
+    {
+        return(1);
+    }
+    cmeStrConstrAppend(&sql,
+                       "BEGIN TRANSACTION;"
+                       "CREATE TABLE data (id INTEGER PRIMARY KEY,userId TEXT,orgId TEXT,salt TEXT,value TEXT,rowOrder TEXT,MAC TEXT,sign TEXT,MACProtected TEXT,signProtected TEXT,otphDKey TEXT);"
+                       "CREATE TABLE meta (id INTEGER PRIMARY KEY,userId TEXT,orgId TEXT,salt TEXT,attribute TEXT,attributeData TEXT);"
+                       "INSERT INTO data VALUES (1,'UserTamper','OrgTamper','','alpha','1','','','','','');"
+                       "INSERT INTO data VALUES (2,'UserTamper','OrgTamper','','beta','2','','','','','');"
+                       "INSERT INTO meta VALUES (1,'UserTamper','OrgTamper','','protect','%s');"
+                       "INSERT INTO meta VALUES (2,'UserTamper','OrgTamper','','MAC','%s');"
+                       "INSERT INTO meta VALUES (3,'UserTamper','OrgTamper','','MACProtected','%s');"
+                       "INSERT INTO meta VALUES (4,'UserTamper','OrgTamper','','sign','%s');"
+                       "INSERT INTO meta VALUES (5,'UserTamper','OrgTamper','','signProtected','%s');"
+                       "COMMIT;",
+                       profile,cmeDefaultMACAlg,cmeDefaultMACAlg,cmeDefaultMACAlg,cmeDefaultMACAlg);
+    result=cmeSQLRows(*db,sql,NULL,NULL);
+    cmeFree(sql);
+    if (!result)
+    {
+        result=cmeSetInternalDBSchemaVersion(*db,cmeInternalDBSchemaClassColumnFile);
+    }
+    if (!result)
+    {
+        result=cmeMemSecureDBProtect(*db,"tamper-key");
+    }
+    if (result)
+    {
+        cmeDBClose(*db);
+        *db=NULL;
+        return(2);
+    }
+    return(0);
+}
+
+static int cmeTestSecureDBTamperCase(const char *marker, const char *tamperSQL)
+{
+    int result;
+    int savedStderr=-1;
+    int suppressResult;
+    sqlite3 *db=NULL;
+
+    result=cmeTestCreateSecureDBTamperFixture(&db,cmeDefaultEncAlg);
+    if (result)
+    {
+        printf("TESTS: testSecureDBTamperFixtures(), FAIL: %s fixture setup result=%d.\n",marker,result);
+        return(1);
+    }
+    result=cmeSQLRows(db,tamperSQL,NULL,NULL);
+    if (!result)
+    {
+        suppressResult=cmeTestSuppressStderrBegin(&savedStderr);
+        result=cmeMemSecureDBUnprotect(db,"tamper-key");
+        if (!suppressResult)
+        {
+            cmeTestSuppressStderrEnd(savedStderr);
+        }
+    }
+    if (result)
+    {
+        printf("TESTS: testSecureDBTamperFixtures(), PASS: %s rejected.\n",marker);
+        cmeDBClose(db);
+        return(0);
+    }
+    printf("TESTS: testSecureDBTamperFixtures(), FAIL: %s accepted.\n",marker);
+    cmeDBClose(db);
+    return(1);
+}
+
+void testSecureDBTamperFixtures(void)
+{
+    int errors=0;
+    int result;
+    int savedStderr=-1;
+    int rows=0;
+    int cols=0;
+    char **table=NULL;
+    sqlite3 *db=NULL;
+
+    printf("--- Testing secure DB tamper fixtures:\n");
+    result=cmeTestCreateSecureDBTamperFixture(&db,cmeDefaultEncAlg);
+    if (!result &&
+        !cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassColumnFile,0) &&
+        !cmeMemSecureDBUnprotect(db,"tamper-key") &&
+        !cmeMemTable(db,"SELECT value FROM data ORDER BY id;",&table,&rows,&cols) &&
+        rows==2 && cols==1 &&
+        !strcmp(table[1],"alpha") &&
+        !strcmp(table[2],"beta"))
+    {
+        printf("TESTS: testSecureDBTamperFixtures(), PASS: baseline secure DB read succeeded.\n");
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testSecureDBTamperFixtures(), FAIL: baseline secure DB read failed.\n");
+    }
+    if (table) { cmeMemTableFinal(table); table=NULL; }
+    if (db) { cmeDBClose(db); db=NULL; }
+
+    errors+=cmeTestSecureDBTamperCase("row salt tamper",
+                                      "UPDATE data SET salt=(CASE substr(salt,1,2) WHEN '00' THEN '01' ELSE '00' END)||substr(salt,3) WHERE id=1;");
+    errors+=cmeTestSecureDBTamperCase("protected value tamper",
+                                      "UPDATE data SET value=(CASE substr(value,1,1) WHEN 'A' THEN 'B' ELSE 'A' END)||substr(value,2) WHERE id=1;");
+    errors+=cmeTestSecureDBTamperCase("MAC tamper",
+                                      "UPDATE data SET MAC=(CASE substr(MAC,1,1) WHEN '0' THEN '1' ELSE '0' END)||substr(MAC,2) WHERE id=1;");
+    errors+=cmeTestSecureDBTamperCase("MACProtected tamper",
+                                      "UPDATE data SET MACProtected=(CASE substr(MACProtected,1,1) WHEN '0' THEN '1' ELSE '0' END)||substr(MACProtected,2) WHERE id=1;");
+    errors+=cmeTestSecureDBTamperCase("sign tamper",
+                                      "UPDATE data SET sign=(CASE substr(sign,1,1) WHEN '0' THEN '1' ELSE '0' END)||substr(sign,2) WHERE id=1;");
+    errors+=cmeTestSecureDBTamperCase("signProtected tamper",
+                                      "UPDATE data SET signProtected=(CASE substr(signProtected,1,1) WHEN '0' THEN '1' ELSE '0' END)||substr(signProtected,2) WHERE id=1;");
+    errors+=cmeTestSecureDBTamperCase("missing metadata tamper",
+                                      "DELETE FROM meta WHERE id=1;");
+
+    if (!cmeTestSuppressStderrBegin(&savedStderr))
+    {
+        result=cmeTestCreateSecureDBTamperFixture(&db,"unsupported-profile");
+        cmeTestSuppressStderrEnd(savedStderr);
+    }
+    else
+    {
+        result=cmeTestCreateSecureDBTamperFixture(&db,"unsupported-profile");
+    }
+    if (result)
+    {
+        printf("TESTS: testSecureDBTamperFixtures(), PASS: malformed profile id rejected.\n");
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testSecureDBTamperFixtures(), FAIL: malformed profile id accepted.\n");
+        cmeDBClose(db);
+        db=NULL;
+    }
+
+    result=cmeTestCreateSecureDBTamperFixture(&db,cmeDefaultEncAlg);
+    if (!result &&
+        !cmeSQLRows(db,"UPDATE schema_meta SET value='999' WHERE key='schemaVersion';",NULL,NULL))
+    {
+        if (!cmeTestSuppressStderrBegin(&savedStderr))
+        {
+            result=cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassColumnFile,0);
+            cmeTestSuppressStderrEnd(savedStderr);
+        }
+        else
+        {
+            result=cmeCheckInternalDBSchema(db,cmeInternalDBSchemaClassColumnFile,0);
+        }
+        if (result)
+        {
+            printf("TESTS: testSecureDBTamperFixtures(), PASS: schema metadata tamper rejected.\n");
+        }
+        else
+        {
+            errors++;
+            printf("TESTS: testSecureDBTamperFixtures(), FAIL: schema metadata tamper accepted.\n");
+        }
+    }
+    else
+    {
+        errors++;
+        printf("TESTS: testSecureDBTamperFixtures(), FAIL: schema metadata tamper setup failed.\n");
+    }
+    if (db) { cmeDBClose(db); db=NULL; }
+
+    if (errors)
+    {
+        printf("TESTS: testSecureDBTamperFixtures(), FAIL: %d tamper cases failed.\n",errors);
+    }
+    else
+    {
+        printf("TESTS: testSecureDBTamperFixtures(), PASS: salt, value, MAC, MACProtected, sign, signProtected, metadata, profile, and schema tamper cases rejected.\n");
+    }
+}
+
 void testCSV ()
 {
     int cont, cont2, result __attribute__((unused));
@@ -1870,6 +2091,7 @@ void testCSV ()
     }
 
     cmeDBClose(pResourcesDB);
+    testSecureDBTamperFixtures();
     testContentRows();
     testContentColumns();
     testDBBrowsing();

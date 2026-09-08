@@ -1093,7 +1093,7 @@
     - Batch 5: document operator upgrade and rollback expectations, including how schema versioning interacts with key re-protect, backups, Herradura profiles, and CI verifier data.
   - Done: added `schema_meta` metadata with schema class/version/definitions/state fields, public DB helpers for stamping and validating internal SQLite schemas, startup validation for ResourcesDB/RolesDB/LogsDB, explicit legacy upgrade handling for ResourcesDB lookup columns and LogsDB transaction columns, and strict failure for future versions, incomplete metadata, partial migration state, missing columns, and wrong column types. Added DEBUG/component fixtures for current, legacy missing-version, future-version, missing-column, wrong-type, partial-migration, and ColumnFile cases, plus README operator guidance for backup/readback/rollback expectations.
 
-- [ ] #113 Add negative and tamper fixtures for secure database files.
+- [x] #113 Add negative and tamper fixtures for secure database files.
   - Source: `TEST/testfiles/`, `debug_tests.c`, `function_tests.c`, `filehandling.c`, `db.c`, `crypto.c`, and `TEST/run_debug_components.sh`.
   - Goal: prove protected SQLite-backed storage fails closed with useful diagnostics when salts, MACs, signatures, profile metadata, frames, column files, or SQLite contents are modified or truncated.
   - Plan:
@@ -1102,6 +1102,7 @@
     - Batch 3: add DEBUG tests that attempt normal read, content row/column read, DB browsing, parser execution, and delete/cleanup paths against each tampered fixture and assert authentication or integrity failure.
     - Batch 4: extend live verifier coverage with a focused tamper profile that operates on disposable storage, mutates backing files between requests, and verifies safe HTTP error envelopes for JSON clients.
     - Batch 5: document expected failure diagnostics and maintain a fixture matrix so new storage profiles, schema versions, and integrity attributes add matching tamper coverage.
+  - Done: added deterministic DEBUG secure-DB tamper fixtures for row salt, protected value, `MAC`, `MACProtected`, `sign`, `signProtected`, missing metadata, malformed profile ids, and schema metadata changes. Protected-value unprotect failures now propagate as integrity failures instead of silently returning an empty value, and the DEBUG component verifier records a `securedb_tamper_fixtures` matrix with expected fail-closed diagnostics suppressed only around intentional negative checks.
 
 - [x] #114 Add focused content-column DEBUG progress tracing.
   - Source: `function_tests.c`.
