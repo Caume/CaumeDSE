@@ -2108,6 +2108,19 @@ check_component internal_db_schema_versioning 'testInternalDBSchemaVersioning|sc
     'partial migration state rejected' \
     'ColumnFile schema metadata accepted'
 
+check_component securedb_tamper_fixtures 'testSecureDBTamperFixtures|secure DB tamper|tamper .*rejected' "$FULL_LOG" \
+    'TESTS: testSecureDBTamperFixtures(), PASS: baseline secure DB read succeeded.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: row salt tamper rejected.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: protected value tamper rejected.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: MAC tamper rejected.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: MACProtected tamper rejected.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: sign tamper rejected.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: signProtected tamper rejected.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: missing metadata tamper rejected.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: malformed profile id rejected.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: schema metadata tamper rejected.' \
+    'TESTS: testSecureDBTamperFixtures(), PASS: salt, value, MAC, MACProtected, sign, signProtected, metadata, profile, and schema tamper cases rejected.'
+
 check_component role_tables_resource 'Testing roleTables resource handlers|testRoleTables|roleTables resource' "$FULL_LOG" \
     '--- Testing roleTables resource handlers:' \
     'TESTS: testRoleTables(), PASS: roleTables resource POST responseCode=201' \

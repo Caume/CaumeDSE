@@ -2916,7 +2916,7 @@ int cmeUnprotectDBValue (const char *protectedValue, char **value, const char *e
         return(0); //Not an error, just a warning!
     }
     result=cmeUnprotectByteString(protectedValue,value,encAlg,salt,orgKey,valueLen,strlen(protectedValue));
-    if (result) //Unprotect failed. Return empty string.
+    if (result) //Unprotect failed. Return empty string and signal integrity failure.
     {
         cmeFree(*value); //Clean value; we will return an empty string.
         *valueLen=0;
@@ -2925,6 +2925,7 @@ int cmeUnprotectDBValue (const char *protectedValue, char **value, const char *e
         fprintf(stderr,"CaumeDSE Debug: cmeUnprotectDBValue(), cmeUnprotectByteString() Warning, can't "
                 "unprotect 'protectedValue' len=%zu with algorithm %s and key <redacted>!\n",strlen(protectedValue),encAlg);
 #endif
+        return(2);
     }
     else //Unprotect successful.
     {
