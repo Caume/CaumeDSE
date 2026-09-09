@@ -1466,6 +1466,76 @@ PY
     rm -f "$rag_log" "$rag_config"
 }
 
+tamper_live_securedb_value() {
+    local protocol="$1"
+    local storage_path="$2"
+    local log="$LOG_ROOT/live_${protocol}_securedb_tamper_mutation.log"
+
+    : > "$log"
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        record_skip "live_${protocol}_securedb_tamper_mutation" "python3 is required for secure DB tamper mutation"
+        return 1
+    fi
+
+    if ! python3 - "$storage_path" > "$log" 2>&1 <<'PY'
+import os
+import sqlite3
+import sys
+
+storage_path = sys.argv[1]
+for dirpath, _, filenames in os.walk(storage_path):
+    for filename in sorted(filenames):
+        path = os.path.join(dirpath, filename)
+        try:
+            conn = sqlite3.connect(path)
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            if not {"data", "meta"}.issubset(tables):
+                conn.close()
+                continue
+            row = conn.execute(
+                "SELECT id FROM data WHERE value IS NOT NULL AND length(value)>1 "
+                "ORDER BY id LIMIT 1"
+            ).fetchone()
+            if not row:
+                conn.close()
+                continue
+            conn.execute(
+                "UPDATE data SET value="
+                "(CASE substr(value,1,1) WHEN 'A' THEN 'B' ELSE 'A' END)"
+                "||substr(value,2) WHERE id=?",
+                (row[0],),
+            )
+            conn.commit()
+            conn.close()
+            print(f"tampered_sqlite={path}")
+            print(f"tampered_row={row[0]}")
+            raise SystemExit(0)
+        except sqlite3.Error:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            continue
+print(f"no_tamperable_secure_db_found={storage_path}")
+raise SystemExit(2)
+PY
+    then
+        redact_file_in_place "$log"
+        record_fail "live_${protocol}_securedb_tamper_mutation" "could not mutate secure DB value log=$log"
+        return 1
+    fi
+
+    redact_file_in_place "$log"
+    record_pass "live_${protocol}_securedb_tamper_mutation"
+    return 0
+}
+
 stop_live_service() {
     local pid="$1"
 
@@ -1625,7 +1695,10 @@ run_live_web_flow() {
     local org_key="${LIVE_FLOW_ID}${protocol}"
     local storage_name="${LIVE_FLOW_ID}_${protocol}_storage"
     local storage_path="$LOG_ROOT/live_${protocol}_storage"
+    local tamper_storage_name="${LIVE_FLOW_ID}_${protocol}_tamper_storage"
+    local tamper_storage_path="$LOG_ROOT/live_${protocol}_tamper_storage"
     local csv_name="${LIVE_FLOW_ID}_${protocol}.csv"
+    local tamper_csv_name="${LIVE_FLOW_ID}_${protocol}_tamper.csv"
     local large_csv_name="${LIVE_FLOW_ID}_${protocol}_large.csv"
     local column_doc_name="${LIVE_FLOW_ID}_${protocol}_columns.csv"
     local script_name="${LIVE_FLOW_ID}_${protocol}.pl"
@@ -1664,6 +1737,7 @@ run_live_web_flow() {
         protocol_label="HTTP"
     fi
     mkdir -p "$storage_path"
+    mkdir -p "$tamper_storage_path"
 
     note "RUN  live_${protocol}_api_flow"
     LIVE_FLOW_FAILED=0
@@ -1774,6 +1848,21 @@ run_live_web_flow() {
     live_api_check "$protocol" table_column_json_get 200 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableColumns/name?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
     live_api_check "$protocol" db_browse_bad_row 403 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/0?$auth&newOrgKey=$org_key" "" "${curl_tls_args[@]}"
     live_api_check "$protocol" json_error_forbidden 403 "$base_url/organizations/$org_name/storage/$storage_name/dbNames/$csv_name/dbTables/data/tableRows/0?$auth&newOrgKey=$org_key&outputType=json" '"code":"forbidden"' "${curl_tls_args[@]}"
+    live_api_check "$protocol" securedb_tamper_storage_post 201 "$base_url/organizations/$org_name/storage/$tamper_storage_name?$auth&newOrgKey=$org_key&*resourceInfo=live%20$protocol%20tamper%20storage&*location=localhost&*type=local&*accessPath=$tamper_storage_path&*accessUser=undefined&*accessPassword=undefined" "" "${curl_tls_args[@]}" -X POST
+    live_api_check "$protocol" securedb_tamper_upload_csv 201 "$base_url/organizations/$org_name/storage/$tamper_storage_name/documentTypes/file.csv/documents/$tamper_csv_name" "" "${curl_tls_args[@]}" \
+        -F "file=@$ROOT_DIR/TEST/testfiles/live-api-small.csv" \
+        -F "userId=$user_id" \
+        -F "orgId=$org_name" \
+        -F "orgKey=$org_key" \
+        -F "newOrgKey=$org_key" \
+        -F "*resourceInfo=live $protocol tamper CSV"
+    live_api_check "$protocol" securedb_tamper_baseline_json 200 "$base_url/organizations/$org_name/storage/$tamper_storage_name/documentTypes/file.csv/documents/$tamper_csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=json" '"name":"Jacob"' "${curl_tls_args[@]}"
+    if tamper_live_securedb_value "$protocol" "$tamper_storage_path"; then
+        live_api_check "$protocol" securedb_tamper_content_json 500 "$base_url/organizations/$org_name/storage/$tamper_storage_name/documentTypes/file.csv/documents/$tamper_csv_name/contentRows/1?$auth&newOrgKey=$org_key&outputType=json" '"code":"internal_error"' "${curl_tls_args[@]}"
+        live_api_check "$protocol" securedb_tamper_dbbrowse_json 500 "$base_url/organizations/$org_name/storage/$tamper_storage_name/dbNames/$tamper_csv_name/dbTables/data/tableRows/1?$auth&newOrgKey=$org_key&outputType=json" '"code":"internal_error"' "${curl_tls_args[@]}"
+    else
+        LIVE_FLOW_FAILED=1
+    fi
     live_api_check "$protocol" upload_script 201 "$base_url/organizations/$org_name/storage/$storage_name/documentTypes/script.perl/documents/$script_name" "" "${curl_tls_args[@]}" \
         -F "file=@$ROOT_DIR/TEST/testfiles/test.pl" \
         -F "userId=$user_id" \

@@ -1148,3 +1148,8 @@
     - If tracing shows repeated DB/HMAC scanning or a loop, bound or optimize the route path.
     - If tracing shows marker interleaving only, relax markers to stable substrings while keeping meaningful coverage.
   - Done: optimized last-content-column DELETE to delete the already-matched document rows directly by SQLite id and remove their column files, avoiding a second generic protected DB scan; corrected content-column cleanup exits and removed the temporary trace instrumentation after the fix was verified.
+
+- [x] #119 Add live secure-DB tamper JSON coverage.
+  - Source: `TEST/run_debug_components.sh`.
+  - Goal: prove live HTTP(S) JSON clients receive safe structured errors when backing secure DB storage is modified between requests.
+  - Done: added a disposable per-protocol tamper storage profile to the live verifier, uploads a small CSV, verifies a baseline JSON read, mutates one protected SQLite `data.value` field under that storage path, and checks content-row and DB-browse JSON reads fail closed with safe internal-error envelopes.
