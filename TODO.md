@@ -363,8 +363,8 @@
     - Batch 1: add explicit parser execution limits for child-process parser runtimes, starting with Python timeout and output-file byte caps.
     - Batch 2: add shared parser result-size validation for both Perl and Python results, with clear DEBUG/error diagnostics and secure temporary-file cleanup on timeout/error paths.
     - Batch 3: add focused DEBUG/live verifier fixtures for normal parser execution, timeout, oversized output, and temporary-file cleanup behavior.
-    - Batch 4: document the limits and the remaining embedded-Perl boundary, then validate syntax, component markers, and focused live parser flows.
-  - Done: added compile-time parser limits for Python child-process timeout, Python output-file size, and shared parser result-table cells; Python parser temp files are still securely overwritten/deleted on timeout and oversized-output paths. Added live verifier fixtures for timeout and oversized output, extended HTTP/HTTPS live parser checks, documented the limits in README and TUTORIAL, and validated `bash -n TEST/run_debug_components.sh`, `make`, `TEST/run_debug_components.sh --skip-build --skip-web`, `TEST/run_debug_components.sh --web-protocol=http`, and `TEST/run_debug_components.sh --live-only --web-protocol=https`. Embedded Perl now shares the result-table cap; process-level Perl runtime isolation remains a future hardening step because it requires moving Perl execution out of the embedded interpreter path.
+    - Batch 4: document the limits and the remaining parser-runtime boundaries, then validate syntax, component markers, and focused live parser flows.
+  - Done: added compile-time parser limits for Python child-process timeout, Python output-file size, and shared parser result-table cells; Python parser temp files are still securely overwritten/deleted on timeout and oversized-output paths. Added live verifier fixtures for timeout and oversized output, extended HTTP/HTTPS live parser checks, documented the limits in README and TUTORIAL, and validated `bash -n TEST/run_debug_components.sh`, `make`, `TEST/run_debug_components.sh --skip-build --skip-web`, `TEST/run_debug_components.sh --web-protocol=http`, and `TEST/run_debug_components.sh --live-only --web-protocol=https`. Embedded Perl helper tests share the result-table cap; parserScripts Perl isolation was completed later in #73 and common child controls were completed in #74.
 
 - [x] #63 Add live negative authorization scenarios.
   - Source: `TEST/run_debug_components.sh`, roleTables/filterWhitelist/filterBlacklist routes, TLS client certificate setup.
@@ -1054,8 +1054,8 @@
     - Batch 3: add GitHub Actions jobs that run sanitizer builds for code/test changes, upload redacted failure logs, and preserve existing non-sanitizer CI as the compatibility baseline.
     - Batch 4: add sanitizer runtime options that fail on invalid accesses,
       integer undefined behavior, and use-after-scope where supported; keep
-      LeakSanitizer available for focused C-only reproductions because the full
-      verifier embeds Perl.
+      LeakSanitizer available for focused C-only reproductions because the
+      verifier still exercises legacy embedded-Perl helper tests.
     - Batch 5: document local parity commands, known platform limits, and how to reproduce sanitizer failures from CI artifacts.
   - Done: added DEBUG-only `--enable-SANITIZERS=address,undefined` configure
     support with sanitizer compile/link flag checks, frame pointers,
@@ -1065,7 +1065,7 @@
     `CDSE_VERIFY_SANITIZERS` for verifier-managed sanitizer builds. Added a
     separate GitHub Actions sanitizer job using `CC=clang`, DEBUG/test
     configuration, redacted logs, ASAN/UBSAN runtime options with full-verifier
-    leak detection disabled for embedded-Perl noise, `make`, `make check`,
+    leak detection disabled for legacy embedded-Perl helper noise, `make`, `make check`,
     installation, and `TEST/run_debug_components.sh --skip-build --skip-web`,
     while preserving the existing non-sanitizer CI baseline. Documented local
     parity commands, LeakSanitizer scope limits, and CI artifact expectations in
@@ -1153,3 +1153,8 @@
   - Source: `TEST/run_debug_components.sh`.
   - Goal: prove live HTTP(S) JSON clients receive safe structured errors when backing secure DB storage is modified between requests.
   - Done: added a disposable per-protocol tamper storage profile to the live verifier, uploads a small CSV, verifies a baseline JSON read, mutates one protected SQLite `data.value` field under that storage path, and checks content-row and DB-browse JSON reads fail closed with safe internal-error envelopes.
+
+- [x] #120 Reconcile Perl parser isolation documentation.
+  - Source: `TODO.md`, `README.md`.
+  - Goal: remove stale notes that describe process-level Perl parser isolation as future work after #73 and #74 moved parserScripts Perl execution to the child-process runner.
+  - Done: updated the parser-limit and sanitizer notes so they distinguish legacy/debug embedded-Perl helper coverage from live parserScripts, which now run Perl parser code in child processes with the common parser-child controls.

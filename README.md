@@ -2424,9 +2424,10 @@ sanitizer configure option:
 `--enable-SANITIZERS` accepts `address`, `undefined`, or
 `address,undefined`; `yes` selects both. Sanitizer builds are intentionally
 DEBUG-only and do not change normal release or default DEBUG builds. The full
-DEBUG verifier embeds Perl and currently runs with LeakSanitizer disabled to
-avoid external interpreter noise; use `detect_leaks=1` only for focused C-only
-reproductions where the embedded interpreter is not part of the signal.
+DEBUG verifier still exercises legacy embedded-Perl helper tests and currently
+runs with LeakSanitizer disabled to avoid external interpreter noise; use
+`detect_leaks=1` only for focused C-only reproductions where the embedded
+interpreter is not part of the signal.
 
 Pull requests run the GitHub Actions workflow in `.github/workflows/pr-ci.yml`.
 Documentation-only PRs run lightweight syntax and TODO-format checks. Code,
@@ -2439,7 +2440,8 @@ non-web component verifier has passed. A separate sanitizer job runs a Clang
 DEBUG build with AddressSanitizer and UndefinedBehaviorSanitizer, then executes
 `make`, `make check`, installation, and the non-web component verifier with
 redacted logs. The sanitizer job fails on invalid accesses and undefined
-behavior; LeakSanitizer is disabled for the full embedded-Perl verifier profile.
+behavior; LeakSanitizer is disabled for the full verifier profile because
+legacy embedded-Perl helper tests are still part of that run.
 Redacted verifier and sanitizer logs are uploaded as short-lived PR artifacts.
 
 The committed test database under `TEST/testDB_opt_cdse` uses
