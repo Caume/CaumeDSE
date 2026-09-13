@@ -190,6 +190,92 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  release-build:
+    name: Release Build And Install
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs_only != '1'
+    env:
+      CDSE_RELEASE_PREFIX: /tmp/cdse-release
+      CDSE_RELEASE_STAGE: /tmp/cdse-release-stage
+      CDSE_RELEASE_LOG_DIR: /tmp/cdse-ci-release
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            build-essential \
+            ca-certificates \
+            gawk \
+            libcrypt-dev \
+            libgnutls28-dev \
+            libmicrohttpd-dev \
+            libnsl-dev \
+            libperl-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            libtool \
+            perl \
+            pkg-config
+
+      - name: Refresh generated autotools files
+        run: autoreconf -fi
+
+      - name: Verify release rejects HTTP TLS-auth bypass
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$CDSE_RELEASE_LOG_DIR"
+          set +e
+          ./configure --prefix="$CDSE_RELEASE_PREFIX" --enable-BYPASSTLSAUTHINHTTP >"$CDSE_RELEASE_LOG_DIR/release-bypass-guard.log" 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] && grep -Fq -- "--enable-BYPASSTLSAUTHINHTTP requires --enable-DEBUG" "$CDSE_RELEASE_LOG_DIR/release-bypass-guard.log"; then
+            exit 0
+          fi
+          cat "$CDSE_RELEASE_LOG_DIR/release-bypass-guard.log"
+          exit 1
+
+      - name: Configure default release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./configure --prefix="$CDSE_RELEASE_PREFIX" 2>&1 | tee "$CDSE_RELEASE_LOG_DIR/configure.log"
+
+      - name: Build default release profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          make clean
+          make V=1 2>&1 | tee "$CDSE_RELEASE_LOG_DIR/build.log"
+
+      - name: Run release check target
+        shell: bash
+        run: |
+          set -euo pipefail
+          make check 2>&1 | tee "$CDSE_RELEASE_LOG_DIR/check.log"
+
+      - name: Stage default release installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          make install DESTDIR="$CDSE_RELEASE_STAGE" 2>&1 | tee "$CDSE_RELEASE_LOG_DIR/install.log"
+          test -x "$CDSE_RELEASE_STAGE$CDSE_RELEASE_PREFIX/cdse/bin/CaumeDSE"
+
+      - name: Upload release build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caumedse-release-build-logs
+          path: /tmp/cdse-ci-release
+          if-no-files-found: ignore
+          retention-days: 14
+
   sanitizer-build-and-verify:
     name: Sanitizer Build And Verify
     runs-on: ubuntu-latest

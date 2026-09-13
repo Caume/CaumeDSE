@@ -2447,7 +2447,9 @@ and retain their redacted summaries with the pull request:
   including `make check` and the non-web verifier.
 - Confirm the pull request CI jobs have passed. Treat a CI web-smoke socket
   limitation as acceptable only when its non-web component verifier passed and
-  the limitation is recorded in the job output.
+  the limitation is recorded in the job output. For code changes, also confirm
+  the default release configure/build/check/install job passed and its
+  bypass-rejection guard succeeded.
 - Do not attach unredacted logs, organization keys, private certificates, or
   generated key paths. State the commands run, pass/fail counts, skipped
   checks, and retained redacted artifact locations in the pull request.
@@ -2465,7 +2467,10 @@ DEBUG build with AddressSanitizer and UndefinedBehaviorSanitizer, then executes
 redacted logs. The sanitizer job fails on invalid accesses and undefined
 behavior; LeakSanitizer is disabled for the full verifier profile because
 legacy embedded-Perl helper tests are still part of that run.
-Redacted verifier and sanitizer logs are uploaded as short-lived PR artifacts.
+The default release job separately configures without DEBUG/test switches,
+builds, runs `make check`, stages an installation, and verifies that release
+configuration rejects the HTTP TLS-auth bypass. Verifier, sanitizer, and
+release-build diagnostics are uploaded as short-lived PR artifacts.
 
 The committed test database under `TEST/testDB_opt_cdse` uses
 `0CDBB9AF76AF43BDB72E095989E612CC` as the `EngineAdmin` / `EngineOrg`
