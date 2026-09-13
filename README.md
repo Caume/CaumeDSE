@@ -2429,6 +2429,29 @@ runs with LeakSanitizer disabled to avoid external interpreter noise; use
 `detect_leaks=1` only for focused C-only reproductions where the embedded
 interpreter is not part of the signal.
 
+### Release Readiness Checklist
+
+Before promoting a change to `master`, run the checks that apply to its risk
+and retain their redacted summaries with the pull request:
+
+- Run `bash -n TEST/run_debug_components.sh`, configure a DEBUG/test build,
+  then run `make`, `make check`, and
+  `CDSE_VERIFY_REDACT=1 TEST/run_debug_components.sh --skip-build --skip-web`.
+- For HTTP(S) API, authentication, storage, or live-verifier changes, run both
+  `CDSE_VERIFY_REDACT=1 TEST/run_debug_components.sh --live-only --web-protocol=http`
+  and the corresponding `--web-protocol=https` command. Review
+  `summary.txt`, `live-api-coverage.csv`, and `live-api-coverage.txt` in the
+  verifier log directory.
+- For C, memory-management, parser-runtime, or undefined-behavior changes,
+  run the Clang AddressSanitizer/UndefinedBehaviorSanitizer profile above,
+  including `make check` and the non-web verifier.
+- Confirm the pull request CI jobs have passed. Treat a CI web-smoke socket
+  limitation as acceptable only when its non-web component verifier passed and
+  the limitation is recorded in the job output.
+- Do not attach unredacted logs, organization keys, private certificates, or
+  generated key paths. State the commands run, pass/fail counts, skipped
+  checks, and retained redacted artifact locations in the pull request.
+
 Pull requests run the GitHub Actions workflow in `.github/workflows/pr-ci.yml`.
 Documentation-only PRs run lightweight syntax and TODO-format checks. Code,
 build, test, workflow, and sample changes run the DEBUG configure/build path,

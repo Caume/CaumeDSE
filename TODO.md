@@ -1158,3 +1158,8 @@
   - Source: `TODO.md`, `README.md`.
   - Goal: remove stale notes that describe process-level Perl parser isolation as future work after #73 and #74 moved parserScripts Perl execution to the child-process runner.
   - Done: updated the parser-limit and sanitizer notes so they distinguish legacy/debug embedded-Perl helper coverage from live parserScripts, which now run Perl parser code in child processes with the common parser-child controls.
+
+- [x] #121 Add release readiness verification documentation.
+  - Source: `README.md`, `.github/workflows/pr-ci.yml`, `TEST/run_debug_components.sh`.
+  - Goal: make the release gate clear for local validation and pull-request review.
+  - Done: added a release readiness checklist covering DEBUG and component verification, HTTP/HTTPS live verification, sanitizer conditions, CI web-smoke limitations, redaction, retained artifacts, and required pull-request validation evidence.
