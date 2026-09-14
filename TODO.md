@@ -1163,3 +1163,8 @@
   - Source: `README.md`, `.github/workflows/pr-ci.yml`, `TEST/run_debug_components.sh`.
   - Goal: make the release gate clear for local validation and pull-request review.
   - Done: added a release readiness checklist covering DEBUG and component verification, HTTP/HTTPS live verification, sanitizer conditions, CI web-smoke limitations, redaction, retained artifacts, and required pull-request validation evidence.
+
+- [x] #122 Add release-mode CI build verification.
+  - Source: `.github/workflows/pr-ci.yml`, `configure.ac`, `README.md`.
+  - Goal: enforce default release-build compatibility independently from DEBUG and sanitizer CI profiles.
+  - Done: added a non-documentation PR job that checks release-mode rejection of the DEBUG-only HTTP TLS-auth bypass, runs default configure, build, and `make check`, stages installation, confirms the release binary is installed, and retains diagnostics as short-lived CI artifacts.
