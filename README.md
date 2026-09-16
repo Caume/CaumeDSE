@@ -2472,6 +2472,11 @@ builds, runs `make check`, stages an installation, and verifies that release
 configuration rejects the HTTP TLS-auth bypass. Verifier, sanitizer, and
 release-build diagnostics are uploaded as short-lived PR artifacts.
 
+`.github/workflows/scheduled-live-api.yml` runs every Monday at 03:17 UTC and
+can also be started manually. It builds the DEBUG/test profile and requires
+both HTTP and HTTPS live API flows to pass, including the HTTPS client-certificate
+path. Its verifier artifacts are redacted and retained for 14 days.
+
 The committed test database under `TEST/testDB_opt_cdse` uses
 `0CDBB9AF76AF43BDB72E095989E612CC` as the `EngineAdmin` / `EngineOrg`
 organization key in the DEBUG resource component tests and API examples.

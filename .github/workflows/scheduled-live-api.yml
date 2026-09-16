@@ -1,0 +1,74 @@
+name: Scheduled Live API Verification
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-live-api-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dual-protocol-live-api:
+    name: DEBUG Live API HTTP And HTTPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CDSE_VERIFY_REDACT: "1"
+      CDSE_VERIFY_PREFIX: /tmp/cdse-scheduled-live-api
+      CDSE_VERIFY_LOG_DIR: /tmp/cdse-scheduled-live-api-logs
+      CDSE_DEBUG_TEST_TIMEOUT: 120s
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf \
+            automake \
+            build-essential \
+            ca-certificates \
+            curl \
+            gawk \
+            libcrypt-dev \
+            libgnutls28-dev \
+            libmicrohttpd-dev \
+            libnsl-dev \
+            libperl-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            libtool \
+            perl \
+            pkg-config \
+            python3
+
+      - name: Refresh generated autotools files
+        run: autoreconf -fi
+
+      - name: Configure DEBUG test build
+        run: ./configure --prefix="$CDSE_VERIFY_PREFIX" --enable-DEBUG --enable-TESTDATABASE --enable-BYPASSTLSAUTHINHTTP
+
+      - name: Build and install DEBUG test profile
+        run: |
+          make clean
+          make V=1
+          make check
+          make install
+
+      - name: Run dual-protocol live API verifier
+        run: TEST/run_debug_components.sh --live-only --web-protocol=both
+
+      - name: Upload redacted live verifier artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caumedse-scheduled-live-api-logs
+          path: /tmp/cdse-scheduled-live-api-logs
+          if-no-files-found: ignore
+          retention-days: 14
