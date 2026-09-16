@@ -1168,3 +1168,8 @@
   - Source: `.github/workflows/pr-ci.yml`, `configure.ac`, `README.md`.
   - Goal: enforce default release-build compatibility independently from DEBUG and sanitizer CI profiles.
   - Done: added a non-documentation PR job that checks release-mode rejection of the DEBUG-only HTTP TLS-auth bypass, runs default configure, build, and `make check`, stages installation, confirms the release binary is installed, and retains diagnostics as short-lived CI artifacts.
+
+- [x] #123 Add a standalone OpenAPI contract check to lightweight CI.
+  - Source: `.github/workflows/pr-ci.yml`, `TEST/validate_openapi_routes.sh`, `openapi.yaml`.
+  - Goal: catch OpenAPI route, documentation-link, and live-verifier marker drift on every pull request without waiting for the build matrix.
+  - Done: added the dependency-free OpenAPI route validator to the always-on lightweight job, including documentation-only pull requests, and documented the expanded lightweight gate.

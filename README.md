@@ -2455,10 +2455,10 @@ and retain their redacted summaries with the pull request:
   checks, and retained redacted artifact locations in the pull request.
 
 Pull requests run the GitHub Actions workflow in `.github/workflows/pr-ci.yml`.
-Documentation-only PRs run lightweight syntax and TODO-format checks. Code,
-build, test, workflow, and sample changes run the DEBUG configure/build path,
-`make`, `make check`, standalone sample self-tests, and the redacted DEBUG
-component verifier. The CI workflow also attempts `TEST/run_debug_components.sh
+Documentation-only PRs run lightweight shell, OpenAPI route-contract, and
+TODO-format checks. Code, build, test, workflow, and sample changes run the
+DEBUG configure/build path, `make`, `make check`, standalone sample self-tests,
+and the redacted DEBUG component verifier. The CI workflow also attempts `TEST/run_debug_components.sh
 --ci-smoke`; if a GitHub-hosted runner denies local socket creation or binding,
 the web smoke step is treated as an environment limitation only after the
 non-web component verifier has passed. A separate sanitizer job runs a Clang
