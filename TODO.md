@@ -1182,4 +1182,4 @@
 - [x] #125 Add release tarball `make distcheck` CI verification.
   - Source: `.github/workflows/pr-ci.yml`, `Makefile.am`, `README.md`.
   - Goal: verify the generated source archive supports a clean default release configure, build, check, install, and uninstall cycle.
-  - Done: removed the stale nonexistent `README-alpha` distribution entry, extended the release CI job with `make distcheck`, retained its output with release diagnostics, and documented the release-archive gate.
+  - Done: removed stale nonexistent distribution entries, corrected custom install/uninstall paths to honor `DESTDIR`, extended the release CI job with `make distcheck`, retained its output with release diagnostics, and documented the release-archive gate.

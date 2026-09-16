@@ -27,18 +27,18 @@ clean-local:
 
 install-data-local:
 	if [ ! -z "$(tpath)" ] ; then \
-		$(MKDIR_P) "$(tpath)" && cp -R TEST/testfiles/* "$(tpath)" ; \
+		$(MKDIR_P) "$(DESTDIR)$(tpath)" && cp -R TEST/testfiles/* "$(DESTDIR)$(tpath)" ; \
 	fi
 	if [ ! -z "$(spath)" ] ; then \
-		$(MKDIR_P) "$(spath)" && chmod 700 "$(spath)" ; \
+		$(MKDIR_P) "$(DESTDIR)$(spath)" && chmod 700 "$(DESTDIR)$(spath)" ; \
 	fi
 	if [ ! -z "$(tdbpath)" ] ; then \
-		cp -R TEST/testDB_opt_cdse/* "$(tdbpath)" ; \
+		cp -R TEST/testDB_opt_cdse/* "$(DESTDIR)$(tdbpath)" ; \
 	fi
 uninstall-local:
-	if [ -d "$(spath)" ] ; then \
-		rm -rf "$(spath)" ; \
+	if [ -d "$(DESTDIR)$(spath)" ] ; then \
+		rm -rf "$(DESTDIR)$(spath)" ; \
 	fi
-	if [ -d "$(tpath)" ] ; then \
-		rm -rf "$(tpath)" ; \
+	if [ -d "$(DESTDIR)$(tpath)" ] ; then \
+		rm -rf "$(DESTDIR)$(tpath)" ; \
 	fi
