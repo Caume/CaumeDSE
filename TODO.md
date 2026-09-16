@@ -1173,3 +1173,8 @@
   - Source: `.github/workflows/pr-ci.yml`, `TEST/validate_openapi_routes.sh`, `openapi.yaml`.
   - Goal: catch OpenAPI route, documentation-link, and live-verifier marker drift on every pull request without waiting for the build matrix.
   - Done: added the dependency-free OpenAPI route validator to the always-on lightweight job, including documentation-only pull requests, and documented the expanded lightweight gate.
+
+- [x] #124 Add scheduled dual-protocol live API CI verification.
+  - Source: `.github/workflows/scheduled-live-api.yml`, `TEST/run_debug_components.sh`, `README.md`.
+  - Goal: catch HTTP, HTTPS, TLS client-certificate, and protocol-specific API regressions outside the faster pull-request smoke profile.
+  - Done: added a weekly Monday UTC and manual-dispatch workflow that builds and installs the DEBUG/test profile, requires the full HTTP and HTTPS live verifier flows, and uploads redacted artifacts for 14 days.
