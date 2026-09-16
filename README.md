@@ -2448,8 +2448,8 @@ and retain their redacted summaries with the pull request:
 - Confirm the pull request CI jobs have passed. Treat a CI web-smoke socket
   limitation as acceptable only when its non-web component verifier passed and
   the limitation is recorded in the job output. For code changes, also confirm
-  the default release configure/build/check/install job passed and its
-  bypass-rejection guard succeeded.
+  the default release configure/build/check/install/distcheck job passed and
+  its bypass-rejection guard succeeded.
 - Do not attach unredacted logs, organization keys, private certificates, or
   generated key paths. State the commands run, pass/fail counts, skipped
   checks, and retained redacted artifact locations in the pull request.
@@ -2469,8 +2469,10 @@ behavior; LeakSanitizer is disabled for the full verifier profile because
 legacy embedded-Perl helper tests are still part of that run.
 The default release job separately configures without DEBUG/test switches,
 builds, runs `make check`, stages an installation, and verifies that release
-configuration rejects the HTTP TLS-auth bypass. Verifier, sanitizer, and
-release-build diagnostics are uploaded as short-lived PR artifacts.
+configuration rejects the HTTP TLS-auth bypass. It also runs `make distcheck`
+against the generated source archive to verify a clean release build, check,
+install, and uninstall. Verifier, sanitizer, and release-build diagnostics are
+uploaded as short-lived PR artifacts.
 
 `.github/workflows/scheduled-live-api.yml` runs every Monday at 03:17 UTC and
 can also be started manually. It builds the DEBUG/test profile and requires

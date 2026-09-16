@@ -1178,3 +1178,8 @@
   - Source: `.github/workflows/scheduled-live-api.yml`, `TEST/run_debug_components.sh`, `README.md`.
   - Goal: catch HTTP, HTTPS, TLS client-certificate, and protocol-specific API regressions outside the faster pull-request smoke profile.
   - Done: added a weekly Monday UTC and manual-dispatch workflow that builds and installs the DEBUG/test profile, requires the full HTTP and HTTPS live verifier flows, and uploads redacted artifacts for 14 days.
+
+- [x] #125 Add release tarball `make distcheck` CI verification.
+  - Source: `.github/workflows/pr-ci.yml`, `Makefile.am`, `README.md`.
+  - Goal: verify the generated source archive supports a clean default release configure, build, check, install, and uninstall cycle.
+  - Done: removed the stale nonexistent `README-alpha` distribution entry, extended the release CI job with `make distcheck`, retained its output with release diagnostics, and documented the release-archive gate.
