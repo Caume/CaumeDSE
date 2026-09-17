@@ -39,6 +39,6 @@ uninstall-local:
 	if [ -d "$(DESTDIR)$(spath)" ] ; then \
 		rm -rf "$(DESTDIR)$(spath)" ; \
 	fi
-	if [ -d "$(DESTDIR)$(tpath)" ] ; then \
+	if [ ! -z "$(tpath)" ] && [ -d "$(DESTDIR)$(tpath)" ] ; then \
 		rm -rf "$(DESTDIR)$(tpath)" ; \
 	fi
