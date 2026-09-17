@@ -1183,3 +1183,8 @@
   - Source: `.github/workflows/pr-ci.yml`, `Makefile.am`, `README.md`.
   - Goal: verify the generated source archive supports a clean default release configure, build, check, install, and uninstall cycle.
   - Done: removed stale nonexistent distribution entries, corrected custom install/uninstall paths to honor `DESTDIR`, extended the release CI job with `make distcheck`, retained its output with release diagnostics, and documented the release-archive gate.
+
+- [x] #126 Pin GitHub Actions dependencies to immutable commit SHAs.
+  - Source: `.github/workflows/`, `.github/dependabot.yml`, `README.md`.
+  - Goal: prevent mutable action tags from changing CI behavior without a reviewed repository update.
+  - Done: pinned checkout and artifact-upload actions to reviewed immutable SHAs in both workflows, added weekly GitHub Actions Dependabot updates, and documented the update process.
