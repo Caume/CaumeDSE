@@ -68,6 +68,9 @@ jobs:
       - name: Validate shell syntax
         run: bash -n TEST/run_debug_components.sh
 
+      - name: Validate immutable workflow action references
+        run: TEST/validate_workflow_actions.sh
+
       - name: Validate OpenAPI route contract
         run: TEST/validate_openapi_routes.sh
 

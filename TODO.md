@@ -1188,3 +1188,8 @@
   - Source: `.github/workflows/`, `.github/dependabot.yml`, `README.md`.
   - Goal: prevent mutable action tags from changing CI behavior without a reviewed repository update.
   - Done: pinned checkout and artifact-upload actions to reviewed immutable SHAs in both workflows, added weekly GitHub Actions Dependabot updates, and documented the update process.
+
+- [x] #127 Add CI enforcement for immutable GitHub Action references.
+  - Source: `TEST/validate_workflow_actions.sh`, `.github/workflows/pr-ci.yml`, `README.md`.
+  - Goal: prevent future workflow edits from reintroducing mutable external action tags.
+  - Done: added a dependency-free lightweight CI validator that scans all workflow `uses:` entries, permits repository-local actions, and requires external references to use 40-character commit SHAs with file-and-line diagnostics.
