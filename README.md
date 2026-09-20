@@ -2476,7 +2476,9 @@ uploaded as short-lived PR artifacts.
 Workflow actions are pinned to immutable commit SHAs; `.github/dependabot.yml`
 opens weekly update pull requests for those action dependencies. The lightweight
 `TEST/validate_workflow_actions.sh` gate rejects mutable external `uses:`
-references in every workflow.
+references in every workflow. `TEST/test_validate_workflow_actions.sh` verifies
+that policy against committed valid, nested, local-action, mutable-tag, and
+malformed-SHA-length fixtures.
 
 `.github/workflows/scheduled-live-api.yml` runs every Monday at 03:17 UTC and
 can also be started manually. It builds the DEBUG/test profile and requires

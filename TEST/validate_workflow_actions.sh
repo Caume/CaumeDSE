@@ -16,11 +16,11 @@ while IFS= read -r -d '' workflow; do
     line_number=0
     while IFS= read -r line || [ -n "$line" ]; do
         line_number=$((line_number + 1))
-        if [[ ! "$line" =~ ^[[:space:]]*uses:[[:space:]]*(.+)$ ]]; then
+        if [[ ! "$line" =~ ^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*(.+)$ ]]; then
             continue
         fi
 
-        reference="${BASH_REMATCH[1]}"
+        reference="${BASH_REMATCH[2]}"
         reference="${reference%%[[:space:]]*}"
         references=$((references + 1))
 
