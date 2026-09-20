@@ -1,0 +1,10 @@
+name: Malformed SHA lengths
+
+on: workflow_dispatch
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache@0123456789abcdef0123456789abcdef0123456
+      - uses: actions/cache@0123456789abcdef0123456789abcdef012345678

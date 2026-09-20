@@ -1193,3 +1193,8 @@
   - Source: `TEST/validate_workflow_actions.sh`, `.github/workflows/pr-ci.yml`, `README.md`.
   - Goal: prevent future workflow edits from reintroducing mutable external action tags.
   - Done: added a dependency-free lightweight CI validator that scans all workflow `uses:` entries, permits repository-local actions, and requires external references to use 40-character commit SHAs with file-and-line diagnostics.
+
+- [x] #128 Add fixture-based tests for the workflow-action policy validator.
+  - Source: `TEST/test_validate_workflow_actions.sh`, `TEST/testfiles/workflow-action-validator/`, `.github/workflows/pr-ci.yml`, `README.md`.
+  - Goal: prevent the immutable GitHub Action reference policy checker from silently regressing.
+  - Done: added committed root and nested valid workflow fixtures with local actions, plus mutable-tag and malformed 39/41-character SHA fixtures; the lightweight CI test runner asserts the expected pass/fail behavior and diagnostics.
