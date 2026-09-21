@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 1.0.9
+# Caume Data Security Engine (CaumeDSE) version 1.0.11
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -432,8 +432,6 @@ https://{engine}
 |-- /transactions
 `-- /favicon.ico
 ```
-
-`[not implemented]` marks resources that might be implemented in the future.
 
 Resources (listed within keys, { and }), must be called by their unique
 name.  Resource types are not listed within keys and they must be named
@@ -2479,6 +2477,15 @@ opens weekly update pull requests for those action dependencies. The lightweight
 references in every workflow. `TEST/test_validate_workflow_actions.sh` verifies
 that policy against committed valid, nested, local-action, mutable-tag, and
 malformed-SHA-length fixtures, including quoted references and inline comments.
+
+Every pull request must carry exactly one GitHub label: `version:major`,
+`version:minor`, or `version:patch`. The lightweight CI gate compares
+`configure.ac` with the pull request base and requires the exact next
+Linux-style `MAJOR.MINOR.PATCH` release number: use major for incompatible API
+or storage changes, minor for backward-compatible features, and patch for
+backward-compatible fixes, documentation, CI, or maintenance changes. Update
+the matching public version metadata in `README.md` and `openapi.yaml` in the
+same pull request.
 
 `.github/workflows/scheduled-live-api.yml` runs every Monday at 03:17 UTC and
 can also be started manually. It builds the DEBUG/test profile and requires

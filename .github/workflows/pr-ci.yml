@@ -64,9 +64,20 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          fetch-depth: 0
 
       - name: Validate shell syntax
-        run: bash -n TEST/run_debug_components.sh
+        run: |
+          bash -n TEST/run_debug_components.sh
+          bash -n TEST/validate_version_bump.sh
+
+      - name: Validate pull request version impact
+        if: github.event_name == 'pull_request'
+        env:
+          CDSE_VERSION_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          CDSE_VERSION_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: TEST/validate_version_bump.sh
 
       - name: Validate immutable workflow action references
         run: TEST/validate_workflow_actions.sh

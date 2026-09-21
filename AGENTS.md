@@ -64,6 +64,13 @@ When the user asks to publish or create a PR, push the tested local `devtest`
 branch to remote `devtest`, then promote `devtest` to `master` through a pull
 request unless the user explicitly gives a different destination.
 
+Every pull request must use a `version:major`, `version:minor`, or
+`version:patch` label and advance `configure.ac` by exactly one corresponding
+Linux-style `MAJOR.MINOR.PATCH` release increment. Use major for incompatible
+changes, minor for backward-compatible features, and patch for compatible
+fixes, documentation, CI, and maintenance changes. Keep `README.md` and
+`openapi.yaml` version metadata synchronized with `configure.ac`.
+
 ## Security & Configuration Tips
 
 Do not commit real organization keys, private certificates, or production data.
