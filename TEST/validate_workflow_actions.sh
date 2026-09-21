@@ -21,7 +21,13 @@ while IFS= read -r -d '' workflow; do
         fi
 
         reference="${BASH_REMATCH[2]}"
-        reference="${reference%%[[:space:]]*}"
+        if [[ "$reference" =~ ^\"([^\"[:space:]]+)\"([[:space:]]+#.*)?[[:space:]]*$ ]]; then
+            reference="${BASH_REMATCH[1]}"
+        elif [[ "$reference" =~ ^\'([^\'[:space:]]+)\'([[:space:]]+#.*)?[[:space:]]*$ ]]; then
+            reference="${BASH_REMATCH[1]}"
+        elif [[ "$reference" =~ ^([^[:space:]#]+)([[:space:]]+#.*)?[[:space:]]*$ ]]; then
+            reference="${BASH_REMATCH[1]}"
+        fi
         references=$((references + 1))
 
         # Local composite actions are versioned with this repository.

@@ -1198,3 +1198,8 @@
   - Source: `TEST/test_validate_workflow_actions.sh`, `TEST/testfiles/workflow-action-validator/`, `.github/workflows/pr-ci.yml`, `README.md`.
   - Goal: prevent the immutable GitHub Action reference policy checker from silently regressing.
   - Done: added committed root and nested valid workflow fixtures with local actions, plus mutable-tag and malformed 39/41-character SHA fixtures; the lightweight CI test runner asserts the expected pass/fail behavior and diagnostics.
+
+- [x] #129 Harden workflow-action parsing for quoted references and inline comments.
+  - Source: `TEST/validate_workflow_actions.sh`, `TEST/test_validate_workflow_actions.sh`, `TEST/testfiles/workflow-action-validator/`, `README.md`.
+  - Goal: accept valid YAML scalar syntax without weakening immutable external action enforcement.
+  - Done: normalizes strict single/double-quoted and unquoted action references with optional trailing comments, and adds fixtures proving quoted immutable SHA pins pass while a quoted mutable tag is rejected.
