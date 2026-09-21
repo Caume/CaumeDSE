@@ -49,8 +49,8 @@ expect_failure() {
     printf 'PASS %s\n' "$name"
 }
 
-expect_pass "valid SHA pins, local action, and nested workflow" "$FIXTURES_DIR/valid" "3 immutable reference(s)"
-expect_failure "mutable action tag" "$FIXTURES_DIR/invalid-mutable-tag" "actions/checkout@v4"
+expect_pass "quoted SHA pins, comments, local action, and nested workflow" "$FIXTURES_DIR/valid" "3 immutable reference(s)"
+expect_failure "quoted mutable action tag" "$FIXTURES_DIR/invalid-mutable-tag" "actions/checkout@v4"
 expect_failure "malformed SHA lengths" "$FIXTURES_DIR/invalid-sha-length" "actions/cache@"
 
 if [ "$failures" -ne 0 ]; then
