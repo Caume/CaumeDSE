@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CaumeDSE REST API
-  version: 1.0.9
+  version: 1.0.11
   description: |
     Machine-readable reference for the stable CaumeDSE routes documented in
     README.md and exercised by TEST/run_debug_components.sh. Responses are
@@ -21,6 +21,9 @@ servers:
 tags:
   - name: Agent capabilities
   - name: Runtime metrics
+  - name: Engine commands
+  - name: Transactions
+  - name: Service assets
   - name: Authentication
   - name: Organizations
   - name: Users
@@ -148,6 +151,82 @@ paths:
       responses:
         "200":
           description: Metrics options.
+
+  /engineCommands:
+    get:
+      tags: [Engine commands]
+      summary: Return the engine power state.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+    put:
+      tags: [Engine commands]
+      summary: Change the engine power state.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - in: query
+          name: setEnginePower
+          required: true
+          schema:
+            type: string
+            enum: [on, off]
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    options:
+      tags: [Engine commands]
+      summary: Return supported engine-command methods.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /transactions:
+    get:
+      tags: [Transactions]
+      summary: List transaction log records.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/outputType"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    head:
+      tags: [Transactions]
+      summary: Count transaction log records.
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Transactions]
+      summary: Return supported transaction methods.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /favicon.ico:
+    get:
+      tags: [Service assets]
+      summary: Return the service favicon.
+      responses:
+        "200":
+          description: Favicon image.
+          content:
+            image/x-icon:
+              schema:
+                type: string
+                format: binary
 
   /organizations:
     get:

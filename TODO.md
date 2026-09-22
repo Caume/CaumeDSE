@@ -1203,3 +1203,23 @@
   - Source: `TEST/validate_workflow_actions.sh`, `TEST/test_validate_workflow_actions.sh`, `TEST/testfiles/workflow-action-validator/`, `README.md`.
   - Goal: accept valid YAML scalar syntax without weakening immutable external action enforcement.
   - Done: normalizes strict single/double-quoted and unquoted action references with optional trailing comments, and adds fixtures proving quoted immutable SHA pins pass while a quoted mutable tag is rejected.
+
+- [x] #130 Synchronize public release version metadata.
+  - Source: `configure.ac`, `configure`, `README.md`, `openapi.yaml`.
+  - Goal: prevent package, human-facing, and machine-readable versions from drifting.
+  - Done: advanced the patch release to `1.0.11`, synchronized README and OpenAPI metadata with the Autoconf package version, and extended the OpenAPI validator to enforce that alignment.
+
+- [x] #131 Complete OpenAPI coverage for implemented top-level endpoints.
+  - Source: `openapi.yaml`, `README.md`, `webservice_interface.c`, `TEST/validate_openapi_routes.sh`.
+  - Goal: keep the declared stable API reference aligned with implemented and README-documented routes.
+  - Done: documented `engineCommands`, `transactions`, and `favicon.ico` in OpenAPI and required their paths in the lightweight contract validator.
+
+- [x] #132 Remove stale resource-marker guidance.
+  - Source: `README.md`.
+  - Goal: avoid documenting an obsolete `[not implemented]` resource convention after all hierarchy markers were removed.
+  - Done: removed the stale marker guidance from the resource hierarchy documentation.
+
+- [x] #133 Enforce Linux-style release version increments for pull requests.
+  - Source: `TEST/validate_version_bump.sh`, `.github/workflows/pr-ci.yml`, `.github/dependabot.yml`, `README.md`, `AGENTS.md`.
+  - Goal: require every pull request to declare its impact and advance the release version consistently.
+  - Done: added a lightweight PR gate that requires exactly one version-impact label and verifies the exact next major, minor, or patch number against the PR base; Dependabot updates receive `version:patch` and contributor guidance documents the policy.

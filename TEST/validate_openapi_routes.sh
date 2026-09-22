@@ -6,6 +6,7 @@ SPEC="$ROOT_DIR/openapi.yaml"
 README="$ROOT_DIR/README.md"
 EXAMPLES="$ROOT_DIR/API_EXAMPLES.md"
 VERIFIER="$ROOT_DIR/TEST/run_debug_components.sh"
+CONFIGURE_AC="$ROOT_DIR/configure.ac"
 
 failures=0
 
@@ -31,6 +32,7 @@ require_file "$SPEC"
 require_file "$README"
 require_file "$EXAMPLES"
 require_file "$VERIFIER"
+require_file "$CONFIGURE_AC"
 
 if [ "$failures" -ne 0 ]; then
     exit 1
@@ -41,9 +43,21 @@ require_pattern "$README" "openapi.yaml" "README OpenAPI link"
 require_pattern "$EXAMPLES" "openapi.yaml" "API examples OpenAPI link"
 require_pattern "$VERIFIER" "validate_openapi_routes.sh" "verifier OpenAPI validation"
 
+configure_version="$(sed -n 's/^AC_INIT(\[CaumeDSE\], \[\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)\].*/\1/p' "$CONFIGURE_AC")"
+if [ -z "$configure_version" ]; then
+    printf 'FAIL missing MAJOR.MINOR.PATCH package version in %s\n' "$CONFIGURE_AC" >&2
+    failures=$((failures + 1))
+else
+    require_pattern "$SPEC" "version: $configure_version" "OpenAPI package version"
+    require_pattern "$README" "version $configure_version" "README package version"
+fi
+
 required_paths=(
     "/agentCapabilities:"
     "/metrics:"
+    "/engineCommands:"
+    "/transactions:"
+    "/favicon.ico:"
     "/organizations:"
     "/organizations/{organization}:"
     "/organizations/{organization}/users/{user}:"
