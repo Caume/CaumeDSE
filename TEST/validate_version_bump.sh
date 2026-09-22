@@ -4,6 +4,8 @@ set -u
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE_REF="${CDSE_VERSION_BASE_REF:-}"
 LABELS="${CDSE_VERSION_LABELS:-}"
+BASE_CONFIGURE="${CDSE_VERSION_BASE_CONFIGURE:-}"
+CURRENT_CONFIGURE="${CDSE_VERSION_CURRENT_CONFIGURE:-}"
 
 fail() {
     printf 'FAIL version bump validation: %s\n' "$1" >&2
@@ -13,10 +15,6 @@ fail() {
 version_from_configure() {
     sed -n 's/^AC_INIT(\[CaumeDSE\], \[\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)\].*/\1/p'
 }
-
-if [ -z "$BASE_REF" ]; then
-    fail "CDSE_VERSION_BASE_REF is required"
-fi
 
 impact=""
 IFS=',' read -r -a labels <<< "$LABELS"
@@ -35,11 +33,27 @@ if [ -z "$impact" ]; then
     fail "add exactly one of version:major, version:minor, or version:patch"
 fi
 
-base_version="$(git show "$BASE_REF:configure.ac" 2>/dev/null | version_from_configure)"
-current_version="$(version_from_configure < "$ROOT_DIR/configure.ac")"
+if [ -n "$BASE_CONFIGURE$CURRENT_CONFIGURE" ]; then
+    if [ -z "$BASE_CONFIGURE" ] || [ -z "$CURRENT_CONFIGURE" ]; then
+        fail "CDSE_VERSION_BASE_CONFIGURE and CDSE_VERSION_CURRENT_CONFIGURE are required together"
+    fi
+    if [ ! -f "$BASE_CONFIGURE" ] || [ ! -f "$CURRENT_CONFIGURE" ]; then
+        fail "fixture configure.ac file is missing"
+    fi
+    base_version="$(version_from_configure < "$BASE_CONFIGURE")"
+    current_version="$(version_from_configure < "$CURRENT_CONFIGURE")"
+    base_source="$BASE_CONFIGURE"
+else
+    if [ -z "$BASE_REF" ]; then
+        fail "CDSE_VERSION_BASE_REF is required"
+    fi
+    base_version="$(git show "$BASE_REF:configure.ac" 2>/dev/null | version_from_configure)"
+    current_version="$(version_from_configure < "$ROOT_DIR/configure.ac")"
+    base_source="$BASE_REF:configure.ac"
+fi
 
 if [[ ! "$base_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-    fail "could not read a MAJOR.MINOR.PATCH version from $BASE_REF:configure.ac"
+    fail "could not read a MAJOR.MINOR.PATCH version from $base_source"
 fi
 if [[ ! "$current_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
     fail "configure.ac must use a MAJOR.MINOR.PATCH version"

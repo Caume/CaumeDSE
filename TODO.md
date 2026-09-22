@@ -1223,3 +1223,8 @@
   - Source: `TEST/validate_version_bump.sh`, `.github/workflows/pr-ci.yml`, `.github/dependabot.yml`, `README.md`, `AGENTS.md`.
   - Goal: require every pull request to declare its impact and advance the release version consistently.
   - Done: added a lightweight PR gate that requires exactly one version-impact label and verifies the exact next major, minor, or patch number against the PR base; Dependabot updates receive `version:patch` and contributor guidance documents the policy.
+
+- [x] #134 Add fixture-based tests for the pull-request version validator.
+  - Source: `TEST/test_validate_version_bump.sh`, `TEST/testfiles/version-bump/`, `TEST/validate_version_bump.sh`, `.github/workflows/pr-ci.yml`, `README.md`.
+  - Goal: prevent the release version gate from silently accepting an invalid impact label or release transition.
+  - Done: added committed fixtures covering valid patch/minor/major increments plus skipped, reset, malformed, missing-label, and duplicate-label failures; the lightweight CI job executes the fixture runner on every pull request.

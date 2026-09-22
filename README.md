@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 1.0.11
+# Caume Data Security Engine (CaumeDSE) version 1.0.12
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2485,7 +2485,9 @@ Linux-style `MAJOR.MINOR.PATCH` release number: use major for incompatible API
 or storage changes, minor for backward-compatible features, and patch for
 backward-compatible fixes, documentation, CI, or maintenance changes. Update
 the matching public version metadata in `README.md` and `openapi.yaml` in the
-same pull request.
+same pull request. `TEST/test_validate_version_bump.sh` verifies the gate
+against committed major, minor, patch, skipped, reset, malformed, and
+label-selection fixtures.
 
 `.github/workflows/scheduled-live-api.yml` runs every Monday at 03:17 UTC and
 can also be started manually. It builds the DEBUG/test profile and requires

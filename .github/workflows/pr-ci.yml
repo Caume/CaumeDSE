@@ -71,6 +71,7 @@ jobs:
         run: |
           bash -n TEST/run_debug_components.sh
           bash -n TEST/validate_version_bump.sh
+          bash -n TEST/test_validate_version_bump.sh
 
       - name: Validate pull request version impact
         if: github.event_name == 'pull_request'
@@ -78,6 +79,9 @@ jobs:
           CDSE_VERSION_BASE_REF: ${{ github.event.pull_request.base.sha }}
           CDSE_VERSION_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: TEST/validate_version_bump.sh
+
+      - name: Test pull request version impact validator
+        run: TEST/test_validate_version_bump.sh
 
       - name: Validate immutable workflow action references
         run: TEST/validate_workflow_actions.sh
