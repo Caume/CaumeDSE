@@ -1228,3 +1228,8 @@
   - Source: `TEST/test_validate_version_bump.sh`, `TEST/testfiles/version-bump/`, `TEST/validate_version_bump.sh`, `.github/workflows/pr-ci.yml`, `README.md`.
   - Goal: prevent the release version gate from silently accepting an invalid impact label or release transition.
   - Done: added committed fixtures covering valid patch/minor/major increments plus skipped, reset, malformed, missing-label, and duplicate-label failures; the lightweight CI job executes the fixture runner on every pull request.
+
+- [x] #135 Add operation-level OpenAPI contract checks.
+  - Source: `TEST/validate_openapi_routes.sh`, `openapi.yaml`, `README.md`.
+  - Goal: prevent documented HTTP methods from drifting while path-only OpenAPI validation still passes.
+  - Done: added structural path-and-method validation for every declared stable OpenAPI endpoint, including `engineCommands`, `transactions`, and `favicon.ico`.
