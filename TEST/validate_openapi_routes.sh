@@ -28,6 +28,32 @@ require_pattern() {
     fi
 }
 
+require_operation() {
+    local path="$1"
+    local method="$2"
+
+    if ! awk -v path="  $path:" -v method="$method" '
+        $0 == path {
+            in_path = 1
+            next
+        }
+        in_path && /^  \// {
+            exit
+        }
+        in_path && index($0, "    " method ":") == 1 {
+            found = 1
+            exit
+        }
+        END {
+            exit !found
+        }
+    ' "$SPEC"; then
+        printf 'FAIL OpenAPI operation missing from %s: %s %s\n' \
+            "$SPEC" "$method" "$path" >&2
+        failures=$((failures + 1))
+    fi
+}
+
 require_file "$SPEC"
 require_file "$README"
 require_file "$EXAMPLES"
@@ -81,6 +107,47 @@ required_paths=(
 
 for path in "${required_paths[@]}"; do
     require_pattern "$SPEC" "$path" "OpenAPI path"
+done
+
+operation_contract=(
+    "/agentCapabilities get options"
+    "/metrics get head options"
+    "/engineCommands get put options"
+    "/transactions get head options"
+    "/favicon.ico get"
+    "/organizations get put delete head options"
+    "/organizations/{organization} get post put delete head options"
+    "/organizations/{organization}/users get put delete head options"
+    "/organizations/{organization}/users/{user} get post put delete head options"
+    "/organizations/{organization}/users/{user}/roleTables/{roleTable} get post put delete head options"
+    "/organizations/{organization}/users/{user}/filterWhitelist/{filterUser} get post put delete head options"
+    "/organizations/{organization}/users/{user}/filterBlacklist/{filterUser} get post put delete head options"
+    "/organizations/{organization}/storage get put delete head options"
+    "/organizations/{organization}/storage/{storage} get post put delete head options"
+    "/organizations/{organization}/storage/{storage}/documentTypes get options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/{documentType} get head options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents get put delete head options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents/{document} get post put delete head options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents/{document}/content get head options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows/{contentRow} get post put delete head options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentColumns options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentColumns/{contentColumn} get post delete head options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/schema get head options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts options"
+    "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts/{parserScript} get head options"
+    "/organizations/{organization}/storage/{storage}/dbNames get head options"
+    "/organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables get head options"
+    "/organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/tableRows/{tableRow} get head options"
+    "/organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/tableColumns/{tableColumn} get head options"
+    "/organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/schema get head options"
+)
+
+for contract in "${operation_contract[@]}"; do
+    read -r path methods <<< "$contract"
+    for method in $methods; do
+        require_operation "$path" "$method"
+    done
 done
 
 live_markers=(
