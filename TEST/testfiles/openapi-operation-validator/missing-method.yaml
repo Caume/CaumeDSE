@@ -1,0 +1,4 @@
+paths:
+  /direct:
+    get:
+      summary: Direct operation only

@@ -1,0 +1,9 @@
+paths:
+  /direct:
+    get:
+      summary: Direct operation
+  /anchored:
+    get: &sharedGet
+      summary: Anchored operation
+  /alias:
+    get: *sharedGet
