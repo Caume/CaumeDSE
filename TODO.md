@@ -1233,3 +1233,8 @@
   - Source: `TEST/validate_openapi_routes.sh`, `openapi.yaml`, `README.md`.
   - Goal: prevent documented HTTP methods from drifting while path-only OpenAPI validation still passes.
   - Done: added structural path-and-method validation for every declared stable OpenAPI endpoint, including `engineCommands`, `transactions`, and `favicon.ico`.
+
+- [x] #136 Add fixture-based tests for the OpenAPI operation validator.
+  - Source: `TEST/validate_openapi_operations.sh`, `TEST/test_validate_openapi_operations.sh`, `TEST/testfiles/openapi-operation-validator/`, `.github/workflows/pr-ci.yml`, `README.md`.
+  - Goal: prevent route-method validation from silently regressing when OpenAPI uses direct methods, YAML anchors, or aliases.
+  - Done: extracted the reusable operation validator and checked-in contract, then added fixtures for direct, anchored, alias, and missing-method behavior; lightweight CI runs the fixture suite on every pull request.
