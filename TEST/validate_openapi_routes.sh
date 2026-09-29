@@ -9,6 +9,7 @@ VERIFIER="$ROOT_DIR/TEST/run_debug_components.sh"
 CONFIGURE_AC="$ROOT_DIR/configure.ac"
 OPERATIONS_VALIDATOR="$ROOT_DIR/TEST/validate_openapi_operations.sh"
 OPERATIONS_CONTRACT="$ROOT_DIR/TEST/openapi_operation_contract.txt"
+AGENT_MANIFEST_VALIDATOR="$ROOT_DIR/TEST/validate_agent_capabilities_manifest.py"
 
 failures=0
 
@@ -37,6 +38,7 @@ require_file "$VERIFIER"
 require_file "$CONFIGURE_AC"
 require_file "$OPERATIONS_VALIDATOR"
 require_file "$OPERATIONS_CONTRACT"
+require_file "$AGENT_MANIFEST_VALIDATOR"
 
 if [ "$failures" -ne 0 ]; then
     exit 1
@@ -79,6 +81,7 @@ required_paths=(
     "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts/{parserScript}:"
     "/organizations/{organization}/storage/{storage}/dbNames:"
     "/organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables:"
+    "/organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}:"
     "/organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/tableRows/{tableRow}:"
     "/organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/tableColumns/{tableColumn}:"
 )
@@ -88,6 +91,9 @@ for path in "${required_paths[@]}"; do
 done
 
 if ! "$OPERATIONS_VALIDATOR" "$SPEC" "$OPERATIONS_CONTRACT"; then
+    failures=$((failures + 1))
+fi
+if ! python3 "$AGENT_MANIFEST_VALIDATOR" --source "$ROOT_DIR/webservice_interface.c" --openapi "$SPEC"; then
     failures=$((failures + 1))
 fi
 

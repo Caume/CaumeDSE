@@ -26,6 +26,7 @@
 /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts/{parserScript} get head options
 /organizations/{organization}/storage/{storage}/dbNames get head options
 /organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables get head options
+/organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable} get head options
 /organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/tableRows/{tableRow} get head options
 /organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/tableColumns/{tableColumn} get head options
 /organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}/schema get head options

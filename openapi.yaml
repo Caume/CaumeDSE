@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CaumeDSE REST API
-  version: 1.0.14
+  version: 1.0.15
   description: |
     Machine-readable reference for the stable CaumeDSE routes documented in
     README.md and exercised by TEST/run_debug_components.sh. Responses are
@@ -1286,6 +1286,45 @@ paths:
     options:
       tags: [Secure DB browsing]
       summary: Return supported methods for dbTables.
+      responses:
+        "200":
+          $ref: "#/components/responses/TextResponse"
+
+  /organizations/{organization}/storage/{storage}/dbNames/{dbName}/dbTables/{dbTable}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/dbName"
+      - $ref: "#/components/parameters/dbTable"
+    get:
+      tags: [Secure DB browsing]
+      summary: Read all rows from one exposed secure CSV table.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - $ref: "#/components/parameters/newOrgKey"
+        - $ref: "#/components/parameters/outputType"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    head:
+      tags: [Secure DB browsing]
+      summary: Check whether one exposed secure CSV table has rows.
+      responses:
+        "200":
+          $ref: "#/components/responses/HeaderOnly"
+        "404":
+          $ref: "#/components/responses/HeaderOnly"
+    options:
+      tags: [Secure DB browsing]
+      summary: Return supported methods for one dbTable resource.
       responses:
         "200":
           $ref: "#/components/responses/TextResponse"

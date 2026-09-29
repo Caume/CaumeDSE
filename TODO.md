@@ -1238,3 +1238,8 @@
   - Source: `TEST/validate_openapi_operations.sh`, `TEST/test_validate_openapi_operations.sh`, `TEST/testfiles/openapi-operation-validator/`, `.github/workflows/pr-ci.yml`, `README.md`.
   - Goal: prevent route-method validation from silently regressing when OpenAPI uses direct methods, YAML anchors, or aliases.
   - Done: extracted the reusable operation validator and checked-in contract, then added fixtures for direct, anchored, alias, and missing-method behavior; lightweight CI runs the fixture suite on every pull request.
+
+- [x] #137 Validate the agent capability manifest against OpenAPI.
+  - Source: `webservice_interface.c`, `openapi.yaml`, `TEST/validate_agent_capabilities_manifest.py`, `TEST/test_validate_agent_capabilities_manifest.py`, `.github/workflows/pr-ci.yml`, `README.md`.
+  - Goal: prevent AI and MCP client discovery metadata from advertising routes or methods that the public API contract does not document.
+  - Done: added source-to-OpenAPI manifest validation and fixtures for documented routes plus missing paths/methods; corrected stale organizations, documents, and content-column method lists and documented the DB-table resource in OpenAPI.
