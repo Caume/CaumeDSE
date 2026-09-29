@@ -74,6 +74,7 @@ jobs:
           bash -n TEST/test_validate_version_bump.sh
           bash -n TEST/validate_openapi_operations.sh
           bash -n TEST/test_validate_openapi_operations.sh
+          python3 -c 'from pathlib import Path; import ast; [ast.parse(path.read_text(encoding="utf-8")) for path in [Path("TEST/validate_agent_capabilities_manifest.py"), Path("TEST/test_validate_agent_capabilities_manifest.py")] ]'
 
       - name: Validate pull request version impact
         if: github.event_name == 'pull_request'
@@ -96,6 +97,9 @@ jobs:
 
       - name: Test OpenAPI operation validator
         run: TEST/test_validate_openapi_operations.sh
+
+      - name: Test agent capability manifest validator
+        run: python3 TEST/test_validate_agent_capabilities_manifest.py
 
       - name: Validate TODO status format
         shell: bash

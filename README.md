@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 1.0.14
+# Caume Data Security Engine (CaumeDSE) version 1.0.15
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2494,6 +2494,10 @@ every stable OpenAPI path, preventing route-method drift from passing a
 path-only documentation check. `TEST/test_validate_openapi_operations.sh`
 verifies that operation gate against direct, anchored, alias, and missing-method
 fixtures.
+
+`TEST/validate_agent_capabilities_manifest.py` verifies that every route and
+method advertised by `/agentCapabilities` is documented in `openapi.yaml`; its
+fixture suite covers documented routes plus missing paths and methods.
 
 `.github/workflows/scheduled-live-api.yml` runs every Monday at 03:17 UTC and
 can also be started manually. It builds the DEBUG/test profile and requires

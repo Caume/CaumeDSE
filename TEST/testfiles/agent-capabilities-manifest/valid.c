@@ -1,0 +1,2 @@
+const char *routes =
+    "{\"name\":\"direct\",\"path\":\"/direct\",\"methods\":[\"GET\"],\"authRequired\":true}";
