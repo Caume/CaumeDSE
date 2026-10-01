@@ -1,0 +1,5 @@
+{
+  "routes": [
+    {"name": "direct", "path": "/direct", "methods": [], "authRequired": true}
+  ]
+}
