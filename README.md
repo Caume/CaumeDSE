@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 1.0.16
+# Caume Data Security Engine (CaumeDSE) version 1.0.17
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2456,8 +2456,11 @@ Pull requests run the GitHub Actions workflow in `.github/workflows/pr-ci.yml`.
 Documentation-only PRs run lightweight shell, immutable-workflow-action,
 OpenAPI route-contract, and TODO-format checks. Code, build, test, workflow,
 and sample changes run the DEBUG configure/build path, `make`, `make check`,
-standalone sample self-tests, and the redacted DEBUG component verifier. The CI workflow also attempts `TEST/run_debug_components.sh
---ci-smoke`; if a GitHub-hosted runner denies local socket creation or binding,
+standalone sample self-tests, and the redacted DEBUG component verifier via
+`TEST/run_debug_components.sh --skip-build --skip-web`. The CI workflow then
+attempts HTTP live verification via
+`TEST/run_debug_components.sh --live-only --web-protocol=http`; if a
+GitHub-hosted runner denies local socket creation or binding,
 the web smoke step is treated as an environment limitation only after the
 non-web component verifier has passed. A separate sanitizer job runs a Clang
 DEBUG build with AddressSanitizer and UndefinedBehaviorSanitizer, then executes
