@@ -10,6 +10,7 @@ CONFIGURE_AC="$ROOT_DIR/configure.ac"
 OPERATIONS_VALIDATOR="$ROOT_DIR/TEST/validate_openapi_operations.sh"
 OPERATIONS_CONTRACT="$ROOT_DIR/TEST/openapi_operation_contract.txt"
 AGENT_MANIFEST_VALIDATOR="$ROOT_DIR/TEST/validate_agent_capabilities_manifest.py"
+LIVE_AGENT_MANIFEST_VALIDATOR="$ROOT_DIR/TEST/validate_live_agent_capabilities.py"
 
 failures=0
 
@@ -39,6 +40,7 @@ require_file "$CONFIGURE_AC"
 require_file "$OPERATIONS_VALIDATOR"
 require_file "$OPERATIONS_CONTRACT"
 require_file "$AGENT_MANIFEST_VALIDATOR"
+require_file "$LIVE_AGENT_MANIFEST_VALIDATOR"
 
 if [ "$failures" -ne 0 ]; then
     exit 1
@@ -99,6 +101,7 @@ fi
 
 live_markers=(
     "agent_capabilities"
+    "agent_capability_contract"
     "metrics_json"
     "metrics_prometheus"
     "create_org"

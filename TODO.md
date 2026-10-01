@@ -1243,3 +1243,8 @@
   - Source: `webservice_interface.c`, `openapi.yaml`, `TEST/validate_agent_capabilities_manifest.py`, `TEST/test_validate_agent_capabilities_manifest.py`, `.github/workflows/pr-ci.yml`, `README.md`.
   - Goal: prevent AI and MCP client discovery metadata from advertising routes or methods that the public API contract does not document.
   - Done: added source-to-OpenAPI manifest validation and fixtures for documented routes plus missing paths/methods; corrected stale organizations, documents, and content-column method lists and documented the DB-table resource in OpenAPI.
+
+- [x] #138 Add live agent-capability contract verification.
+  - Source: `TEST/run_debug_components.sh`, `TEST/validate_live_agent_capabilities.py`, `TEST/test_validate_live_agent_capabilities.py`, `openapi.yaml`, `.github/workflows/pr-ci.yml`, `README.md`.
+  - Goal: verify deployed HTTP and HTTPS `/agentCapabilities` responses advertise exactly the documented agent route and method surface.
+  - Done: added a dependency-free response validator and fixtures for matching, missing-method, unexpected-route, and malformed-manifest cases; the dual-protocol live verifier now compares the saved response with the source manifest and OpenAPI contract.

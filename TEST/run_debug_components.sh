@@ -1620,6 +1620,25 @@ live_api_check() {
     return 0
 }
 
+live_agent_capability_contract_check() {
+    local protocol="$1"
+    local body="$LOG_ROOT/live_${protocol}_agent_capabilities.body"
+    local log="$LOG_ROOT/live_${protocol}_agent_capability_contract.log"
+    local start
+
+    start="$(date +%s)"
+    if python3 "$ROOT_DIR/TEST/validate_live_agent_capabilities.py" \
+        --manifest "$body" \
+        --source "$ROOT_DIR/webservice_interface.c" \
+        --openapi "$ROOT_DIR/openapi.yaml" > "$log" 2>&1; then
+        record_pass "live_${protocol}_agent_capability_contract ($(elapsed_seconds "$start"))"
+        return 0
+    fi
+    LIVE_FLOW_FAILED=1
+    record_fail "live_${protocol}_agent_capability_contract" "log=$log"
+    return 1
+}
+
 write_cert_ext_files() {
     local ca_ext="$1"
     local user_ext="$2"
@@ -1767,6 +1786,7 @@ run_live_web_flow() {
     fi
 
     live_api_check "$protocol" agent_capabilities 200 "$base_url/agentCapabilities" '"capabilityManifestVersion":1' "${curl_tls_args[@]}"
+    live_agent_capability_contract_check "$protocol"
     live_api_check "$protocol" metrics_json 200 "$base_url/metrics" '"metricsSchemaVersion":1' "${curl_tls_args[@]}"
     live_api_check "$protocol" metrics_prometheus 200 "$base_url/metrics?outputType=prometheus" 'cdse_requests_total' "${curl_tls_args[@]}"
     live_api_check "$protocol" auth_missing_all 401 "$base_url/organizations/$org_name" "" "${curl_tls_args[@]}"
