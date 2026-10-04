@@ -1248,3 +1248,8 @@
   - Source: `TEST/run_debug_components.sh`, `TEST/validate_live_agent_capabilities.py`, `TEST/test_validate_live_agent_capabilities.py`, `openapi.yaml`, `.github/workflows/pr-ci.yml`, `README.md`.
   - Goal: verify deployed HTTP and HTTPS `/agentCapabilities` responses advertise exactly the documented agent route and method surface.
   - Done: added a dependency-free response validator and fixtures for matching, missing-method, unexpected-route, and malformed-manifest cases; the dual-protocol live verifier now compares the saved response with the source manifest and OpenAPI contract.
+
+- [x] #139 Align the README CI verifier commands with the workflow.
+  - Source: `README.md`, `.github/workflows/pr-ci.yml`.
+  - Goal: replace the stale claim that PR CI runs `--ci-smoke` with the separate component and HTTP live verifier commands actually used by the workflow.
+  - Done: documented `--skip-build --skip-web` followed by `--live-only --web-protocol=http`, retaining the socket-denial fallback description and the scheduled dual-protocol verification guidance.
