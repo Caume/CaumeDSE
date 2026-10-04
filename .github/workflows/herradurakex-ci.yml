@@ -1,0 +1,73 @@
+name: HerraduraKEx Compatibility
+
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provider:
+    name: HerraduraKEx ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: legacy-migration
+            revision: 13e5fb0346ca5ec81202dee8bb3302633780ec35
+            sha256: 0d0b97cf10402f20c1c467086d7e0a0f167105bc426c319ab814fb9646e64b4e
+          - profile: current
+            revision: ad42138af14a40eb3b47127872f39509723c789f
+            sha256: cea38121eec69329cd6eab90672e56db4d30c41a7d795428618b3f85529172e8
+    env:
+      CDSE_VERIFY_REDACT: "1"
+      CDSE_VERIFY_PREFIX: /tmp/cdse-herradura
+      CDSE_VERIFY_LOG_DIR: /tmp/cdse-herradura-logs
+      CDSE_VERIFY_HERRADURAKEX_DIR: /tmp/herradura
+      CDSE_DEBUG_TEST_TIMEOUT: 180s
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf automake build-essential ca-certificates curl gawk \
+            libcrypt-dev libgnutls28-dev libmicrohttpd-dev libnsl-dev \
+            libperl-dev libsqlite3-dev libssl-dev libtool perl pkg-config python3
+
+      - name: Fetch pinned upstream header
+        env:
+          HKX_REVISION: ${{ matrix.revision }}
+          HKX_SHA256: ${{ matrix.sha256 }}
+        run: |
+          mkdir -p "$CDSE_VERIFY_HERRADURAKEX_DIR"
+          curl --fail --location --retry 3 \
+            "https://raw.githubusercontent.com/Caume/HerraduraKEx/$HKX_REVISION/herradura.h" \
+            --output "$CDSE_VERIFY_HERRADURAKEX_DIR/herradura.h"
+          printf '%s  %s\n' "$HKX_SHA256" "$CDSE_VERIFY_HERRADURAKEX_DIR/herradura.h" | sha256sum --check
+
+      - name: Refresh autotools files
+        run: autoreconf -fi
+
+      - name: Build and verify provider and migration policy
+        run: TEST/run_debug_components.sh --skip-web
+
+      - name: Verify current provider storage over HTTP and HTTPS
+        if: matrix.profile == 'current'
+        env:
+          CDSE_VERIFY_LOG_DIR: /tmp/cdse-herradura-logs/live
+        run: TEST/run_debug_components.sh --live-only --web-protocol=both
+
+      - name: Upload redacted verifier logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: herradurakex-${{ matrix.profile }}
+          path: /tmp/cdse-herradura-logs
+          retention-days: 7

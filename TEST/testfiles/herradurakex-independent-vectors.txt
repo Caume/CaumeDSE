@@ -14,6 +14,16 @@ Upstream reference
 - Repository: `Caume/HerraduraKEx`
 - Reviewed commit: `13e5fb0346ca5ec81202dee8bb3302633780ec35`
 - Header under test: `herradura.h`
+- Current review: `ad42138af14a40eb3b47127872f39509723c789f` (v9.5.23).
+  HSKE-NL-A1 and HFSCX vectors remain unchanged. Duplex vectors below identify
+  the legacy pre-5.0.0 permutation only; current duplex intentionally differs.
+- Stored migration fixture in `testCryptoSymmetric`: plaintext
+  `0123456789abcdef0123456789abcdeflegacy duplex value` (32-character value salt followed by
+  the value), password `Password`, 16 zero salt bytes, 32 zero nonce bytes,
+  PBKDF2-HMAC-SHA256 with 10000 iterations, and AAD
+  `CDSE-HKX-AAD-v1|herradura-hske-duplex-256|00000000000000000000000000000000`.
+  Generated with the historical header; tests verify legacy readback and
+  migration to both HSKE-NL-A1 and AES, or rejection with a current header.
 - Review status: CDSE-generated deterministic vectors from the reviewed header;
   not upstream-published vectors.
 
@@ -28,6 +38,9 @@ gcc -x c -I/path/to/HerraduraKEx -o /tmp/cdse_hkx_vectors - <<'EOF'
 #include <stdio.h>
 #include <string.h>
 #include <herradura.h>
+#ifndef BA_INIT
+#define BA_INIT {{0}}
+#endif
 
 static void print_hex(const char *label, const uint8_t *buf, size_t len)
 {
@@ -40,12 +53,14 @@ static void print_hex(const char *label, const uint8_t *buf, size_t len)
 static void fill_key(BitArray *key)
 {
     int i;
+    *key=(BitArray)BA_INIT;
     for (i=0; i<KEYBYTES; i++) key->b[i]=(uint8_t)(0x10+i*3);
 }
 
 static void fill_nonce(BitArray *nonce)
 {
     int i;
+    *nonce=(BitArray)BA_INIT;
     for (i=0; i<KEYBYTES; i++) nonce->b[i]=(uint8_t)(0xa0-i*5);
 }
 

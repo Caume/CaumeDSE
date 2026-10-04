@@ -104,6 +104,9 @@ jobs:
       - name: Test live agent capability validator
         run: python3 TEST/test_validate_live_agent_capabilities.py
 
+      - name: Test Herradura storage artifact validator
+        run: python3 TEST/test_validate_herradura_storage.py
+
       - name: Validate TODO status format
         shell: bash
         run: |

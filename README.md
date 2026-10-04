@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 1.0.17
+# Caume Data Security Engine (CaumeDSE) version 2.0.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2667,7 +2667,9 @@ Builds that need HerraduraKEx must opt in explicitly:
 
 The path may point to a HerraduraKEx repository root or include directory
 containing `herradura.h`. Configure checks for 256-bit key constants and the
-HSKE-NL AEAD entry points. Default builds do not enable Herradura algorithm names
+HSKE-NL AEAD entry points, runs a known-answer HSKE-NL-A1 compatibility probe,
+and independently checks legacy duplex read compatibility. These probes require
+a native build; cross-compilation with this provider is rejected. Default builds do not enable Herradura algorithm names
 and reject them instead of falling back to OpenSSL.
 
 Recommended storage profiles:
@@ -2675,10 +2677,32 @@ Recommended storage profiles:
 - `herradura-hske-nla1-aead-256`: initial PQC-oriented at-rest encryption
   candidate. Use this first when the deployment has passed the Herradura-enabled
   DEBUG and live verifier checks.
-- `herradura-hske-duplex-256`: evaluation profile for variable-size SQLite
-  fields when a direct arbitrary-length AEAD interface is preferred.
-- `herradura-hske-nla2-256`: experimental only unless a specific
-  reversible-permutation storage use case is documented.
+- `herradura-hske-duplex-256`: legacy migration readback only, available only
+  when the supplied header matches the original pre-5.0.0 duplex vector. New
+  writes and default selection are rejected. Current upstream duplex is research.
+- `herradura-hske-nla2-256`: metadata only; upstream classifies it as demo-only.
+
+The current review covers upstream v9.5.23, commit
+`ad42138af14a40eb3b47127872f39509723c789f`. `hske-duplex3` (research) and
+`hske-nla3` (demo-only) were considered and are not enabled for CaumeDSE storage.
+The HSKE-NL-A1 security claim remains conditional on upstream's NL-FSCX v1 PRF
+conjecture. `.github/workflows/herradurakex-ci.yml` tests SHA-256-verified headers
+from both this revision and the historical `13e5fb0` revision on each PR.
+The current-header CI job also verifies HTTP and HTTPS storage flows. The large
+Herradura CSV upload has a bounded 120-second request timeout; ordinary live
+requests retain the 20-second timeout.
+The at-rest validator inspects engine SQLite databases and the live storage
+directory, excludes installed binaries and input fixtures, and recognizes
+line-wrapped Base64 with an optional 64-character MAC prefix. Its regression
+tests reject plaintext canaries and prevent unrelated engine frames from
+masking a missing HSKE-NL-A1 frame in the target storage directory.
+
+Before replacing a pre-5.0.0 header, back up the data and use a legacy-compatible
+binary to re-protect every duplex value to HSKE-NL-A1 or AES-GCM. Verify readback
+and complete coverage using the re-protection workflow, then upgrade the header.
+Profile id 2 remains reserved for the original duplex construction; current
+headers reject those frames instead of silently using the changed permutation.
+The legacy-compatible binary must select AES-GCM or HSKE-NL-A1 for its default.
 
 Do not use `hkex-rnl` for direct SQLite value encryption. Treat it as a future
 key-wrapping or offline key-establishment candidate. Treat `hfscx-256` and
