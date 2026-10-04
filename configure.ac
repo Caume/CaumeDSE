@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.68])
-AC_INIT([CaumeDSE], [1.0.17], [0h3rr3r4@gmail.com])
+AC_INIT([CaumeDSE], [2.0.0], [0h3rr3r4@gmail.com])
 AM_INIT_AUTOMAKE([dist-bzip2 color-tests readme-alpha])
 AC_CONFIG_SRCDIR([function_tests.c])
 AC_CONFIG_HEADERS([config.h])
@@ -259,6 +259,7 @@ AC_ARG_WITH([herradurakex],
 	[HERRADURAKEX_PATH=""])
 HERRADURAKEX_CPPFLAGS=""
 CDSE_ENABLE_HERRADURAKEX=0
+CDSE_HERRADURAKEX_LEGACY_DUPLEX=0
 AS_IF([test "x$HERRADURAKEX_PATH" != "x" && test "x$HERRADURAKEX_PATH" != "xno"],
 	[ENABLE_HERRADURAKEX="yes"])
 AS_IF([test "x$ENABLE_HERRADURAKEX" = "xyes"], [
@@ -271,7 +272,7 @@ AS_IF([test "x$ENABLE_HERRADURAKEX" = "xyes"], [
 				[AC_MSG_ERROR([herradura.h not found under --with-herradurakex path])])])
 	])
 	oldCPPFLAGS="$CPPFLAGS"
-	CPPFLAGS="$CPPFLAGS $HERRADURAKEX_CPPFLAGS"
+	CPPFLAGS="$CPPFLAGS $HERRADURAKEX_CPPFLAGS -I$srcdir"
 	AC_CHECK_HEADERS([herradura.h], [],
 		[AC_MSG_ERROR([--enable-HERRADURAKEX requires herradura.h])])
 	AC_COMPILE_IFELSE(
@@ -294,10 +295,25 @@ AS_IF([test "x$ENABLE_HERRADURAKEX" = "xyes"], [
 #endif
 void *aead_encrypt_ptr = (void *)hske_nl_aead_encrypt;
 void *aead_decrypt_ptr = (void *)hske_nl_aead_decrypt;
-return (aead_encrypt_ptr == aead_decrypt_ptr);
+void *duplex_encrypt_ptr = (void *)hske_nl_v2_duplex_encrypt;
+void *duplex_decrypt_ptr = (void *)hske_nl_v2_duplex_decrypt;
+return (aead_encrypt_ptr == aead_decrypt_ptr || duplex_encrypt_ptr == duplex_decrypt_ptr);
 		]])],
 		[CDSE_ENABLE_HERRADURAKEX=1],
 		[AC_MSG_ERROR([herradura.h does not expose the expected 256-bit HSKE-NL AEAD API])])
+	AC_MSG_CHECKING([HerraduraKEx HSKE-NL-A1 storage compatibility])
+	AC_RUN_IFELSE([AC_LANG_SOURCE([[#include "TEST/herradura_compat_probe.c"]])],
+		[AC_MSG_RESULT([yes])],
+		[AC_MSG_ERROR([HerraduraKEx HSKE-NL-A1 known-answer compatibility probe failed])],
+		[AC_MSG_ERROR([HerraduraKEx storage compatibility must be verified by a native build])])
+	AC_MSG_CHECKING([HerraduraKEx legacy duplex read compatibility])
+	AC_RUN_IFELSE([AC_LANG_SOURCE([[
+#define CDSE_PROBE_LEGACY_DUPLEX 1
+#include "TEST/herradura_compat_probe.c"
+		]])],
+		[CDSE_HERRADURAKEX_LEGACY_DUPLEX=1; AC_MSG_RESULT([yes, migration readback only])],
+		[AC_MSG_RESULT([no, legacy duplex frames will be rejected])],
+		[AC_MSG_ERROR([HerraduraKEx legacy duplex compatibility must be verified by a native build])])
 	CPPFLAGS="$oldCPPFLAGS"
 ], [
 	AS_IF([test "x$ENABLE_HERRADURAKEX" != "xno"],
@@ -311,6 +327,7 @@ AC_DEFINE_UNQUOTED([BYPASS_TLS_IN_HTTP], [$BYTLS], [Enables (1) or disables (0) 
 AC_DEFINE_UNQUOTED([PBKDF1_OPENSSL_CLI_COMPATIBILITY], [$PBKDF], [Enables (1) or disables (2) Use of old Password Based Key Derivation Function (PKCS5v1.5)])
 AC_DEFINE_UNQUOTED([CDSE_MAX_THREADS], [$CDSE_MAX_THREADS], [Maximum number of concurrent HTTP/HTTPS worker threads])
 AC_DEFINE_UNQUOTED([CDSE_ENABLE_HERRADURAKEX], [$CDSE_ENABLE_HERRADURAKEX], [Enables (1) or disables (0) optional HerraduraKEx at-rest crypto provider integration])
+AC_DEFINE_UNQUOTED([CDSE_HERRADURAKEX_LEGACY_DUPLEX], [$CDSE_HERRADURAKEX_LEGACY_DUPLEX], [Supplied HerraduraKEx header reproduces the legacy duplex storage vector])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

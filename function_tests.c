@@ -49,7 +49,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #pragma GCC diagnostic ignored "-Wunused-function"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #endif
-#include <herradura.h>
+#include "herradura_compat.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -214,6 +214,7 @@ static void cmeTestHerraduraFillKey(BitArray *key)
 {
     int cont;
 
+    *key=(BitArray)BA_INIT;
     for (cont=0; cont<KEYBYTES; cont++)
     {
         key->b[cont]=(uint8_t)(0x10+cont*3);
@@ -224,6 +225,7 @@ static void cmeTestHerraduraFillNonce(BitArray *nonce)
 {
     int cont;
 
+    *nonce=(BitArray)BA_INIT;
     for (cont=0; cont<KEYBYTES; cont++)
     {
         nonce->b[cont]=(uint8_t)(0xa0-cont*5);
@@ -383,16 +385,16 @@ void testHerraduraIndependent(void)
     }
 
     hske_nl_v2_duplex_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,sizeof(plaintext),ciphertext,tag);
-    if (!memcmp(ciphertext,expectedDuplexCiphertext97,sizeof(expectedDuplexCiphertext97)) &&
-        !memcmp(tag,expectedDuplexTag97,sizeof(expectedDuplexTag97)) &&
+    if (((!memcmp(ciphertext,expectedDuplexCiphertext97,sizeof(expectedDuplexCiphertext97)) &&
+          !memcmp(tag,expectedDuplexTag97,sizeof(expectedDuplexTag97)))==CDSE_HERRADURAKEX_LEGACY_DUPLEX) &&
         hske_nl_v2_duplex_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,sizeof(ciphertext),tag,decrypted) &&
         !memcmp(plaintext,decrypted,sizeof(plaintext)))
     {
-        printf("TESTS: testHerraduraIndependent(), PASS: HSKE duplex known-answer vector matches.\n");
+        printf("TESTS: testHerraduraIndependent(), PASS: legacy duplex compatibility matches build probe.\n");
     }
     else
     {
-        printf("TESTS: testHerraduraIndependent(), FAIL: HSKE duplex known-answer vector mismatch.\n");
+        printf("TESTS: testHerraduraIndependent(), FAIL: legacy duplex compatibility disagrees with build probe.\n");
     }
 
     hske_nl_aead_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,0,ciphertext,tag);
@@ -407,14 +409,14 @@ void testHerraduraIndependent(void)
     }
 
     hske_nl_v2_duplex_encrypt(&key,&nonce,aad,sizeof(aad)-1,plaintext,0,ciphertext,tag);
-    if (!memcmp(tag,expectedDuplexTag0,sizeof(expectedDuplexTag0)) &&
+    if (((memcmp(tag,expectedDuplexTag0,sizeof(expectedDuplexTag0))==0)==CDSE_HERRADURAKEX_LEGACY_DUPLEX) &&
         hske_nl_v2_duplex_decrypt(&key,&nonce,aad,sizeof(aad)-1,ciphertext,0,tag,decrypted))
     {
-        printf("TESTS: testHerraduraIndependent(), PASS: HSKE duplex empty-plaintext vector matches.\n");
+        printf("TESTS: testHerraduraIndependent(), PASS: legacy duplex empty-plaintext compatibility matches build probe.\n");
     }
     else
     {
-        printf("TESTS: testHerraduraIndependent(), FAIL: HSKE duplex empty-plaintext vector mismatch.\n");
+        printf("TESTS: testHerraduraIndependent(), FAIL: legacy duplex empty-plaintext compatibility disagrees with build probe.\n");
     }
 
     for (cont=0; cont<(sizeof(sizes)/sizeof(sizes[0])); cont++)
@@ -772,20 +774,104 @@ void testCryptoSymmetric(unsigned char *bufIn, unsigned char *bufOut)
         hkxSalt=NULL;
         hkxCiphertextLen=0;
         hkxPlaintextLen=0;
-        if (!cmeCipherByteString(cleartext,&hkxCiphertext,&hkxSalt,strlen((char *)cleartext),
+        if (cmeCipherByteString(cleartext,&hkxCiphertext,&hkxSalt,strlen((char *)cleartext),
                                  &hkxCiphertextLen,cmeHerraduraKExProfileHSKEDuplex256,
-                                 "Password",'e') &&
-            !cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,hkxCiphertextLen,
-                                 &hkxPlaintextLen,cmeHerraduraKExProfileHSKEDuplex256,
-                                 "Password",'d') &&
-            hkxPlaintextLen==(int)strlen((char *)cleartext) &&
-            !memcmp(hkxPlaintext,cleartext,hkxPlaintextLen))
+                                 "Password",'e')==32 &&
+            !cmeGetCryptoProfile(&cryptoProfile,cmeHerraduraKExProfileHSKEDuplex256) &&
+            !cryptoProfile.allowedAsDefault)
         {
-            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx HSKE duplex profile round trip.\n");
+            printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx legacy duplex rejects new writes and default selection.\n");
         }
         else
         {
-            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx HSKE duplex profile round trip failed.\n");
+            printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx legacy duplex write policy failed.\n");
+        }
+        {
+            const unsigned char legacyFrameHex[]=
+                "43445345484b583102000000000000000000000000000000000000000000000000000000000000000000"
+                "d8c1ae718a13d602a293ee54a8b27e9fe441573f6215d4c317c74f8ecb0310cd"
+                "22452ee29adc287bd70e9272a54807346dcfcbb330e4cc3779f849baed9f990b1fc54210f6e1e8f3bccfb99dc12ca35faeee40";
+            int legacyReadResult;
+
+            cmeHexstrToBytes(&hkxCiphertext,legacyFrameHex);
+            cmeStrConstrAppend((char **)&hkxSalt,"00000000000000000000000000000000");
+            legacyReadResult=cmeCipherByteString(hkxCiphertext,&hkxPlaintext,&hkxSalt,
+                (sizeof(legacyFrameHex)-1)/2,&hkxPlaintextLen,cmeOpenSSLLegacyStorageProfile,"Password",'d');
+            if ((CDSE_HERRADURAKEX_LEGACY_DUPLEX && !legacyReadResult &&
+                 hkxPlaintextLen==51 && !memcmp(hkxPlaintext,"0123456789abcdef0123456789abcdeflegacy duplex value",51)) ||
+                (!CDSE_HERRADURAKEX_LEGACY_DUPLEX && legacyReadResult==32 && !hkxPlaintext))
+            {
+                printf("TESTS: testCryptoSymmetric(), PASS: HerraduraKEx legacy duplex read gate matches stored fixture.\n");
+            }
+            else
+            {
+                printf("TESTS: testCryptoSymmetric(), FAIL: HerraduraKEx legacy duplex read gate failed.\n");
+            }
+            if (CDSE_HERRADURAKEX_LEGACY_DUPLEX)
+            {
+                const char *targets[]={cmeHerraduraKExProfileHSKENLA1AEAD256,cmeOpenSSLLegacyStorageProfile};
+                char *sourceB64=NULL;
+                int sourceB64Len=0;
+                int migratedOk=1;
+                size_t target;
+
+                cmeStrToB64(hkxCiphertext,(unsigned char **)&sourceB64,(sizeof(legacyFrameHex)-1)/2,&sourceB64Len);
+                {
+                    sqlite3 *memDB=NULL;
+                    cmeReprotectDBInventory inventory;
+                    cmeReprotectDBReport report;
+                    char *rejected=NULL, *targetSalt=NULL;
+                    int rejectedLen=0;
+                    int policyOK=!sqlite3_open(":memory:",&memDB);
+                    int dryRun;
+
+                    for (dryRun=0;dryRun<=1;dryRun++)
+                    {
+                        if (cmeReprotectDBSaltedValue(sourceB64,&rejected,cmeHerraduraKExProfileHSKEDuplex256,
+                            cmeHerraduraKExProfileHSKEDuplex256,(char **)&hkxSalt,&targetSalt,
+                            "Password","NewPassword",&rejectedLen,dryRun)!=3 || rejected || rejectedLen ||
+                            (policyOK && cmeReprotectMemSecureDB(memDB,"Password","NewPassword",
+                                cmeHerraduraKExProfileHSKEDuplex256,&report,dryRun)!=2))
+                        {
+                            policyOK=0;
+                        }
+                    }
+                    if (policyOK && cmeInventoryMemSecureDBReprotect(memDB,"Password",
+                        cmeHerraduraKExProfileHSKEDuplex256,&inventory)!=2)
+                    {
+                        policyOK=0;
+                    }
+                    printf("TESTS: testCryptoSymmetric(), %s: legacy duplex rejects re-protection destinations and dry-runs.\n",
+                        policyOK ? "PASS" : "FAIL");
+                    cmeFree(rejected);
+                    cmeFree(targetSalt);
+                    sqlite3_close(memDB);
+                }
+                for (target=0;target<sizeof(targets)/sizeof(targets[0]);target++)
+                {
+                    char *migrated=NULL, *targetSalt=NULL, *readback=NULL;
+                    int migratedLen=0, readbackLen=0;
+                    if (cmeReprotectDBSaltedValue(sourceB64,&migrated,cmeHerraduraKExProfileHSKEDuplex256,
+                        targets[target],(char **)&hkxSalt,&targetSalt,"Password","NewPassword",&migratedLen,0) ||
+                        cmeUnprotectDBSaltedValue(migrated,&readback,targets[target],&targetSalt,"NewPassword",&readbackLen) ||
+                        readbackLen!=19 || memcmp(readback,"legacy duplex value",19))
+                    {
+                        migratedOk=0;
+                    }
+                    cmeFree(migrated);
+                    cmeFree(targetSalt);
+                    cmeFree(readback);
+                }
+                cmeFree(sourceB64);
+                if (migratedOk)
+                {
+                    printf("TESTS: testCryptoSymmetric(), PASS: legacy duplex migrates to HSKE-NL-A1 and AES.\n");
+                }
+                else
+                {
+                    printf("TESTS: testCryptoSymmetric(), FAIL: legacy duplex migration failed.\n");
+                }
+            }
         }
         cmeFree(hkxCiphertext);
         cmeFree(hkxPlaintext);

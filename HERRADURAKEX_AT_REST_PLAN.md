@@ -65,24 +65,25 @@ Primary upstream sources reviewed:
 Reviewed upstream reference:
 
 - `Caume/HerraduraKEx` `master` commit
-  `13e5fb0346ca5ec81202dee8bb3302633780ec35`.
+  `ad42138af14a40eb3b47127872f39509723c789f` (v9.5.23).
+- Historical storage/vector reference:
+  `13e5fb0346ca5ec81202dee8bb3302633780ec35` (pre-5.0.0).
 
 Relevant implementation facts:
 
 - The repository provides a header-only C API in `herradura.h`.
-- The current FFI shim exposes the classical HKEX-GF, HSKE, HPKS, and HPKE
-  quartet, but not the NL/PQC or Stern APIs needed for this storage plan.
-  CaumeDSE should use direct C integration for the initial PQC profiles.
+- CaumeDSE uses the direct header-only C API, not the FFI shim.
 - `herradura.h` uses 256-bit key material for the reviewed symmetric paths.
-- Upstream declares `hske-nla1`, `hske-duplex`, `hske-nla2`, `hfscx-256`,
-  `hfscx-256-ds`, and `hkex-rnl` as production-status primitives or
-  protocols with conjectured quantum resistance in the protocol spec.
+- Upstream classifies `hske-nla1`, `hfscx-256`, and `hfscx-256-ds` as production
+  under explicit conjectured assumptions. `hske-duplex` and `hske-duplex3` are
+  research; `hske-nla2` and `hske-nla3` are demo-only. Newer v3 variants are
+  considered but deliberately not enabled for at-rest writes.
 - Upstream marks classical `hske` as not quantum-resistant.
 - Upstream marks Stern-based HPKE/HPKS flows as demo-only or dependent on
   production decoder/round requirements. They are not appropriate for the
   first CDSE storage implementation.
-- The repository license metadata is non-standard. Build integration must
-  complete a license compatibility review before vendoring or linking.
+- Current upstream declares dual GPLv3/MIT licensing. The header is supplied
+  externally; this integration does not vendor upstream code.
 
 ## Algorithm Recommendations
 
@@ -99,19 +100,21 @@ confirm the upstream C function handles arbitrary-length protected values:
   multi-kilobyte raw file parts, modified nonce, modified tag, modified
   ciphertext, wrong key, wrong salt, and malformed frame.
 
-### Variable-Length AEAD Evaluation: `herradura-hske-duplex-256`
+### Legacy Migration Only: `herradura-hske-duplex-256`
 
-Evaluate this as the preferred long-term profile when its C API is clearer for
-arbitrary-length SQLite fields than HSKE-NL-A1 AEAD:
-
-- Fit for CDSE: direct arbitrary-length AEAD would reduce framing and chunking
-  decisions for secure DB values and raw-compatible file parts.
-- Decision gate: select it only after the API is inspected, wrapped, and
-  covered by the same tamper tests as HSKE-NL-A1.
+Upstream v5.0.0 changed the v2 permutation and broke old duplex ciphertexts.
+The existing `CDSEHKX1` profile id 2 is reserved for the original construction.
+New writes and default selection are rejected. Readback is enabled only when
+configure reproduces the historical known-answer tag. Current headers fail
+that probe and reject legacy frames before invoking the changed algorithm.
+Re-protect all legacy duplex values to AES-GCM or HSKE-NL-A1 with a compatible
+pre-5.0.0 header and verify complete readback before upgrading. Back up data first.
+The current duplex and duplex3 constructions are research, so neither gets a
+new writable storage profile in this change.
 
 ### Experimental Candidate: `herradura-hske-nla2-256`
 
-Keep this as an experimental profile:
+Keep this as an unimplemented, demo-only metadata profile:
 
 - Fit for CDSE: may be useful where a reversible permutation-style construction
   is intentionally desired.
@@ -158,9 +161,9 @@ Do not implement these as initial CDSE storage algorithms:
 
 CaumeDSE now has a storage crypto profile abstraction before calling
 HerraduraKEx directly from existing EVP-only paths. The current abstraction
-resolves existing OpenSSL EVP algorithm names dynamically and resolves planned
-HerraduraKEx storage ids as metadata-only profiles until encryption wrappers
-are implemented.
+resolves existing OpenSSL EVP algorithm names dynamically and exposes guarded
+HSKE-NL-A1 wrappers, compatibility-gated legacy duplex readback, and an
+unimplemented NLA2 metadata profile.
 
 Profile metadata should include:
 
@@ -177,9 +180,9 @@ Known HerraduraKEx storage profile ids:
 - `herradura-hske-duplex-256`
 - `herradura-hske-nla2-256`
 
-The HSKE-NL-A1 AEAD and HSKE duplex profiles are marked implemented and allowed
-as opt-in defaults only when CaumeDSE is built with HerraduraKEx support. The
-default build still rejects those profile names at configuration time.
+Only HSKE-NL-A1 AEAD is allowed as an opt-in default in a Herradura-enabled
+build. Duplex is read-only and implemented only when the header passes the
+legacy compatibility probe. Default builds reject Herradura profile names.
 
 Herradura ciphertexts should use a new protected-value frame so they cannot be
 confused with existing OpenSSL ciphertexts. A candidate binary layout is:
@@ -270,12 +273,18 @@ When enabled, configure verifies:
 - `KEYBYTES` is 32.
 - `hske_nl_aead_encrypt()` and `hske_nl_aead_decrypt()` are exposed by the
   header.
+- The HSKE-NL-A1 known-answer tag and decrypt match the original storage vector.
+- The legacy duplex known-answer tag determines whether profile id 2 can be read.
+- Width-aware headers are initialized with `BA_INIT`; historical headers use
+  the byte-array initializer. Provider cross-builds are rejected because these
+  compatibility probes must execute.
 
-This integration intentionally does not vendor upstream code yet. Vendoring or
-linking must wait for the license compatibility review because the upstream
-GitHub metadata reports a non-standard license. Runtime Herradura encryption is
+This integration uses an externally supplied header. HSKE-NL-A1 encryption is
 available for direct wrapper calls and as an opt-in default storage profile in
 Herradura-enabled builds. Default builds reject Herradura profile names.
+The pinned-header CI matrix tests both reviewed revisions and verifies their
+SHA-256 digests before building. New dependency revisions require compatibility
+review rather than silently changing the cryptographic construction.
 
 ## Wrapper Status
 
@@ -310,7 +319,9 @@ Configuration remains fail-closed:
 - Default builds reject Herradura profile names because they are not compiled
   in or allowed as defaults.
 - Herradura-enabled builds may set `CDSE_DEFAULT_ENC_ALG` or the config-file
-  default to `herradura-hske-nla1-aead-256` or `herradura-hske-duplex-256`.
+  default to `herradura-hske-nla1-aead-256`. Legacy duplex cannot be a default
+  or a destination for re-protection; it can only be a migration source when
+  the header passes its historical compatibility probe.
 - Existing AES data is not migrated automatically.
 - Herradura-protected values require a Herradura-enabled binary for rollback or
   readback.

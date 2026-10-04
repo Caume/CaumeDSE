@@ -3096,6 +3096,11 @@ int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedVal
 #endif
         return(3);
     }
+    if (!targetProfile.allowedAsDefault)
+    {
+        fprintf(stderr,"CaumeDSE Warning: cmeReprotectDBSaltedValue(), target algorithm is read-only.\n");
+        return(3);
+    }
     result=cmeUnprotectByteString(protectedValue,&saltedValue,sourceEncAlg,sourceSalt,sourceOrgKey,
                                   &saltedValueLen,strlen(protectedValue));
     if (result)
@@ -3216,6 +3221,11 @@ int cmeInventoryMemSecureDBReprotect (sqlite3 *memSecureDB, const char *orgKey,
         fprintf(stderr,"CaumeDSE Error: cmeInventoryMemSecureDBReprotect(), Error, target algorithm %s is not implemented.\n",
                 targetEncAlg);
 #endif
+        return(2);
+    }
+    if (!targetProfile.allowedAsDefault)
+    {
+        fprintf(stderr,"CaumeDSE Warning: cmeInventoryMemSecureDBReprotect(), target algorithm is read-only.\n");
         return(2);
     }
     result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memData,&numRowsData,&numColsData);
@@ -3394,6 +3404,11 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
         fprintf(stderr,"CaumeDSE Error: cmeReprotectMemSecureDB(), Error, target algorithm %s is not implemented.\n",
                 targetEncAlg);
 #endif
+        return(2);
+    }
+    if (!targetProfile.allowedAsDefault)
+    {
+        fprintf(stderr,"CaumeDSE Warning: cmeReprotectMemSecureDB(), target algorithm is read-only.\n");
         return(2);
     }
     result=cmeInventoryMemSecureDBReprotect(memSecureDB,sourceOrgKey,targetEncAlg,&(report->before));

@@ -9,6 +9,9 @@
    integration */
 #undef CDSE_ENABLE_HERRADURAKEX
 
+/* Supplied HerraduraKEx header reproduces the legacy duplex storage vector */
+#undef CDSE_HERRADURAKEX_LEGACY_DUPLEX
+
 /* Maximum number of concurrent HTTP/HTTPS worker threads */
 #undef CDSE_MAX_THREADS
 

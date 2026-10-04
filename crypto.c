@@ -49,7 +49,7 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #pragma GCC diagnostic ignored "-Wunused-function"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #endif
-#include <herradura.h>
+#include "herradura_compat.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -77,7 +77,7 @@ static const cmeStaticCryptoProfile cmeHerraduraKExProfiles[] =
      cmeUseHerraduraKEx, cmeUseHerraduraKEx, cmeUseHerraduraKEx},
     {cmeHerraduraKExProfileHSKEDuplex256, 32, 32, evpSaltBufferSize, 32, 1,
      cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKEDuplex256,
-     cmeUseHerraduraKEx, cmeUseHerraduraKEx, cmeUseHerraduraKEx},
+     cmeUseHerraduraKEx, CDSE_HERRADURAKEX_LEGACY_DUPLEX, 0},
     {cmeHerraduraKExProfileHSKENLA2256, 32, 32, evpSaltBufferSize, 0, 0,
      cmeCryptoFrameHerraduraKExV1, cmeHerraduraKExProfileIdHSKENLA2256,
      cmeUseHerraduraKEx, 0, 0}
@@ -236,8 +236,8 @@ static int cmeHerraduraKExCipherByteString (const unsigned char *srcBuf, unsigne
             if (randomNonce) { memset(randomNonce,0,cmeHerraduraKExNonceLen); cmeFree(randomNonce); } \
         }
 
-    memset(&key,0,sizeof(key));
-    memset(&nonce,0,sizeof(nonce));
+    key=(BitArray)BA_INIT;
+    nonce=(BitArray)BA_INIT;
     if (!profile || !profile->implemented || !profile->isAEAD ||
         profile->frameVersion!=cmeCryptoFrameHerraduraKExV1 ||
         (profile->frameProfileId!=cmeHerraduraKExProfileIdHSKENLA1AEAD256 &&
@@ -992,6 +992,14 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
         {
             effectiveAlgorithm=cmeOpenSSLLegacyStorageProfile;
         }
+    }
+    if (effectiveAlgorithm && !strcmp(effectiveAlgorithm,cmeHerraduraKExProfileHSKEDuplex256) &&
+        (mode!='d' || !CDSE_HERRADURAKEX_LEGACY_DUPLEX))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Warning: legacy Herradura duplex is migration-read-only and requires a compatible pre-5.0.0 header; re-protect with HSKE-NL-A1 or AES before upgrading.\n");
+#endif
+        return(32);
     }
     if (cmeGetCryptoProfile(&cryptoProfile,effectiveAlgorithm) || !cryptoProfile.implemented)
     {
