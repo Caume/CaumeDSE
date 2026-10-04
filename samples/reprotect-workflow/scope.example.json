@@ -1,6 +1,6 @@
 {
   "reprotectSchemaVersion": 1,
-  "targetProfile": "hsk-en-la-aead-256",
+  "targetProfile": "herradura-hske-nla1-aead-256",
   "operator": {
     "organization": "RotationTrialOrg",
     "confirmedScope": "storage:RotationTrialStorage/documentType:file.csv"
@@ -11,7 +11,7 @@
       "storage": "RotationTrialStorage",
       "documentType": "file.csv",
       "document": "legacy-customers.csv",
-      "sourceProfile": "aes-256-cbc",
+      "sourceProfile": "aes-256-gcm",
       "dataRows": 12,
       "metaRows": 4,
       "protectedValueRows": 12,
@@ -24,7 +24,7 @@
       "storage": "RotationTrialStorage",
       "documentType": "file.csv",
       "document": "mixed-orders.csv",
-      "sourceProfile": "hsk-en-la-aead-256",
+      "sourceProfile": "herradura-hske-nla1-aead-256",
       "dataRows": 8,
       "metaRows": 4,
       "protectedValueRows": 8,

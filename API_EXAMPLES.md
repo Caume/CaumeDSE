@@ -48,11 +48,15 @@ CDSE_DEFAULT_ENC_ALG="herradura-hske-nla1-aead-256" \
 ```
 
 Use `herradura-hske-nla1-aead-256` as the initial PQC-oriented SQLite at-rest
-candidate after the Herradura verifier passes. Evaluate
-`herradura-hske-duplex-256` for variable-size fields. Keep
-`herradura-hske-nla2-256` experimental, keep `hkex-rnl` for future key wrapping
-or key establishment, and do not use Stern HPKE/HPKS profiles for production
-CaumeDSE storage. This setting does not change HTTP/HTTPS or TLS algorithms.
+candidate after the Herradura verifier passes. `herradura-hske-duplex-256` is
+legacy migration readback only with a compatible pre-5.0.0 header, never a
+default or new-write/re-protection destination. Back up and migrate all legacy
+duplex values to NLA1 or AES-GCM before upgrading the header.
+`herradura-hske-nla2-256` is unimplemented, demo-only metadata; duplex3
+(research) and NLA3 (demo-only) are not enabled for storage. Keep `hkex-rnl` for
+future key wrapping or key establishment, and do not use Stern HPKE/HPKS
+profiles for production CaumeDSE storage. This setting does not change
+HTTP/HTTPS or TLS algorithms.
 
 ## Agent Capability Discovery
 

@@ -82,9 +82,12 @@ Use these rules in generated plans:
 
 - Prefer `herradura-hske-nla1-aead-256` as the initial PQC-oriented SQLite
   at-rest candidate after verifier coverage passes.
-- Treat `herradura-hske-duplex-256` as an evaluation profile for variable-size
-  fields.
-- Treat `herradura-hske-nla2-256` as experimental.
+- Treat `herradura-hske-duplex-256` as legacy migration readback only when the
+  header passes the historical pre-5.0.0 compatibility probe. Never select it
+  as a default or new-write/re-protection destination. Require backup and
+  complete migration to NLA1 or AES-GCM before upgrading the header.
+- Treat `herradura-hske-nla2-256` as unimplemented, demo-only metadata.
+  Duplex3 (research) and NLA3 (demo-only) are not enabled for storage.
 - Treat `hfscx-256` and `hfscx-256-ds` as future Herradura-native hash/MAC
   candidates, not replacements for existing compatibility HMAC behavior.
 - Do not use `hkex-rnl` for direct SQLite field encryption; reserve it for

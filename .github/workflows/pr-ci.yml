@@ -107,6 +107,9 @@ jobs:
       - name: Test Herradura storage artifact validator
         run: python3 TEST/test_validate_herradura_storage.py
 
+      - name: Test operational sample crypto profile contract
+        run: python3 TEST/test_sample_crypto_profiles.py
+
       - name: Validate TODO status format
         shell: bash
         run: |

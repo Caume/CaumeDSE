@@ -1259,3 +1259,59 @@
   - Goal: support the width-aware upstream C API, prevent incompatible duplex revisions from sharing a stored profile, consider the v3 algorithms and current research classifications, and continuously test pinned upstream headers.
   - Done: initialized width-aware BitArrays and added native configure compatibility probes; preserved NLA1 vectors; made historical duplex migration-read-only with fixture-backed read and migration checks, rejecting writes, defaults, and re-protection destinations including dry-runs. Reviewed upstream v9.5.23 and documented the research/demo-only v3 exclusions and migration requirements. Added hash-pinned historical/current CI, fixed the bounded large-upload check and scoped at-rest scanner with eight regression tests, and advanced synchronized release metadata to 2.0.0 for the incompatible duplex write restriction.
   - Validation: historical/current provider builds and component verification, current-provider ASAN/UBSAN verification, HTTP and HTTPS live verification (208 passed, zero failed), provider-disabled release build and distribution checks, storage-validator regressions, OpenAPI routes, immutable action references, and major-version increment validation.
+
+- [x] #141 Align crypto profile documentation and operational samples with the runtime.
+  - Source: `crypto.h`, `TUTORIAL.md`, `API_EXAMPLES.md`, `AI_USAGE.md`, `samples/reprotect-workflow/`, `samples/operational-readiness/`, `TEST/test_sample_crypto_profiles.py`, `.github/workflows/pr-ci.yml`.
+  - Goal: use canonical AES-GCM and NLA1 profile names, remove fictitious aliases, and describe duplex as legacy migration-only and NLA2 as unimplemented/demo-only.
+  - Done: corrected sample targets, AES-GCM defaults, and mixed-profile fixtures; retained real AES-CBC compatibility and removed fictitious aliases. AES readiness no longer requires the optional Herradura provider; NLA1 still does. Updated tutorial/API/AI policy for migration-only duplex and unimplemented/demo-only NLA2, and added a ten-test C-header/sample/documentation contract suite to lightweight CI. Advanced synchronized release metadata to 2.0.1.
+  - Validation: the new suite detects the pre-change mismatches and passes after the fix; both affected sample self-tests and the full non-web build/component verifier pass (45 passed, zero failed, nine expected skips). Existing storage/contract/validator fixtures, route/action validation, shell syntax, and exact patch-version increment checks pass.
+
+- [ ] #142 Provide a runnable, scoped ColumnFile migration interface.
+  - Source: `samples/reprotect-workflow/reprotect_workflow.py`, `main.c`, `db.c`, `Makefile.am`, `README.md`.
+  - Goal: replace the nonexistent `caumedse-admin reprotect-columnfile` command templates with an installed, documented interface to the existing C helpers.
+  - Plan: require operator-confirmed scope, protected key-file inputs, dry-run inventory, explicit commit, checkpoints, readback, and actionable failures; add end-to-end command tests. Until then clearly label templates as non-executable and the sample as a planner, not a migration executor.
+
+- [ ] #143 Support integrity-preserving key/profile migration for MAC/sign metadata.
+  - Source: `db.c`, `samples/reprotect-workflow/`, `function_tests.c`, `README.md`.
+  - Goal: implement the dedicated recomputation workflow currently required but unavailable when ColumnFile MAC/sign metadata blocks migration.
+  - Plan: verify source integrity before mutation, recompute integrity columns for target key/profile, preserve transaction rollback, and test tamper/wrong-key/interruption failures. Keep existing fail-closed refusal until this is verified.
+
+- [ ] #144 Cover internal databases and raw-file parts in complete storage migration.
+  - Source: `engine_interface.c`, `engine_admin.c`, `filehandling.c`, `db.c`, `README.md`, `HERRADURAKEX_AT_REST_PLAN.md`.
+  - Goal: make the documented legacy duplex upgrade achievable for every protected value, beyond the current ColumnFile helpers.
+  - Plan: inventory exact profile ids across ResourcesDB, RolesDB, LogsDB, ColumnFile metadata/data, and raw parts; implement scoped re-protection with MAC/lookup consistency, durable checkpoints, restart/resume, and complete readback. Refuse upgrade closeout while any legacy duplex artifact remains.
+
+- [ ] #145 Modernize the four-client sample test manager and fixture guidance.
+  - Source: `samples/hsm-db-crypto/cdse_test_manager.py`, `samples/hsm-db-crypto/README`, `samples/hsm-db-crypto/env.sh`, `debug_tests.c`.
+  - Goal: replace obsolete root-binary startup markers and Enter-driven HTTP/HTTPS transitions with the current dedicated DEBUG runner and signal-based shutdown.
+  - Plan: isolate test data, use configurable free ports and explicit protocol startup, fail promptly when children exit, handle help without launching services, reconcile documented fixture credentials, and test Python/Go/Perl/web secret lifecycles against a fresh build.
+
+- [ ] #146 Fix conflicting HTTP proxy examples.
+  - Source: `samples/hsm-db-crypto/README`, `samples/hsm-db-crypto/a-web/README`, `samples/hsm-db-crypto/a-web/proxy.py`.
+  - Goal: avoid binding both the sample proxy and its CaumeDSE HTTP upstream to port 8080.
+  - Plan: consistently use a separate proxy port such as 8088 in HTTP recipes and browser URLs; validate each startup recipe and reject self-forwarding configuration where practical.
+
+- [ ] #147 Bind future Herradura frames to stable storage context.
+  - Source: `crypto.c`, `db.c`, `engine_interface.c`, `filehandling.c`, `HERRADURAKEX_AT_REST_PLAN.md`.
+  - Goal: complete the documented associated-data design beyond the current domain/algorithm/salt binding.
+  - Plan: define immutable database/table/field and resource identifiers available on every encrypt/decrypt path, version the frame/AAD contract without reinterpreting existing frames, and test cross-context substitution plus legacy readback. Preserve current compatibility until the design is reviewed.
+
+- [ ] #148 Design and implement an opt-in remote storage provider.
+  - Source: `filehandling.c`, `common.h`, `README.md` storage `type`, `accessPath`, `accessUser`, and `accessPassword` attributes.
+  - Goal: resolve the explicitly unimplemented remote-storage feature rather than treating stored connection metadata as an active backend.
+  - Plan: select a concrete backend and threat model, define provider capabilities and credential handling, preserve local provider behavior, and test remote failures/cleanup/integrity. Deferred; do not imply support before implementation.
+
+- [ ] #149 Decide the future of the unimplemented HTTP Basic authentication field.
+  - Source: `README.md` `basicAuthPwdHash`, `engine_admin.c`, `webservice_interface.c`.
+  - Goal: resolve the documented placeholder with an explicit supported design or a documented deprecation decision.
+  - Plan: assess whether external-manager authentication already meets the need; if Basic auth is approved, require HTTPS, a reviewed password-verifier scheme, bounded authentication attempts, and no TLS/authorization bypass. Deferred; metadata storage alone is not authentication support.
+
+- [ ] #150 Evaluate Herradura-native domain-separated hash/MAC integration.
+  - Source: `HERRADURAKEX_AT_REST_PLAN.md`, `crypto.c`, `db.c`, `filehandling.c`.
+  - Goal: assess the documented future `hfscx-256`/`hfscx-256-ds` integrity candidates without replacing compatibility HMAC behavior implicitly.
+  - Plan: review assumptions and use cases, define versioned integrity metadata, independent vectors, and mixed-profile migration before considering an opt-in implementation. Deferred evaluation, not approval for new production algorithms.
+
+- [ ] #151 Evaluate an offline key-wrapping/key-establishment design.
+  - Source: `HERRADURAKEX_AT_REST_PLAN.md`, `AI_USAGE.md`, `README.md`, organization-key rotation workflows.
+  - Goal: assess the deferred `hkex-rnl` use case without treating key exchange as direct storage encryption or changing TLS.
+  - Plan: define trust boundaries, authentication and key lifecycle requirements, review cryptographic assumptions, and specify recovery/rotation tests before implementation. Keep research/demo-only storage algorithms excluded.

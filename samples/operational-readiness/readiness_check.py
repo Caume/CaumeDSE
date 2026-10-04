@@ -21,8 +21,9 @@ SENSITIVE_KEYS = {"orgKey", "newOrgKey", "accessPassword", "oauthConsumerSecret"
 SECRET_PATTERNS = [
     (re.compile(r"(?i)(orgKey|newOrgKey|accessPassword|oauthConsumerSecret|password)=([^&\s\"']+)"), r"\1=<redacted>"),
 ]
-HERRADURA_PROFILES = {"hsk-en-la-aead-256", "HERRADURAKEX_HSK_EN_LA_AEAD_256"}
-AES_PROFILES = {"aes-256-cbc", "CME_OPENSSL_AES256_CBC"}
+HERRADURA_PROFILES = {"herradura-hske-nla1-aead-256"}
+AES_PROFILES = {"aes-256-gcm", "aes-256-cbc"}
+DEFAULT_STORAGE_PROFILE = "aes-256-gcm"
 STATE_RANK = {"healthy": 0, "degraded": 1, "misconfigured": 2, "unsafe": 3}
 ENV_FIELDS = {
     "CDSE_READINESS_STORAGE_PATH": "storage_path",
@@ -141,8 +142,12 @@ def build_report(args):
         add_check(checks, "storageCryptoProfile", "healthy", "configured storage crypto profile is recognized", profile=profile)
     else:
         add_check(checks, "storageCryptoProfile", "degraded", "storage crypto profile is unknown to this sample", profile=profile)
-    add_check(checks, "herraduraBuild", "healthy" if herradura_available else "degraded",
-              "Herradura provider is available" if herradura_available else "Herradura provider is not available",
+    provider_required = profile in HERRADURA_PROFILES
+    provider_state = "healthy" if herradura_available or not provider_required else "misconfigured"
+    provider_message = "Herradura provider is available" if herradura_available else (
+        "Herradura provider is required but unavailable" if provider_required else
+        "Herradura provider is not required for the selected profile")
+    add_check(checks, "herraduraBuild", provider_state, provider_message,
               available=herradura_available)
     if args.tls_auth_state == "bypass":
         add_check(checks, "tlsAuth", "unsafe", "TLS client-auth bypass is enabled; use only for DEBUG verification")
@@ -518,7 +523,7 @@ def self_test():
         args = argparse.Namespace(
             storage_path=tmp,
             parser_temp_dir=tmp,
-            storage_profile="hsk-en-la-aead-256",
+            storage_profile="herradura-hske-nla1-aead-256",
             herradura_available=False,
             tls_auth_state="bypass",
             build_mode="debug",
@@ -581,7 +586,7 @@ def parse_args(argv):
     check.add_argument("--config", help="Optional JSON config; environment variables override it.")
     check.add_argument("--storage-path", default=os.getcwd())
     check.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
-    check.add_argument("--storage-profile", default="aes-256-cbc")
+    check.add_argument("--storage-profile", default=DEFAULT_STORAGE_PROFILE)
     check.add_argument("--herradura-available", action="store_true")
     check.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
     check.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
@@ -593,7 +598,7 @@ def parse_args(argv):
     context.add_argument("--config", help="Optional JSON config; environment variables override it.")
     context.add_argument("--storage-path", default=os.getcwd())
     context.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
-    context.add_argument("--storage-profile", default="aes-256-cbc")
+    context.add_argument("--storage-profile", default=DEFAULT_STORAGE_PROFILE)
     context.add_argument("--herradura-available", action="store_true")
     context.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
     context.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
@@ -605,7 +610,7 @@ def parse_args(argv):
     metrics.add_argument("--config", help="Optional JSON config; environment variables override it.")
     metrics.add_argument("--storage-path", default=os.getcwd())
     metrics.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
-    metrics.add_argument("--storage-profile", default="aes-256-cbc")
+    metrics.add_argument("--storage-profile", default=DEFAULT_STORAGE_PROFILE)
     metrics.add_argument("--herradura-available", action="store_true")
     metrics.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
     metrics.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
@@ -617,7 +622,7 @@ def parse_args(argv):
     summary.add_argument("--config", help="Optional JSON config; environment variables override it.")
     summary.add_argument("--storage-path", default=os.getcwd())
     summary.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
-    summary.add_argument("--storage-profile", default="aes-256-cbc")
+    summary.add_argument("--storage-profile", default=DEFAULT_STORAGE_PROFILE)
     summary.add_argument("--herradura-available", action="store_true")
     summary.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
     summary.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
@@ -629,7 +634,7 @@ def parse_args(argv):
     nagios.add_argument("--config", help="Optional JSON config; environment variables override it.")
     nagios.add_argument("--storage-path", default=os.getcwd())
     nagios.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
-    nagios.add_argument("--storage-profile", default="aes-256-cbc")
+    nagios.add_argument("--storage-profile", default=DEFAULT_STORAGE_PROFILE)
     nagios.add_argument("--herradura-available", action="store_true")
     nagios.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
     nagios.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
@@ -643,7 +648,7 @@ def parse_args(argv):
     sarif.add_argument("--config", help="Optional JSON config; environment variables override it.")
     sarif.add_argument("--storage-path", default=os.getcwd())
     sarif.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
-    sarif.add_argument("--storage-profile", default="aes-256-cbc")
+    sarif.add_argument("--storage-profile", default=DEFAULT_STORAGE_PROFILE)
     sarif.add_argument("--herradura-available", action="store_true")
     sarif.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
     sarif.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
@@ -655,7 +660,7 @@ def parse_args(argv):
     remediation.add_argument("--config", help="Optional JSON config; environment variables override it.")
     remediation.add_argument("--storage-path", default=os.getcwd())
     remediation.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
-    remediation.add_argument("--storage-profile", default="aes-256-cbc")
+    remediation.add_argument("--storage-profile", default=DEFAULT_STORAGE_PROFILE)
     remediation.add_argument("--herradura-available", action="store_true")
     remediation.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
     remediation.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
@@ -667,7 +672,7 @@ def parse_args(argv):
     threshold.add_argument("--config", help="Optional JSON config; environment variables override it.")
     threshold.add_argument("--storage-path", default=os.getcwd())
     threshold.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
-    threshold.add_argument("--storage-profile", default="aes-256-cbc")
+    threshold.add_argument("--storage-profile", default=DEFAULT_STORAGE_PROFILE)
     threshold.add_argument("--herradura-available", action="store_true")
     threshold.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
     threshold.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")
@@ -680,7 +685,7 @@ def parse_args(argv):
     completion.add_argument("--config", help="Optional JSON config; environment variables override it.")
     completion.add_argument("--storage-path", default=os.getcwd())
     completion.add_argument("--parser-temp-dir", default=tempfile.gettempdir())
-    completion.add_argument("--storage-profile", default="aes-256-cbc")
+    completion.add_argument("--storage-profile", default=DEFAULT_STORAGE_PROFILE)
     completion.add_argument("--herradura-available", action="store_true")
     completion.add_argument("--tls-auth-state", choices=["required", "bypass", "unknown"], default="unknown")
     completion.add_argument("--build-mode", choices=["release", "debug", "unknown"], default="unknown")

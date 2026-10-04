@@ -1,7 +1,7 @@
 {
   "storage_path": "TEST",
   "parser_temp_dir": "/tmp",
-  "storage_profile": "aes-256-cbc",
+  "storage_profile": "aes-256-gcm",
   "herradura_available": false,
   "tls_auth_state": "required",
   "build_mode": "release",

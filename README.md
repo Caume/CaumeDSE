@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.0.0
+# Caume Data Security Engine (CaumeDSE) version 2.0.1
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2506,6 +2506,11 @@ The HTTP and HTTPS live verifier also validates the returned `/agentCapabilities
 route names, paths, and method sets against the source manifest and OpenAPI.
 `TEST/test_validate_live_agent_capabilities.py` covers matching, missing-method,
 unexpected-route, and malformed-response fixtures.
+
+`TEST/test_sample_crypto_profiles.py` compares the migration/readiness samples
+with canonical profile names in `crypto.h`, checks writable-target restrictions,
+AES-GCM defaults and optional-provider readiness, and prevents secondary crypto
+documentation from reverting to duplex evaluation or implemented NLA2 claims.
 
 `.github/workflows/scheduled-live-api.yml` runs every Monday at 03:17 UTC and
 can also be started manually. It builds the DEBUG/test profile and requires
