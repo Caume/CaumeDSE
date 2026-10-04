@@ -124,6 +124,12 @@ python3 samples/reprotect-workflow/reprotect_workflow.py completion-check \
 - `databases`: ColumnFile database inventory from the dry-run phase, including
   source profile, protected value counts, and legacy AES versus Herradura rows.
 
+Supported target names are `aes-256-gcm`, `aes-256-cbc`, and
+`herradura-hske-nla1-aead-256`; NLA1 execution requires a compatible
+Herradura-enabled binary. The example uses AES-GCM/NLA1 mixed inventory.
+Legacy duplex is a compatibility-gated migration source only, never a target;
+NLA2 is unimplemented/demo-only. Obsolete sample aliases are rejected as targets.
+
 The planner rejects scopes with MAC/sign metadata because those values require
 the dedicated recomputation workflow before key/profile rotation can proceed.
 Generated command templates use `$CDSE_SOURCE_ORG_KEY_FILE` and

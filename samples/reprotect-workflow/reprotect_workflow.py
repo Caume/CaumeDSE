@@ -20,10 +20,9 @@ from pathlib import Path
 SAMPLE_DIR = Path(__file__).resolve().parent
 DEFAULT_SCOPE = SAMPLE_DIR / "scope.example.json"
 SUPPORTED_PROFILES = {
+    "aes-256-gcm",
     "aes-256-cbc",
-    "CME_OPENSSL_AES256_CBC",
-    "hsk-en-la-aead-256",
-    "HERRADURAKEX_HSK_EN_LA_AEAD_256",
+    "herradura-hske-nla1-aead-256",
 }
 SENSITIVE_KEYS = {"orgKey", "newOrgKey", "sourceOrgKey", "targetOrgKey", "key", "secret", "password"}
 SECRET_PATTERNS = [

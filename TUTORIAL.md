@@ -141,9 +141,13 @@ reject Herradura profile names.
 
 For Herradura-enabled builds, use `herradura-hske-nla1-aead-256` as the initial
 PQC-oriented storage candidate after the deployment passes the DEBUG and live
-verifier checks. `herradura-hske-duplex-256` is available for evaluation when
-variable-size SQLite fields need a direct arbitrary-length AEAD profile.
-`herradura-hske-nla2-256` remains experimental. `hkex-rnl` is reserved for
+verifier checks. `herradura-hske-duplex-256` is legacy migration readback only,
+and requires a header that passes the historical pre-5.0.0 compatibility probe.
+It cannot be a default or a new-write/re-protection destination. Back up and
+migrate every legacy duplex value to NLA1 or AES-GCM before upgrading the header.
+`herradura-hske-nla2-256` is unimplemented, demo-only metadata. Newer duplex3
+(research) and NLA3 (demo-only) algorithms are not enabled for storage.
+`hkex-rnl` is reserved for
 future key-wrapping or key-establishment designs, and Stern HPKE/HPKS profiles
 are not recommended for production CaumeDSE storage.
 

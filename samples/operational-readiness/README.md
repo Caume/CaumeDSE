@@ -12,7 +12,7 @@ Render JSON readiness:
 python3 samples/operational-readiness/readiness_check.py check \
   --storage-path TEST \
   --parser-temp-dir /tmp \
-  --storage-profile aes-256-cbc \
+  --storage-profile aes-256-gcm \
   --tls-auth-state required \
   --build-mode release \
   --parser-policy-enabled
@@ -28,6 +28,15 @@ python3 samples/operational-readiness/readiness_check.py check \
 Environment variables such as `CDSE_READINESS_STORAGE_PATH`,
 `CDSE_READINESS_STORAGE_PROFILE`, `CDSE_READINESS_HERRADURA_AVAILABLE`, and
 `CDSE_READINESS_TLS_AUTH_STATE` override the config file.
+
+The default profile is `aes-256-gcm`, matching CaumeDSE. The sample also
+recognizes `aes-256-cbc` and the opt-in `herradura-hske-nla1-aead-256` profile;
+NLA1 requires declared Herradura availability. An absent optional provider
+does not degrade AES readiness. These are declared configuration checks, not
+a probe of a running binary. Other OpenSSL names are reported as unknown to
+this sample, not as proof that the engine rejects them. Legacy duplex,
+unimplemented NLA2, and obsolete sample aliases are not recognized as writable
+profiles.
 
 Render concise operator text:
 

@@ -2,6 +2,16 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.0.1 - 2026-10-04
+
+- Align migration/readiness sample profiles and defaults with AES-GCM and
+  canonical Herradura NLA1; retain real AES-CBC compatibility and reject
+  fictitious aliases. Optional Herradura absence no longer degrades AES readiness.
+- Correct tutorial, API, and AI guidance for migration-only duplex and
+  unimplemented/demo-only NLA2; keep research/demo-only v3 storage excluded.
+- Add CI profile-contract regressions and track remaining operational and
+  deferred features as TODO #142 through #151.
+
 ## 2026-06-15 - Omar A. Herrera Reyna <0h3rr3r4@gmail.com>
 
 - `main.c`, `engine_admin.c`, `runtime.c`, `common.h`, `README.md`:
