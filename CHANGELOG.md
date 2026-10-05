@@ -2,6 +2,16 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.1.0 - 2026-10-04
+
+- Install `caumedse-admin reprotect-columnfile` for exact-path-confirmed,
+  offline ColumnFile staging with protected key-file inputs, verified dry-run,
+  exclusive private checkpoints, durable status and full plaintext readback.
+- Keep source files unchanged; refuse integrity/shuffle metadata and unsupported
+  schemas. Registered-resource publication remains outside this interface.
+- Replace planner command placeholders with executable offline staging commands
+  and add synthetic end-to-end command tests to `make check`.
+
 ## 2.0.1 - 2026-10-04
 
 - Align migration/readiness sample profiles and defaults with AES-GCM and

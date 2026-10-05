@@ -93,6 +93,8 @@ def validate_scope(scope):
         if not isinstance(item, dict):
             raise ReprotectError(f"{context} must be an object.")
         name = require_string(item, "name", context)
+        if Path(name).name != name or name in {".", ".."}:
+            raise ReprotectError(f"{context} name must be an exported database basename.")
         if name in names:
             raise ReprotectError(f"duplicate database name: {name}")
         names.add(name)
@@ -169,7 +171,11 @@ def build_operator_commands(plan):
     def quote_command(parts):
         rendered = []
         for part in parts:
-            rendered.append(part if part.startswith("$CDSE_") else shlex.quote(part))
+            if part.startswith("$CDSE_"):
+                variable, separator, suffix = part.partition("/")
+                rendered.append('"${' + variable[1:] + ':?}"' + ('/' + shlex.quote(suffix) if separator else ''))
+            else:
+                rendered.append(shlex.quote(part))
         return " ".join(rendered)
 
     commands = []
@@ -177,12 +183,9 @@ def build_operator_commands(plan):
         base = [
             "caumedse-admin",
             "reprotect-columnfile",
-            "--storage", step["storage"],
-            "--document-type", step["documentType"],
-            "--document", step["document"],
-            "--database", step["database"],
+            "--database", "$CDSE_COLUMNFILE_ROOT/" + step["database"],
             "--target-profile", step["targetProfile"],
-            "--confirmed-scope", plan["operator"]["confirmedScope"],
+            "--confirmed-scope", "$CDSE_COLUMNFILE_ROOT/" + step["database"],
             "--source-key-file", "$CDSE_SOURCE_ORG_KEY_FILE",
             "--target-key-file", "$CDSE_TARGET_ORG_KEY_FILE",
         ]
@@ -190,12 +193,14 @@ def build_operator_commands(plan):
             "step": step["step"],
             "databaseId": step["databaseId"],
             "dryRun": quote_command(base + ["--dry-run"]),
-            "commit": quote_command(base + ["--commit"]),
+            "commit": quote_command(base + ["--commit", "--output-dir", "$CDSE_CHECKPOINT_ROOT/" + step["databaseId"]]),
         })
     return {
         "safeForAgent": True,
         "journalId": plan["journalId"],
         "secretInputs": ["CDSE_SOURCE_ORG_KEY_FILE", "CDSE_TARGET_ORG_KEY_FILE"],
+        "pathInputs": ["CDSE_COLUMNFILE_ROOT", "CDSE_CHECKPOINT_ROOT"],
+        "executionScope": "offline exported ColumnFiles only; no registered-resource updates",
         "commands": commands,
     }
 

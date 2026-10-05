@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.0.1
+# Caume Data Security Engine (CaumeDSE) version 2.1.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2599,6 +2599,50 @@ Mixed AES/Herradura data is allowed during staged migration. MAC/sign protected
 metadata currently fails closed in the DB-level helper until a dedicated
 recomputation workflow updates those integrity columns with the new ciphertext
 and key material.
+
+### Offline ColumnFile staging command
+
+`make install` installs `caumedse-admin`. Stop writers and export the selected
+ColumnFile into a trusted private directory before invoking it. This interface
+never modifies the source or publishes a registered resource. Confirm the exact
+canonical absolute path, not a storage/document label:
+
+```sh
+caumedse-admin reprotect-columnfile \
+  --database /private/export/column.sqlite \
+  --confirmed-scope /private/export/column.sqlite \
+  --source-key-file /private/source.key \
+  --target-key-file /private/target.key \
+  --target-profile aes-256-gcm --dry-run
+```
+
+For explicit staging, replace `--dry-run` with
+`--commit --output-dir /private/checkpoints/new-step`. The output directory must
+not exist; its parent must be trusted and private. It is created mode 0700 with
+0600 `before.sqlite` (source snapshot), `after.sqlite` (target-key checkpoint),
+and a synced `status` recording verified persisted readback. Checkpoints remain
+protected SQLite, not plaintext exports; retain the old key for recovery.
+Keys must be owner-owned regular files, mode 0600 or stricter, containing
+1-256 bytes with an optional final newline. Symlinks and FIFOs are refused;
+keys and plaintext are not printed, including in DEBUG builds.
+
+Dry-run validates every protected field, migrates in memory, and compares
+decrypted data and metadata before reporting success. The current interface
+accepts the exact legacy `data`/`meta` layout, a single `protect` metadata row
+and optional `name` metadata; it refuses extra schemas, shuffle, MAC/sign and
+other integrity fields, empty protected values and embedded NULs. AES-GCM, AES-CBC and compiled-in canonical NLA1 are
+valid destinations; legacy duplex is read-only and requires a compatible
+historical provider. Metadata remains protected with the runtime metadata
+profile, while the selected target applies to protected data fields.
+
+On failure the source remains authoritative. Retain any incomplete directory,
+inspect the diagnostic, and retry with a new directory; no automatic resume or
+in-place restoration is attempted. Do not use `after.sqlite` without successful
+readback. A verified staging result is not whole-storage migration completion:
+registration, file MACs, internal DBs and raw parts require TODO #143/#144.
+The planner's organization/storage/document labels are operator inventory,
+not ownership assertions verified by this command. Run `make check` for the
+synthetic end-to-end command suite.
 
 ### Internal database schema versioning
 
