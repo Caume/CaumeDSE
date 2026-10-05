@@ -10,6 +10,27 @@ actual mutation remains inside CaumeDSE through `cmeReprotectMemSecureDB()`.
 
 ## Commands
 
+`caumedse-admin` is installed by `make install`. Generated commands now invoke
+the offline staging interface, not a registered-storage executor. Set
+`CDSE_COLUMNFILE_ROOT` to the canonical absolute path of a trusted directory
+containing offline exported SQLite ColumnFiles, and `CDSE_CHECKPOINT_ROOT` to
+a private existing parent directory. Each scope `name` must be a basename.
+Set `CDSE_SOURCE_ORG_KEY_FILE` and `CDSE_TARGET_ORG_KEY_FILE` to owner-only key
+files. The organization/storage/document fields remain operator inventory,
+not assertions verified by the command. Review that mapping before execution.
+
+The command confirms the exact source realpath, leaves it unchanged, and
+writes a new per-step directory containing `before.sqlite`, `after.sqlite`,
+and `status`. A `verified` status means persisted target readback matched
+source plaintext; it does not mean live ResourcesDB registration was updated.
+An incomplete directory is not resumable automatically: inspect/retain it and
+retry with a new output directory. Never substitute these artifacts into live
+storage without its registration/MAC workflow (TODO #143/#144).
+
+Dry-run actually performs migration and readback in memory without writing
+checkpoints. MAC/sign, shuffle and additional schemas fail closed. See the
+root README's offline command section for restrictions and recovery guidance.
+
 Render the committed example plan:
 
 ```sh

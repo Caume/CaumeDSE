@@ -12,12 +12,17 @@ ipath = @PREFIX@
 ipathbindir = @BINDIR@
 ipathdatadir = @DATADIR@
 
-ipathbin_PROGRAMS = CaumeDSE CaumeDSE-debug-tests
+ipathbin_PROGRAMS = CaumeDSE CaumeDSE-debug-tests caumedse-admin
 caume_common_sources = common.h config.c crypto.c crypto.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 CaumeDSE_SOURCES = main.c $(caume_common_sources)
 CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
+caumedse_admin_SOURCES = admin.c $(caume_common_sources)
+check_PROGRAMS = reprotect-fixture
+reprotect_fixture_SOURCES = reprotect_fixture.c $(caume_common_sources)
+TESTS = test_reprotect_cli.sh
+TESTS_ENVIRONMENT = srcdir='$(srcdir)'
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
-EXTRA_DIST = TEST samples favicon.ico CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md HERRADURAKEX_AT_REST_PLAN.md openapi.yaml herradura_compat.h
+EXTRA_DIST = $(TESTS) TEST samples favicon.ico CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md HERRADURAKEX_AT_REST_PLAN.md openapi.yaml herradura_compat.h
 
 xs_init.c:
 	`@PERL@ -MExtUtils::Embed -e xsinit -- -o xs_init.c`
