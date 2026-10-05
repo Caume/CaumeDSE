@@ -119,8 +119,14 @@
 /* Define to 1 if you have the <sqlite3ext.h> header file. */
 #undef HAVE_SQLITE3EXT_H
 
+/* Define to 1 if you have the 'sqlite3_deserialize' function. */
+#undef HAVE_SQLITE3_DESERIALIZE
+
 /* Define to 1 if you have the <sqlite3.h> header file. */
 #undef HAVE_SQLITE3_H
+
+/* Define to 1 if you have the 'sqlite3_serialize' function. */
+#undef HAVE_SQLITE3_SERIALIZE
 
 /* Define to 1 if you have the <stdarg.h> header file. */
 #undef HAVE_STDARG_H

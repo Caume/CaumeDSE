@@ -3111,7 +3111,8 @@ int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedVal
         cmeReprotectDBSaltedValueFree();
         return(4);
     }
-    if (saltedValueLen<=cmeDefaultValueSaltCharLen)
+    if (saltedValueLen<cmeDefaultValueSaltCharLen || memchr(saltedValue,0,saltedValueLen) ||
+        strspn(saltedValue,"0123456789abcdefABCDEF")<cmeDefaultValueSaltCharLen)
     {
 #ifdef DEBUG
         fprintf(stderr,"CaumeDSE Debug: cmeReprotectDBSaltedValue(), Warning, source value decrypted to an ambiguous salted length.\n");
@@ -3119,7 +3120,7 @@ int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedVal
         cmeReprotectDBSaltedValueFree();
         return(5);
     }
-    if (saltedValueLen>cmeDefaultValueSaltCharLen)
+    if (saltedValueLen>=cmeDefaultValueSaltCharLen)
     {
         cmeStrConstrAppend(&value,"%s",&(saltedValue[cmeDefaultValueSaltCharLen]));
         valueLen=saltedValueLen-cmeDefaultValueSaltCharLen;
@@ -3328,7 +3329,7 @@ int cmeInventoryMemSecureDBReprotect (sqlite3 *memSecureDB, const char *orgKey,
 int cmeVerifyMemSecureDBIntegrity(sqlite3 *db, const char *key, const char *profile, int recompute)
 {
     const char *attributes[]={"MAC","sign","MACProtected","signProtected"};
-    int enabled[4]={0},i,step,result=0,written,plainSize;
+    int enabled[4]={0},shuffle=0,i,step,result=0,written,plainSize;
     sqlite3_stmt *meta=NULL,*data=NULL,*update=NULL;
     if (!db || !key || !profile || (recompute && sqlite3_get_autocommit(db))) return(1);
     if (sqlite3_prepare_v2(db,"SELECT salt,attribute,attributeData FROM meta;",-1,&meta,NULL)!=SQLITE_OK) return(1);
@@ -3348,7 +3349,9 @@ int cmeVerifyMemSecureDBIntegrity(sqlite3 *db, const char *key, const char *prof
                 if (enabled[i]) result=1;
                 enabled[i]=1;
             }
+            if (!strcmp(attribute,"shuffle") && shuffle++) result=1;
             if (strcmp(attribute,"protect") && strcmp(attribute,"name") &&
+                strcmp(attribute,"shuffle") &&
                 strcmp(attribute,"MAC") && strcmp(attribute,"sign") &&
                 strcmp(attribute,"MACProtected") && strcmp(attribute,"signProtected")) result=1;
         }
@@ -3375,7 +3378,7 @@ int cmeVerifyMemSecureDBIntegrity(sqlite3 *db, const char *key, const char *prof
         {
             result=cmeUnprotectByteString(cipher,&plain,profile,&salt,key,&written,strlen(cipher));
             if (plain && written>0) plainSize=written;
-            if (!result && (written<=cmeDefaultValueSaltCharLen || memchr(plain,0,written))) result=1;
+            if (!result && (written<cmeDefaultValueSaltCharLen || memchr(plain,0,written))) result=1;
             if (!result) memmove(plain,plain+cmeDefaultValueSaltCharLen,written-cmeDefaultValueSaltCharLen+1);
         }
         for (i=0;i<4 && !result;i++)
@@ -3420,10 +3423,13 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
     int numColsMeta=0;
     int numRowsMeta=0;
     int protectMetaRows=0;
+    int shuffleMetaRows=0;
     int transaction=0;
     char **memData=NULL;
     char **memMeta=NULL;
     char *protectSourceEncAlg=NULL;
+    char *shuffleSourceEncAlg=NULL;
+    char *newDataOrder=NULL;
     char *currentMetaAttribute=NULL;
     char *currentMetaAttributeData=NULL;
     char *currentMetaUserId=NULL;
@@ -3448,6 +3454,8 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
             if (updateDataStmt) { sqlite3_finalize(updateDataStmt); updateDataStmt=NULL; } \
             if (updateMetaStmt) { sqlite3_finalize(updateMetaStmt); updateMetaStmt=NULL; } \
             cmeFree(protectSourceEncAlg); \
+            cmeFree(shuffleSourceEncAlg); \
+            cmeFree(newDataOrder); \
             cmeFree(currentMetaAttribute); \
             cmeFree(currentMetaAttributeData); \
             cmeFree(currentMetaUserId); \
@@ -3540,11 +3548,17 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
             protectSourceEncAlg=NULL;
             cmeStrConstrAppend(&protectSourceEncAlg,"%s",currentMetaAttributeData);
         }
+        else if (!strcmp(currentMetaAttribute,"shuffle"))
+        {
+            shuffleMetaRows++;
+            cmeFree(shuffleSourceEncAlg);
+            cmeStrConstrAppend(&shuffleSourceEncAlg,"%s",currentMetaAttributeData);
+        }
         cmeFree(currentMetaAttribute);
         cmeFree(currentMetaAttributeData);
         cmeFree(currentMetaSalt);
     }
-    if (protectMetaRows!=1 || (!protectSourceEncAlg))
+    if (protectMetaRows!=1 || (!protectSourceEncAlg) || shuffleMetaRows>1)
     {
 #ifdef DEBUG
         fprintf(stderr,"CaumeDSE Debug: cmeReprotectMemSecureDB(), Warning, expected exactly one protect metadata row.\n");
@@ -3572,7 +3586,7 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
         return(0);
     }
     result=sqlite3_prepare_v2(memSecureDB,
-                              "UPDATE data SET value=?,userId=?,orgId=?,salt=? WHERE id=?;",
+                              "UPDATE data SET value=?,userId=?,orgId=?,salt=?,rowOrder=? WHERE id=?;",
                               -1,&updateDataStmt,NULL);
     if (result!=SQLITE_OK)
     {
@@ -3607,11 +3621,20 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
         }
         if (!result)
         {
+            if (shuffleSourceEncAlg)
+                result=cmeReprotectDBSaltedValue(memData[cont*numColsData+cmeIDDColumnFileData_rowOrder],
+                    &newDataOrder,shuffleSourceEncAlg,targetEncAlg,&sourceDataSalt,&targetDataSalt,
+                    sourceOrgKey,targetOrgKey,&written,0);
+        }
+        if (!result)
+        {
             result=sqlite3_bind_text(updateDataStmt,1,newDataValue,-1,SQLITE_TRANSIENT);
             if (result==SQLITE_OK) result=sqlite3_bind_text(updateDataStmt,2,newDataUserId,-1,SQLITE_TRANSIENT);
             if (result==SQLITE_OK) result=sqlite3_bind_text(updateDataStmt,3,newDataOrgId,-1,SQLITE_TRANSIENT);
             if (result==SQLITE_OK) result=sqlite3_bind_text(updateDataStmt,4,targetDataSalt,-1,SQLITE_TRANSIENT);
-            if (result==SQLITE_OK) result=sqlite3_bind_int(updateDataStmt,5,atoi(memData[cont*numColsData+cmeIDDanydb_id]));
+            if (result==SQLITE_OK) result=sqlite3_bind_text(updateDataStmt,5,newDataOrder ? newDataOrder :
+                memData[cont*numColsData+cmeIDDColumnFileData_rowOrder],-1,SQLITE_TRANSIENT);
+            if (result==SQLITE_OK) result=sqlite3_bind_int(updateDataStmt,6,atoi(memData[cont*numColsData+cmeIDDanydb_id]));
             if (result==SQLITE_OK) result=sqlite3_step(updateDataStmt);
             if (result==SQLITE_DONE) result=0;
         }
@@ -3626,6 +3649,7 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
         cmeFree(newDataValue);
         cmeFree(newDataUserId);
         cmeFree(newDataOrgId);
+        cmeFree(newDataOrder);
         cmeFree(sourceDataSalt);
         cmeFree(targetDataSalt);
     }
@@ -3653,7 +3677,7 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
         {
             const char *targetMetaAttributeData=currentMetaAttributeData;
 
-            if (!strcmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_2))
+            if (!strcmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_2) || !strcmp(currentMetaAttribute,"shuffle"))
             {
                 targetMetaAttributeData=targetEncAlg;
             }
