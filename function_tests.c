@@ -1167,10 +1167,14 @@ void testCryptoReprotectDBValue(void)
                         "INSERT INTO data VALUES (1,'userA','orgA','','alpha','1','','','','','');"
                         "INSERT INTO data VALUES (2,'userA','orgA','','beta','2','','','','','');"
                         "INSERT INTO meta VALUES (1,'userA','orgA','','protect','aes-256-gcm');"
+                        "INSERT INTO meta VALUES (2,'userA','orgA','','MAC','sha256');"
+                        "INSERT INTO meta VALUES (3,'userA','orgA','','sign','sha256');"
+                        "INSERT INTO meta VALUES (4,'userA','orgA','','MACProtected','sha256');"
+                        "INSERT INTO meta VALUES (5,'userA','orgA','','signProtected','sha256');"
                         "COMMIT;",NULL,NULL) &&
             !cmeMemSecureDBProtect(memDB,oldKey) &&
             !cmeInventoryMemSecureDBReprotect(memDB,oldKey,cmeOpenSSLLegacyStorageProfile,&inventory) &&
-            inventory.dataRows==2 && inventory.metaRows==1 && inventory.protectMetaRows==1 &&
+            inventory.dataRows==2 && inventory.metaRows==5 && inventory.protectMetaRows==1 &&
             inventory.protectedValueRows==2 && inventory.targetProfileRows==1 &&
             inventory.legacyAESValueRows==2 && inventory.herraduraValueRows==0 &&
             !strcmp(inventory.sourceProfile,cmeOpenSSLLegacyStorageProfile))
@@ -1179,7 +1183,7 @@ void testCryptoReprotectDBValue(void)
         }
         if (inventoryOK &&
             !cmeReprotectMemSecureDB(memDB,oldKey,newKey,cmeOpenSSLLegacyStorageProfile,&report,1) &&
-            report.dryRun==1 && report.dataRowsReprotected==2 && report.metaRowsReprotected==1 &&
+            report.dryRun==1 && report.dataRowsReprotected==2 && report.metaRowsReprotected==5 &&
             report.before.protectedValueRows==2)
         {
             dryRunOK=1;
@@ -1194,7 +1198,7 @@ void testCryptoReprotectDBValue(void)
         memset(&report,0,sizeof(report));
         if (inventoryOK &&
             !cmeReprotectMemSecureDB(memDB,oldKey,newKey,cmeOpenSSLLegacyStorageProfile,&report,0) &&
-            report.dryRun==0 && report.dataRowsReprotected==2 && report.metaRowsReprotected==1 &&
+            report.dryRun==0 && report.dataRowsReprotected==2 && report.metaRowsReprotected==5 &&
             report.after.protectedValueRows==2 && report.after.targetProfileRows==1 &&
             report.after.legacyAESValueRows==2)
         {

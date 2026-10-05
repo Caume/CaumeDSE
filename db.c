@@ -3324,6 +3324,92 @@ int cmeInventoryMemSecureDBReprotect (sqlite3 *memSecureDB, const char *orgKey,
     return(0);
 }
 
+/* Legacy integrity tags use the configured HMAC, not attributeData's label. */
+int cmeVerifyMemSecureDBIntegrity(sqlite3 *db, const char *key, const char *profile, int recompute)
+{
+    const char *attributes[]={"MAC","sign","MACProtected","signProtected"};
+    int enabled[4]={0},i,step,result=0,written,plainSize;
+    sqlite3_stmt *meta=NULL,*data=NULL,*update=NULL;
+    if (!db || !key || !profile || (recompute && sqlite3_get_autocommit(db))) return(1);
+    if (sqlite3_prepare_v2(db,"SELECT salt,attribute,attributeData FROM meta;",-1,&meta,NULL)!=SQLITE_OK) return(1);
+    while (!result && (step=sqlite3_step(meta))==SQLITE_ROW)
+    {
+        char *salt=NULL,*attribute=NULL;
+        const char *text=(const char *)sqlite3_column_text(meta,0);
+        const char *value=(const char *)sqlite3_column_text(meta,1);
+        if (!text || !value || sqlite3_column_bytes(meta,0)!=(int)strlen(text) ||
+            sqlite3_column_bytes(meta,1)!=(int)strlen(value)) { result=1; break; }
+        cmeStrConstrAppend(&salt,"%s",text);
+        result=cmeUnprotectDBSaltedValue(value,&attribute,cmeDefaultEncAlg,&salt,key,&written);
+        if (!result)
+        {
+            for (i=0;i<4;i++) if (!strcmp(attribute,attributes[i]))
+            {
+                if (enabled[i]) result=1;
+                enabled[i]=1;
+            }
+            if (strcmp(attribute,"protect") && strcmp(attribute,"name") &&
+                strcmp(attribute,"MAC") && strcmp(attribute,"sign") &&
+                strcmp(attribute,"MACProtected") && strcmp(attribute,"signProtected")) result=1;
+        }
+        cmeFree(salt); cmeFree(attribute);
+    }
+    if (!result && step!=SQLITE_DONE) result=1;
+    sqlite3_finalize(meta);
+    if (result) return(1);
+    if (sqlite3_prepare_v2(db,"SELECT id,salt,value,MAC,sign,MACProtected,signProtected,otphDKey FROM data;",-1,&data,NULL)!=SQLITE_OK) return(1);
+    if (recompute && sqlite3_prepare_v2(db,"UPDATE data SET MAC=?,sign=?,MACProtected=?,signProtected=? WHERE id=?;",-1,&update,NULL)!=SQLITE_OK) result=1;
+    while (!result && (step=sqlite3_step(data))==SQLITE_ROW)
+    {
+        char *salt=NULL,*plain=NULL;
+        plainSize=0;
+        const char *saltText=(const char *)sqlite3_column_text(data,1);
+        const char *cipher=(const char *)sqlite3_column_text(data,2);
+        const char *otp=(const char *)sqlite3_column_text(data,7);
+        if (!saltText || !cipher || !otp || *otp || sqlite3_column_bytes(data,7) ||
+            sqlite3_column_bytes(data,1)!=(int)strlen(saltText) ||
+            sqlite3_column_bytes(data,2)!=(int)strlen(cipher) || strlen(saltText)!=2*cmeDefaultSecureDBSaltLen ||
+            strspn(saltText,"0123456789abcdefABCDEF")!=strlen(saltText)) { result=1; break; }
+        cmeStrConstrAppend(&salt,"%s",saltText);
+        if (enabled[0] || enabled[1])
+        {
+            result=cmeUnprotectByteString(cipher,&plain,profile,&salt,key,&written,strlen(cipher));
+            if (plain && written>0) plainSize=written;
+            if (!result && (written<=cmeDefaultValueSaltCharLen || memchr(plain,0,written))) result=1;
+            if (!result) memmove(plain,plain+cmeDefaultValueSaltCharLen,written-cmeDefaultValueSaltCharLen+1);
+        }
+        for (i=0;i<4 && !result;i++)
+        {
+            char *tag=NULL;
+            const char *stored=(const char *)sqlite3_column_text(data,i+3);
+            if (!stored || sqlite3_column_bytes(data,i+3)!=(int)strlen(stored)) { result=1; break; }
+            if (enabled[i])
+            {
+                const char *input=i<2 ? plain : cipher;
+                result=cmeHMACByteString((const unsigned char *)input,(unsigned char **)&tag,
+                    strlen(input),&written,cmeDefaultMACAlg,&salt,key);
+                if (!result && !recompute && (strlen(stored)!=(size_t)written ||
+                    CRYPTO_memcmp(stored,tag,written))) result=1;
+            }
+            else if (*stored) result=1;
+            if (!result && recompute)
+                result=sqlite3_bind_text(update,i+1,tag ? tag : "",-1,SQLITE_TRANSIENT)!=SQLITE_OK;
+            cmeFree(tag);
+        }
+        if (plain) OPENSSL_cleanse(plain,plainSize ? plainSize : 1);
+        cmeFree(plain); cmeFree(salt);
+        if (!result && recompute)
+        {
+            result=sqlite3_bind_int64(update,5,sqlite3_column_int64(data,0))!=SQLITE_OK;
+            if (!result) result=sqlite3_step(update)!=SQLITE_DONE;
+            sqlite3_reset(update); sqlite3_clear_bindings(update);
+        }
+    }
+    if (!result && step!=SQLITE_DONE) result=1;
+    sqlite3_finalize(data); sqlite3_finalize(update);
+    return(result);
+}
+
 int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
                              const char *targetOrgKey, const char *targetEncAlg,
                              cmeReprotectDBReport *report, int dryRun)
@@ -3334,7 +3420,7 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
     int numColsMeta=0;
     int numRowsMeta=0;
     int protectMetaRows=0;
-    int unsupportedIntegrityRows=0;
+    int transaction=0;
     char **memData=NULL;
     char **memMeta=NULL;
     char *protectSourceEncAlg=NULL;
@@ -3358,6 +3444,7 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
     cmeCryptoProfile targetProfile;
     #define cmeReprotectMemSecureDBFree() \
         do { \
+            if (transaction) { if (!sqlite3_get_autocommit(memSecureDB)) cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL); transaction=0; } \
             if (updateDataStmt) { sqlite3_finalize(updateDataStmt); updateDataStmt=NULL; } \
             if (updateMetaStmt) { sqlite3_finalize(updateMetaStmt); updateMetaStmt=NULL; } \
             cmeFree(protectSourceEncAlg); \
@@ -3411,9 +3498,12 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
         fprintf(stderr,"CaumeDSE Warning: cmeReprotectMemSecureDB(), target algorithm is read-only.\n");
         return(2);
     }
+    if (cmeSQLRows(memSecureDB,"BEGIN IMMEDIATE;",NULL,NULL)) return(11);
+    transaction=1;
     result=cmeInventoryMemSecureDBReprotect(memSecureDB,sourceOrgKey,targetEncAlg,&(report->before));
     if (result)
     {
+        cmeReprotectMemSecureDBFree();
         return(3);
     }
     result=cmeMemTable(memSecureDB,"SELECT * FROM data;",&memData,&numRowsData,&numColsData);
@@ -3450,13 +3540,6 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
             protectSourceEncAlg=NULL;
             cmeStrConstrAppend(&protectSourceEncAlg,"%s",currentMetaAttributeData);
         }
-        else if ((!strcmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_3))||
-                 (!strcmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_4))||
-                 (!strcmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_5))||
-                 (!strcmp(currentMetaAttribute,cmeIDDColumnFileMeta_attribute_6)))
-        {
-            unsupportedIntegrityRows++;
-        }
         cmeFree(currentMetaAttribute);
         cmeFree(currentMetaAttributeData);
         cmeFree(currentMetaSalt);
@@ -3469,10 +3552,10 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
         cmeReprotectMemSecureDBFree();
         return(7);
     }
-    if (unsupportedIntegrityRows)
+    if (cmeVerifyMemSecureDBIntegrity(memSecureDB,sourceOrgKey,protectSourceEncAlg,0))
     {
 #ifdef ERROR_LOG
-        fprintf(stderr,"CaumeDSE Error: cmeReprotectMemSecureDB(), Error, MAC/sign metadata requires a dedicated recomputation workflow.\n");
+        fprintf(stderr,"CaumeDSE Error: cmeReprotectMemSecureDB(), source integrity verification failed.\n");
 #endif
         cmeReprotectMemSecureDBFree();
         return(8);
@@ -3503,11 +3586,6 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
     {
         cmeReprotectMemSecureDBFree();
         return(10);
-    }
-    if (cmeSQLRows(memSecureDB,"BEGIN IMMEDIATE;",NULL,NULL))
-    {
-        cmeReprotectMemSecureDBFree();
-        return(11);
     }
     for (cont=1;cont<=numRowsData;cont++)
     {
@@ -3628,12 +3706,16 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
         cmeFree(newMetaUserId);
         cmeFree(newMetaOrgId);
     }
-    if (cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
+    if (cmeVerifyMemSecureDBIntegrity(memSecureDB,targetOrgKey,targetEncAlg,1) ||
+        cmeVerifyMemSecureDBIntegrity(memSecureDB,targetOrgKey,targetEncAlg,0) ||
+        cmeInventoryMemSecureDBReprotect(memSecureDB,targetOrgKey,targetEncAlg,&(report->after)) ||
+        cmeSQLRows(memSecureDB,"COMMIT;",NULL,NULL))
     {
         cmeSQLRows(memSecureDB,"ROLLBACK;",NULL,NULL);
         cmeReprotectMemSecureDBFree();
         return(14);
     }
+    transaction=0;
     if (memData)
     {
         cmeMemTableFinal(memData);
@@ -3643,12 +3725,6 @@ int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
     {
         cmeMemTableFinal(memMeta);
         memMeta=NULL;
-    }
-    result=cmeInventoryMemSecureDBReprotect(memSecureDB,targetOrgKey,targetEncAlg,&(report->after));
-    if (result)
-    {
-        cmeReprotectMemSecureDBFree();
-        return(15);
     }
 #ifdef DEBUG
     fprintf(stdout,"CaumeDSE Debug: cmeReprotectMemSecureDB(), re-protected rows=%d meta=%d from %s to %s.\n",
