@@ -1,10 +1,11 @@
 /* Offline ColumnFile staging; never modifies registered storage. */
 #include "common.h"
+#include "admin.h"
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <limits.h>
 
-static int cmeAdminCopy(sqlite3 *to, sqlite3 *from)
+int cmeAdminCopy(sqlite3 *to, sqlite3 *from)
 {
     sqlite3_backup *backup=sqlite3_backup_init(to,"main",from,"main");
     int result;
@@ -13,7 +14,7 @@ static int cmeAdminCopy(sqlite3 *to, sqlite3 *from)
     return(sqlite3_backup_finish(backup)!=SQLITE_OK || result!=SQLITE_DONE);
 }
 
-static int cmeAdminKey(const char *path, char key[257])
+int cmeAdminKey(const char *path, char key[257])
 {
     struct stat st;
     int fd=open(path,O_RDONLY|O_NOFOLLOW|O_NONBLOCK);
@@ -34,7 +35,7 @@ static int cmeAdminKey(const char *path, char key[257])
     return(0);
 }
 
-static int cmeAdminSchema(sqlite3 *db)
+int cmeAdminSchema(sqlite3 *db)
 {
     const char *queries[]={"SELECT * FROM data LIMIT 0;","SELECT * FROM meta LIMIT 0;"};
     const char *names[]={"id","userId","orgId","salt","value","rowOrder","MAC","sign","MACProtected","signProtected","otphDKey",
@@ -71,7 +72,7 @@ static int cmeAdminSchema(sqlite3 *db)
     return(result);
 }
 
-static int cmeAdminVerify(sqlite3 *db, const char *key, const char *profile)
+int cmeAdminVerify(sqlite3 *db, const char *key, const char *profile)
 {
     sqlite3_stmt *stmt=NULL;
     const char *queries[]={"SELECT salt,value,userId,orgId FROM data;",
@@ -116,10 +117,10 @@ static int cmeAdminVerify(sqlite3 *db, const char *key, const char *profile)
     return(cmeVerifyMemSecureDBIntegrity(db,key,profile,0));
 }
 
-static int cmeAdminCompare(sqlite3 *before, sqlite3 *after)
+int cmeAdminCompare(sqlite3 *before, sqlite3 *after)
 {
     const char *queries[]={"SELECT id,userId,orgId,value,rowOrder,otphDKey FROM data ORDER BY id;",
-        "SELECT id,userId,orgId,attribute,CASE WHEN attribute='protect' THEN '' ELSE attributeData END FROM meta ORDER BY id;"};
+        "SELECT id,userId,orgId,attribute,CASE WHEN attribute IN ('protect','shuffle') THEN '' ELSE attributeData END FROM meta ORDER BY id;"};
     sqlite3_stmt *a=NULL,*b=NULL;
     int table,column,sa,sb,result=0;
     for (table=0;table<2;table++)
@@ -144,7 +145,7 @@ static int cmeAdminCompare(sqlite3 *before, sqlite3 *after)
     return(result);
 }
 
-static int cmeAdminPlain(sqlite3 *db, const char *key, const char *profile)
+int cmeAdminPlain(sqlite3 *db, const char *key, const char *profile)
 {
     const char *reads[]={"SELECT id,salt,value,userId,orgId FROM data;",
                          "SELECT id,salt,attribute,attributeData,userId,orgId FROM meta;"};
@@ -180,7 +181,7 @@ static int cmeAdminPlain(sqlite3 *db, const char *key, const char *profile)
     return(result);
 }
 
-static int cmeAdminSave(sqlite3 *db, const char *directory, const char *name)
+int cmeAdminSave(sqlite3 *db, const char *directory, const char *name)
 {
     char path[PATH_MAX];
     sqlite3 *disk=NULL;
@@ -221,6 +222,7 @@ int main(int argc, char **argv)
     cmeReprotectDBInventory inventory;
     int i,mode=0,result=1,fd;
     FILE *output;
+    if (argc>1 && !strcmp(argv[1],"reprotect-storage")) return(cmeStorageMain(argc,argv));
     if (argc==2 && !strcmp(argv[1],"--help"))
     {
         puts("Usage: caumedse-admin reprotect-columnfile --database PATH --confirmed-scope REALPATH\n"
@@ -229,7 +231,8 @@ int main(int argc, char **argv)
              "Offline staging only. Source is never changed. Stop writers before export.\n"
              "Key files: owned regular files, mode 0600 or stricter, 1-256 bytes.\n"
              "Commit writes before.sqlite, after.sqlite, and verified checkpoint status.\n"
-             "MAC/sign, shuffle, extra schemas and registered-resource updates are unsupported.");
+             "MAC/sign tags are verified and recomputed. Shuffle and extra schemas are refused.\n"
+             "Whole exports: caumedse-admin reprotect-storage --help");
         return(0);
     }
     if (argc<2 || strcmp(argv[1],"reprotect-columnfile")) goto arguments;
@@ -277,7 +280,7 @@ int main(int argc, char **argv)
     if (cmeAdminSchema(work)) goto done;
     error="inventory failed: wrong source key or unavailable target profile";
     if (cmeInventoryMemSecureDBReprotect(work,sourceKey,profile,&inventory)) goto done;
-    error="unsupported metadata or corrupt protected values; MAC/sign and shuffle require a dedicated migration";
+    error="unsupported metadata or corrupt protected values or integrity tags";
     if (inventory.protectMetaRows!=1 || cmeAdminVerify(work,sourceKey,inventory.sourceProfile)) goto done;
     if (sqlite3_open(":memory:",&plain)!=SQLITE_OK || cmeAdminCopy(plain,work)) goto done;
     error="source plaintext verification failed";

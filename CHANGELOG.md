@@ -2,6 +2,18 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.3.0 - 2026-10-04
+
+- Add offline whole-export key/profile migration for ResourcesDB, RolesDB,
+  LogsDB, registered ColumnFiles and raw parts, including integrity tags,
+  shuffle metadata, payload MACs and lookup regeneration.
+- Add authenticated protected checkpoints, process-interruption restart/resume,
+  exact-profile inventory and persisted readback without changing source files.
+- Refuse incomplete scopes, mixed-key records and unsupported profiles/layouts;
+  require manual consistent publication and external key-manager updates.
+- Detect optional SQLite serialization support and test runtime-reader
+  compatibility, empty protected cells, WAL exports, tampering and resume.
+
 ## 2.2.0 - 2026-10-04
 
 - Support offline ColumnFile key/profile migration with legacy MAC/sign tags:

@@ -25,7 +25,11 @@ and `status`. A `verified` status means persisted target readback matched
 source plaintext; it does not mean live ResourcesDB registration was updated.
 An incomplete directory is not resumable automatically: inspect/retain it and
 retry with a new output directory. Never substitute these artifacts into live
-storage without its registration/MAC workflow (TODO #144).
+storage without its registration/MAC workflow. The root README's
+`caumedse-admin reprotect-storage` command stages complete flat, single-key
+exports including internal databases and registered payload MACs. This planner
+still emits standalone ColumnFile commands; its completion report is not
+whole-storage closeout and neither interface automatically publishes live data.
 
 Dry-run actually performs migration and readback in memory without writing
 checkpoints. MAC/sign tags are verified and recomputed transactionally; shuffle

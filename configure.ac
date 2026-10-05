@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.68])
-AC_INIT([CaumeDSE], [2.2.0], [0h3rr3r4@gmail.com])
+AC_INIT([CaumeDSE], [2.3.0], [0h3rr3r4@gmail.com])
 AM_INIT_AUTOMAKE([dist-bzip2 color-tests readme-alpha])
 AC_CONFIG_SRCDIR([function_tests.c])
 AC_CONFIG_HEADERS([config.h])
@@ -51,6 +51,7 @@ AC_CHECK_LIB([pthread], [pthread_create], [], AC_MSG_ERROR([Library libpthread n
 AC_CHECK_LIB([util], [openpty], [], AC_MSG_ERROR([Library libutil not found!]))
 AC_CHECK_LIB([gnutls], [gnutls_global_init], [], AC_MSG_ERROR([Library gnutls not found!]))
 AC_CHECK_LIB([sqlite3], [sqlite3_open], [], AC_MSG_ERROR([Library sqlite3 not found!]))
+AC_CHECK_FUNCS([sqlite3_serialize sqlite3_deserialize])
 
 
 # Checks for header files.

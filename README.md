@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.2.0
+# Caume Data Security Engine (CaumeDSE) version 2.3.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2602,7 +2602,8 @@ plaintext value; `MACProtected` and `signProtected` cover the stored ciphertext.
 Legacy `sign` fields are keyed HMACs, not asymmetric signatures. All four use
 the runtime `cmeDefaultMACAlg`, matching existing writers; attributeData labels
 are retained, not reinterpreted as algorithm selection. Missing, duplicate,
-undeclared or mismatched tags fail closed. Shuffle remains unsupported.
+undeclared or mismatched tags fail closed. The standalone ColumnFile command
+refuses shuffle; the whole-export command below also rotates shuffle metadata.
 
 ### Offline ColumnFile staging command
 
@@ -2646,10 +2647,82 @@ On failure the source remains authoritative. Retain any incomplete directory,
 inspect the diagnostic, and retry with a new directory; no automatic resume or
 in-place restoration is attempted. Do not use `after.sqlite` without successful
 readback. A verified staging result is not whole-storage migration completion:
-registration, file MACs, internal DBs and raw parts require TODO #144.
+Use the whole-export command below for registration, file MACs, internal DBs
+and raw parts; neither command automatically publishes live storage.
 The planner's organization/storage/document labels are operator inventory,
 not ownership assertions verified by this command. Run `make check` for the
 synthetic end-to-end command suite.
+
+### Offline Whole-Storage Migration
+
+`caumedse-admin reprotect-storage` stages a complete, flat, consistent offline
+export: `ResourcesDB`, `RolesDB`, `LogsDB`, and every registered ColumnFile or
+raw-file part. Stop writers before export. Use a trusted owner-only directory
+and one source organization key that verifies **every** protected record.
+Mixed-key deployments must be exported into independently complete scopes;
+records with other keys are refused, never silently skipped. Remote storage,
+extra files/tables, links, missing parts, malformed values, invalid lookups and
+MAC/sign failures prevent closeout. Limits are 10,000 files and 64 MiB per file.
+
+```sh
+caumedse-admin reprotect-storage \
+  --storage-root /private/export \
+  --confirmed-scope /private/export \
+  --source-key-file /private/source.key \
+  --target-key-file /private/target.key \
+  --source-profile aes-256-gcm --target-profile aes-256-gcm --dry-run
+```
+
+`--source-profile` selects the AES fallback and legacy metadata profile;
+with NLA1 selected, unframed legacy values use AES-GCM, matching runtime reads.
+Herradura frames dispatch by their exact embedded profile id. AES-GCM, AES-CBC
+and compiled-in canonical NLA1 are destinations. Historical duplex sources
+require a compatible pre-5.x provider; current providers refuse them. Never
+select duplex as a default or destination. Output reports aggregate source
+profile counts without values or keys. Every target field is checked against
+the selected profile, so verified closeout cannot retain a legacy duplex frame.
+Whole-export closeout covers only the exact confirmed export, not omitted
+deployments, external copies, backups, or other organization keys.
+
+Replace `--dry-run` with `--commit --output-dir /private/checkpoints/upgrade`
+for staging. The output must not exist and its existing parent must be
+owner-only. The command creates mode 0700 `before/` and `after/` directories,
+encrypted source/target files and mode 0600 authenticated `binding` and `status`
+files. It verifies field MACs, regenerates ResourcesDB lookup columns, migrates
+ColumnFile values, integrity tags and optional row-order shuffle, and updates
+registered payload MACs. Metadata and raw parts also use the target profile.
+Internal NULL fields and legitimate empty cells are preserved. Saved internal
+DBs are
+reopened and checked for plaintext equivalence; saved payload bytes must match
+the verified generated artifacts. The source must remain byte-for-byte unchanged.
+Target SQLite databases are compacted before export to discard retired pages.
+
+After an interruption with a **complete** `before/` snapshot, repeat the same
+arguments with `--resume --output-dir /private/checkpoints/upgrade` instead of
+`--commit`. Resume authenticates paths, profiles, target key and source-content
+fingerprint, checks protected source snapshots, invalidates stale status and
+rebuilds the entire target. It does not trust partially completed target parts.
+If interruption occurred during initial snapshot capture, retain the incomplete
+directory and retry with a new output directory. Changed source files, keys,
+profiles, paths or snapshots prevent resume. Keep the old key for recovery.
+
+Publish only after a successful command and the synced status lines `verified`,
+`source-unchanged`, `whole-export-verified`. A marker alone is not authorization
+to publish a subsequently modified checkpoint. Staged storage `accessPath`
+points to the absolute `after/` directory: keep that destination fixed, or rerun
+staging at its final destination. While services remain stopped, operators must
+publish the three target DBs and all payloads consistently, configure the runtime
+default to the target profile, and update externally managed organization keys.
+No automatic live cutover or key-manager change is performed. Retain protected
+backups and validate runtime readback before restarting writers.
+
+The command requires SQLite serialization/deserialization APIs, detected by
+`configure`; builds lacking them retain other commands and refuse this one.
+Closed WAL-mode exports are loaded in memory without modifying their source;
+uncheckpointed WAL sidecars are rejected. See the
+[SQLite deserialization contract](https://www.sqlite.org/c3ref/deserialize.html).
+`make check` includes synthetic whole-export, tamper, key/profile binding,
+process-kill/resume and independent runtime-reader tests.
 
 ### Internal database schema versioning
 

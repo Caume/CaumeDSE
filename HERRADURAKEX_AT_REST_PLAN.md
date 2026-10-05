@@ -325,3 +325,27 @@ Configuration remains fail-closed:
 - Existing AES data is not migrated automatically.
 - Herradura-protected values require a Herradura-enabled binary for rollback or
   readback.
+
+## Whole-Export Upgrade Executor
+
+`caumedse-admin reprotect-storage` implements TODO #144 for an exact-path,
+owner-only, flat offline export containing ResourcesDB, RolesDB, LogsDB and
+every registered ColumnFile/raw part. See the root README for dry-run, commit
+and authenticated restart/resume commands. One source key must verify all
+records; mixed-key or remote deployments must first produce independently
+complete supported exports. Unsupported layouts and unaccounted artifacts fail
+closed rather than disappearing from migration inventory.
+
+The executor inventories exact Herradura frame ids, verifies field/payload MACs
+and existing lookups, rotates data/metadata/shuffle and raw parts, regenerates
+lookups and registered file MACs, and verifies persisted target readback.
+Historical duplex reads require the historical compatibility provider; use an
+AES source fallback, not duplex as a runtime default. Target profile validation
+refuses closeout if any legacy duplex frame remains in the confirmed export.
+
+Protected before/after snapshots, target-key-authenticated parameter/source
+bindings and synced status support restart after complete source capture. No
+source mutation or automatic live publication occurs. A verified export is not
+deployment-wide closeout: inventory other scopes/backups, publish DBs/payloads
+consistently while stopped, preserve the staged absolute accessPath, change the
+runtime default and externally managed keys, then verify operational readback.
