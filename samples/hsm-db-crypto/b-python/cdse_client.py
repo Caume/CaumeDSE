@@ -91,8 +91,14 @@ def _make_session(ca_cert=None, insecure=False):
         )
         session.verify = False
         requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-    elif ca_cert:
-        session.verify = ca_cert
+    elif ca_cert or os.environ.get("CDSE_CA_CERT"):
+        session.verify = ca_cert or os.environ["CDSE_CA_CERT"]
+    certificate = os.environ.get("CDSE_CLIENT_CERT")
+    key = os.environ.get("CDSE_CLIENT_KEY")
+    if bool(certificate) != bool(key):
+        raise ValueError("CDSE_CLIENT_CERT and CDSE_CLIENT_KEY must be set together")
+    if certificate:
+        session.cert = (certificate, key)
     return session
 
 

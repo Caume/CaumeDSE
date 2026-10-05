@@ -64,8 +64,11 @@ From the a-web directory:
   python3 proxy.py --insecure --port 8088
 
   # Verify the server certificate with the development CA
-  python3 proxy.py --cdse-server localhost:8443 \
-      # (requires configuring ssl_context in proxy.py with the CA cert)
+  CDSE_CA_CERT=/opt/cdse/ca.pem python3 proxy.py --cdse-server localhost:8443
+
+HTTPS also needs CDSE_CLIENT_CERT (PEM client chain) and CDSE_CLIENT_KEY
+(PEM unencrypted private key) exported together. --insecure does not bypass
+client authentication. --bind 127.0.0.1 restricts the proxy to loopback.
 
 After starting you should see:
 
@@ -86,13 +89,12 @@ Connection panel (top of page)
 
     userId  : EngineAdmin
     orgId   : EngineOrg
-    orgKey  : 187465950C5F9018D04F91E976CAC1D7FA19CBA5FE26D94038630B18BCBAAAB6
+    orgKey  : the actual key belonging to your databases (no universal default)
     storage : EngineStorage
 
-  The orgKey field is a password input — its value is not shown in the
-  browser's developer tools request log as a plaintext string, though it
-  is transmitted as a URL query parameter to the proxy.  Use this client
-  on trusted networks only.
+  The orgKey field is a password input, but credentials remain visible in
+  developer tools and network requests. It is transmitted to the proxy as
+  a URL query parameter. Use this client on trusted networks only.
 
   Click the connection panel header to collapse or expand it once
   credentials are entered.

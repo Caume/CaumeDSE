@@ -87,7 +87,7 @@ my %cfg = (
     orgKey      => $ENV{CDSE_ORG_KEY}  || '',
     storage     => $ENV{CDSE_STORAGE}  || 'EngineStorage',
     insecure    => 0,
-    ca_cert     => '',
+    ca_cert     => $ENV{CDSE_CA_CERT} || '',
     interactive => 0,
 );
 
@@ -110,6 +110,14 @@ GetOptions(
 ###############################################################################
 sub make_ua {
     my %ssl_opts = ( verify_hostname => 1 );
+    my $certificate = $ENV{CDSE_CLIENT_CERT} || '';
+    my $key = $ENV{CDSE_CLIENT_KEY} || '';
+    die "CDSE_CLIENT_CERT and CDSE_CLIENT_KEY must be set together\n"
+        if !!$certificate != !!$key;
+    if ($certificate) {
+        $ssl_opts{SSL_cert_file} = $certificate;
+        $ssl_opts{SSL_key_file} = $key;
+    }
     if ($cfg{insecure}) {
         $ssl_opts{verify_hostname} = 0;
         $ssl_opts{SSL_verify_mode} = 0;

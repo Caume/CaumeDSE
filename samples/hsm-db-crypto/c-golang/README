@@ -43,8 +43,8 @@ desired.  For a quick one-off test you can also use:
 III. Credentials
 ----------------
 
-Source the env.sh file in the parent directory to export credentials for
-the included development installation:
+Export the actual database key before sourcing env.sh. This file exports
+connection defaults but contains no organization key:
 
   source ../env.sh
 
@@ -53,7 +53,7 @@ This exports:
   CDSE_SERVER   = https://localhost:8443
   CDSE_USER_ID  = EngineAdmin
   CDSE_ORG_ID   = EngineOrg
-  CDSE_ORG_KEY  = 187465950C5F9018D04F91E976CAC1D7FA19CBA5FE26D94038630B18BCBAAAB6
+  CDSE_ORG_KEY  = your exported database key (no default in env.sh)
   CDSE_STORAGE  = EngineStorage
 
 All examples below assume these variables are exported.  The equivalent
@@ -325,7 +325,7 @@ IX. Environment variable reference
                  Example: EngineOrg
 
   CDSE_ORG_KEY   Organisation encryption key.  No default — must be set.
-                 Example: 187465950C5F9018D04F91E976CAC1D7FA19CBA5FE26D94038630B18BCBAAAB6
+                 Use the key belonging to your databases, not a shared example.
                  (development installation key; see ../env.sh)
 
   CDSE_STORAGE   Storage bucket name.
@@ -337,6 +337,9 @@ Command-line flags override environment variables.
 X. TLS options
 --------------
 
+Export your actual key before sourcing env.sh. HTTPS also requires
+CDSE_CLIENT_CERT and CDSE_CLIENT_KEY (PEM chain/key); supply both together.
+CDSE_CA_CERT sets the CA default; -ca-cert overrides it.
 Verify the server using the included development CA certificate:
 
   ./cdse_client -ca-cert /opt/cdse/ca.pem info

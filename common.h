@@ -142,8 +142,32 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 #define cmeDefaultCACertFile "/opt/cdse/ca.pem"             //Default file with PEM cert file for CA to validate client certificates.
 #define cmeAdminDefaultStoragePath "/opt/cdse/"             //Default storage path for first organization { = cmeDefaultFilePath}.
 #endif /*PATH_DATADIR*/
+#ifdef PATH_DATADIR
+#define cmeCompiledFilePath PATH_DATADIR "/"
+#else
+#define cmeCompiledFilePath "/opt/cdse/"
+#endif
+#ifdef DEBUG
+const char *cmeDebugTestPath(int index, const char *compiledPath);
+#undef cmeDefaultFilePath
+#undef cmeDefaultSecureTmpFilePath
+#undef cmeDefaultHTTPSKeyFile
+#undef cmeDefaultHTTPSCertFile
+#undef cmeDefaultCACertFile
+#undef cmeAdminDefaultStoragePath
+#define cmeDefaultFilePath cmeDebugTestPath(0,cmeCompiledFilePath)
+#define cmeDefaultSecureTmpFilePath cmeDebugTestPath(1,cmeCompiledFilePath "secureTmp/")
+#define cmeDefaultHTTPSKeyFile cmeDebugTestPath(2,cmeCompiledFilePath "server.key")
+#define cmeDefaultHTTPSCertFile cmeDebugTestPath(3,cmeCompiledFilePath "server.pem")
+#define cmeDefaultCACertFile cmeDebugTestPath(4,cmeCompiledFilePath "ca.pem")
+#define cmeAdminDefaultStoragePath cmeDefaultFilePath
+#endif
 #ifndef CDSE_PARSER_TMP_FILE_PATH
+#ifdef DEBUG
+#define CDSE_PARSER_TMP_FILE_PATH cmeDebugTestPath(5,cmeCompiledFilePath "secureTmp/parser/")
+#else
 #define CDSE_PARSER_TMP_FILE_PATH cmeDefaultSecureTmpFilePath "parser/"
+#endif
 #endif
 
 #define cmeDefaultResourcesDBName "ResourcesDB"     //Default filename for ResourcesDB sqlite3 filename.
@@ -161,7 +185,11 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 extern char cmeDefaultEncAlg[];             //Default algorithm for symmetric encryption in engine admin. databases.
 void cmeLoadConfiguration();                //Initialize runtime globals from configuration file and environment.
 void cmeInitDefaultEncAlg();                //Initialize default algorithm from environment.
+#ifdef DEBUG
+#define cmeDefaultConfigFile cmeDebugTestPath(6,cmeCompiledFilePath "caumedse.conf")
+#else
 #define cmeDefaultConfigFile cmeDefaultFilePath "caumedse.conf" //Default runtime configuration file.
+#endif
 #define cmeDefaultHshAlg "sha256"           //Default algorithm for bytestring hashing {digest}.
 #define cmeDefaultMACAlg "sha256"             //Default algorithm for bytestring HMAC MACs .
 #define cmeDefaultInsertSqlRows 512         //Default # of rows to be inserted into a sqlite3 db at a time {within a Begin - Commit block}.

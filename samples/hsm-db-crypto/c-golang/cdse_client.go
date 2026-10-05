@@ -693,7 +693,7 @@ func main() {
 	keyFlag := flag.String("orgKey", envOr("CDSE_ORG_KEY", ""), "Organisation encryption key")
 	storageFlag := flag.String("storage", envOr("CDSE_STORAGE", "EngineStorage"), "Storage name")
 	insecureFlag := flag.Bool("insecure", false, "Skip TLS certificate verification")
-	caCertFlag := flag.String("ca-cert", "", "Path to CA certificate (PEM)")
+	caCertFlag := flag.String("ca-cert", envOr("CDSE_CA_CERT", ""), "Path to CA certificate (PEM)")
 	interactiveFlag := flag.Bool("i", false, "Interactive mode")
 
 	flag.Usage = func() { printHelp() }
@@ -701,6 +701,19 @@ func main() {
 
 	// ── Build HTTP client ─────────────────────────────────────────────────
 	tlsCfg := &tls.Config{}
+	certificate, key := os.Getenv("CDSE_CLIENT_CERT"), os.Getenv("CDSE_CLIENT_KEY")
+	if (certificate == "") != (key == "") {
+		fmt.Fprintln(os.Stderr, "CDSE_CLIENT_CERT and CDSE_CLIENT_KEY must be set together")
+		os.Exit(1)
+	}
+	if certificate != "" {
+		pair, err := tls.LoadX509KeyPair(certificate, key)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Unable to load client certificate/key")
+			os.Exit(1)
+		}
+		tlsCfg.Certificates = []tls.Certificate{pair}
+	}
 
 	if *insecureFlag {
 		tlsCfg.InsecureSkipVerify = true //nolint:gosec // intentional dev-mode flag

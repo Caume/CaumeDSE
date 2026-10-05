@@ -8,6 +8,33 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 ***/
 #include "common.h"
 #include "runtime.h"
+#include <limits.h>
+#include <sys/stat.h>
+
+#ifdef DEBUG
+static char cmeDebugTestPaths[7][PATH_MAX];
+static int cmeDebugTestPathsActive=0;
+
+const char *cmeDebugTestPath(int index, const char *compiledPath)
+{
+    return(cmeDebugTestPathsActive && index>=0 && index<7 ? cmeDebugTestPaths[index] : compiledPath);
+}
+
+int cmeSetDebugTestDataDirectory(const char *path)
+{
+    const char *suffixes[]={"/","/secureTmp/","/server.key","/server.pem","/ca.pem",
+                            "/secureTmp/parser/","/caumedse.conf"};
+    char canonical[PATH_MAX];
+    struct stat st;
+    int i;
+    if (!path || !realpath(path,canonical) || lstat(path,&st) || !S_ISDIR(st.st_mode) ||
+        st.st_uid!=geteuid() || (st.st_mode&077)) return(1);
+    for (i=0;i<7;i++)
+        if (snprintf(cmeDebugTestPaths[i],PATH_MAX,"%s%s",canonical,suffixes[i])>=PATH_MAX) return(1);
+    cmeDebugTestPathsActive=1;
+    return(0);
+}
+#endif
 
 // --- Necessary globals
 PerlInterpreter *cdsePerl=NULL;

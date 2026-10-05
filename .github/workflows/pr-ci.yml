@@ -110,6 +110,11 @@ jobs:
       - name: Test operational sample crypto profile contract
         run: python3 TEST/test_sample_crypto_profiles.py
 
+      - name: Test sample manager contracts without launching services
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 TEST/test_sample_test_manager.py
+
       - name: Validate TODO status format
         shell: bash
         run: |
@@ -150,9 +155,13 @@ jobs:
             libssl-dev \
             libtool \
             clang \
+            golang-go \
+            libwww-perl \
+            libio-socket-ssl-perl \
             perl \
             pkg-config \
-            python3
+            python3 \
+            python3-requests
 
       - name: Refresh generated autotools files
         run: autoreconf -fi
@@ -168,6 +177,10 @@ jobs:
 
       - name: Run make check
         run: make check
+
+      - name: Run isolated four-client HTTP and HTTPS lifecycles
+        timeout-minutes: 6
+        run: python3 samples/hsm-db-crypto/cdse_test_manager.py --protocol both
 
       - name: Run fuzz smoke
         env:
