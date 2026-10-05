@@ -25,10 +25,11 @@ and `status`. A `verified` status means persisted target readback matched
 source plaintext; it does not mean live ResourcesDB registration was updated.
 An incomplete directory is not resumable automatically: inspect/retain it and
 retry with a new output directory. Never substitute these artifacts into live
-storage without its registration/MAC workflow (TODO #143/#144).
+storage without its registration/MAC workflow (TODO #144).
 
 Dry-run actually performs migration and readback in memory without writing
-checkpoints. MAC/sign, shuffle and additional schemas fail closed. See the
+checkpoints. MAC/sign tags are verified and recomputed transactionally; shuffle
+and additional schemas fail closed. See the
 root README's offline command section for restrictions and recovery guidance.
 
 Render the committed example plan:
@@ -44,7 +45,7 @@ python3 samples/reprotect-workflow/reprotect_workflow.py plan --include-commands
 ```
 
 Run offline validation, redaction, mixed AES/Herradura inventory, and MAC/sign
-fail-closed checks:
+scope validation checks (native integrity tests run through `make check`):
 
 ```sh
 python3 samples/reprotect-workflow/reprotect_workflow.py self-test
@@ -151,8 +152,11 @@ Herradura-enabled binary. The example uses AES-GCM/NLA1 mixed inventory.
 Legacy duplex is a compatibility-gated migration source only, never a target;
 NLA2 is unimplemented/demo-only. Obsolete sample aliases are rejected as targets.
 
-The planner rejects scopes with MAC/sign metadata because those values require
-the dedicated recomputation workflow before key/profile rotation can proceed.
+The planner accepts scopes with MAC/sign metadata. The native command verifies
+source tags and recomputes all declared tags for the target key, salt and
+ciphertext, then verifies persisted readback. Legacy sign fields use HMACs,
+not asymmetric signatures. Tampered, undeclared and duplicate tags fail closed;
+shuffle remains unsupported.
 Generated command templates use `$CDSE_SOURCE_ORG_KEY_FILE` and
 `$CDSE_TARGET_ORG_KEY_FILE`; do not replace those with raw keys in model-visible
 logs.

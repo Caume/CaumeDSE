@@ -2,6 +2,15 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.2.0 - 2026-10-04
+
+- Support offline ColumnFile key/profile migration with legacy MAC/sign tags:
+  verify source integrity and recompute target tags inside one transaction.
+- Verify persisted target integrity, retain shuffle refusal, and test tampering,
+  wrong keys, rollback and interruption with synthetic fixtures.
+- Allow integrity-bearing scopes in the migration planner; registered storage
+  publication and file/resource MAC migration remain outside this command.
+
 ## 2.1.0 - 2026-10-04
 
 - Install `caumedse-admin reprotect-columnfile` for exact-path-confirmed,

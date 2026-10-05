@@ -58,13 +58,12 @@ static int cmeAdminSchema(sqlite3 *db)
         sqlite3_finalize(stmt);
         if (result) return(1);
     }
-    /* Reject extra objects, triggers, integrity fields, and unsafe helper IDs. */
+    /* Reject extra objects, triggers, unsupported fields, and unsafe helper IDs. */
     if (sqlite3_prepare_v2(db,
         "SELECT 1 FROM sqlite_master WHERE (name IN ('data','meta') AND type!='table') "
         "OR (name NOT IN ('data','meta') AND name NOT LIKE 'sqlite_%') UNION ALL "
         "SELECT 1 FROM data WHERE typeof(id)!='integer' OR id<1 OR id>2147483647 "
-        "OR coalesce(MAC,'x')!='' OR coalesce(sign,'x')!='' OR coalesce(MACProtected,'x')!='' "
-        "OR coalesce(signProtected,'x')!='' OR coalesce(otphDKey,'x')!='' UNION ALL "
+        "OR coalesce(otphDKey,'x')!='' UNION ALL "
         "SELECT 1 FROM meta WHERE typeof(id)!='integer' OR id<1 OR id>2147483647;",
         -1,&stmt,NULL)!=SQLITE_OK) return(1);
     result=sqlite3_step(stmt)!=SQLITE_DONE;
@@ -102,7 +101,9 @@ static int cmeAdminVerify(sqlite3 *db, const char *key, const char *profile)
                 {
                     char *attribute=NULL;
                     result=cmeUnprotectDBSaltedValue(value,&attribute,alg,&salt,key,&written);
-                    if (!result && strcmp(attribute,"protect") && strcmp(attribute,"name")) result=1;
+                    if (!result && strcmp(attribute,"protect") && strcmp(attribute,"name") &&
+                        strcmp(attribute,"MAC") && strcmp(attribute,"sign") &&
+                        strcmp(attribute,"MACProtected") && strcmp(attribute,"signProtected")) result=1;
                     cmeFree(attribute);
                 }
                 cmeFree(salt);
@@ -112,12 +113,12 @@ static int cmeAdminVerify(sqlite3 *db, const char *key, const char *profile)
         sqlite3_finalize(stmt);
         if (result) return(1);
     }
-    return(0);
+    return(cmeVerifyMemSecureDBIntegrity(db,key,profile,0));
 }
 
 static int cmeAdminCompare(sqlite3 *before, sqlite3 *after)
 {
-    const char *queries[]={"SELECT id,userId,orgId,value,rowOrder,MAC,sign,MACProtected,signProtected,otphDKey FROM data ORDER BY id;",
+    const char *queries[]={"SELECT id,userId,orgId,value,rowOrder,otphDKey FROM data ORDER BY id;",
         "SELECT id,userId,orgId,attribute,CASE WHEN attribute='protect' THEN '' ELSE attributeData END FROM meta ORDER BY id;"};
     sqlite3_stmt *a=NULL,*b=NULL;
     int table,column,sa,sb,result=0;

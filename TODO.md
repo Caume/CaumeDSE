@@ -1273,10 +1273,12 @@
   - Validation: nine synthetic end-to-end tests cover CLI/refusal cases, AES-CBC and optional NLA1 migration, installed command execution, checkpoint persistence, source immutability, redaction, and generated planner commands with spaces in paths. Default non-web verifier: 45 passed, zero failed; Clang ASAN/UBSAN with current Herradura provider: nine command tests and 42 component checks passed, zero failed. Release out-of-tree `make distcheck`, profile-contract tests, planner self-test, shell syntax and exact minor-version increment checks pass.
   - Boundary: this command stages standalone legacy-layout ColumnFiles only. It does not replace registered storage, recompute file/resource MACs, migrate shuffle metadata, or close out whole-storage upgrades; TODO #143/#144 remain pending.
 
-- [ ] #143 Support integrity-preserving key/profile migration for MAC/sign metadata.
-  - Source: `db.c`, `samples/reprotect-workflow/`, `function_tests.c`, `README.md`.
+- [x] #143 Support integrity-preserving key/profile migration for MAC/sign metadata.
+  - Source: `db.c`, `db.h`, `admin.c`, `reprotect_fixture.c`, `TEST/test_reprotect_cli.py`, `samples/reprotect-workflow/`, `function_tests.c`, `README.md`.
   - Goal: implement the dedicated recomputation workflow currently required but unavailable when ColumnFile MAC/sign metadata blocks migration.
-  - Plan: verify source integrity before mutation, recompute integrity columns for target key/profile, preserve transaction rollback, and test tamper/wrong-key/interruption failures. Keep existing fail-closed refusal until this is verified.
+  - Done: verify all declared legacy value HMAC/sign tags before mutation, recompute plaintext/ciphertext tags with the target key and row salt, verify target integrity and inventory before committing, and verify persisted CLI readback. Migration reads and writes share one transaction; duplicate/missing/undeclared tags and embedded-NUL suffixes fail closed. Enabled planner scopes and documented legacy keyed-signature semantics. Advanced synchronized release metadata to 2.2.0.
+  - Validation: thirteen command tests cover AES-GCM/CBC and optional NLA1 rotation, tampering, wrong keys, duplicate/missing tags, source immutability, and complete rollback on data/meta/tag SQL failures and injected SQLite interruption. Default and current-Herradura Clang ASAN/UBSAN command suites pass all thirteen tests; release `make distcheck` passes. Final non-web verifiers pass 39 default and 42 sanitizer checks with zero failures (360-second timeout). Planner/profile-contract, shell syntax and exact minor-version increment checks pass.
+  - Boundary: shuffle, extra schemas and unsupported integrity fields still fail closed. Registered-resource publication, file/resource MACs, internal DBs and raw parts remain TODO #144; legacy sign fields are HMACs, not asymmetric signatures.
 
 - [ ] #144 Cover internal databases and raw-file parts in complete storage migration.
   - Source: `engine_interface.c`, `engine_admin.c`, `filehandling.c`, `db.c`, `README.md`, `HERRADURAKEX_AT_REST_PLAN.md`.

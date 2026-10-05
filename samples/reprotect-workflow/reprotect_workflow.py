@@ -105,8 +105,6 @@ def validate_scope(scope):
         require_int(item, "dataRows", context)
         require_int(item, "metaRows", context)
         require_int(item, "protectedValueRows", context)
-        if item.get("hasMacOrSignature") is True:
-            raise ReprotectError(f"{context} has MAC/sign metadata; use the dedicated recomputation workflow first.")
     return scope
 
 
@@ -595,14 +593,9 @@ def self_test():
     leaked = json.dumps(redact({"route": "/x?orgKey=abc&newOrgKey=def", "sourceOrgKey": "old"}))
     if "abc" in leaked or "old" in leaked:
         raise ReprotectError("self-test redaction leaked key material.")
-    invalid = dict(load_json(DEFAULT_SCOPE))
-    invalid["databases"] = [dict(invalid["databases"][0], hasMacOrSignature=True)]
-    try:
-        build_plan(invalid)
-    except ReprotectError:
-        pass
-    else:
-        raise ReprotectError("self-test accepted MAC/sign metadata scope.")
+    integrity_scope = dict(load_json(DEFAULT_SCOPE))
+    integrity_scope["databases"] = [dict(integrity_scope["databases"][0], hasMacOrSignature=True)]
+    build_plan(integrity_scope)  # Native command verifies and recomputes legacy integrity tags.
     staged = dict(plan)
     staged["steps"] = [dict(plan["steps"][0], state="complete"), dict(plan["steps"][1], state="readyToResume")]
     summary = summarize_journal(staged)

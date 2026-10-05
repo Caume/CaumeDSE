@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.1.0
+# Caume Data Security Engine (CaumeDSE) version 2.2.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2584,7 +2584,7 @@ re-protect workflow:
 1. Take an encrypted backup and record the target organization, storage,
    document, source profile, target profile, and operator-approved scope.
 2. Run a dry-run inventory for the selected ColumnFile DBs and review row
-   counts, legacy AES rows, Herradura-framed rows, and unsupported MAC/sign
+   counts, legacy AES rows, Herradura-framed rows, and supported MAC/sign
    metadata before mutation.
 3. Create an operator-held journal outside model-visible logs. Record one
    checkpoint per ColumnFile before mutation, after successful DB transaction,
@@ -2595,10 +2595,14 @@ re-protect workflow:
    complete. If verification fails, restore from backup or keep the old
    checkpoint as the authoritative state.
 
-Mixed AES/Herradura data is allowed during staged migration. MAC/sign protected
-metadata currently fails closed in the DB-level helper until a dedicated
-recomputation workflow updates those integrity columns with the new ciphertext
-and key material.
+Mixed AES/Herradura data is allowed across staged databases. The DB-level helper
+verifies source MAC/sign tags before mutation and recomputes them with the new
+key and row salt inside the migration transaction. `MAC` and `sign` cover the
+plaintext value; `MACProtected` and `signProtected` cover the stored ciphertext.
+Legacy `sign` fields are keyed HMACs, not asymmetric signatures. All four use
+the runtime `cmeDefaultMACAlg`, matching existing writers; attributeData labels
+are retained, not reinterpreted as algorithm selection. Missing, duplicate,
+undeclared or mismatched tags fail closed. Shuffle remains unsupported.
 
 ### Offline ColumnFile staging command
 
@@ -2629,8 +2633,11 @@ keys and plaintext are not printed, including in DEBUG builds.
 Dry-run validates every protected field, migrates in memory, and compares
 decrypted data and metadata before reporting success. The current interface
 accepts the exact legacy `data`/`meta` layout, a single `protect` metadata row
-and optional `name` metadata; it refuses extra schemas, shuffle, MAC/sign and
-other integrity fields, empty protected values and embedded NULs. AES-GCM, AES-CBC and compiled-in canonical NLA1 are
+and optional `name`, `MAC`, `sign`, `MACProtected`, `signProtected` metadata;
+it refuses extra schemas, shuffle, unsupported integrity fields, empty protected
+values and embedded NULs. Integrity tags are checked again on persisted target
+readback; plaintext equivalence excludes tags intentionally recomputed for the
+target key/salt. AES-GCM, AES-CBC and compiled-in canonical NLA1 are
 valid destinations; legacy duplex is read-only and requires a compatible
 historical provider. Metadata remains protected with the runtime metadata
 profile, while the selected target applies to protected data fields.
@@ -2639,7 +2646,7 @@ On failure the source remains authoritative. Retain any incomplete directory,
 inspect the diagnostic, and retry with a new directory; no automatic resume or
 in-place restoration is attempted. Do not use `after.sqlite` without successful
 readback. A verified staging result is not whole-storage migration completion:
-registration, file MACs, internal DBs and raw parts require TODO #143/#144.
+registration, file MACs, internal DBs and raw parts require TODO #144.
 The planner's organization/storage/document labels are operator inventory,
 not ownership assertions verified by this command. Run `make check` for the
 synthetic end-to-end command suite.

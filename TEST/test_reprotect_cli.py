@@ -109,14 +109,71 @@ class CommandTests(unittest.TestCase):
             self.assertNotEqual(self.command('--dry-run', profile=profile).returncode, 0)
         self.assertEqual(self.command('--dry-run', profile='aes-256-cbc').returncode, 0)
 
-    def test_integrity_and_shuffle_refused(self):
-        for kind in ('mac', 'shuffle'):
+    def test_shuffle_refused(self):
+        for kind in ('shuffle',):
             self.make_fixture(kind)
             before = self.db.read_bytes()
             result = self.command('--commit', '--output-dir', str(self.root / kind))
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse((self.root / kind).exists())
             self.assertEqual(self.db.read_bytes(), before)
+
+    def test_integrity_rotation_and_tampering(self):
+        for kind in ('mac', 'integrity'):
+            self.make_fixture(kind)
+            before = self.db.read_bytes()
+            self.assertEqual(self.command('--dry-run').returncode, 0)
+            for profile in ('aes-256-gcm', 'aes-256-cbc', 'herradura-hske-nla1-aead-256'):
+                output = self.root / (kind + profile)
+                result = self.command('--commit', '--output-dir', str(output), profile=profile)
+                if profile.startswith('herradura') and result.returncode:
+                    self.assertIn('unavailable target profile', result.stdout)
+                    continue
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.db.read_bytes(), before)
+                staged = output / 'after.sqlite'
+                self.assertEqual(self.command('--dry-run', db=staged, source=self.target).returncode, 0)
+                self.assertNotEqual(self.command('--dry-run', db=staged).returncode, 0)
+                with sqlite3.connect(self.db) as old, sqlite3.connect(staged) as new:
+                    self.assertNotEqual(old.execute('SELECT MAC FROM data').fetchall(), new.execute('SELECT MAC FROM data').fetchall())
+            self.assertNotEqual(self.command('--dry-run', source=self.target).returncode, 0)
+        for field in ('MAC', 'sign', 'MACProtected', 'signProtected', 'value', 'salt'):
+            self.make_fixture('integrity')
+            with sqlite3.connect(self.db) as db:
+                db.execute(f"UPDATE data SET {field}='tampered' WHERE id=2")
+            before = self.db.read_bytes()
+            output = self.root / ('tampered-' + field)
+            self.assertNotEqual(self.command('--commit', '--output-dir', str(output)).returncode, 0)
+            self.assertFalse(output.exists())
+            self.assertEqual(self.db.read_bytes(), before)
+
+    def test_undeclared_integrity_refused(self):
+        with sqlite3.connect(self.db) as db:
+            db.execute("UPDATE data SET MAC='undeclared' WHERE id=1")
+        self.assertNotEqual(self.command('--dry-run').returncode, 0)
+
+    def test_duplicate_and_missing_integrity_refused(self):
+        for sql in (
+            "INSERT INTO meta SELECT 7,userId,orgId,salt,attribute,attributeData FROM meta WHERE id=3",
+            "UPDATE data SET MAC='' WHERE id=2",
+            "UPDATE data SET signProtected=NULL WHERE id=2",
+            "UPDATE data SET MAC=MAC||char(0)||'extra' WHERE id=2",
+            "DELETE FROM meta WHERE id=3",
+        ):
+            self.make_fixture('integrity')
+            with sqlite3.connect(self.db) as db:
+                db.execute(sql)
+            before = self.db.read_bytes()
+            self.assertNotEqual(self.command('--dry-run').returncode, 0)
+            self.assertEqual(self.db.read_bytes(), before)
+
+    def test_transaction_rollback_and_interruption(self):
+        for mode in ('rollback-data', 'rollback-meta', 'rollback-tags', 'interrupt'):
+            self.make_fixture(mode)
+            # The native fixture asserts byte-for-byte table equality after failure.
+            with sqlite3.connect(self.db) as db:
+                db.execute('DROP TRIGGER fail')
+            self.assertEqual(self.command('--dry-run').returncode, 0)
 
     def test_extra_objects_and_invalid_ids(self):
         for sql in ('CREATE TABLE unrelated (id INTEGER)', 'UPDATE data SET id=2147483648 WHERE id=1'):

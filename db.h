@@ -126,6 +126,8 @@ int cmeReprotectDBSaltedValue (const char *protectedValue, char **reprotectedVal
 int cmeInventoryMemSecureDBReprotect (sqlite3 *memSecureDB, const char *orgKey,
                                       const char *targetEncAlg,
                                       cmeReprotectDBInventory *inventory);
+// Recompute mode must run inside a caller-owned transaction after source verification.
+int cmeVerifyMemSecureDBIntegrity(sqlite3 *db, const char *key, const char *profile, int recompute);
 // Function to explicitly re-protect protected values in an in-memory column-file DB.
 int cmeReprotectMemSecureDB (sqlite3 *memSecureDB, const char *sourceOrgKey,
                              const char *targetOrgKey, const char *targetEncAlg,
