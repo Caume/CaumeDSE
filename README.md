@@ -2490,7 +2490,8 @@ backward-compatible fixes, documentation, CI, or maintenance changes. Update
 the matching public version metadata in `README.md` and `openapi.yaml` in the
 same pull request. `TEST/test_validate_version_bump.sh` verifies the gate
 against committed major, minor, patch, skipped, reset, malformed, and
-label-selection fixtures.
+label-selection fixtures. PR CI reruns when labels are added or removed,
+so an initially missing impact label does not leave a stale failed check.
 
 `TEST/validate_openapi_routes.sh` also verifies the declared HTTP methods for
 every stable OpenAPI path, preventing route-method drift from passing a
