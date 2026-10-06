@@ -375,9 +375,13 @@ jobs:
             libsqlite3-dev \
             libssl-dev \
             libtool \
+            golang-go \
+            libwww-perl \
+            libio-socket-ssl-perl \
             perl \
             pkg-config \
-            python3
+            python3 \
+            python3-requests
 
       - name: Refresh generated autotools files
         run: autoreconf -fi
@@ -392,7 +396,19 @@ jobs:
         run: make V=1
 
       - name: Run make check with sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1
         run: make check
+
+      - name: Run repeated isolated lifecycles with leak detection
+        timeout-minutes: 10
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          for run in 1 2; do
+            python3 samples/hsm-db-crypto/cdse_test_manager.py --protocol both || exit "$?"
+          done
 
       - name: Install sanitizer DEBUG test build
         run: make install

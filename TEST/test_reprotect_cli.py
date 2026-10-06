@@ -40,6 +40,11 @@ class CommandTests(unittest.TestCase):
         self.db.unlink(missing_ok=True)
         subprocess.run([FIXTURE, str(self.db), kind], check=True, capture_output=True)
 
+    def test_crypto_and_database_ownership(self):
+        result = subprocess.run([FIXTURE, str(self.root), 'ownership'], capture_output=True,
+                                env=dict(os.environ, CDSE_DEFAULT_ENC_ALG='aes-256-gcm'))
+        self.assertEqual(result.returncode, 0, 'crypto/DB ownership fixture failed (output withheld)')
+
     def command(self, *extra, source=None, target=None, db=None, profile='aes-256-gcm', scope=None):
         database = db or self.db
         return subprocess.run([ADMIN, 'reprotect-columnfile', '--database', str(database),

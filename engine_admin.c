@@ -1275,7 +1275,7 @@ int cmeWebServiceSetup (unsigned short port, int useSSL, const char *sslKeyFile,
 
 int cmeWebServiceInitAdminSetup (const char *orgKey)
 {   //IDD version 1.0.21
-    int cont,result;
+    int cont,cont2,result;
     int numResultRegisterCols=0;
     int numResultRegisters=0;
     const int numTables=20;                                             //Constant: number of tables in DB
@@ -1347,10 +1347,17 @@ int cmeWebServiceInitAdminSetup (const char *orgKey)
             fprintf(stderr,"CaumeDSE Error: cmeWebServiceInitAdminSetup(), can't open RolesDB!"
                     " File: '%s'!\n",dbFilePath);
 #endif
+                cmeWebServiceInitAdminSetupFree();
                 return(1);
     }
     for (cont=0;cont<numTables;cont++) //No error -> process all tableNames in RolesDB
     {
+        if (resultRegisterCols)
+        {
+            for (cont2=0;cont2<numResultRegisterCols*(numResultRegisters+1);cont2++)
+                cmeFree(resultRegisterCols[cont2]);
+            cmeFree(resultRegisterCols);
+        }
         result=cmeGetUnprotectDBRegisters(pDB,tableNames[cont],columnNamesToMatch,(const char **)columnValuesToMatch,
                                           2,&resultRegisterCols,&numResultRegisterCols,&numResultRegisters,orgKey); //Check if role doesn't exist.
         if(numResultRegisters>0) //Role is already in DB -> Warning

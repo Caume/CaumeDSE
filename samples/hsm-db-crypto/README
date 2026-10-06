@@ -160,10 +160,13 @@ This explicit override is DEBUG-only. Normal compiled storage/config/TLS
 paths remain unchanged when it is absent; production has no path override.
 
 The manager checks service exit status, including shutdown-time sanitizer
-failures. Existing allocation leaks in startup/permission/audit paths are
-tracked in TODO #152. Sanitizer CI currently sets ASAN_OPTIONS=detect_leaks=0;
-this enables address/undefined checks but is not a leak-clean claim. A run
-with leak detection enabled fails rather than concealing those findings.
+failures. TODO #152 fixes overwritten digest/HMAC output buffers and failed
+SQLite-open ownership, raw-file/admin query results and request cleanup.
+Sanitizer CI now runs command tests and two independent
+four-client HTTP/HTTPS lifecycles with ASAN_OPTIONS=detect_leaks=1. No engine
+leak suppression is used; nonzero shutdown fails rather than hiding findings.
+The broader legacy embedded-Perl component verifier still disables leak
+checking and is not covered by this leak-clean claim.
 
 Security notes
 --------------

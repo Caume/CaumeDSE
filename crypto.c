@@ -383,7 +383,7 @@ static int cmeHerraduraKExCipherByteString (const unsigned char *srcBuf, unsigne
 int cmeGetDigest (EVP_MD **digest, const char *algorithm)
 {
     *digest = (EVP_MD*)EVP_get_digestbyname(algorithm);
-    if (digest == NULL)
+    if (*digest == NULL)
     {
 #ifdef ERROR_LOG
         fprintf(stderr,"CaumeDSE Error: evpGetDigest(), algorithm %s not found!\n",algorithm);
@@ -1359,15 +1359,14 @@ int cmeDigestByteString (const unsigned char *srcBuf, unsigned char **dstBuf, co
         return(2);
     }
     digestBytes=(unsigned char *)malloc(EVP_MAX_MD_SIZE);
-    if(!(*dstBuf=(unsigned char *)malloc(evpMaxHashStrLen))) //Error allocating memory!
-    {                                                             //Note that Caller must free *dstBuf!
+    if(!digestBytes)
+    {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeDigestByteString(), Error in memory allocation!\n");
 #endif
         cmeDigestByteStringFree();
         return(3);
     }
-    memset(*dstBuf,0,evpMaxHashStrLen);
     cmeDigestInit(&ctx,NULL,digest);
     cont2=0;
     for (cont=0; cont<(srcLen/evpBufferSize); cont++) //Process all blocks of size evpBufferSize.
@@ -1548,16 +1547,14 @@ int cmeHMACByteString (const unsigned char *srcBuf, unsigned char **dstBuf, cons
         return(3);
     }
     digestBytes=(unsigned char *)malloc(EVP_MAX_MD_SIZE);
-    if(!(*dstBuf=(unsigned char *)malloc(evpMaxHashStrLen))) //Error allocating memory!
-    {                                                             //Note that Caller must free *dstBuf!
+    if(!digestBytes)
+    {
 #ifdef ERROR_LOG
             fprintf(stderr,"CaumeDSE Error: cmeHMACByteString(), Error in memory allocation!\n");
 #endif
         cmeHMACByteStringFree();
         return(4);
     }
-    memset(*dstBuf,0,evpMaxHashStrLen);
-
     if (!(*salt)) //if salt==NULL, We need to generate salt and return it in hexStr format.
     {             //Otherwise we use the salt provided by the caller.
         cmePrngGetBytes(&byteSalt,evpSaltBufferSize);

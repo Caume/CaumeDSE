@@ -495,6 +495,7 @@ int cmeDBCreateOpen (const char *filename, sqlite3 **ppDB)
                 sqlite3_errmsg(*ppDB));
 #endif
         sqlite3_close(*ppDB);
+        *ppDB=NULL;
         return(1);
     }
     else
@@ -527,6 +528,7 @@ int cmeMemDBCreateOpen (sqlite3 **ppDB)
                 sqlite3_errmsg(*ppDB));
 #endif
         sqlite3_close(*ppDB);
+        *ppDB=NULL;
         return(1);
     }
     else
@@ -550,7 +552,8 @@ int cmeDBOpen (const char *filename, sqlite3 **ppDB)
         fprintf(stderr,"CaumeDSE Error: cmeDBOpen(), sqlite_open_v2() error: %s\n",
                 sqlite3_errmsg(*ppDB));
 #endif
-        //sqlite3_close(*ppDB);
+        sqlite3_close(*ppDB);
+        *ppDB=NULL;
         return(1);
     }
     else
@@ -793,6 +796,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
         pSqlInstruction=sqlQuery;
         do
         {
+            cmeSQLRowsFree();
             numCols=-1; //Reset column counter for each SQL instruction.
             sqlStatemnt=NULL;
             result = sqlite3_prepare_v2(db,pSqlInstruction,-1,&sqlStatemnt,&tail);
@@ -887,6 +891,7 @@ int cmeSQLRows (sqlite3 *db, const char *sqlQuery, char *perlScriptName,
         pSqlInstruction=sqlQuery;
         do
         {
+            cmeSQLRowsFree();
             numCols=-1; //Reset column counter for each SQL instruction.
             sqlStatemnt=NULL;
             result = sqlite3_prepare_v2(db,pSqlInstruction,-1,&sqlStatemnt,&tail);
