@@ -1296,10 +1296,13 @@
   - Validation: default and Clang ASAN/UBSAN make check pass three suites, including twenty manager/runner checks and twenty existing migration command tests; sanitizer runs explicitly use detect_leaks=0, matching CI. All four clients pass over HTTP and HTTPS in both builds; real SIGTERM cleanup reaps the child and removes private data. Default and sanitizer non-web verifiers each pass 39 checks with zero failures; existing HTTP/HTTPS live verifiers pass 106/107 checks with zero failures. Release make distcheck, shell/Perl/Python syntax, OpenAPI/workflow contracts and the exact minor version gate pass.
   - Boundary: web coverage exercises the real proxy with browser-equivalent requests, not browser JavaScript automation. Production and normal compiled data paths remain unchanged; manual HTTP proxy recipes remain #146. Leak-enabled testing exposes allocations in existing initialization/permission/audit paths, tracked separately as #152; ASAN/UBSAN verification follows CI's explicit detect_leaks=0 setting and is not leak-clean verification.
 
-- [ ] #146 Fix conflicting HTTP proxy examples.
+- [x] #146 Fix conflicting HTTP proxy examples.
   - Source: `samples/hsm-db-crypto/README`, `samples/hsm-db-crypto/a-web/README`, `samples/hsm-db-crypto/a-web/proxy.py`.
   - Goal: avoid binding both the sample proxy and its CaumeDSE HTTP upstream to port 8080.
   - Plan: consistently use a separate proxy port such as 8088 in HTTP recipes and browser URLs; validate each startup recipe and reject self-forwarding configuration where practical.
+  - Done: default the browser proxy to 8088, align both sample READMEs and browser URLs, validate configured/ephemeral listener ports against known same-port upstream addresses, and close listeners on shutdown. Keep explicit port overrides and TLS/client-certificate behavior; clarify that browser certificate exceptions do not affect Python TLS trust.
+  - Validation: default DEBUG `make check` passes 3 suites / 49 tests (14 command, 7 migration, 28 manager/proxy/runner). Eight proxy regressions cover documented startup recipes, aliases, distinct endpoints, environment overrides, invalid options and ephemeral listeners. Real web-client HTTP/mTLS HTTPS lifecycles pass on automatic ports and at HTTP 8080 / HTTPS 8443 with proxy 8088, using the unchanged leak-enabled sanitizer engine. The fixed HTTPS check passes after waiting for HTTP socket reuse state to expire. Version 2.4.1 -> 2.4.2, OpenAPI validation and Python syntax checks pass.
+  - Boundary: startup address checks reject known self-forwarding configurations, not arbitrary DNS rebinding or every local interface alias. Live checks exercise browser-equivalent requests through the real proxy, not browser JavaScript automation.
 
 - [ ] #147 Bind future Herradura frames to stable storage context.
   - Source: `crypto.c`, `db.c`, `engine_interface.c`, `filehandling.c`, `HERRADURAKEX_AT_REST_PLAN.md`.

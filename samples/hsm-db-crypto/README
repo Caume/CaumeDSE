@@ -58,13 +58,18 @@ Quick start (from this directory)
 
 Start the browser proxy from a-web, with the TLS variables above exported:
 
-  python3 proxy.py --bind 127.0.0.1 --cdse-server https://localhost:8443
+  python3 proxy.py --bind 127.0.0.1 --port 8088 --cdse-server https://localhost:8443
 
 Open the displayed browser URL. HTTP is available only for local builds
 compiled with --enable-BYPASSTLSAUTHINHTTP. HTTP still requires API credentials.
-The manual HTTP proxy port conflict remains tracked in TODO #146; choose a
-separate free proxy port when using an HTTP upstream. The test manager chooses
-distinct ports automatically.
+The proxy defaults to port 8088, separate from CaumeDSE HTTP port 8080.
+For a local HTTP session, start it from a-web with:
+
+  python3 proxy.py --bind 127.0.0.1 --port 8088 --cdse-server http://localhost:8080
+
+Open http://localhost:8088/. Choose another free proxy port if 8088 is occupied.
+Known self-forwarding endpoints are rejected; the test manager chooses distinct
+ports automatically.
 
 Common CLI commands
 -------------------

@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.4.1
+# Caume Data Security Engine (CaumeDSE) version 2.4.2
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 

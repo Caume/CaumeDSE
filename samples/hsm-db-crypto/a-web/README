@@ -54,17 +54,16 @@ III. Starting the proxy
 From the a-web directory:
 
   # Against the default HTTPS server (self-signed cert)
-  python3 proxy.py --insecure
+  python3 proxy.py --bind 127.0.0.1 --port 8088 --insecure
 
   # Against the HTTP port (BYPASSTLSAUTHINHTTP build, no TLS)
-  python3 proxy.py --insecure --cdse-server http://localhost:8080
+  python3 proxy.py --bind 127.0.0.1 --port 8088 --cdse-server http://localhost:8080
 
-  # Using a specific local port (default is 8080, which conflicts with
-  # the CDSE HTTP port — use 8088 or another free port when both run together)
-  python3 proxy.py --insecure --port 8088
+  # Use another free local port if the default proxy port 8088 is occupied
+  python3 proxy.py --bind 127.0.0.1 --insecure --port 8090
 
   # Verify the server certificate with the development CA
-  CDSE_CA_CERT=/opt/cdse/ca.pem python3 proxy.py --cdse-server localhost:8443
+  CDSE_CA_CERT=/opt/cdse/ca.pem python3 proxy.py --bind 127.0.0.1 --port 8088 --cdse-server localhost:8443
 
 HTTPS also needs CDSE_CLIENT_CERT (PEM client chain) and CDSE_CLIENT_KEY
 (PEM unencrypted private key) exported together. --insecure does not bypass
@@ -73,7 +72,7 @@ client authentication. --bind 127.0.0.1 restricts the proxy to loopback.
 After starting you should see:
 
   CaumeDSE proxy running.
-    Open: http://localhost:8080/
+    Open: http://localhost:8088/
     Forwarding /cdse/* -> https://localhost:8443/*
   Press Ctrl+C to stop.
 
@@ -277,14 +276,13 @@ IX. TLS notes
     This disables certificate verification only between proxy.py and CDSE;
     the browser connects to the proxy over plain HTTP.
 
-  * Alternatively, visit https://localhost:8443 once in the browser and
-    accept the security exception.  Then start proxy.py without --insecure
-    so the proxy verifies the certificate.
+  * To verify a development server, set CDSE_CA_CERT to its trusted PEM CA.
+    A browser certificate exception does not change Python's trust store.
 
   * For the BYPASSTLSAUTHINHTTP build, point the proxy at the HTTP port to
     avoid any TLS configuration entirely:
 
-      python3 proxy.py --insecure --cdse-server http://localhost:8080
+      python3 proxy.py --bind 127.0.0.1 --port 8088 --cdse-server http://localhost:8080
 
   * Never use --insecure or the HTTP port in production.
 
@@ -298,9 +296,9 @@ Usage:
 Options:
 
   --port PORT            Local port to listen on.
-                         Default: 8080.
-                         Use a different port (e.g. 8088) when the CDSE
-                         HTTP server is also using 8080.
+                         Default: 8088, separate from CDSE HTTP port 8080.
+                         Use another free port if 8088 is occupied.
+                         Known self-forwarding endpoints are rejected.
 
   --cdse-server HOST     Target CDSE server.  May include a scheme
                          (http:// or https://).
@@ -324,7 +322,7 @@ URL routing:
 Example — automated test:
 
   # Start proxy on port 8088 so it does not conflict with CDSE HTTP (8080)
-  python3 proxy.py --insecure --cdse-server http://localhost:8080 --port 8088 &
+  python3 proxy.py --bind 127.0.0.1 --cdse-server http://localhost:8080 --port 8088 &
 
   # Check index.html is served
   curl -s http://localhost:8088/ | grep -i caume
