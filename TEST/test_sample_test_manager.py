@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Failure, privacy, process and DEBUG-runner contracts for the sample manager."""
+"""Sample manager, proxy configuration and DEBUG-runner contracts."""
 import contextlib
 import importlib.util
 import io
@@ -19,6 +19,133 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('sample_manager', ROOT / 'samples/hsm-db-crypto/cdse_test_manager.py')
 manager = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(manager)
+PROXY_SPEC = importlib.util.spec_from_file_location('sample_proxy', ROOT / 'samples/hsm-db-crypto/a-web/proxy.py')
+proxy = importlib.util.module_from_spec(PROXY_SPEC)
+PROXY_SPEC.loader.exec_module(proxy)
+
+
+class ProxyTests(unittest.TestCase):
+    def test_default_listener_and_help(self):
+        with mock.patch.object(sys, 'argv', ['proxy.py', '--help']), \
+                mock.patch.object(proxy.http.server, 'HTTPServer') as server, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(SystemExit) as exit_code:
+                proxy.main()
+            self.assertEqual(exit_code.exception.code, 0)
+            self.assertIn('default: 8088', output.getvalue())
+            server.assert_not_called()
+        server = mock.Mock(server_address=('', 8088))
+        server.serve_forever.side_effect = KeyboardInterrupt
+        with mock.patch.object(sys, 'argv', ['proxy.py']), \
+                mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(proxy.http.server, 'HTTPServer', return_value=server) as constructor, \
+                contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as exit_code:
+                proxy.main()
+            self.assertEqual(exit_code.exception.code, 0)
+            self.assertEqual(constructor.call_args.args[0], ('', 8088))
+            server.server_close.assert_called_once()
+
+    def test_loopback_self_forwarding(self):
+        for upstream in ('http://localhost:8088', 'http://127.0.0.1:8088',
+                         'https://localhost:8088', 'localhost:8088',
+                         'http://[::1]:8088', 'http://127.0.0.2:8088'):
+            with self.subTest(upstream=upstream), self.assertRaisesRegex(ValueError, 'distinct ports'):
+                proxy.validate_upstream(upstream, '', 8088)
+        with self.assertRaisesRegex(ValueError, 'distinct ports'):
+            proxy.validate_upstream('http://localhost:8088', '127.0.0.1', 8088)
+
+    def test_documented_startup_recipes(self):
+        recipes = ((['--bind', '127.0.0.1', '--port', '8088', '--insecure'], 8088, 'localhost:8443'),
+                   (['--bind', '127.0.0.1', '--port', '8088', '--cdse-server', 'http://localhost:8080'],
+                    8088, 'http://localhost:8080'),
+                   (['--bind', '127.0.0.1', '--insecure', '--port', '8090'], 8090, 'localhost:8443'),
+                   (['--bind', '127.0.0.1', '--port', '8088', '--cdse-server', 'localhost:8443'],
+                    8088, 'localhost:8443'))
+        for options, port, upstream in recipes:
+            server = mock.Mock(server_address=('127.0.0.1', port))
+            server.serve_forever.side_effect = KeyboardInterrupt
+            env = {'CDSE_CLIENT_CERT': 'client.pem', 'CDSE_CLIENT_KEY': 'client.key', 'CDSE_CA_CERT': 'ca.pem'}
+            with self.subTest(options=options), mock.patch.object(sys, 'argv', ['proxy.py', *options]), \
+                    mock.patch.dict(os.environ, env, clear=True), \
+                    mock.patch.object(proxy.ssl, 'create_default_context') as context, \
+                    mock.patch.object(proxy, 'make_handler') as handler, \
+                    mock.patch.object(proxy.http.server, 'HTTPServer', return_value=server) as constructor, \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                with self.assertRaises(SystemExit) as exit_code:
+                    proxy.main()
+                self.assertEqual(exit_code.exception.code, 0)
+                self.assertEqual(constructor.call_args.args[0], ('127.0.0.1', port))
+                handler.assert_called_once_with(upstream, context.return_value)
+                context.return_value.load_cert_chain.assert_called_once_with('client.pem', 'client.key')
+                self.assertIn(f'http://localhost:{port}/', output.getvalue())
+                if '--insecure' in options:
+                    self.assertFalse(context.return_value.check_hostname)
+                    self.assertEqual(context.return_value.verify_mode, proxy.ssl.CERT_NONE)
+                else:
+                    context.assert_called_once_with(cafile='ca.pem')
+
+    def test_resolved_alias_self_forwarding(self):
+        address = [(proxy.socket.AF_INET, proxy.socket.SOCK_STREAM, 6, '', ('192.0.2.5', 0))]
+        with mock.patch.object(proxy.socket, 'getaddrinfo', return_value=address):
+            for bind in ('listener.example', ''):
+                with self.subTest(bind=bind), self.assertRaisesRegex(ValueError, 'distinct ports'):
+                    proxy.validate_upstream('http://upstream.example:8088', bind, 8088)
+
+    def test_distinct_endpoints_are_allowed(self):
+        with mock.patch.object(proxy.socket, 'getaddrinfo') as resolve:
+            for upstream in ('http://localhost:8080', 'https://localhost:8443', 'localhost:8443'):
+                proxy.validate_upstream(upstream, '', 8088)
+            resolve.assert_not_called()
+        proxy.validate_upstream('http://127.0.0.2:8088', '127.0.0.1', 8088)
+        with mock.patch.object(proxy.socket, 'getaddrinfo', side_effect=proxy.socket.gaierror):
+            proxy.validate_upstream('http://unresolved.example:8088', '', 8088)
+
+    def test_invalid_configuration_fails_before_listening(self):
+        options = (['--cdse-server', 'http://localhost:8088'],
+                   ['--port', '8080', '--cdse-server', 'http://localhost:8080'],
+                   ['--port', '-1'], ['--port', '65536'],
+                   ['--cdse-server', 'ftp://localhost:8080'],
+                   ['--cdse-server', 'http://localhost:bad'])
+        for option in options:
+            with self.subTest(option=option), mock.patch.object(sys, 'argv', ['proxy.py', *option]), \
+                    mock.patch.object(proxy.http.server, 'HTTPServer') as server, \
+                    contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as exit_code:
+                    proxy.main()
+                self.assertEqual(exit_code.exception.code, 2)
+                server.assert_not_called()
+        with mock.patch.object(sys, 'argv', ['proxy.py']), \
+                mock.patch.dict(os.environ, {'CDSE_SERVER': 'http://localhost:8088'}), \
+                mock.patch.object(proxy.http.server, 'HTTPServer') as server, \
+                contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as exit_code:
+                proxy.main()
+            self.assertEqual(exit_code.exception.code, 2)
+            server.assert_not_called()
+
+    def test_ephemeral_port_is_reported_and_closed(self):
+        server = mock.Mock(server_address=('127.0.0.1', 19088))
+        server.serve_forever.side_effect = KeyboardInterrupt
+        with mock.patch.object(sys, 'argv', ['proxy.py', '--port', '0']), \
+                mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(proxy.http.server, 'HTTPServer', return_value=server), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(SystemExit):
+                proxy.main()
+            self.assertIn('http://localhost:19088/', output.getvalue())
+            server.server_close.assert_called_once()
+
+    def test_ephemeral_self_forwarding_closes_listener(self):
+        server = mock.Mock(server_address=('127.0.0.1', 19088))
+        with mock.patch.object(sys, 'argv', ['proxy.py', '--port', '0', '--cdse-server', 'http://localhost:19088']), \
+                mock.patch.object(proxy.http.server, 'HTTPServer', return_value=server), \
+                contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as exit_code:
+                proxy.main()
+            self.assertEqual(exit_code.exception.code, 2)
+            server.serve_forever.assert_not_called()
+            server.server_close.assert_called_once()
 
 
 class ManagerTests(unittest.TestCase):

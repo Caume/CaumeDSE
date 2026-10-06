@@ -2,7 +2,7 @@
 """
 CaumeDSE CORS Proxy
 ===================
-Serves index.html at http://localhost:8080 and proxies /cdse/* requests
+Serves index.html at http://localhost:8088 and proxies /cdse/* requests
 to https://localhost:8443/* (or a configurable CDSE server).
 
 This proxy is required because browsers enforce the Same-Origin Policy,
@@ -10,7 +10,7 @@ preventing JavaScript in index.html from calling the CDSE HTTPS API
 directly from a file:// URL or a different origin.
 
 Usage:
-    python3 proxy.py [--port 8080] [--cdse-server localhost:8443] [--insecure]
+    python3 proxy.py [--port 8088] [--cdse-server localhost:8443] [--insecure]
 
 NOTE: Use --insecure only in development/testing when the CDSE server uses
 a self-signed TLS certificate. Do NOT use --insecure in production.
@@ -18,11 +18,45 @@ a self-signed TLS certificate. Do NOT use --insecure in production.
 
 import argparse
 import http.server
+import ipaddress
 import os
+import socket
 import ssl
 import sys
 import urllib.request
 import urllib.error
+import urllib.parse
+
+
+def validate_upstream(cdse_server, bind, port):
+    """Reject known self-forwarding endpoints before serving requests."""
+    url = cdse_server if '://' in cdse_server else f'https://{cdse_server}'
+    target = urllib.parse.urlsplit(url)
+    if target.scheme not in ('http', 'https') or not target.hostname:
+        raise ValueError('CDSE upstream must be an HTTP or HTTPS host')
+    target_port = target.port or (443 if target.scheme == 'https' else 80)
+    if target_port != port:
+        return
+    wildcard = bind in ('', '0.0.0.0', '::')
+    if not wildcard and target.hostname.lower() == bind.lower():
+        raise ValueError('CDSE upstream points to the proxy; use distinct ports')
+
+    def addresses(host):
+        try:
+            resolved = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+        except socket.gaierror:
+            return set()
+        result = set()
+        for entry in resolved:
+            address = ipaddress.ip_address(entry[4][0].split('%')[0])
+            result.add(getattr(address, 'ipv4_mapped', None) or address)
+        return result
+
+    upstream = addresses(target.hostname)
+    local = addresses(bind) if not wildcard else addresses(socket.gethostname())
+    if upstream & local or (wildcard and any(address.is_loopback or address.is_unspecified
+                                             for address in upstream)):
+        raise ValueError('CDSE upstream points to the proxy; use distinct ports')
 
 
 def make_handler(cdse_server, ssl_context):
@@ -130,8 +164,8 @@ def main():
     parser = argparse.ArgumentParser(
         description='CaumeDSE CORS proxy — serves the web client and forwards '
                     '/cdse/* to the CDSE HTTPS server.')
-    parser.add_argument('--port', type=int, default=8080,
-                        help='Local port to listen on (default: 8080)')
+    parser.add_argument('--port', type=int, default=8088,
+                        help='Local port to listen on (default: 8088)')
     parser.add_argument('--bind', default='', help='Listen address (default: all interfaces)')
     parser.add_argument('--cdse-server', default=os.environ.get('CDSE_SERVER', 'localhost:8443'),
                         metavar='HOST:PORT',
@@ -140,6 +174,12 @@ def main():
                         help='Skip TLS certificate verification for the CDSE '
                              'server (development/self-signed certs only)')
     args = parser.parse_args()
+    if not 0 <= args.port <= 65535:
+        parser.error('proxy port must be between 0 and 65535')
+    try:
+        validate_upstream(args.cdse_server, args.bind, args.port)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     # Build the SSL context used when contacting the CDSE server.
     # ssl_context is used only for https:// targets; ignored for http://.
@@ -159,9 +199,16 @@ def main():
 
     handler = make_handler(args.cdse_server, ssl_context)
     server = http.server.HTTPServer((args.bind, args.port), handler)
+    port = server.server_address[1]
+    if args.port == 0:
+        try:
+            validate_upstream(args.cdse_server, args.bind, port)
+        except ValueError as exc:
+            server.server_close()
+            parser.error(str(exc))
     scheme = args.cdse_server if args.cdse_server.startswith('http') else f'https://{args.cdse_server}'
     print(f'CaumeDSE proxy running.')
-    print(f'  Open: http://localhost:{args.port}/')
+    print(f'  Open: http://localhost:{port}/')
     print(f'  Forwarding /cdse/* -> {scheme}/*')
     print('Press Ctrl+C to stop.')
     try:
@@ -169,6 +216,8 @@ def main():
     except KeyboardInterrupt:
         print('\nStopped.')
         sys.exit(0)
+    finally:
+        server.server_close()
 
 
 if __name__ == '__main__':

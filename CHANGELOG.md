@@ -2,6 +2,14 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.4.2 - 2026-10-06
+
+- Default the sample browser proxy to port 8088, align HTTP startup recipes
+  and browser URLs, and reject known self-forwarding upstream endpoints.
+- Report actual ephemeral listener ports, close listeners on shutdown, and
+  add proxy configuration regressions to the existing manager contract suite.
+- Clarify that browser certificate exceptions do not affect proxy TLS trust.
+
 ## 2.4.1 - 2026-10-06
 
 - Remove overwritten digest/HMAC output allocations and close/null SQLite
