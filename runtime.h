@@ -11,5 +11,8 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 int cmeSetupRuntime(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl);
 int cmeEndRuntime(unsigned char **bIn,unsigned char **bOut,PerlInterpreter **myPerl);
+#ifdef DEBUG
+int cmeSetDebugTestDataDirectory(const char *path);
+#endif
 
 #endif // RUNTIME_H_INCLUDED

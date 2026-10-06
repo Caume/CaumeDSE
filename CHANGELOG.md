@@ -2,6 +2,16 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.4.0 - 2026-10-05
+
+- Add explicit private DEBUG-runner data directories and capability checks,
+  preserving production and default compiled paths.
+- Replace the four-client manager's interactive startup with isolated,
+  signal-stopped HTTP/HTTPS services and byte-verified secret lifecycles.
+- Support environment-provided CA/client certificates in all sample clients
+  and the proxy; verify fresh mTLS fixtures without retaining raw output.
+- Remove stale shared-key guidance and add manager contract/live CI tests.
+
 ## 2.3.0 - 2026-10-04
 
 - Add offline whole-export key/profile migration for ResourcesDB, RolesDB,

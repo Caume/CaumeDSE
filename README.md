@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.3.0
+# Caume Data Security Engine (CaumeDSE) version 2.4.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2490,7 +2490,8 @@ backward-compatible fixes, documentation, CI, or maintenance changes. Update
 the matching public version metadata in `README.md` and `openapi.yaml` in the
 same pull request. `TEST/test_validate_version_bump.sh` verifies the gate
 against committed major, minor, patch, skipped, reset, malformed, and
-label-selection fixtures.
+label-selection fixtures. PR CI reruns when labels are added or removed,
+so an initially missing impact label does not leave a stale failed check.
 
 `TEST/validate_openapi_routes.sh` also verifies the declared HTTP methods for
 every stable OpenAPI path, preventing route-method drift from passing a
@@ -2511,6 +2512,15 @@ unexpected-route, and malformed-response fixtures.
 with canonical profile names in `crypto.h`, checks writable-target restrictions,
 AES-GCM defaults and optional-provider readiness, and prevents secondary crypto
 documentation from reverting to duplex evaluation or implemented NLA2 claims.
+
+`samples/hsm-db-crypto/cdse_test_manager.py` uses a current dedicated DEBUG
+runner with explicit private data directories, automatic distinct ports and
+signal-based shutdown. It checks all four sample secret lifecycles over HTTP
+and verified mTLS HTTPS without changing installed fixtures or retaining raw
+engine/client output. See the sample README for dependencies and options.
+`TEST/test_sample_test_manager.py` runs under `make check`; PR CI additionally
+runs the complete four-client HTTP/HTTPS flow. The data-path override is
+DEBUG-only and requires an existing owned private non-symlink directory.
 
 `.github/workflows/scheduled-live-api.yml` runs every Monday at 03:17 UTC and
 can also be started manually. It builds the DEBUG/test profile and requires

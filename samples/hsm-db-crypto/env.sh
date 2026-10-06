@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
-# CaumeDSE sample environment — source this file before running examples.
-#
-#   source env.sh
-#   python3 b-python/cdse_client.py info --insecure
-#
-# CDSE_ORG_KEY is the organisation encryption key for the included development
-# databases at /opt/cdse/.  This key was generated randomly when those
-# databases were first initialised and is documented here so that the sample
-# applications and automated tests can be run against them without interaction.
-#
-# If you reset the databases (delete /opt/cdse/ contents and restart CDSE),
-# a new key will be printed to the console.  Update this file with that key.
-#
-# Security note: this file is for development use only.  Never commit
-# production keys to version control.
+# Manual sample defaults only. Supply your own CDSE_ORG_KEY before use.
+# There is no universal key for installed or committed development databases.
+# Never record production keys in this file. The automated test manager instead
+# creates private fresh databases and uses an ephemeral first-run key.
 
-export CDSE_SERVER="https://localhost:8443"
-export CDSE_USER_ID="EngineAdmin"
-export CDSE_ORG_ID="EngineOrg"
-export CDSE_ORG_KEY="187465950C5F9018D04F91E976CAC1D7FA19CBA5FE26D94038630B18BCBAAAB6"
-export CDSE_STORAGE="EngineStorage"
+export CDSE_SERVER="${CDSE_SERVER:-https://localhost:8443}"
+export CDSE_USER_ID="${CDSE_USER_ID:-EngineAdmin}"
+export CDSE_ORG_ID="${CDSE_ORG_ID:-EngineOrg}"
+export CDSE_STORAGE="${CDSE_STORAGE:-EngineStorage}"
+# Export an existing value without assigning a shared credential.
+export CDSE_ORG_KEY
+# HTTPS: also supply CDSE_CA_CERT, CDSE_CLIENT_CERT and CDSE_CLIENT_KEY paths.

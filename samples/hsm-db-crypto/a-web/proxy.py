@@ -132,7 +132,8 @@ def main():
                     '/cdse/* to the CDSE HTTPS server.')
     parser.add_argument('--port', type=int, default=8080,
                         help='Local port to listen on (default: 8080)')
-    parser.add_argument('--cdse-server', default='localhost:8443',
+    parser.add_argument('--bind', default='', help='Listen address (default: all interfaces)')
+    parser.add_argument('--cdse-server', default=os.environ.get('CDSE_SERVER', 'localhost:8443'),
                         metavar='HOST:PORT',
                         help='CDSE server address (default: localhost:8443)')
     parser.add_argument('--insecure', action='store_true',
@@ -148,10 +149,16 @@ def main():
         ssl_context.verify_mode = ssl.CERT_NONE
         print('WARNING: TLS certificate verification disabled (--insecure).')
     else:
-        ssl_context = ssl.create_default_context()
+        ssl_context = ssl.create_default_context(cafile=os.environ.get('CDSE_CA_CERT') or None)
+    certificate = os.environ.get('CDSE_CLIENT_CERT')
+    key = os.environ.get('CDSE_CLIENT_KEY')
+    if bool(certificate) != bool(key):
+        parser.error('CDSE_CLIENT_CERT and CDSE_CLIENT_KEY must be set together')
+    if certificate:
+        ssl_context.load_cert_chain(certificate, key)
 
     handler = make_handler(args.cdse_server, ssl_context)
-    server = http.server.HTTPServer(('', args.port), handler)
+    server = http.server.HTTPServer((args.bind, args.port), handler)
     scheme = args.cdse_server if args.cdse_server.startswith('http') else f'https://{args.cdse_server}'
     print(f'CaumeDSE proxy running.')
     print(f'  Open: http://localhost:{args.port}/')
