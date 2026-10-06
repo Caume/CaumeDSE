@@ -302,8 +302,8 @@ CDSEHKX1 || profile_id || flags || nonce32 || tag32 || ciphertext
 The existing per-record hex salt is still stored outside the frame and is used
 with PBKDF2-HMAC-SHA256 to derive the 32-byte Herradura key from the
 organization key. Associated data currently binds the CDSE Herradura AAD domain,
-algorithm id, and salt. Later metadata work should extend this with stable
-database/table/field context where every decrypt path can provide it.
+algorithm id, and salt. The draft context contract below proposes stable
+database/table/field binding; it is not implemented or approved for storage.
 
 ## Metadata and Configuration Status
 
@@ -349,3 +349,129 @@ source mutation or automatic live publication occurs. A verified export is not
 deployment-wide closeout: inventory other scopes/backups, publish DBs/payloads
 consistently while stopped, preserve the staged absolute accessPath, change the
 runtime default and externally managed keys, then verify operational readback.
+
+## Draft Context Contract (#147)
+
+Status: design review required. No production frame, API, schema, KDF or default
+changes in this design PR. `TEST/herradura_context_contract.py` is an executable
+serialization reference, not encryption code. Its tests show distinct AAD and
+proposed dispatch behavior, not authenticated rejection by an AEAD provider.
+TODO #147 remains open until review and end-to-end runtime integration pass.
+
+### Storage-Path Inventory
+
+| Surface | Current writers/readers | Missing stable inputs |
+| --- | --- | --- |
+| ResourcesDB, RolesDB, LogsDB fields | `cmePostProtectDBRegister`, `cmeGetUnprotectDBRegisters`, update/delete/search variants in `engine_interface.c`; direct registration in `engine_admin.c` | Generic SQLite handles do not identify DB role. Organization identifiers and selected fields can be encrypted; current row ids are not persistent cryptographic identities. |
+| ColumnFile `meta`/`data` | `cmeMemSecureDBProtect`, `cmeMemSecureDBUnprotect`, integrity/re-protection helpers in `db.c` | Standalone in-memory DBs lack trusted document/column identity. Metadata is decrypted before its contents are available; shuffling/re-protection rewrites row ids/order. |
+| Raw parts | `cmeRAWFileToSecureFile`, `cmeSecureFileToTmpRAWFileInDir` in `filehandling.c` | Filename, document identifiers and part order are insufficient immutable context; registered metadata must be available before decryption. |
+| Offline export/checkpoint/readback | `storage_migration.c`, command fixtures | Schema inventory, artifact classification and checkpoints currently understand V1 profiles, not a context registry or V2 floor. Paths change between before/after snapshots. |
+
+Every direct and indirect caller must be inventoried before enabling V2. Thread
+local variables, global defaults, filenames and request parameters cannot fill
+missing context implicitly. API lookup strings are not immutable identities.
+
+### Identity And Trust
+
+Schema 1 proposes five 16-byte binary identifiers, generated once and retained:
+deployment, organization security scope, storage, resource, and record. All must
+be nonzero except storage: internal DB roles require an all-zero storage value;
+ColumnFile and RawPart require a nonzero storage identifier. UUID bytes are
+opaque and never derived from secrets, display names, SQL ids or paths.
+
+- Resource means the DB instance for internal DBs, the registered logical column
+  for ColumnFile, and the registered logical document for RawPart.
+- Record means an immutable internal row, ColumnFile meta/data row, or raw part.
+  Do not use `rowOrder`, mutable `id`, part numbering or transient file names.
+- Database role and canonical table/field names are assigned by the caller from
+  the schema. RawPart uses synthetic table `payload` and field `bytes`.
+- The caller supplies expected identifiers from an authenticated registration
+  mapping scoped to an independently trusted deployment/organization identity.
+  It must not accept context copied from the candidate frame or unauthenticated
+  SQLite metadata. Provisioning, registry authentication and restoration remain
+  review blockers, not existing supported features.
+
+The registry must bind logical lookup/registration to expected immutable ids
+before encrypted fields are read, avoiding circular use of encrypted org or
+document names. Plain UUID metadata alone is insufficient. Whole-artifact or
+registry substitution is not prevented if a reader trusts the attacker's whole
+mapping. AAD also does not prevent replay of an authentic earlier value in the
+same context; freshness requires a separately reviewed trusted policy.
+
+Renaming paths, updating fields and shuffling rows retain ids. Copying a value
+to a different organization/storage/resource/record requires decrypting under
+the source context and re-encrypting under the target context. Cloning identity
+or migrating deployment namespaces needs an explicit reviewed operator policy.
+
+### Proposed Binary Encoding
+
+All multi-byte integers are unsigned big-endian. The draft header is 80 bytes:
+
+```text
+CDSEHKX2[8] || profile[1] || flags[1] || kdf[1] || context_schema[1]
+            || ciphertext_length[4] || nonce[32] || tag[32] || ciphertext[N]
+```
+
+Draft profile 1 is existing HSKE-NL-A1 AEAD-256 only; no new duplex writes or
+NLA2 implementation. Draft KDF id 1 explicitly means PBKDF2-HMAC-SHA256,
+10000 iterations, 16-byte decoded salt and 32-byte key. This freezes the current
+Herradura wrapper parameters rather than relying on a changing compiled
+default, and is not a recommendation to expand or approve that KDF policy.
+Future KDF changes require a new reviewed id. Context schema is 1; flags are 0.
+
+The proposed AAD bytes are exactly:
+
+```text
+"CDSE-HKX-AAD-v2" || NUL
+|| header bytes 0..47 (magic through nonce, excluding tag)
+|| decoded salt[16] || role[1]
+|| deployment[16] || organization[16] || storage[16] || resource[16] || record[16]
+|| table_length[1] || table[ASCII] || field_length[1] || field[ASCII]
+```
+
+Role ids: ResourcesDB=1, RolesDB=2, LogsDB=3, ColumnFile=4, RawPart=5. Names use
+canonical case-sensitive schema spelling and `[A-Za-z_][A-Za-z0-9_]{0,63}`
+(including role fields such as `_get`).
+Do not normalize identifier/name bytes during reads. Decode the existing hex
+salt strictly to 16 bytes for V2 only; preserve V1's literal salt spelling.
+Lengths bound allocation before arithmetic; `N <= INT_MAX - 80`, and total input
+must equal `80 + N` with no ignored trailing bytes. Zero-length ciphertext is
+valid at the frame level; individual storage APIs may impose stricter rules.
+Unknown profile/KDF/schema/flags, absent ids, missing context, invalid names,
+truncation and inconsistent lengths fail closed before invoking the provider.
+
+The tag authenticates ciphertext and these AAD bytes. Context is deliberately
+not embedded as an authoritative value in the frame. Base64 wrapping and the
+external salt column remain unchanged. Length delimiting distinguishes names
+such as table/field `ab`/`c` from `a`/`bc` without separator ambiguity.
+
+### Compatibility And Rollout Gates
+
+1. Keep `CDSEHKX1` bytes, AAD construction and profile ids unchanged. Profile 2
+   remains historical-provider migration readback only; unframed legacy AES
+   handling remains unchanged in current binaries.
+2. Introduce explicitly named context-aware APIs in a future reviewed patch;
+   contextless APIs must reject V2, never retry V1/AES after V2 authentication
+   failure. Unknown `CDSEHKX*` versions must not enter an AES fallback.
+3. Authenticate a per-scope minimum-format policy independently of the candidate
+   frame. Compatibility mode can read V1/AES; after verified V2 closeout the
+   floor is 2 and all legacy substitutions fail. Frame version alone cannot
+   prevent replacement by valid same-key legacy ciphertext.
+4. Add schema/registry provisioning before V2 writes. Thread expected context
+   through all inventory paths, including standalone commands, metadata reads,
+   MAC checks, registration, copy/delete and debug fixtures. No runtime default
+   switches until those paths can reconstruct it independently.
+5. Extend migration inventories, authenticated checkpoints and target readback
+   to include ids and the format floor. Preserve ids across staging/restarts,
+   regenerate field/file MACs and lookups, verify all persisted artifacts, and
+   refuse closeout while any artifact or registry is missing or remains legacy.
+6. Gate activation on independent provider vectors and actual tag-failure tests
+   for changes to every context id, role, table/field, salt and header parameter;
+   include same-key cross-record/field/resource substitutions, malformed frames,
+   V1/AES persisted readback, mixed formats, wrong keys, downgrade policy,
+   interrupted migration and release/ASAN/UBSAN builds. Serialization inequality
+   tests are necessary but do not satisfy these authentication/readback gates.
+
+Review must settle registry ownership/authentication, identity lifecycle,
+scope/floor trust and recovery before accepting this draft. The current
+production wrappers still write/read V1; no V2 storage-security claim is made.
