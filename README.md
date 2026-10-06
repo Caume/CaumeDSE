@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.4.0
+# Caume Data Security Engine (CaumeDSE) version 2.4.1
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2423,9 +2423,12 @@ sanitizer configure option:
 `address,undefined`; `yes` selects both. Sanitizer builds are intentionally
 DEBUG-only and do not change normal release or default DEBUG builds. The full
 DEBUG verifier still exercises legacy embedded-Perl helper tests and currently
-runs with LeakSanitizer disabled to avoid external interpreter noise; use
-`detect_leaks=1` only for focused C-only reproductions where the embedded
-interpreter is not part of the signal.
+runs with LeakSanitizer disabled to avoid external interpreter noise.
+Command/ownership tests under `make check` and the isolated four-client
+HTTP/HTTPS manager are verified with `ASAN_OPTIONS=detect_leaks=1`; the latter
+also checks fresh admin initialization and signal-based shutdown. This scoped
+coverage does not claim that all legacy embedded-Perl component helpers are
+leak-clean.
 
 ### Release Readiness Checklist
 
@@ -2468,6 +2471,8 @@ DEBUG build with AddressSanitizer and UndefinedBehaviorSanitizer, then executes
 redacted logs. The sanitizer job fails on invalid accesses and undefined
 behavior; LeakSanitizer is disabled for the full verifier profile because
 legacy embedded-Perl helper tests are still part of that run.
+Leak detection is enabled for the command/ownership suites and two independent
+four-client HTTP/HTTPS runs, without suppressing engine allocations.
 The default release job separately configures without DEBUG/test switches,
 builds, runs `make check`, stages an installation, and verifies that release
 configuration rejects the HTTP TLS-auth bypass. It also runs `make distcheck`

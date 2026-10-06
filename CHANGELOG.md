@@ -2,6 +2,17 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.4.1 - 2026-10-06
+
+- Remove overwritten digest/HMAC output allocations and close/null SQLite
+  handles on failed open paths, including fresh admin initialization.
+- Reject unknown digest algorithms correctly and release raw-file query tables,
+  per-document metadata, SQL column arrays, reused admin query results, request
+  buffers and dispatcher-owned credentials.
+- Add repeated ownership/vector/error-path regressions and require leak-enabled
+  command tests and repeated isolated HTTP/HTTPS lifecycles in sanitizer CI.
+- Keep legacy embedded-Perl component leak-check scope explicitly separate.
+
 ## 2.4.0 - 2026-10-05
 
 - Add explicit private DEBUG-runner data directories and capability checks,

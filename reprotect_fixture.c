@@ -158,12 +158,62 @@ done:
     return(result);
 }
 
+static int cmeFixtureOwnership(const char *root)
+{
+    const char *expectedDigest="BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD";
+    const char *expectedMAC="BDC754FC802F9D63993782AD8EA6E9D2827DC9F08C69535C0C6FBBCA266FB0FF";
+    char saltText[]="00000000000000000000000000000000";
+    char *salt=saltText,*path=NULL;
+    unsigned char *output=NULL;
+    sqlite3 *db=NULL;
+    int i,written,result=1;
+
+    for (i=0;i<16;i++)
+    {
+        if (cmeDigestByteString((const unsigned char *)"abc",&output,3,&written,"sha256") ||
+            written!=64 || strcmp((const char *)output,expectedDigest)) goto done;
+        cmeFree(output);
+        if (cmeHMACByteString((const unsigned char *)"abc",&output,3,&written,"sha256",&salt,"fixture-source-key") ||
+            written!=64 || strcmp((const char *)output,expectedMAC)) goto done;
+        cmeFree(output);
+        if (!cmeDigestByteString((const unsigned char *)"abc",&output,3,&written,"invalid-digest") || output) goto done;
+        if (!cmeHMACByteString((const unsigned char *)"abc",&output,3,&written,"invalid-digest",&salt,"fixture-source-key") || output) goto done;
+
+        cmeStrConstrAppend(&path,"%s/missing-%d.sqlite",root,i);
+        if (!cmeDBOpen(path,&db) || db) goto done;
+        if (cmeDBCreateOpen(path,&db) || !db || cmeDBClose(db)) goto done;
+        db=NULL;
+        if (cmeDBOpen(path,&db) || !db || cmeDBClose(db)) goto done;
+        db=NULL;
+        cmeFree(path);
+        if (!cmeDBCreateOpen(root,&db) || db) goto done;
+        cmeStrConstrAppend(&path,"%s/source.key",root);
+        if (!cmeDBCreateOpen(path,&db) || db) goto done;
+        cmeFree(path);
+        if (cmeMemDBCreateOpen(&db) || !db ||
+            cmeSQLRows(db,"SELECT 'first'; SELECT 'last';",NULL,NULL) ||
+            cmeResultMemTableRows!=1 || cmeResultMemTableCols!=1 ||
+            strcmp(cmeResultMemTable[1],"last")) goto done;
+        cmeResultMemTableClean();
+        if (cmeDBClose(db)) goto done;
+        db=NULL;
+    }
+    result=0;
+done:
+    cmeFree(output);
+    cmeFree(path);
+    cmeResultMemTableClean();
+    if (db) cmeDBClose(db);
+    return(result);
+}
+
 int main(int argc, char **argv)
 {
     sqlite3 *db=NULL;
     int result;
     if (argc!=3) return(2);
     cmeInitDefaultEncAlg();
+    if (!strcmp(argv[2],"ownership")) return(cmeFixtureOwnership(argv[1]));
     if (!strcmp(argv[2],"nla1-provider"))
     {
         cmeCryptoProfile profile;

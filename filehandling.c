@@ -1527,6 +1527,11 @@ int cmeSecureFileToTmpRAWFileInDir (char **tmpRAWFile, sqlite3 *pResourcesDB,con
     //MEMORY CLEANUP MACRO for local function.
     #define cmeSecureFileToTmpRAWFileFree() \
         do { \
+            if (queryResult) \
+            { \
+                cmeMemTableFinal(queryResult); \
+                queryResult=NULL; \
+            } \
             cmeFree(currentDocumentId); \
             cmeFree(currentPartId); \
             cmeFree(currentDocumentType); \
@@ -1853,6 +1858,9 @@ int cmeSecureFileToTmpRAWFileInDir (char **tmpRAWFile, sqlite3 *pResourcesDB,con
         }
         memset(currentDocumentId,0,strlen(currentDocumentId));   //WIPING SENSITIVE DATA IN MEMORY AFTER USE!
         cmeFree(currentDocumentId);
+        cmeFree(currentDocumentType);
+        cmeFree(currentOrgResourceId);
+        cmeFree(currentStorageId);
     }
     *tmpRAWFile=NULL;
     if(dbNumCols && (!partMACmismatch)) //If we found at least 1 column part and no MAC mismatch, process the file...

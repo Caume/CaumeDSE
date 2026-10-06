@@ -3111,6 +3111,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
         result=cmeWebServiceProcessTransactionClass(responseText,responseHeaders,responseCode,
                                                     url,argumentElements,method);
+        cmeWebServiceProcessRequestFree();
         if (result) //Error, return error code + 100.
         {
             return(result+100);
@@ -3131,6 +3132,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessOrgClass (responseText, responseFilePath, responseHeaders, responseCode,
                                                  url, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3148,6 +3150,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessOrgResource(responseText, responseHeaders, responseCode,
                                                    url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3165,6 +3168,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessUserClass(responseText, responseHeaders, responseCode,
                                                  url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3182,6 +3186,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessUserResource(responseText, responseFilePath, responseHeaders, responseCode,
                                                     url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3199,6 +3204,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessRoleTableClass(responseText, responseHeaders, responseCode,
                                                      url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3216,6 +3222,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessRoleTableResource(responseText, responseFilePath, responseHeaders, responseCode,
                                                          url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3233,6 +3240,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessFilterWhitelistClass(responseText, responseHeaders, responseCode,
                                                      url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3250,6 +3258,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessFilterWhitelistResource(responseText, responseFilePath, responseHeaders, responseCode,
                                                          url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3267,6 +3276,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessFilterBlacklistClass(responseText, responseHeaders, responseCode,
                                                      url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3284,6 +3294,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessFilterBlacklistResource(responseText, responseFilePath, responseHeaders, responseCode,
                                                          url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3301,6 +3312,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessStorageClass (responseText, responseHeaders, responseCode,
                                                  url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3318,6 +3330,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessStorageResource(responseText, responseFilePath, responseHeaders, responseCode,
                                                    url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3337,6 +3350,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             result=cmeWebServiceProcessDBBrowseResource(responseText,responseHeaders,responseCode,url,
                                                         urlElements,numUrlElements,argumentElements,
                                                         method,storagePath);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3354,6 +3368,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessDocumentTypeClass(responseText, responseHeaders, responseCode,
                                                          url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result)
             {
                 return(result+100);
@@ -3371,6 +3386,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessDocumentTypeResource(responseText, responseFilePath, responseCode,
                                                             url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3388,6 +3404,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessDocumentClass (responseText, responseHeaders, responseCode,
                                                       url, urlElements, argumentElements, method, storagePath);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3405,6 +3422,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessDocumentResource(responseText, responseHeaders, responseCode,
                                                         url, urlElements, argumentElements, method, storagePath, connection);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3424,6 +3442,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
             result=cmeWebServiceProcessDocumentSchemaResource(responseText,responseHeaders,responseCode,
                                                               url,urlElements,argumentElements,
                                                               method,storagePath);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3441,6 +3460,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessParserScriptClass(responseText, responseHeaders, responseCode,
                                                          url, urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3458,6 +3478,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessParserScriptResource(responseText, responseHeaders, responseCode,
                                                             url, urlElements, argumentElements, method, storagePath);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3475,6 +3496,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessContentClass (responseText, responseFilePath, responseHeaders, responseCode,
                                                      url, urlElements, argumentElements, method, storagePath);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3492,6 +3514,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessContentRowClass (responseText, responseHeaders, responseCode, url,
                                                         urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3509,6 +3532,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessContentRowResource (responseText, responseHeaders, responseCode, url,
                                                            urlElements, argumentElements, method, storagePath);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3526,6 +3550,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessContentColumnClass (responseText, responseHeaders, responseCode, url,
                                                            urlElements, argumentElements, method);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -3543,6 +3568,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             result=cmeWebServiceProcessContentColumnResource (responseText, responseHeaders, responseCode, url,
                                                               urlElements, argumentElements, method, storagePath);
+            cmeWebServiceProcessRequestFree();
             if (result) //Error, return error code + 100.
             {
                 return(result+100);
@@ -9880,11 +9906,6 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
     {
         if (NULL != con_info->postProcessor)
         {
-            for (cont=0;cont<(con_info->postArgCont);cont++) //Clear pointers.
-            {
-                cmeFree(con_info->postArglist[cont]);
-            }
-            cmeFree(con_info->postArglist);
             con_info->postArgCont=0;
             MHD_destroy_post_processor (con_info->postProcessor);
             con_info->postProcessor=NULL;
@@ -9903,6 +9924,12 @@ void cmeWebServiceRequestCompleted (void *cls, struct MHD_Connection *connection
             result=cmeFileOverwriteAndDelete(con_info->fileName); //Overwrite and delete the temporary file.
             cmeFree(con_info->fileName);
         }
+    }
+    if (con_info->postArglist)
+    {
+        for (cont=0;cont<cmeWSHTTPMaxHeaders*2;cont++)
+            cmeFree(con_info->postArglist[cont]);
+        cmeFree(con_info->postArglist);
     }
     cmeFree(con_info->answerString);
     cmeFree(con_info->requestId);
