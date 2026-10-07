@@ -1308,6 +1308,8 @@
   - Source: `crypto.c`, `db.c`, `engine_interface.c`, `filehandling.c`, `HERRADURAKEX_AT_REST_PLAN.md`.
   - Goal: complete the documented associated-data design beyond the current domain/algorithm/salt binding.
   - Plan: define immutable database/table/field and resource identifiers available on every encrypt/decrypt path, version the frame/AAD contract without reinterpreting existing frames, and test cross-context substitution plus legacy readback. Preserve current compatibility until the design is reviewed.
+  - Progress: draft `CDSEHKX2`/AAD schema 1, stable identity/trusted registry requirements, caller inventory, format-floor policy and rollout gates are documented in `HERRADURAKEX_AT_REST_PLAN.md`. Eleven executable reference tests cover serialization separation, bounds, legacy AAD and proposed version dispatch; CI runs them. No production format/schema/API changes or provider authentication proof. Review and runtime integration, including actual cross-context rejection and persisted legacy readback tests, remain required; item stays open.
+  - Design validation: 11 reference, 10 sample profile and 8 storage-artifact tests pass; default DEBUG `make check` passes all 3 suites / 49 tests. `make dist` includes the reference modules and plan. Version, OpenAPI, immutable-action, Python syntax and TODO ordering checks pass. Live/provider authentication tests are deliberately deferred because this patch changes no runtime cryptographic path.
 
 - [ ] #148 Design and implement an opt-in remote storage provider.
   - Source: `filehandling.c`, `common.h`, `README.md` storage `type`, `accessPath`, `accessUser`, and `accessPassword` attributes.

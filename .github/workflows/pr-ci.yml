@@ -111,6 +111,11 @@ jobs:
       - name: Test operational sample crypto profile contract
         run: python3 TEST/test_sample_crypto_profiles.py
 
+      - name: Test draft Herradura context contract
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 TEST/test_herradura_context_contract.py
+
       - name: Test sample manager contracts without launching services
         env:
           PYTHONDONTWRITEBYTECODE: "1"

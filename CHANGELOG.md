@@ -2,6 +2,14 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.4.3 - 2026-10-06
+
+- Document the review-gated Herradura V2 context/AAD draft, identity and trust
+  requirements, storage-path inventory, migration and compatibility gates.
+- Add executable serialization/dispatch contract tests to lightweight PR CI;
+  keep production V1 crypto and storage behavior unchanged. TODO #147 remains
+  open for design approval and authenticated end-to-end runtime integration.
+
 ## 2.4.2 - 2026-10-06
 
 - Default the sample browser proxy to port 8088, align HTTP startup recipes
