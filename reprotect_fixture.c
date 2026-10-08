@@ -165,11 +165,22 @@ static int cmeFixtureOwnership(const char *root)
     char saltText[]="00000000000000000000000000000000";
     char *salt=saltText,*path=NULL;
     unsigned char *output=NULL;
+    unsigned char unsupportedFrame[80]={0};
     sqlite3 *db=NULL;
     int i,written,result=1;
 
     for (i=0;i<16;i++)
     {
+        memcpy(unsupportedFrame,"CDSEHKX2",8);
+        written=0;
+        if (cmeCipherByteString(unsupportedFrame,&output,(unsigned char **)&salt,80,&written,
+                               "aes-256-gcm","fixture-source-key",'d')!=33 || output || written) goto done;
+        unsupportedFrame[7]='3';
+        if (cmeCipherByteString(unsupportedFrame,&output,(unsigned char **)&salt,80,&written,
+                               "aes-256-gcm","fixture-source-key",'d')!=33 || output || written) goto done;
+        unsupportedFrame[7]='1';
+        if (cmeCipherByteString(unsupportedFrame,&output,(unsigned char **)&salt,8,&written,
+                               "aes-256-gcm","fixture-source-key",'d')!=33 || output || written) goto done;
         if (cmeDigestByteString((const unsigned char *)"abc",&output,3,&written,"sha256") ||
             written!=64 || strcmp((const char *)output,expectedDigest)) goto done;
         cmeFree(output);
