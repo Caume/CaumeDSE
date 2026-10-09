@@ -593,3 +593,75 @@ durable CAS and allocation catalog; thread verified contexts through every
 storage caller; implement reviewed V2 provider operations and persisted migration
 readback; and test cross-context tag failures with independent provider vectors.
 TODO #147 stays open until those production integration gates pass.
+
+## C Reader Boundary (#147, Phase 3)
+
+`context_registry.h` now defines an additive internal C reader API. No HTTP route,
+configuration switch or storage caller activates it. Existing V1/AES operations
+remain unchanged, and contextless cipher APIs still reject V2. This is a reader
+boundary, not production registry provisioning or an approved V2 write path.
+
+### Manager Adapter Contract
+
+`cmeContextRegistryOpen` takes the expected deployment/organization scope, the
+candidate snapshot/tag, a separately provisioned 32-byte registry key, and a
+trusted `cmeContextAnchorFetch` callback with an opaque manager argument. The
+callback must obtain the current independently authenticated anchor on **each
+open** and return zero only on success. The anchor contains binary 16-byte scope
+ids, a nonzero unsigned 64-bit generation, floor 1 or 2, and a 32-byte SHA-256 pin.
+The C reader rejects mismatched callback scope, invalid generation/floor, callback
+failure, wrong HMAC or a snapshot that differs from the pin before parsing JSON.
+The domain and canonical bytes match the phase-2 Python reference exactly.
+
+The callback is a trusted in-process adapter, not an untrusted plugin or an HTTP
+request hook. Do not derive its anchor or registry key from candidate bytes,
+SQLite storage metadata or caller-supplied request arguments. A callback that
+returns an old authentic anchor authorizes old state by definition; the C library
+cannot prove manager freshness. The manager still needs an authenticated transport,
+durable monotonic CAS, independently protected recovery and key provisioning.
+None of those services is implemented or automatically contacted here.
+
+Each successful open returns an opaque operation-scoped handle. The caller must
+free it with `cmeContextRegistryFree` at operation completion and open again for
+the next operation. Do not keep handles as indefinite successful caches. A
+revocation published during a long operation does not invalidate an existing
+handle; operation boundaries, cancellation/rechecks and any lease require review
+before storage integration. Freeing null handles is safe and nulls the pointer.
+
+### Parsing And Lookup
+
+The reader uses the linked SQLite JSON parser, not a bespoke JSON parser. If
+JSON support is absent, parsing fails closed; existing non-registry workflows
+do not acquire a new runtime dependency. Snapshots are limited to 1 MiB and 4096
+entries. After HMAC/pin verification, exact field/type checks reject extra or
+duplicate keys, foreign namespaces, invalid identities/names/roles and invalid
+registration states. Reconstructing canonical JSON and comparing it byte for
+byte rejects whitespace, escapes, alternate number spellings, unsorted or
+duplicate lookup handles and mismatched generation/floor. A sorted context index
+rejects duplicate contexts even under different handles or revoked entries.
+The full uint64 generation is compared through canonical reconstruction rather
+than a lossy SQLite numeric conversion.
+
+`cmeContextRegistryLookup` uses the immutable lookup handle, not a filename or
+decrypted row value. It copies the five binary ids, role, table and field into
+`cmeStorageContext` and returns the trusted format floor only for active entries.
+Missing, invalid or revoked handles clear both outputs and fail. Handles own
+their verified contexts; mutating or releasing the candidate snapshot afterward
+cannot change a lookup. This API returns policy; it does not apply that floor to
+legacy decrypt calls or authenticate V2 ciphertext on its own.
+
+Opening a reader validates one current snapshot, not an issuance transition.
+Immutable identity allocation, consecutive publication, nondecreasing floors and
+irrevocable tombstones remain the manager issuer's responsibility. The Python
+reference tests those transitions; the C reader relies on the independently
+trusted current anchor, rather than trying to infer history from candidate data.
+
+`test_context_registry.sh` is part of `make check`. Its synthetic C manager
+adapter is check-only and never installed. Python reference-issued snapshots
+exercise real C HMAC/pin verification, exact schema/canonical rejection, scope,
+all roles, missing/revoked entries, owned output, manager failure and uint64
+generation boundaries. The fixture's command arguments are test authority, not
+a production provisioning interface. These tests do not prove V2 provider
+authentication or complete UUID/resource lifecycle support. #147 remains open
+for manager integration, provisioning, V2 provider/storage plumbing and persisted
+cross-context authentication/legacy-readback tests.

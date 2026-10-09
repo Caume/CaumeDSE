@@ -93,7 +93,8 @@ build_triplet = @build@
 host_triplet = @host@
 ipathbin_PROGRAMS = CaumeDSE$(EXEEXT) CaumeDSE-debug-tests$(EXEEXT) \
 	caumedse-admin$(EXEEXT)
-check_PROGRAMS = reprotect-fixture$(EXEEXT)
+check_PROGRAMS = reprotect-fixture$(EXEEXT) \
+	context-registry-fixture$(EXEEXT)
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ax_check_compile_flag.m4 \
@@ -112,12 +113,12 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(ipathbindir)" \
 	"$(DESTDIR)$(ipathdatadir)"
 PROGRAMS = $(ipathbin_PROGRAMS)
-am__objects_1 = config.$(OBJEXT) crypto.$(OBJEXT) db.$(OBJEXT) \
-	engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
-	filehandling.$(OBJEXT) function_tests.$(OBJEXT) \
-	perl_interpreter.$(OBJEXT) runtime.$(OBJEXT) \
-	strhandling.$(OBJEXT) webservice_interface.$(OBJEXT) \
-	xs_init.$(OBJEXT)
+am__objects_1 = config.$(OBJEXT) crypto.$(OBJEXT) \
+	context_registry.$(OBJEXT) db.$(OBJEXT) engine_admin.$(OBJEXT) \
+	engine_interface.$(OBJEXT) filehandling.$(OBJEXT) \
+	function_tests.$(OBJEXT) perl_interpreter.$(OBJEXT) \
+	runtime.$(OBJEXT) strhandling.$(OBJEXT) \
+	webservice_interface.$(OBJEXT) xs_init.$(OBJEXT)
 am_CaumeDSE_OBJECTS = main.$(OBJEXT) $(am__objects_1)
 CaumeDSE_OBJECTS = $(am_CaumeDSE_OBJECTS)
 CaumeDSE_LDADD = $(LDADD)
@@ -129,6 +130,11 @@ am_caumedse_admin_OBJECTS = admin.$(OBJEXT) \
 	storage_migration.$(OBJEXT) $(am__objects_1)
 caumedse_admin_OBJECTS = $(am_caumedse_admin_OBJECTS)
 caumedse_admin_LDADD = $(LDADD)
+am_context_registry_fixture_OBJECTS =  \
+	context_registry_fixture.$(OBJEXT) context_registry.$(OBJEXT)
+context_registry_fixture_OBJECTS =  \
+	$(am_context_registry_fixture_OBJECTS)
+context_registry_fixture_LDADD = $(LDADD)
 am_reprotect_fixture_OBJECTS = reprotect_fixture.$(OBJEXT) \
 	$(am__objects_1)
 reprotect_fixture_OBJECTS = $(am_reprotect_fixture_OBJECTS)
@@ -149,11 +155,12 @@ DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
 am__depfiles_remade = ./$(DEPDIR)/admin.Po ./$(DEPDIR)/config.Po \
-	./$(DEPDIR)/crypto.Po ./$(DEPDIR)/db.Po \
-	./$(DEPDIR)/debug_tests.Po ./$(DEPDIR)/engine_admin.Po \
-	./$(DEPDIR)/engine_interface.Po ./$(DEPDIR)/filehandling.Po \
-	./$(DEPDIR)/function_tests.Po ./$(DEPDIR)/main.Po \
-	./$(DEPDIR)/perl_interpreter.Po \
+	./$(DEPDIR)/context_registry.Po \
+	./$(DEPDIR)/context_registry_fixture.Po ./$(DEPDIR)/crypto.Po \
+	./$(DEPDIR)/db.Po ./$(DEPDIR)/debug_tests.Po \
+	./$(DEPDIR)/engine_admin.Po ./$(DEPDIR)/engine_interface.Po \
+	./$(DEPDIR)/filehandling.Po ./$(DEPDIR)/function_tests.Po \
+	./$(DEPDIR)/main.Po ./$(DEPDIR)/perl_interpreter.Po \
 	./$(DEPDIR)/reprotect_fixture.Po ./$(DEPDIR)/runtime.Po \
 	./$(DEPDIR)/storage_migration.Po ./$(DEPDIR)/strhandling.Po \
 	./$(DEPDIR)/webservice_interface.Po ./$(DEPDIR)/xs_init.Po
@@ -171,9 +178,11 @@ am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 =
 SOURCES = $(CaumeDSE_SOURCES) $(CaumeDSE_debug_tests_SOURCES) \
-	$(caumedse_admin_SOURCES) $(reprotect_fixture_SOURCES)
+	$(caumedse_admin_SOURCES) $(context_registry_fixture_SOURCES) \
+	$(reprotect_fixture_SOURCES)
 DIST_SOURCES = $(CaumeDSE_SOURCES) $(CaumeDSE_debug_tests_SOURCES) \
-	$(caumedse_admin_SOURCES) $(reprotect_fixture_SOURCES)
+	$(caumedse_admin_SOURCES) $(context_registry_fixture_SOURCES) \
+	$(reprotect_fixture_SOURCES)
 RECURSIVE_TARGETS = all-recursive check-recursive cscopelist-recursive \
 	ctags-recursive dvi-recursive html-recursive info-recursive \
 	install-data-recursive install-dvi-recursive \
@@ -607,12 +616,13 @@ tpath = @TESTFILES@
 ipath = @PREFIX@
 ipathbindir = @BINDIR@
 ipathdatadir = @DATADIR@
-caume_common_sources = common.h config.c crypto.c crypto.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+caume_common_sources = common.h config.c crypto.c crypto.h context_registry.c context_registry.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 CaumeDSE_SOURCES = main.c $(caume_common_sources)
 CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
 caumedse_admin_SOURCES = admin.c admin.h storage_migration.c $(caume_common_sources)
+context_registry_fixture_SOURCES = context_registry_fixture.c context_registry.c context_registry.h
 reprotect_fixture_SOURCES = reprotect_fixture.c $(caume_common_sources)
-TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh
+TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh
 TESTS_ENVIRONMENT = srcdir='$(srcdir)'
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = $(TESTS) TEST samples favicon.ico CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md HERRADURAKEX_AT_REST_PLAN.md openapi.yaml herradura_compat.h
@@ -727,6 +737,10 @@ caumedse-admin$(EXEEXT): $(caumedse_admin_OBJECTS) $(caumedse_admin_DEPENDENCIES
 	@rm -f caumedse-admin$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(caumedse_admin_OBJECTS) $(caumedse_admin_LDADD) $(LIBS)
 
+context-registry-fixture$(EXEEXT): $(context_registry_fixture_OBJECTS) $(context_registry_fixture_DEPENDENCIES) $(EXTRA_context_registry_fixture_DEPENDENCIES)
+	@rm -f context-registry-fixture$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(context_registry_fixture_OBJECTS) $(context_registry_fixture_LDADD) $(LIBS)
+
 reprotect-fixture$(EXEEXT): $(reprotect_fixture_OBJECTS) $(reprotect_fixture_DEPENDENCIES) $(EXTRA_reprotect_fixture_DEPENDENCIES)
 	@rm -f reprotect-fixture$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(reprotect_fixture_OBJECTS) $(reprotect_fixture_LDADD) $(LIBS)
@@ -739,6 +753,8 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/admin.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/config.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_registry.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_registry_fixture.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/crypto.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/db.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/debug_tests.Po@am__quote@ # am--include-marker
@@ -1091,6 +1107,13 @@ test_sample_test_manager.sh.log: test_sample_test_manager.sh
 	--log-file $$b.log --trs-file $$b.trs \
 	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
 	"$$tst" $(AM_TESTS_FD_REDIRECT)
+test_context_registry.sh.log: test_context_registry.sh
+	@p='test_context_registry.sh'; \
+	b='test_context_registry.sh'; \
+	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
+	--log-file $$b.log --trs-file $$b.trs \
+	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
+	"$$tst" $(AM_TESTS_FD_REDIRECT)
 .test.log:
 	@p='$<'; \
 	$(am__set_b); \
@@ -1360,6 +1383,8 @@ distclean: distclean-recursive
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -f ./$(DEPDIR)/admin.Po
 	-rm -f ./$(DEPDIR)/config.Po
+	-rm -f ./$(DEPDIR)/context_registry.Po
+	-rm -f ./$(DEPDIR)/context_registry_fixture.Po
 	-rm -f ./$(DEPDIR)/crypto.Po
 	-rm -f ./$(DEPDIR)/db.Po
 	-rm -f ./$(DEPDIR)/debug_tests.Po
@@ -1425,6 +1450,8 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -rf $(top_srcdir)/autom4te.cache
 	-rm -f ./$(DEPDIR)/admin.Po
 	-rm -f ./$(DEPDIR)/config.Po
+	-rm -f ./$(DEPDIR)/context_registry.Po
+	-rm -f ./$(DEPDIR)/context_registry_fixture.Po
 	-rm -f ./$(DEPDIR)/crypto.Po
 	-rm -f ./$(DEPDIR)/db.Po
 	-rm -f ./$(DEPDIR)/debug_tests.Po
