@@ -116,6 +116,11 @@ jobs:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 TEST/test_herradura_context_contract.py
 
+      - name: Test draft Herradura registry trust contract
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 TEST/test_herradura_registry_contract.py
+
       - name: Test sample manager contracts without launching services
         env:
           PYTHONDONTWRITEBYTECODE: "1"

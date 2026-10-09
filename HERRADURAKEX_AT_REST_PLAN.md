@@ -475,3 +475,121 @@ such as table/field `ab`/`c` from `a`/`bc` without separator ambiguity.
 Review must settle registry ownership/authentication, identity lifecycle,
 scope/floor trust and recovery before accepting this draft. The current
 production wrappers still write/read V1; no V2 storage-security claim is made.
+
+## Registry Trust And Lifecycle Reference (#147, Phase 2)
+
+We can now make the draft's trust boundary concrete without enabling V2 writes.
+I inspected the generic DB callers and the offline migration checkpoint code:
+neither supplies an independent immutable registry identity to the cipher API.
+The checkpoint HMAC protects one migration operation, not a live context
+registry or an externally retained format floor. We must keep those authorities
+separate rather than treating existing checkpoint authentication as sufficient.
+
+### Ownership Decision
+
+I recommend extending the existing external-manager boundary to own the registry
+authentication key and current anchor. The anchor contains deployment and
+organization ids, generation, minimum format, and SHA-256 of the canonical
+snapshot. It arrives over an independently authenticated manager channel, never
+from the storage export, candidate frame, snapshot envelope or request arguments.
+
+We considered three options. A storage-local authenticated file is the simplest
+baseline, but a valid older file and its colocated anchor can be replayed together.
+An external-manager anchor prevents that storage-only replacement when the
+reader obtains the current anchor independently. A new dedicated registry
+service offers a separate authority and operational owner, but adds another
+service and recovery dependency before the project has any V2 storage callers.
+
+| Dimension | Local file and anchor | Existing external manager (recommended) | New registry service |
+| --- | --- | --- | --- |
+| Security | No independent rollback floor | Independent pinned snapshot; compromised manager remains trusted | Similar pinning, separate privileged authority |
+| Latency | Local read/hash | Authenticated anchor retrieval or reviewed lease | Additional service hop |
+| Memory | Snapshot/index | Snapshot/index plus anchor state | Same reader state plus service resources |
+| Availability | Local files only | Deny V2 operations when no current valid anchor is available | Additional outage dependency |
+| Operations | Easy backup, unsafe colocated recovery | Key, generation and independent-anchor recovery procedure | New deployment, monitoring and recovery owner |
+| Compatibility | Cannot meet proposed trust invariant | Additive manager contract; V1 stays readable until closeout | More integration work for the same initial invariant |
+
+These costs are source-derived expectations, not measured benchmarks. We should
+measure full-scope snapshot verification memory, registry size, anchor lookup
+latency and failed-manager behavior before choosing caching or a lease. A new
+service becomes preferable if existing managers cannot protect monotonic state
+or authenticate scope-bound anchors. We have not approved a manager protocol or
+implemented a service in this patch.
+
+### Reference Authentication Contract
+
+`TEST/herradura_registry_contract.py` implements synthetic registry issuance,
+authentication, pin verification and context lookup. It uses the standard-library
+HMAC-SHA256 implementation, not a new MAC. Its separate 32-byte random registry
+key must not be an organization encryption key, password or migration key.
+Production provisioning, protected key transport and key rotation remain future
+integration work; this test module must not become production key handling.
+
+The snapshot is schema 1 canonical ASCII JSON: sorted object keys, compact
+separators, entries sorted by immutable lookup handle, lowercase 16-byte hex ids,
+and exactly these fields: `schema`, `deployment`, `organization`, `generation`,
+`minimumFormat`, `entries`. Each entry contains `lookup`, `state`, `context`.
+Contexts use the complete frame contract. The tag is HMAC-SHA256 over
+`CDSE-HKX-REGISTRY-v1` followed by NUL and the canonical snapshot bytes.
+Verify size, tag, external digest pin, canonical encoding, namespace, generation
+and format floor before exposing any expected context. Snapshot size is at most
+1 MiB, at most 4096 entries, and lookup handles are bounded ASCII opaque handles
+of length 1..128, not filesystem paths or plaintext values decrypted from a row.
+Duplicate lookups/contexts, foreign namespaces and extra fields are rejected.
+
+The external manager must retain and atomically compare-and-swap the current
+anchor. A verifier holding the symmetric key can calculate tags; it cannot
+authorize a different snapshot without an independently updated digest pin.
+The reference returns an anchor to the issuer for testing, but that return value
+is not authority to install the anchor at a reader. HMAC alone does not prevent
+rollback. Trusting an old authentic anchor permits old snapshots by definition.
+
+### Identity State And Commit Ordering
+
+We preserve immutable lookup-to-context registrations across exact consecutive
+generations. Registration starts active; deletion retains a revoked tombstone.
+Revoked handles cannot be revived, removed or assigned a different context.
+Duplicate contexts cannot be reintroduced under another handle. The reference
+checks registration transitions, not a complete UUID allocator or resource-wide
+tombstone catalog; those are required before runtime provisioning can claim
+never-reused identities across all fields and resources. Mutable display aliases
+must be a separately authenticated manager mapping, not changed context handles.
+
+An update prepares a new snapshot under the manager's serialization lock, syncs
+it durably, then atomically advances the independently protected anchor by one
+generation. Publishing an anchor before its snapshot is durable is forbidden.
+Readers obtain the current anchor and open exactly its pinned snapshot. A crash
+before anchor publication leaves the previous snapshot authoritative; staged
+orphans can be discarded. A crash afterward requires the pinned snapshot or
+fail-closed recovery, not silently adopting a previous generation.
+
+The floor starts at 1 for compatible reads. Raising it to 2 requires complete
+authenticated V2 artifact inventory/readback; it never decreases in normal
+operation. The reference enforces monotonicity but does not implement or validate
+that inventory proof. Revocation and rollback protection depend on obtaining a
+fresh manager anchor for each new operation; an old in-memory registry cannot
+detect a newer anchor by itself. A future lease needs explicit expiry, operation
+rechecks and revocation semantics, not indefinite successful-cache fallback.
+
+Recovery restores registry, key and current anchor together from independently
+protected state. If the current generation cannot be recovered, operators must
+stop V2 access and perform explicit reviewed reprovisioning/re-encryption into a
+new namespace. Key rotation reauthenticates a pinned snapshot and requires an
+independently authenticated key-id transition; it is not implemented here.
+
+### Current Runtime Protection And Remaining Work
+
+The C dispatcher now rejects unsupported/truncated `CDSEHKX*` frames with error
+33 before the AES fallback path. Existing valid V1 and unframed legacy AES paths
+outside the reserved `CDSEHKX` prefix remain unchanged. The ownership fixture repeats V2, unknown-version and truncated
+V1 rejection with no returned plaintext or allocated output. This guard does not
+implement V2 encryption, registry lookup or provider tag verification.
+
+Twelve registry tests exercise real HMAC/pin rejection, foreign namespaces,
+same-generation alternate snapshots, rollback/floor policy, immutable context,
+revocation, canonical encoding and bounds. These prove the reference's tested
+transitions only. Next integration must define the concrete manager anchor API,
+durable CAS and allocation catalog; thread verified contexts through every
+storage caller; implement reviewed V2 provider operations and persisted migration
+readback; and test cross-context tag failures with independent provider vectors.
+TODO #147 stays open until those production integration gates pass.

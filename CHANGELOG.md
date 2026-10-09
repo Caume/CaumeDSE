@@ -2,6 +2,18 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.4.4 - 2026-10-08
+
+- Reject unsupported or truncated Herradura frame prefixes before legacy AES
+  fallback, preserving valid V1 and legacy AES behavior outside the reserved
+  `CDSEHKX` prefix.
+- Add the authenticated registry trust/lifecycle reference, external-manager
+  ownership and recovery design, and twelve synthetic authentication/policy tests.
+- Keep TODO #147 open for production registry provisioning, V2 provider and
+  storage integration; no V2 writes or production registry service are enabled.
+- Accept the exact expected truncated-frame diagnostic in provider verification
+  only once and with its negative-test PASS marker; retain unrelated-error checks.
+
 ## 2.4.3 - 2026-10-06
 
 - Document the review-gated Herradura V2 context/AAD draft, identity and trust

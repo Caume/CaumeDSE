@@ -972,6 +972,15 @@ int cmeCipherByteString (const unsigned char *srcBuf, unsigned char **dstBuf, un
 #endif
         return(1);
     }
+    if (mode=='d' && srcLen>=cmeHerraduraKExFrameMagicLen-1 &&
+        !memcmp(srcBuf,"CDSEHKX",cmeHerraduraKExFrameMagicLen-1) &&
+        !cmeIsHerraduraKExFrame(srcBuf,srcLen))
+    {
+#ifdef ERROR_LOG
+        fprintf(stderr,"CaumeDSE Error: cmeCipherByteString(), unsupported or truncated HerraduraKEx frame; no legacy fallback.\n");
+#endif
+        return(33);
+    }
     if (mode=='d' && cmeIsHerraduraKExFrame(srcBuf,srcLen))
     {
         effectiveAlgorithm=cmeHerraduraKExAlgorithmFromProfileId(srcBuf[cmeHerraduraKExFrameMagicLen]);

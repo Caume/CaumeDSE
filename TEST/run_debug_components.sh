@@ -780,6 +780,12 @@ check_forbidden() {
 
     grep -Ev 'CaumeDSE Error: cmeCipherByteString\(\), unsupported storage crypto profile: herradura-hske-nla1-aead-256!' "$log" > "$filtered_log"
     if [ -n "$VERIFY_HERRADURAKEX_DIR" ]; then
+        local expected='CaumeDSE Error: cmeCipherByteString(), unsupported or truncated HerraduraKEx frame; no legacy fallback.'
+        if [ "$(grep -Fxc -- "$expected" "$filtered_log")" -eq 1 ] &&
+            grep -Fxq 'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects truncated frame.' "$filtered_log"; then
+            grep -Fvx -- "$expected" "$filtered_log" > "$LOG_ROOT/forbidden_herradura_filtered.log"
+            filtered_log="$LOG_ROOT/forbidden_herradura_filtered.log"
+        fi
         grep -Ev 'CaumeDSE Error: cmeCipherByteString\(\), unsupported HerraduraKEx frame profile id: 255!' "$filtered_log" | \
             grep -Eq 'CaumeDSE Error|FAILED|FAIL:|Segmentation fault|Assertion .*failed|assertion .*failed|core dumped|timeout: the monitored command dumped core'
         return $?
