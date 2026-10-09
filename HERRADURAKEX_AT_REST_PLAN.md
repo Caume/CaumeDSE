@@ -665,3 +665,66 @@ a production provisioning interface. These tests do not prove V2 provider
 authentication or complete UUID/resource lifecycle support. #147 remains open
 for manager integration, provisioning, V2 provider/storage plumbing and persisted
 cross-context authentication/legacy-readback tests.
+
+## Local Manager Publication (#147, Phase 4)
+
+`context_manager.h/.c` adds a trusted in-process owner implementation and a
+`cmeContextManagerFetch` adapter for the reader callback. It is not a network
+manager, authenticated transport, installed provisioning command or connection
+to existing storage/web routes. The separate 32-byte registry key is supplied
+by the owner and cleansed on close; it is never persisted in this database.
+Callers must finish concurrent operations before close and keep publication
+inputs unchanged during a call.
+
+The manager requires a preexisting canonical uid-owned mode-0700 directory,
+protected against rename, outside every CaumeDSE storage export. Its fixed
+`registry.sqlite` must be a uid-owned mode-0600 regular file with one link;
+symlinks, replaced files and missing authority fail closed. Parent-path safety,
+same-uid isolation, backups and key custody are operator responsibilities.
+Creation is explicit and exclusive; reopening never creates a database. Failed
+initialization can leave an unusable file requiring owner review, not automatic
+repair, overwrite or reset.
+
+Unlike the separate-file publication ordering described in phase 2, this local
+implementation stores the canonical snapshot, HMAC and full current anchor in
+one SQLite transaction. It requires DELETE journaling and synchronous EXTRA,
+syncs the directory after initialization, and uses BEGIN IMMEDIATE to serialize
+publishers. An initialized marker is committed with the first publication;
+deleting the current row later cannot silently reinitialize generation 1.
+These durability guarantees depend on SQLite and the filesystem honoring sync.
+
+An approved issuer supplies already canonical authenticated bytes and a proposed
+anchor. The manager verifies them with the C reader before publishing. Initial
+publication requires generation 1 and floor 1. Later publications compare the
+entire previous anchor, advance generation by exactly one without overflow,
+retain all prior lookups and contexts, forbid revival of revoked entries, and
+never lower the format floor. New identities still require an approved allocator
+and resource lifecycle. Raising the floor to 2 still requires issuer approval
+based on a complete V2 inventory proof; this API does not produce or validate
+that proof and does not enable V2 writes.
+
+`cmeContextManagerPublish` returns 0 on success, 2 on CAS conflict and 1 on
+invalid/unavailable state. After an uncertain commit or lost acknowledgement,
+refresh current state and reconcile the proposed anchor; do not blindly retry
+or reset authority. Snapshot export returns owned candidate bytes, not reader
+authority. Each reader open must fetch the independently current manager anchor;
+the adapter reloads and authenticates committed state even on long-lived manager
+handles. Already-open registry handles remain operation-scoped, not revocation
+leases for future operations.
+
+The protected manager database is the authority, independent of untrusted
+CaumeDSE storage. Replaying a whole authentic manager database or host backup
+is NOT detected by its own HMAC or generation column. Protect that authority
+with an independent monotonic recovery policy before production use. This work
+does not provide hardware rollback protection, remote owner authentication,
+key rotation or automatic backup recovery.
+
+The check-only fixture is never installed. Thirteen Python-issued C integration
+tests cover bootstrap, exact CAS, generation/floor/lifecycle rules, stale and
+foreign candidates, corrupt authority, private paths, concurrent processes and
+fresh callbacks across two existing connections. Abrupt exits before writes,
+before commit and after commit test old-or-new recovery and lost acknowledgement;
+they are process-crash tests, not physical power-loss certification. Crash hooks
+are compiled only into the fixture, never the engine. #147 remains open for
+authenticated manager deployment, identity provisioning, V2 provider/storage
+integration and persisted cross-context authentication/legacy-readback tests.
