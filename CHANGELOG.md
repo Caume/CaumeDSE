@@ -11,6 +11,8 @@ This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLo
   ownership and recovery design, and twelve synthetic authentication/policy tests.
 - Keep TODO #147 open for production registry provisioning, V2 provider and
   storage integration; no V2 writes or production registry service are enabled.
+- Accept the exact expected truncated-frame diagnostic in provider verification
+  only once and with its negative-test PASS marker; retain unrelated-error checks.
 
 ## 2.4.3 - 2026-10-06
 

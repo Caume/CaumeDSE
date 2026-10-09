@@ -316,6 +316,35 @@ class ManagerTests(unittest.TestCase):
                 manager.prepare_clients(['go'], Path(work), {}, 1, True)
 
 
+class VerifierMarkerTests(unittest.TestCase):
+    def test_forbidden_markers_scope_expected_frame_rejection(self):
+        runner = (ROOT / 'TEST/run_debug_components.sh').read_text()
+        function = 'check_forbidden() {' + runner.split('\ncheck_forbidden() {', 1)[1].split(
+            '\ncertificate_read_marker_seen() {', 1)[0]
+        expected = ('CaumeDSE Error: cmeCipherByteString(), unsupported or truncated '
+                    'HerraduraKEx frame; no legacy fallback.\n')
+        passed = 'TESTS: testCryptoSymmetric(), PASS: HerraduraKEx frame rejects truncated frame.\n'
+        cases = [(expected + passed, 'provider', 1),
+                 (expected + passed, '', 0),
+                 (expected, 'provider', 0),
+                 (expected * 2 + passed, 'provider', 0),
+                 ('prefix ' + expected + passed, 'provider', 0),
+                 (expected.rstrip() + ' unexpected suffix\n' + passed, 'provider', 0),
+                 (expected + passed + 'CaumeDSE Error: unrelated failure\n', 'provider', 0),
+                 (expected + passed + 'TESTS: other(), FAIL: regression\n', 'provider', 0),
+                 (passed, 'provider', 1)]
+        with tempfile.TemporaryDirectory() as work:
+            log = Path(work) / 'debug.log'
+            for content, provider, status in cases:
+                with self.subTest(content=content, provider=provider):
+                    log.write_text(content)
+                    result = subprocess.run(['bash', '-c', function + '\ncheck_forbidden "$1"',
+                                             'marker-test', str(log)], capture_output=True, timeout=10,
+                                            env=dict(os.environ, LOG_ROOT=work,
+                                                     VERIFY_HERRADURAKEX_DIR=provider))
+                    self.assertEqual(result.returncode, status, result.stderr)
+
+
 @unittest.skipUnless(Path('./CaumeDSE-debug-tests').is_file(), 'configured build required')
 class RunnerTests(unittest.TestCase):
     def test_capabilities_without_runtime(self):
