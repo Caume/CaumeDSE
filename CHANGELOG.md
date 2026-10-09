@@ -2,6 +2,16 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.5.0 - 2026-10-09
+
+- Add the C registry verification/lookup boundary for TODO #147, with a trusted
+  current-anchor callback, separate-key HMAC and independent snapshot pin checks.
+- Parse bounded snapshots with SQLite JSON, require exact canonical encoding,
+  reject duplicate/foreign contexts, and deny missing or revoked registrations.
+- Add Python-issued snapshot interoperability and ownership tests to `make check`.
+  No manager transport, identity provisioning, V2 writes or storage routing is
+  enabled; #147 remains open for those integration gates.
+
 ## 2.4.4 - 2026-10-08
 
 - Reject unsupported or truncated Herradura frame prefixes before legacy AES
