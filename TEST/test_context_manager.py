@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic owner-side publication, fresh C reader and process-crash checks."""
 import copy
+from contextlib import closing
 from dataclasses import replace
 import hashlib
 import json
@@ -11,6 +12,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+import uuid
 
 import herradura_registry_contract as contract
 
@@ -73,7 +75,7 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout), dict(floor=1, record=self.context['record']))
         self.assertEqual(self.command('init').returncode, 1)
         self.assertEqual((self.authority / 'registry.sqlite').stat().st_mode & 0o777, 0o600)
-        with sqlite3.connect(self.authority / 'registry.sqlite') as db:
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
             self.assertEqual(db.execute('pragma journal_mode').fetchone()[0], 'delete')
             self.assertEqual(db.execute('select initialized from registry_meta').fetchone()[0], 1)
 
@@ -184,7 +186,7 @@ class ManagerTests(unittest.TestCase):
 
     def test_missing_corrupt_state_never_resets_authority(self):
         self.bootstrap()
-        with sqlite3.connect(self.authority / 'registry.sqlite') as db:
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
             db.execute('delete from registry_current')
         self.assertEqual(self.command('anchor').returncode, 1)
         self.assertEqual(self.publish().returncode, 1)
@@ -193,7 +195,7 @@ class ManagerTests(unittest.TestCase):
     def test_corrupt_snapshot_or_anchor_fails_closed(self):
         self.bootstrap()
         for field in ('body', 'tag', 'anchor'):
-            with self.subTest(field=field), sqlite3.connect(self.authority / 'registry.sqlite') as db:
+            with self.subTest(field=field), closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
                 original = db.execute(f'select {field} from registry_current').fetchone()[0]
                 broken = bytearray(original)
                 broken[-1] ^= 1
@@ -225,6 +227,227 @@ class ManagerTests(unittest.TestCase):
         database.unlink()
         self.assertEqual(self.command('anchor').returncode, 1)
         self.assertFalse(database.exists())
+
+    def allocate(self, lookup='storage/resource/record/value', level=1, role=4,
+                 table='data', field='value', parent='-', expected='-', env=None):
+        return self.command('provision', lookup, level, role, table, field, parent, expected, env=env)
+
+    def allocated(self, **options):
+        result = self.allocate(**options)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        snapshot = json.loads(result.stdout)
+        body, tag, anchor = contract.issue(snapshot, b'k' * 32)
+        self.assertEqual(result.stdout.rstrip(b'\n'), body)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            stored = db.execute('select body,tag,anchor from registry_current').fetchone()
+        self.assertEqual(stored, (body, tag, bytes.fromhex(token(anchor))))
+        lookup = options.get('lookup', 'storage/resource/record/value')
+        context = contract.verify(body, tag, b'k' * 32, anchor).expected_context(lookup)
+        return context, snapshot
+
+    def test_allocated_uuid_persistence_and_reader_interoperability(self):
+        context, snapshot = self.allocated()
+        self.assertEqual(snapshot['generation'], 1)
+        self.assertEqual(snapshot['minimumFormat'], 1)
+        ids = [context[name] for name in ('storage', 'resource', 'record')]
+        self.assertEqual(len(set(ids)), 3)
+        for identifier in ids:
+            value = uuid.UUID(bytes=identifier)
+            self.assertEqual(value.version, 4)
+            self.assertEqual(value.variant, uuid.RFC_4122)
+        self.assertEqual(context['deployment'].hex(), self.anchor.deployment)
+        result = self.command('read', 'storage/resource/record/value')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['record'], context['record'].hex())
+        self.assertEqual(self.command('read', 'storage/resource/record/value').stdout, result.stdout)
+
+    def test_allocation_hierarchy_and_field_identity_reuse(self):
+        first, _ = self.allocated(lookup='first')
+        field, _ = self.allocated(lookup='field', level=4, parent='first', field='other', expected=self.current())
+        self.assertEqual([first[x] for x in contract.UUID_FIELDS], [field[x] for x in contract.UUID_FIELDS])
+        record, _ = self.allocated(lookup='record', level=3, parent='first', expected=self.current())
+        self.assertEqual(record['resource'], first['resource'])
+        self.assertNotEqual(record['record'], first['record'])
+        resource, _ = self.allocated(lookup='resource', level=2, parent='first', expected=self.current())
+        self.assertEqual(resource['storage'], first['storage'])
+        self.assertNotEqual(resource['resource'], first['resource'])
+        second, _ = self.allocated(lookup='second', expected=self.current())
+        self.assertNotEqual(second['storage'], first['storage'])
+        self.assertEqual(self.command('read', 'first').returncode, 0)
+
+    def test_all_roles_and_shared_storage_across_external_roles(self):
+        for role in (1, 2, 3):
+            context, _ = self.allocated(lookup=f'internal/{role}', level=2, role=role,
+                                       expected='-' if role == 1 else self.current())
+            self.assertEqual(context['storage'], bytes(16))
+        external, _ = self.allocated(lookup='column', expected=self.current())
+        raw, _ = self.allocated(lookup='raw', level=2, role=5, table='payload', field='bytes',
+                               parent='column', expected=self.current())
+        self.assertEqual(raw['storage'], external['storage'])
+        self.assertEqual(raw['role'], 'RawPart')
+        self.assertNotEqual(raw['resource'], external['resource'])
+
+    def test_allocation_rejects_duplicate_lookup_and_context(self):
+        self.allocated(lookup='first')
+        before = self.current()
+        self.assertEqual(self.allocate(lookup='first', expected=before).returncode, 1)
+        self.assertEqual(self.allocate(lookup='alias', level=4, parent='first', expected=before).returncode, 1)
+        self.assertEqual(self.current(), before)
+
+    def test_owner_revocation_is_irreversible_and_not_cascading(self):
+        self.allocated(lookup='first')
+        self.allocated(lookup='field', level=4, parent='first', field='other', expected=self.current())
+        result = self.command('revoke', 'first', self.current())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        snapshot = json.loads(result.stdout)
+        self.assertEqual(snapshot['entries'][1]['state'], 'revoked')
+        before = self.current()
+        self.assertEqual(self.command('read', 'first').returncode, 1)
+        self.assertEqual(self.command('read', 'field').returncode, 0)
+        self.assertEqual(self.allocate(lookup='first', expected=before).returncode, 1)
+        self.assertEqual(self.allocate(lookup='child', level=3, parent='first', expected=before).returncode, 1)
+        self.assertEqual(self.command('revoke', 'first', before).returncode, 1)
+        self.assertEqual(self.command('revoke', 'missing', before).returncode, 1)
+        self.assertEqual(self.current(), before)
+
+    def test_allocation_cas_and_expected_output_alias(self):
+        self.allocated(lookup='first')
+        before = self.current()
+        self.assertEqual(self.allocate(lookup='second').returncode, 2)
+        self.assertEqual(self.allocate(lookup='second', expected=token(self.anchor)).returncode, 2)
+        self.allocated(lookup='second', expected=before, env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'})
+        self.assertEqual(self.command('revoke', 'first', before).returncode, 2)
+        self.assertEqual(self.command('revoke', 'first', self.current(),
+                                     env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'}).returncode, 0)
+
+    def test_allocation_random_failures_leave_no_publication(self):
+        for mode in ('fail', 'collision'):
+            self.assertEqual(self.allocate(env={'CDSE_CONTEXT_MANAGER_RANDOM': mode}).returncode, 1)
+            self.assertEqual(self.command('anchor').returncode, 1)
+        self.allocated(lookup='first')
+        before = self.current()
+        for mode in ('fail', 'collision'):
+            self.assertEqual(self.allocate(lookup='second', expected=before,
+                                          env={'CDSE_CONTEXT_MANAGER_RANDOM': mode}).returncode, 1)
+            self.assertEqual(self.current(), before)
+        self.allocated(lookup='field', level=4, parent='first', field='other', expected=before,
+                       env={'CDSE_CONTEXT_MANAGER_RANDOM': 'fail'})
+
+    def test_allocation_crash_publication_and_lost_acknowledgement(self):
+        self.assertEqual(self.allocate(env={'CDSE_CONTEXT_MANAGER_CRASH': 'after-write'}).returncode, 86)
+        self.assertEqual(self.command('anchor').returncode, 1)
+        self.allocated(lookup='first')
+        before = self.current()
+        self.assertEqual(self.allocate(lookup='second', expected=before,
+                                      env={'CDSE_CONTEXT_MANAGER_CRASH': 'after-commit'}).returncode, 86)
+        self.assertEqual(self.command('read', 'second').returncode, 0)
+        self.assertEqual(self.allocate(lookup='second', expected=before).returncode, 2)
+        self.assertEqual(self.allocate(lookup='second', expected=self.current()).returncode, 1)
+
+    def test_two_allocators_exactly_one_publishes(self):
+        args = [self.args('provision', name, 1, 4, 'data', 'value', '-', '-') for name in ('first', 'second')]
+        processes = []
+        try:
+            for command in args:
+                processes.append(subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+            for process in processes:
+                process.communicate(timeout=30)
+            self.assertEqual(sorted(process.returncode for process in processes), [0, 2])
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            snapshot = json.loads(db.execute('select body from registry_current').fetchone()[0])
+        self.assertEqual(snapshot['generation'], 1)
+        self.assertEqual(len(snapshot['entries']), 1)
+
+    def test_allocation_inherits_format_floor_and_old_issuer_ids(self):
+        self.bootstrap()
+        self.assertEqual(self.publish(dict(self.snapshot, generation=2, minimumFormat=2), self.anchor).returncode, 0)
+        context, snapshot = self.allocated(lookup='field', level=4, parent='column/record/value',
+                                          field='other', expected=self.current())
+        self.assertEqual(context['record'].hex(), self.context['record'])
+        self.assertEqual(snapshot['minimumFormat'], 2)
+        result = self.command('revoke', 'field', self.current())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['minimumFormat'], 2)
+
+    def test_allocation_input_and_parent_bounds(self):
+        invalid = [dict(lookup=''), dict(lookup='x' * 129), dict(lookup='a.b'), dict(role=0), dict(role=6),
+                   dict(level=0), dict(level=5), dict(table='x' * 65), dict(table='1table'),
+                   dict(field='x' * 65), dict(field='a"b'), dict(role=5), dict(role=1),
+                   dict(level=2), dict(level=3), dict(level=4), dict(parent='absent')]
+        for options in invalid:
+            with self.subTest(options=options):
+                self.assertEqual(self.allocate(**options).returncode, 1)
+        self.allocated(lookup='first')
+        before = self.current()
+        for options in (dict(level=3, role=1), dict(level=4, table='meta'),
+                        dict(level=2, role=1), dict(level=1)):
+            with self.subTest(options=options):
+                self.assertEqual(self.allocate(lookup='child', parent='first', expected=before,
+                                              **options).returncode, 1)
+        self.assertEqual(self.current(), before)
+
+    def test_allocation_generation_overflow_fails_closed(self):
+        self.bootstrap()
+        body, tag, anchor = contract.issue(dict(self.snapshot, generation=0xfffffffffffffffe), b'k' * 32)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute('update registry_current set body=?,tag=?,anchor=?', (body, tag, bytes.fromhex(token(anchor))))
+        _, snapshot = self.allocated(lookup='last', level=4, parent='column/record/value',
+                                     field='other', expected=self.current())
+        self.assertEqual(snapshot['generation'], 0xffffffffffffffff)
+        _, _, anchor = contract.issue(snapshot, b'k' * 32)
+        self.assertEqual(self.allocate(expected=self.current()).returncode, 1)
+        self.assertEqual(self.command('revoke', 'column/record/value', self.current()).returncode, 1)
+        self.assertEqual(self.current(), token(anchor))
+
+    def test_allocated_ids_never_reuse_retained_or_revoked_ids(self):
+        context, _ = self.allocated(lookup='first')
+        for revoked in (False, True):
+            if revoked:
+                self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 0)
+            before = self.current()
+            result = self.allocate(lookup='second', expected=before,
+                                   env={'CDSE_CONTEXT_MANAGER_RANDOM': context['record'].hex()})
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(self.current(), before)
+
+    def test_provisioning_snapshot_capacity_fails_without_partial_ids(self):
+        entries = []
+        for i in range(1, contract.MAX_ENTRIES + 1):
+            context = dict(self.context, record=i.to_bytes(16, 'big').hex())
+            entries.append(dict(lookup=f'record/{i:04}', state='active', context=context))
+        low, high = 1, len(entries)
+        while low < high:
+            middle = (low + high + 1) // 2
+            try:
+                contract.canonical(dict(self.snapshot, entries=entries[:middle]))
+                low = middle
+            except ValueError:
+                high = middle - 1
+        snapshot = dict(self.snapshot, entries=entries[:low])
+        self.assertEqual(self.publish(snapshot).returncode, 0)
+        before = self.current()
+        result = self.allocate(lookup='x' * 128, table='t' * 64, field='f' * 64, expected=before)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(self.current(), before)
+
+    def test_revocation_crash_recovery_before_and_after_commit(self):
+        self.allocated(lookup='first')
+        before = self.current()
+        result = self.command('revoke', 'first', before, env={'CDSE_CONTEXT_MANAGER_CRASH': 'after-write'})
+        self.assertEqual(result.returncode, 86)
+        self.assertEqual(self.current(), before)
+        self.assertEqual(self.command('read', 'first').returncode, 0)
+        result = self.command('revoke', 'first', before, env={'CDSE_CONTEXT_MANAGER_CRASH': 'after-commit'})
+        self.assertEqual(result.returncode, 86)
+        self.assertNotEqual(self.current(), before)
+        self.assertEqual(self.command('read', 'first').returncode, 1)
+        self.assertEqual(self.command('revoke', 'first', before).returncode, 2)
+        self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 1)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 #include "common.h"
 #include "context_manager.h"
 #include <limits.h>
+#include <openssl/rand.h>
 
 #define CME_ANCHOR_BYTES 73
 
@@ -303,4 +304,252 @@ done:
     if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
     return(result);
+}
+
+static int cmeManagerName(const char *text, int lookup)
+{
+    size_t i,length;
+    if (!text) return(1);
+    length=strlen(text);
+    if (!length || length>(lookup ? 128U : 64U)) return(1);
+    for (i=0;i<length;i++)
+    {
+        int letter=(text[i]>='A' && text[i]<='Z') || (text[i]>='a' && text[i]<='z');
+        int digit=text[i]>='0' && text[i]<='9';
+        if (letter || text[i]=='_' || (digit && (lookup || i))) continue;
+        if (lookup && (text[i]=='/' || text[i]==':' || text[i]=='-')) continue;
+        return(1);
+    }
+    return(0);
+}
+
+/* Check against every retained identity, including tombstones, and IDs already
+   generated in this operation. A failed RNG or repeated collision fails closed. */
+static int cmeManagerUUID(cmeContextManager *manager, const cmeManagerState *state,
+                          cmeStorageContext *context, unsigned int index)
+{
+    sqlite3_stmt *stmt=NULL;
+    unsigned int attempt,i;
+    int result=1,step,collision;
+    if (sqlite3_prepare_v2(manager->db,
+        "SELECT 1 FROM json_tree(?1) WHERE type='text' AND value=lower(hex(?2)) LIMIT 1",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,
+        state->body ? (const char *)state->body : "{}",-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+    for (attempt=0;attempt<16;attempt++)
+    {
+#ifdef CDSE_CONTEXT_MANAGER_TESTING
+        const char *mode=getenv("CDSE_CONTEXT_MANAGER_RANDOM");
+        if (mode && !strcmp(mode,"fail")) goto done;
+#endif
+        if (RAND_bytes(context->ids[index],16)!=1) goto done;
+        context->ids[index][6]=(context->ids[index][6]&15)|0x40;
+        context->ids[index][8]=(context->ids[index][8]&63)|0x80;
+#ifdef CDSE_CONTEXT_MANAGER_TESTING
+        if (mode && !strcmp(mode,"collision")) memcpy(context->ids[index],manager->deployment,16);
+        if (mode && strlen(mode)==32 && strspn(mode,"0123456789abcdef")==32)
+            for (i=0;i<16;i++)
+            {
+                unsigned int byte;
+                if (sscanf(mode+2*i,"%2x",&byte)!=1) goto done;
+                context->ids[index][i]=(unsigned char)byte;
+            }
+#endif
+        collision=0;
+        for (i=0;i<index;i++) if (!memcmp(context->ids[index],context->ids[i],16)) collision=1;
+        if (collision) continue;
+        if (sqlite3_bind_blob(stmt,2,context->ids[index],16,SQLITE_STATIC)!=SQLITE_OK) goto done;
+        step=sqlite3_step(stmt);
+        if (step==SQLITE_DONE) { result=0; break; }
+        if (step!=SQLITE_ROW || sqlite3_reset(stmt)!=SQLITE_OK) goto done;
+    }
+done:
+    sqlite3_finalize(stmt);
+    return(result);
+}
+
+static int cmeManagerCurrentMatch(const cmeManagerState *state, const cmeContextAnchor *expected)
+{
+    unsigned char actualBytes[CME_ANCHOR_BYTES],expectedBytes[CME_ANCHOR_BYTES];
+    if (!state->initialized) return(expected ? 2 : 0);
+    if (!expected) return(2);
+    if (cmeManagerAnchorPack(expected,expectedBytes) || cmeManagerAnchorPack(&state->anchor,actualBytes)) return(1);
+    return(CRYPTO_memcmp(actualBytes,expectedBytes,sizeof(actualBytes)) ? 2 : 0);
+}
+
+/* SQLite emits escaped structured JSON; the existing C reader subsequently
+   verifies the exact canonical schema before the publication can commit. */
+static char *cmeManagerContextJSON(sqlite3 *db, const cmeStorageContext *context)
+{
+    static const char *roles[]={"ResourcesDB","RolesDB","LogsDB","ColumnFile","RawPart"};
+    sqlite3_stmt *stmt=NULL;
+    char *json=NULL;
+    if (sqlite3_prepare_v2(db,
+        "SELECT json_object('deployment',lower(hex(?1)),'field',?2,'organization',lower(hex(?3)),"
+        "'record',lower(hex(?4)),'resource',lower(hex(?5)),'role',?6,'storage',lower(hex(?7)),'table',?8)",
+        -1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,1,context->ids[0],16,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,2,context->field,-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,3,context->ids[1],16,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,4,context->ids[4],16,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,5,context->ids[3],16,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,6,roles[context->role-1],-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,7,context->ids[2],16,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,8,context->table,-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_ROW || !sqlite3_column_text(stmt,0)) goto done;
+    json=sqlite3_mprintf("%s",sqlite3_column_text(stmt,0));
+done:
+    sqlite3_finalize(stmt);
+    return(json);
+}
+
+static int cmeManagerIssue(cmeContextManager *manager, const cmeManagerState *state,
+                           const char *lookup, const char *contextJSON,
+                           unsigned char **body, size_t *length, unsigned char tag[32],
+                           cmeContextAnchor *next)
+{
+    static const unsigned char domain[]="CDSE-HKX-REGISTRY-v1";
+    sqlite3_stmt *stmt=NULL;
+    char *json=NULL,*prefix=NULL;
+    unsigned char *message=NULL;
+    unsigned int written=0;
+    int result=1;
+    const char *query=contextJSON ?
+        "SELECT json_group_array(json(value)) FROM (SELECT value FROM ("
+        "SELECT value FROM json_each(?1,'$.entries') UNION ALL "
+        "SELECT json_object('context',json(?3),'lookup',?2,'state','active') AS value) "
+        "ORDER BY json_extract(value,'$.lookup') COLLATE BINARY)" :
+        "SELECT json_group_array(json(CASE WHEN json_extract(value,'$.lookup')=?2 "
+        "THEN json_set(value,'$.state','revoked') ELSE value END)) FROM json_each(?1,'$.entries')";
+    if (state->initialized && state->anchor.generation==UINT64_MAX) return(1);
+    memcpy(next->deployment,manager->deployment,16); memcpy(next->organization,manager->organization,16);
+    next->generation=state->initialized ? state->anchor.generation+1 : 1;
+    next->minimumFormat=state->initialized ? state->anchor.minimumFormat : 1;
+    if (sqlite3_prepare_v2(manager->db,query,-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,state->body ? (const char *)state->body : "{\"entries\":[]}",-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,2,lookup,-1,SQLITE_STATIC)!=SQLITE_OK ||
+        (contextJSON && sqlite3_bind_text(stmt,3,contextJSON,-1,SQLITE_STATIC)!=SQLITE_OK) ||
+        sqlite3_step(stmt)!=SQLITE_ROW || !sqlite3_column_text(stmt,0)) goto done;
+    /* Namespace hex comes from SQLite rather than accepting caller-controlled JSON. */
+    json=sqlite3_mprintf("%s",sqlite3_column_text(stmt,0));
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (!json || sqlite3_prepare_v2(manager->db,"SELECT lower(hex(?1)),lower(hex(?2))",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,1,manager->deployment,16,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,2,manager->organization,16,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_ROW || !sqlite3_column_text(stmt,0) || !sqlite3_column_text(stmt,1)) goto done;
+    prefix=sqlite3_mprintf("{\"deployment\":\"%s\",\"entries\":%s,\"generation\":%llu,\"minimumFormat\":%u,\"organization\":\"%s\",\"schema\":1}",
+        sqlite3_column_text(stmt,0),json,(unsigned long long)next->generation,next->minimumFormat,sqlite3_column_text(stmt,1));
+    if (!prefix || !(*length=strlen(prefix)) || *length>cmeContextRegistryMaxBytes) goto done;
+    *body=malloc(*length+1); message=malloc(sizeof(domain)+*length);
+    if (!*body || !message) goto done;
+    memcpy(*body,prefix,*length+1); memcpy(message,domain,sizeof(domain)); memcpy(message+sizeof(domain),*body,*length);
+    if (!HMAC(EVP_sha256(),manager->key,32,message,sizeof(domain)+*length,tag,&written) || written!=32 ||
+        !EVP_Digest(*body,*length,next->digest,&written,EVP_sha256(),NULL) || written!=32) goto done;
+    result=0;
+done:
+    sqlite3_finalize(stmt); sqlite3_free(json); sqlite3_free(prefix); free(message);
+    if (result) { free(*body); *body=NULL; *length=0; }
+    return(result);
+}
+
+static int cmeManagerRegistration(cmeContextManager *manager, const char *lookup,
+                                  cmeContextAllocation allocation, unsigned int role,
+                                  const char *table, const char *field, const char *parent,
+                                  const cmeContextAnchor *expected, cmeStorageContext *context,
+                                  cmeContextAnchor *published, int revoke)
+{
+    cmeManagerState state={0};
+    cmeContextRegistry *registry=NULL;
+    cmeStorageContext candidate={0},ancestor={0};
+    cmeContextAnchor next={0},expectedCopy;
+    sqlite3_stmt *stmt=NULL;
+    char *contextJSON=NULL;
+    unsigned char *body=NULL,tag[32];
+    unsigned int floor=0,i,start;
+    size_t length=0;
+    int result=1;
+    if (expected) { expectedCopy=*expected; expected=&expectedCopy; }
+    if (context) memset(context,0,sizeof(*context));
+    if (published) memset(published,0,sizeof(*published));
+    if (!manager || !published || cmeManagerName(lookup,1) ||
+        (!revoke && (!context || allocation<cmeContextNewStorage || allocation>cmeContextNewField ||
+        role<1 || role>5 || cmeManagerName(table,0) || cmeManagerName(field,0) ||
+        (role==5 && (strcmp(table,"payload") || strcmp(field,"bytes"))) ||
+        (parent && cmeManagerName(parent,1))))) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state)) goto done;
+    result=cmeManagerCurrentMatch(&state,expected);
+    if (result) goto done;
+    result=1;
+    if (state.initialized && cmeContextRegistryOpen(state.body,state.length,state.tag,32,manager->key,32,
+        manager->deployment,manager->organization,cmeManagerAnchorFetch,&state.anchor,&registry)) goto done;
+    if (revoke)
+    {
+        if (cmeContextRegistryLookup(registry,lookup,&candidate,&floor)) goto done;
+    }
+    else
+    {
+        if (sqlite3_prepare_v2(manager->db,
+            "SELECT 1 FROM json_each(?1,'$.entries') WHERE json_extract(value,'$.lookup')=?2 LIMIT 1",
+            -1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,1,state.body ? (const char *)state.body : "{}",-1,SQLITE_STATIC)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,2,lookup,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+        sqlite3_finalize(stmt); stmt=NULL;
+        if (parent && cmeContextRegistryLookup(registry,parent,&ancestor,&floor)) goto done;
+        if (allocation==cmeContextNewStorage)
+        {
+            if (role<4 || parent) goto done;
+            start=2;
+        }
+        else if (allocation==cmeContextNewResource)
+        {
+            if (role<4 ? parent!=NULL : (!parent || ancestor.role<4)) goto done;
+            if (parent) memcpy(candidate.ids[2],ancestor.ids[2],16);
+            start=3;
+        }
+        else
+        {
+            if (!parent || ancestor.role!=role ||
+                (allocation==cmeContextNewField && strcmp(table,ancestor.table))) goto done;
+            candidate=ancestor;
+            start=allocation==cmeContextNewRecord ? 4 : 5;
+        }
+        memcpy(candidate.ids[0],manager->deployment,16); memcpy(candidate.ids[1],manager->organization,16);
+        candidate.role=role; strcpy(candidate.table,table); strcpy(candidate.field,field);
+        for (i=start;i<5;i++) if (cmeManagerUUID(manager,&state,&candidate,i)) goto done;
+        contextJSON=cmeManagerContextJSON(manager->db,&candidate);
+        if (!contextJSON) goto done;
+    }
+    if (cmeManagerIssue(manager,&state,lookup,contextJSON,&body,&length,tag,&next) ||
+        sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); cmeContextRegistryFree(&registry); sqlite3_free(contextJSON);
+    pthread_mutex_unlock(&manager->mutex);
+    /* No allocated identity is durable until this existing CAS commits. A
+       concurrent writer causes conflict, not a separately committed catalog. */
+    if (!result)
+    {
+        result=cmeContextManagerPublish(manager,body,length,tag,&next,expected);
+        if (!result) { if (context) *context=candidate; *published=next; }
+    }
+    free(body);
+    return(result);
+}
+
+int cmeContextManagerProvision(cmeContextManager *manager, const char *lookup,
+                               cmeContextAllocation allocation, unsigned int role,
+                               const char *table, const char *field, const char *parent,
+                               const cmeContextAnchor *expected, cmeStorageContext *context,
+                               cmeContextAnchor *published)
+{
+    return(cmeManagerRegistration(manager,lookup,allocation,role,table,field,parent,expected,context,published,0));
+}
+
+int cmeContextManagerRevoke(cmeContextManager *manager, const char *lookup,
+                            const cmeContextAnchor *expected, cmeContextAnchor *published)
+{
+    return(cmeManagerRegistration(manager,lookup,0,0,NULL,NULL,NULL,expected,NULL,published,1));
 }
