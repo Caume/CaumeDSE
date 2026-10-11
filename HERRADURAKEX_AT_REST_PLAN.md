@@ -728,3 +728,75 @@ they are process-crash tests, not physical power-loss certification. Crash hooks
 are compiled only into the fixture, never the engine. #147 remains open for
 authenticated manager deployment, identity provisioning, V2 provider/storage
 integration and persisted cross-context authentication/legacy-readback tests.
+
+## Manager Identity Provisioning (#147, Phase 5)
+
+`cmeContextManagerProvision` adds a trusted owner-side issuer using the existing
+authenticated registry as its durable identity mapping. There is no separate
+catalog or database schema migration. Deployment/organization identifiers still
+come from trusted provisioning at manager open; this API allocates only their
+subordinate storage, resource and record UUIDs. An external authenticated owner
+must approve registration handles and their association with real resources;
+untrusted API parameters, filenames and candidate-frame metadata are not owner
+authority.
+
+The explicit allocation levels are:
+
+| Level | Required Parent | Identity Behavior |
+| --- | --- | --- |
+| NewStorage | None; ColumnFile or RawPart only | Allocate storage, resource and record. |
+| NewResource | None for internal DB roles; active external parent for external roles | Internal storage stays zero; external storage is inherited. Allocate resource and record. |
+| NewRecord | Active same-role registration | Retain storage/resource, allocate record; the canonical table may differ within the resource. |
+| NewField | Active same-role, same-table registration | Retain all IDs and register another field. Duplicate contexts are rejected. |
+
+ResourcesDB, RolesDB and LogsDB retain all-zero storage; RawPart always uses
+`payload`/`bytes`. A new external resource may inherit a storage ID from either
+external role, but never its resource/record IDs. No implicit cross-scope copy,
+identity aliasing or clone operation is provided.
+
+UUIDv4 values use OpenSSL `RAND_bytes`, with version/variant bits set explicitly.
+They are not derived from lookup names, secrets, SQL row IDs or paths. Every
+allocation checks prior IDs, including revoked registrations, and IDs generated
+earlier in the same operation. RNG failure or sixteen unsuccessful collision
+attempts fails closed without weak fallback. SQLite JSON APIs build structured
+snapshots, with the existing C reader enforcing canonical bytes, schema,
+unique contexts and size/count limits before publication commits.
+
+Provisioning reads authenticated current state, checks the supplied full anchor,
+issues the next generation and invokes the existing publication CAS. An update
+between preparation and publication returns conflict; no separate ID reservation
+or catalog write can survive a failed CAS. Initial provisioning requires NULL
+expected state, generation 1 and floor 1. Later provisioning preserves the floor
+and refuses generation overflow. Successful output is the committed context and
+anchor. Failed calls clear outputs. Expected and published anchors may alias;
+other inputs must not overlap outputs and must remain unchanged during a call.
+
+`cmeContextManagerRevoke` changes exactly one active field registration into a
+retained tombstone through the same CAS. It is not storage/resource-wide or
+cascading revocation. Missing/already-revoked lookups fail; reuse or revival is
+forbidden. Revoked parents cannot authorize new child registrations; another
+active field remains independently usable. An owner needing whole-resource
+revocation must implement a reviewed batch policy before claiming that behavior.
+
+Lookup strings are stable registration handles allocated before encrypted
+metadata is read, not mutable display names or paths. Renames, row shuffles and
+staging must keep the original registration-to-ID mapping rather than call
+provisioning again. Moving a registration into a different namespace or copying
+ciphertext requires reviewed source/target context handling; it is not a rename.
+There is no authenticated live mapping from current storage rows to these handles
+yet, so real storage paths do not consume the new IDs in this phase.
+
+After an interrupted or unacknowledged commit, obtain a fresh snapshot/anchor and
+look up the registration before deciding whether to retry. Do not allocate a
+replacement identity blindly. The low-level `cmeContextManagerPublish` API still
+trusts an approved issuer to supply valid external IDs; it does not require UUID
+allocator provenance and cannot make untrusted callers into trusted managers.
+Existing publication-only databases and fixtures remain compatible.
+
+The manager fixture adds fifteen identity/lifecycle tests to the previous
+thirteen publication checks. Deterministic RNG/error injection, like crash hooks,
+is compiled into the fixture only, never the engine. Process-crash tests do not
+certify physical power-loss behavior. Whole-manager rollback protection, key
+custody, authenticated owner deployment, real resource/row lifecycle mapping,
+V2 provider/storage APIs and persisted context-substitution/legacy-readback tests
+remain open gates for #147; no V2 write or runtime-default switch is enabled.

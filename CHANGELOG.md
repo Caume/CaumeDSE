@@ -2,6 +2,18 @@
 
 This is the canonical GitHub-compatible Markdown changelog. The legacy `ChangeLog` file is kept as a compatibility pointer for tooling and distribution paths that still expect the GNU-style file name.
 
+## 2.7.0 - 2026-10-09
+
+- Add trusted manager provisioning of random UUIDv4 storage/resource/record IDs
+  and stable field registrations using existing authenticated registry state.
+- Publish allocated identities atomically through the existing full-anchor CAS;
+  preserve format floors, reject retained-ID collisions and keep failed
+  allocations nondurable. Add owner-side irreversible single-lookup revocation.
+- Test hierarchy, persistence, all roles, duplicate/revoked mappings, RNG errors,
+  capacity, competing allocators and provisioning/revocation crashes.
+  No schema migration, network provisioning or V2 storage writes is enabled;
+  TODO #147 remains open for authenticated deployment and runtime integration.
+
 ## 2.6.0 - 2026-10-09
 
 - Add a trusted local context-manager core with private SQLite publication,

@@ -45,6 +45,40 @@ int main(int argc, char **argv)
         cmeFixturePrint(token,8); printf("%02x",anchor.minimumFormat); cmeFixturePrint(anchor.digest,32);
         putchar('\n'); result=0; goto done;
     }
+    if ((!strcmp(argv[2],"provision") && argc==12) || (!strcmp(argv[2],"revoke") && argc==7))
+    {
+        const char *previous=!strcmp(argv[2],"provision") ? argv[11] : argv[6];
+        const cmeContextAnchor *expectedPointer=NULL;
+        cmeContextAnchor *publishedPointer=&anchor;
+        if (strcmp(previous,"-"))
+        {
+            if (cmeFixtureDecode(previous,token,sizeof(token))) goto done;
+            memcpy(expected.deployment,token,16); memcpy(expected.organization,token+16,16);
+            for (i=0;i<8;i++) expected.generation=(expected.generation<<8)|token[32+i];
+            expected.minimumFormat=token[40]; memcpy(expected.digest,token+41,32);
+            expectedPointer=&expected;
+            if (getenv("CDSE_CONTEXT_MANAGER_ALIAS")) publishedPointer=&expected;
+        }
+        memset(&context,0xff,sizeof(context));
+        if (!strcmp(argv[2],"provision"))
+            result=cmeContextManagerProvision(manager,argv[5],(cmeContextAllocation)strtoul(argv[6],NULL,10),
+                (unsigned int)strtoul(argv[7],NULL,10),argv[8],argv[9],strcmp(argv[10],"-") ? argv[10] : NULL,
+                expectedPointer,&context,publishedPointer);
+        else result=cmeContextManagerRevoke(manager,argv[5],expectedPointer,publishedPointer);
+        if (result)
+        {
+            cmeContextAnchor cleared={0};
+            cmeStorageContext empty={0};
+            if (memcmp(publishedPointer,&cleared,sizeof(cleared)) ||
+                (!strcmp(argv[2],"provision") && memcmp(&context,&empty,sizeof(empty)))) result=3;
+        }
+        if (!result)
+        {
+            if (cmeContextManagerSnapshot(manager,&body,&length,tag,&next)) { result=1; goto done; }
+            fwrite(body,1,length,stdout); putchar('\n');
+        }
+        goto done;
+    }
     if (((!strcmp(argv[2],"publish") || !strcmp(argv[2],"handoff")) && argc==11) ||
         (!strcmp(argv[2],"verify") && argc==8))
     {
