@@ -855,3 +855,76 @@ old-or-new process-crash recovery. Crash hooks remain fixture-only. These tests
 do not certify physical power-loss behavior or end-to-end V2 authentication.
 Authenticated live resource/row mapping, independent whole-manager rollback
 protection and the remaining V2 integration gates still keep #147 open.
+
+## Operation-Scoped Storage Binding (#147, Phase 7)
+
+`cmeContextManagerBind` adds the internal boundary between an approved physical
+slot map and authenticated immutable contexts. The owner supplies an independently
+trusted resource registration handle, expected schema role, full current anchor
+and bounded array of `(lookup, table, signed-64-bit row, field)` slots. The manager
+authenticates current state and checks the full anchor in one read transaction.
+Every referenced registration, including the resource seed, must be active.
+Slots must match the seed's deployment/organization/storage/resource and role,
+and their canonical table/field names must match the registration.
+
+The API validates an owner-approved map; it does NOT authenticate its provenance,
+persist a physical map or provide a live owner adapter. The owner must approve
+both the resource handle and the entire map for that anchor before calling.
+Never construct it from encrypted/candidate metadata, candidate lookup columns,
+filenames or HTTP parameters. Successful registry authentication proves that
+registrations are current, not that a caller chose the correct physical slots.
+Whole-artifact replacement or same-resource record-map substitution remains a
+rollout blocker if an adapter accepts an attacker's map. No V2 path is enabled.
+
+Within each canonical table, the map must be one-to-one between physical rows
+and record UUIDs, while permitting multiple fields of the same record. Duplicate
+`(table,row,field)` slots, mixed record IDs at one row, or one record split across
+multiple rows fail the whole bind without a usable partial handle. Table is part
+of the physical key; externally issued contexts may reuse record bytes across
+different tables without making their schema-qualified contexts identical.
+Two sorted indexes enforce these rules in O(n log n); lookups use binary search.
+The count is bounded by 4096. Signed row extrema are supported without subtraction
+overflow; adapters remain responsible for physical row/part bounds and semantics.
+Partial maps are allowed: this is not a complete inventory, migration closeout
+proof, candidate DB integrity check or proof of provider tag rejection.
+
+The opaque `cmeContextBinding` owns copied contexts and slot locations, independent
+of caller strings/arrays or SQLite statement lifetimes. `cmeContextBindingLookup`
+accepts only the schema-qualified physical slot, not a candidate registration
+handle, and copies the context and pinned format floor. The caller supplies schema
+names from its trusted code, with the row/part location used only as a selector.
+Invalid or missing slots clear context/floor outputs. `cmeContextBindingFree`
+releases and nulls the handle; all concurrent lookups must finish before free.
+
+Binding returns 0 on success, 2 on an obsolete full anchor and 1 on invalid or
+unavailable state, with a null output handle on failure. It never provisions
+identities or changes manager authority. Unrelated publications invalidate the
+anchor too: refresh and obtain owner approval again, rather than infer that an
+old map remains suitable. Namespace, field/table spelling, role and format floor
+are never copied from a candidate frame to fill missing trusted context.
+
+`cmeContextBindingCheck` independently reloads/authenticates current manager state
+and compares the full pinned anchor: 0 current, 2 changed, 1 invalid/unavailable.
+It detects updates through an already-open manager, including another connection's
+revocation or an otherwise unrelated publication. It is only a point-in-time
+recheck, not a lease, storage lock or atomic commit with backing-file writes.
+Local lookups intentionally retain the copied operation snapshot and do not
+silently refresh it. Rebind for every new operation; write/revocation ordering and
+any multi-step storage transaction still need a reviewed integration policy.
+
+Renames and offline staging preserve the owner-approved resource/registration
+handles and UUIDs. A row shuffle requires an independently approved updated slot
+permutation, not reprovisioning IDs or using mutable row IDs as identity. The
+synthetic SQLite lifecycle fixture tests selection across filename rename,
+physical row permutation and staging, deliberately ignoring candidate lookup
+columns. Its plaintext fixture labels are known to the synthetic owner only;
+this is not a production recipe for deriving authority from DB contents.
+
+Seventeen new fixture checks cover copied ownership, sorted/multifield selection,
+resource/storage/role isolation, schema/name/count/signed-slot bounds, duplicate
+and split records, every role, revoked/missing handles, exact anchors, floor 2,
+partial maps, output clearing/null handling, rechecks after publications and
+corrupt authority, a valid 1024-slot map and the synthetic SQLite lifecycle.
+Durable authenticated owner mapping and atomic storage lifecycle integration remain pending, along
+with V2 provider/storage APIs and persisted substitution/legacy-readback tests.
+TODO #147 stays open; no storage-security or physical power-loss claim is added.
