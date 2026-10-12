@@ -404,6 +404,7 @@ done:
 
 static int cmeManagerIssue(cmeContextManager *manager, const cmeManagerState *state,
                            const char *lookup, const char *contextJSON,
+                           unsigned int scope, const char *scopeJSON,
                            unsigned char **body, size_t *length, unsigned char tag[32],
                            cmeContextAnchor *next)
 {
@@ -418,7 +419,10 @@ static int cmeManagerIssue(cmeContextManager *manager, const cmeManagerState *st
         "SELECT value FROM json_each(?1,'$.entries') UNION ALL "
         "SELECT json_object('context',json(?3),'lookup',?2,'state','active') AS value) "
         "ORDER BY json_extract(value,'$.lookup') COLLATE BINARY)" :
-        "SELECT json_group_array(json(CASE WHEN json_extract(value,'$.lookup')=?2 "
+        "SELECT json_group_array(json(CASE WHEN json_extract(value,'$.lookup')=?2 OR "
+        "(?4>0 AND json_extract(value,'$.context.storage')=json_extract(?5,'$.storage') AND "
+        "(?4=2 OR (json_extract(value,'$.context.resource')=json_extract(?5,'$.resource') AND "
+        "json_extract(value,'$.context.role')=json_extract(?5,'$.role')))) "
         "THEN json_set(value,'$.state','revoked') ELSE value END)) FROM json_each(?1,'$.entries')";
     if (state->initialized && state->anchor.generation==UINT64_MAX) return(1);
     memcpy(next->deployment,manager->deployment,16); memcpy(next->organization,manager->organization,16);
@@ -428,6 +432,8 @@ static int cmeManagerIssue(cmeContextManager *manager, const cmeManagerState *st
         sqlite3_bind_text(stmt,1,state->body ? (const char *)state->body : "{\"entries\":[]}",-1,SQLITE_STATIC)!=SQLITE_OK ||
         sqlite3_bind_text(stmt,2,lookup,-1,SQLITE_STATIC)!=SQLITE_OK ||
         (contextJSON && sqlite3_bind_text(stmt,3,contextJSON,-1,SQLITE_STATIC)!=SQLITE_OK) ||
+        (!contextJSON && (sqlite3_bind_int(stmt,4,(int)scope)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,5,scopeJSON ? scopeJSON : "{}",-1,SQLITE_STATIC)!=SQLITE_OK)) ||
         sqlite3_step(stmt)!=SQLITE_ROW || !sqlite3_column_text(stmt,0)) goto done;
     /* Namespace hex comes from SQLite rather than accepting caller-controlled JSON. */
     json=sqlite3_mprintf("%s",sqlite3_column_text(stmt,0));
@@ -462,7 +468,7 @@ static int cmeManagerRegistration(cmeContextManager *manager, const char *lookup
     cmeStorageContext candidate={0},ancestor={0};
     cmeContextAnchor next={0},expectedCopy;
     sqlite3_stmt *stmt=NULL;
-    char *contextJSON=NULL;
+    char *contextJSON=NULL,*scopeJSON=NULL;
     unsigned char *body=NULL,tag[32];
     unsigned int floor=0,i,start;
     size_t length=0;
@@ -470,7 +476,7 @@ static int cmeManagerRegistration(cmeContextManager *manager, const char *lookup
     if (expected) { expectedCopy=*expected; expected=&expectedCopy; }
     if (context) memset(context,0,sizeof(*context));
     if (published) memset(published,0,sizeof(*published));
-    if (!manager || !published || cmeManagerName(lookup,1) ||
+    if (!manager || !published || revoke<0 || revoke>3 || cmeManagerName(lookup,1) ||
         (!revoke && (!context || allocation<cmeContextNewStorage || allocation>cmeContextNewField ||
         role<1 || role>5 || cmeManagerName(table,0) || cmeManagerName(field,0) ||
         (role==5 && (strcmp(table,"payload") || strcmp(field,"bytes"))) ||
@@ -486,6 +492,12 @@ static int cmeManagerRegistration(cmeContextManager *manager, const char *lookup
     if (revoke)
     {
         if (cmeContextRegistryLookup(registry,lookup,&candidate,&floor)) goto done;
+        if (revoke>1)
+        {
+            if (revoke==3 && candidate.role<4) goto done;
+            scopeJSON=cmeManagerContextJSON(manager->db,&candidate);
+            if (!scopeJSON) goto done;
+        }
     }
     else
     {
@@ -520,13 +532,15 @@ static int cmeManagerRegistration(cmeContextManager *manager, const char *lookup
         contextJSON=cmeManagerContextJSON(manager->db,&candidate);
         if (!contextJSON) goto done;
     }
-    if (cmeManagerIssue(manager,&state,lookup,contextJSON,&body,&length,tag,&next) ||
+    if (cmeManagerIssue(manager,&state,lookup,contextJSON,revoke>1 ? (unsigned int)revoke-1 : 0,
+        scopeJSON,&body,&length,tag,&next) ||
         sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
     result=0;
 done:
     sqlite3_finalize(stmt);
     if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
-    cmeManagerStateFree(&state); cmeContextRegistryFree(&registry); sqlite3_free(contextJSON);
+    cmeManagerStateFree(&state); cmeContextRegistryFree(&registry);
+    sqlite3_free(contextJSON); sqlite3_free(scopeJSON);
     pthread_mutex_unlock(&manager->mutex);
     /* No allocated identity is durable until this existing CAS commits. A
        concurrent writer causes conflict, not a separately committed catalog. */
@@ -552,4 +566,13 @@ int cmeContextManagerRevoke(cmeContextManager *manager, const char *lookup,
                             const cmeContextAnchor *expected, cmeContextAnchor *published)
 {
     return(cmeManagerRegistration(manager,lookup,0,0,NULL,NULL,NULL,expected,NULL,published,1));
+}
+
+int cmeContextManagerRevokeScope(cmeContextManager *manager, const char *lookup,
+                                 cmeContextRevocationScope scope,
+                                 const cmeContextAnchor *expected, cmeContextAnchor *published)
+{
+    /* Invalid enum values must not select single-field revocation or allocation. */
+    int revoke=(scope==cmeContextRevokeResource || scope==cmeContextRevokeStorage) ? (int)scope+1 : 4;
+    return(cmeManagerRegistration(manager,lookup,0,0,NULL,NULL,NULL,expected,NULL,published,revoke));
 }
