@@ -13,6 +13,12 @@ typedef enum
     cmeContextNewField=4
 } cmeContextAllocation;
 
+typedef enum
+{
+    cmeContextRevokeResource=1,
+    cmeContextRevokeStorage=2
+} cmeContextRevocationScope;
+
 /* Trusted in-process manager only. Directory must be canonical, private, owned
    by this uid, protected from rename, and outside every CaumeDSE storage export.
    create=1 requires a new DB; reopening never creates or resets authority.
@@ -63,5 +69,16 @@ int cmeContextManagerProvision(cmeContextManager *manager, const char *lookup,
    Tombstones are retained; no removal, revival or implicit cascading. */
 int cmeContextManagerRevoke(cmeContextManager *manager, const char *lookup,
                             const cmeContextAnchor *expected, cmeContextAnchor *published);
+
+/* Atomically revoke all retained registrations in an active seed's scope.
+   Resource matches role/storage/resource; storage matches a nonzero external
+   storage UUID across ColumnFile and RawPart. No paths or caller-supplied IDs.
+   One generation/CAS, unchanged contexts/floor, retained tombstones. An active
+   seed is required; invalid scope or internal storage fails without publication.
+   Same return, output, aliasing and uncertain-commit rules as Provision.
+   This is not deletion of files or a permanent ban on trusted external issuers. */
+int cmeContextManagerRevokeScope(cmeContextManager *manager, const char *lookup,
+                                 cmeContextRevocationScope scope,
+                                 const cmeContextAnchor *expected, cmeContextAnchor *published);
 
 #endif

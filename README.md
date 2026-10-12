@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.7.0
+# Caume Data Security Engine (CaumeDSE) version 2.8.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2859,6 +2859,14 @@ Herradura-protected values use a versioned `CDSEHKX1` frame that records the
 compact profile id, nonce, tag, and ciphertext. Existing AES-GCM rows are not
 migrated automatically and remain readable. Herradura-protected rows require a
 Herradura-enabled binary for readback or rollback.
+
+The internal stable-context manager can provision identifiers and atomically
+revoke resource/storage registrations. These trusted-owner APIs are not wired
+to live storage routes and do not delete files. `CDSEHKX2` remains a draft with
+no V2 writes enabled; authenticated resource/row mapping and end-to-end provider
+validation are still pending under TODO #147. See
+[`HERRADURAKEX_AT_REST_PLAN.md`](HERRADURAKEX_AT_REST_PLAN.md) for lifecycle,
+capacity and rollback limits.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

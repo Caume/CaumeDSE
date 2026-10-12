@@ -775,8 +775,8 @@ other inputs must not overlap outputs and must remain unchanged during a call.
 retained tombstone through the same CAS. It is not storage/resource-wide or
 cascading revocation. Missing/already-revoked lookups fail; reuse or revival is
 forbidden. Revoked parents cannot authorize new child registrations; another
-active field remains independently usable. An owner needing whole-resource
-revocation must implement a reviewed batch policy before claiming that behavior.
+active field remains independently usable. Phase 6 below adds an explicit
+owner-side batch operation; this single-field API remains noncascading.
 
 Lookup strings are stable registration handles allocated before encrypted
 metadata is read, not mutable display names or paths. Renames, row shuffles and
@@ -800,3 +800,58 @@ certify physical power-loss behavior. Whole-manager rollback protection, key
 custody, authenticated owner deployment, real resource/row lifecycle mapping,
 V2 provider/storage APIs and persisted context-substitution/legacy-readback tests
 remain open gates for #147; no V2 write or runtime-default switch is enabled.
+
+## Atomic Scope Revocation (#147, Phase 6)
+
+`cmeContextManagerRevokeScope` provides a prerequisite for future resource and
+storage deletion: one authenticated snapshot publication revokes every matching
+registration, instead of leaving a partially revoked group after multiple
+single-field calls. It is an internal trusted-owner API, not a live delete route
+or a storage-to-registration mapping service. Existing storage, crypto formats
+and HTTP behavior remain unchanged.
+
+The owner supplies an active registration handle and an explicit scope:
+
+| Scope | Match Within the Authenticated Current Namespace |
+| --- | --- |
+| Resource | Same role, storage UUID and resource UUID, across all records, tables and fields. |
+| Storage | Same nonzero external storage UUID, across ColumnFile and RawPart resources. |
+
+The seed context comes only from authenticated manager state. Lookup prefixes,
+paths, SQL row positions, display names and caller-supplied UUIDs do not select
+membership. Resource matching includes role to isolate externally issued
+contexts even if an issuer reused resource bytes across roles. Storage scope
+rejects internal database roles: their shared zero storage value is not a
+storage identity. Missing/revoked seeds and invalid scopes fail without a new
+publication. If the original field was revoked separately, an owner must select
+another active field before revoking the wider group.
+
+The operation retains every lookup and immutable context, including existing
+tombstones, preserves the format floor and advances exactly one generation.
+Candidate preparation uses authenticated current state and the full expected
+anchor; the existing publication CAS makes concurrent child allocation and
+scope revocation mutually exclusive. A conflict requires a fresh snapshot and
+owner review of the expanded group before retry. A revoked parent cannot be
+used by provisioning to create new children. Revocation does not prohibit an
+approved low-level publisher from later adding externally issued registrations
+with those IDs; enforcing permanent resource/storage bans requires a separate
+policy and is not claimed here.
+
+Return codes, cleared outputs and expected/published anchor aliasing follow the
+existing provisioning contract. Generation overflow, corrupt authority and
+snapshot size/count limits fail closed without partial revocation. In particular,
+`revoked` is longer than `active`; a registry near the 1 MiB limit can lack room
+for tombstones. Operators must reserve headroom; this phase supplies no compactor,
+automatic capacity repair or tombstone deletion. Do not delete backing files
+on a failed or uncertain revocation. After lost acknowledgement, refresh current
+state and reconcile every intended member before continuing; do not reset the
+manager or infer success from process exit alone.
+
+Ten new fixture tests cover resource membership, both external roles, internal
+database isolation, authenticated IDs rather than names, invalid inputs, output
+aliasing, retained tombstones/floors, irreversible history, concurrent allocation,
+stale candidates, generation overflow, corrupt authority, capacity failure and
+old-or-new process-crash recovery. Crash hooks remain fixture-only. These tests
+do not certify physical power-loss behavior or end-to-end V2 authentication.
+Authenticated live resource/row mapping, independent whole-manager rollback
+protection and the remaining V2 integration gates still keep #147 open.

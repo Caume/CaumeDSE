@@ -449,6 +449,191 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(self.command('revoke', 'first', before).returncode, 2)
         self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 1)
 
+    def scope_family(self):
+        self.allocated(lookup='first')
+        self.allocated(lookup='field', level=4, parent='first', field='other', expected=self.current())
+        self.allocated(lookup='record', level=3, parent='first', table='meta', expected=self.current())
+        self.allocated(lookup='raw', level=2, role=5, table='payload', field='bytes',
+                       parent='first', expected=self.current())
+        self.allocated(lookup='other-storage', expected=self.current())
+
+    def revoke_scope(self, lookup='first', scope=1, expected=None, **options):
+        return self.command('revoke-scope', lookup, scope,
+                            self.current() if expected is None else expected, **options)
+
+    def assert_scope_snapshot(self, result, revoked, generation):
+        self.assertEqual(result.returncode, 0, result.stderr)
+        snapshot = json.loads(result.stdout)
+        self.assertEqual(snapshot['generation'], generation)
+        body, tag, anchor = contract.issue(snapshot, b'k' * 32)
+        self.assertEqual(result.stdout.rstrip(b'\n'), body)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            self.assertEqual(db.execute('select body,tag,anchor from registry_current').fetchone(),
+                             (body, tag, bytes.fromhex(token(anchor))))
+        for entry in snapshot['entries']:
+            rejected = entry['lookup'] in revoked
+            self.assertEqual(entry['state'], 'revoked' if rejected else 'active')
+            self.assertEqual(self.command('read', entry['lookup']).returncode, 1 if rejected else 0)
+        return snapshot
+
+    def test_resource_revocation_covers_fields_records_and_tables(self):
+        self.scope_family()
+        before = self.current()
+        result = self.revoke_scope()
+        self.assert_scope_snapshot(result, {'first', 'field', 'record'}, 6)
+        self.assertEqual(self.revoke_scope(expected=before).returncode, 2)
+        self.assertEqual(self.revoke_scope().returncode, 1)
+        self.assertEqual(self.allocate(lookup='child', level=3, parent='field',
+                                      expected=self.current()).returncode, 1)
+
+    def test_storage_revocation_covers_both_external_roles(self):
+        self.scope_family()
+        self.assert_scope_snapshot(self.revoke_scope(lookup='raw', scope=2),
+                                   {'first', 'field', 'record', 'raw'}, 6)
+        before = self.current()
+        for parent in ('first', 'field', 'record', 'raw'):
+            self.assertEqual(self.allocate(lookup='child', level=2, parent=parent,
+                                          expected=before).returncode, 1)
+        self.assertEqual(self.current(), before)
+
+    def test_internal_resource_scope_never_cascades_zero_storage(self):
+        self.allocated(lookup='internal', level=2, role=1)
+        self.allocated(lookup='field', level=4, role=1, parent='internal', field='other', expected=self.current())
+        self.allocated(lookup='row', level=3, role=1, parent='internal', expected=self.current())
+        for role in (1, 2, 3):
+            self.allocated(lookup=f'database/{role}', level=2, role=role, expected=self.current())
+        before = self.current()
+        self.assertEqual(self.revoke_scope(lookup='internal', scope=2).returncode, 1)
+        self.assertEqual(self.current(), before)
+        self.assert_scope_snapshot(self.revoke_scope(lookup='internal'), {'internal', 'field', 'row'}, 7)
+
+    def test_scope_revocation_uses_authenticated_ids_not_lookup_prefixes(self):
+        first = dict(lookup='same/prefix', state='active', context=self.context)
+        same_resource = dict(lookup='unrelated/name', state='active', context=dict(self.context, field='other'))
+        other_role = dict(lookup='role', state='active', context=dict(self.context, role='RawPart',
+                                                                   table='payload', field='bytes'))
+        other_storage = dict(lookup='same/prefix/child', state='active',
+                             context=dict(self.context, storage='aa' * 16))
+        snapshot = dict(self.snapshot, entries=[first, same_resource, other_role, other_storage])
+        self.assertEqual(self.publish(snapshot).returncode, 0)
+        result = self.revoke_scope(lookup='same/prefix')
+        updated = self.assert_scope_snapshot(result, {'same/prefix', 'unrelated/name'}, 2)
+        self.assertEqual({e['lookup']: e['context'] for e in updated['entries']},
+                         {e['lookup']: e['context'] for e in snapshot['entries']})
+        self.assert_scope_snapshot(self.revoke_scope(lookup='role', scope=2),
+                                   {'same/prefix', 'unrelated/name', 'role'}, 3)
+
+    def test_scope_revocation_bounds_aliasing_and_missing_seeds(self):
+        self.assertEqual(self.revoke_scope(expected='-').returncode, 1)
+        self.scope_family()
+        before = self.current()
+        for scope in (0, 3, 2147483647):
+            self.assertEqual(self.revoke_scope(scope=scope, expected=before).returncode, 1)
+        for lookup in ('', 'missing', 'x' * 129, 'a.b'):
+            self.assertEqual(self.revoke_scope(lookup=lookup, expected=before).returncode, 1)
+        self.assertEqual(self.revoke_scope(expected='-').returncode, 2)
+        self.assertEqual(self.current(), before)
+        self.assert_scope_snapshot(self.revoke_scope(env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'}),
+                                   {'first', 'field', 'record'}, 6)
+
+    def test_scope_revocation_retains_tombstones_floor_and_prevents_revival(self):
+        self.bootstrap()
+        self.assertEqual(self.publish(dict(self.snapshot, generation=2, minimumFormat=2), self.anchor).returncode, 0)
+        self.allocated(lookup='field', level=4, parent='column/record/value', field='other', expected=self.current())
+        self.assertEqual(self.command('revoke', 'field', self.current()).returncode, 0)
+        snapshot = self.assert_scope_snapshot(self.revoke_scope(lookup='column/record/value'),
+                                              {'column/record/value', 'field'}, 5)
+        self.assertEqual(snapshot['minimumFormat'], 2)
+        before = self.current()
+        _, _, anchor = contract.issue(snapshot, b'k' * 32)
+        revived = copy.deepcopy(snapshot)
+        revived['generation'] += 1
+        revived['entries'][0]['state'] = 'active'
+        self.assertEqual(self.publish(revived, anchor).returncode, 1)
+        for lookup in ('column/record/value', 'field'):
+            self.assertEqual(self.allocate(lookup=lookup, expected=before).returncode, 1)
+        self.assertEqual(self.current(), before)
+
+    def test_scope_revocation_process_crashes_are_all_or_none(self):
+        self.scope_family()
+        before = self.current()
+        for point in ('after-begin', 'after-write', 'after-commit'):
+            with self.subTest(point=point):
+                result = self.revoke_scope(scope=2, expected=before,
+                                           env={'CDSE_CONTEXT_MANAGER_CRASH': point})
+                self.assertEqual(result.returncode, 86, result.stderr)
+                committed = point == 'after-commit'
+                self.assertEqual(self.current() == before, not committed)
+                for lookup in ('first', 'field', 'record', 'raw'):
+                    self.assertEqual(self.command('read', lookup).returncode, 1 if committed else 0)
+                self.assertEqual(self.command('read', 'other-storage').returncode, 0)
+        self.assertEqual(self.revoke_scope(scope=2, expected=before).returncode, 2)
+        self.assertEqual(self.revoke_scope(scope=2).returncode, 1)
+
+    def test_scope_revocation_and_child_creation_share_one_cas(self):
+        self.scope_family()
+        before = self.current()
+        commands = [self.args('revoke-scope', 'first', 1, before),
+                    self.args('provision', 'child', 3, 4, 'data', 'value', 'first', before)]
+        processes = []
+        try:
+            for command in commands:
+                processes.append(subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+            for process in processes:
+                process.communicate(timeout=30)
+            self.assertEqual(sorted(process.returncode for process in processes), [0, 2])
+            if processes[0].returncode == 0:
+                self.assertEqual(self.command('read', 'child').returncode, 1)
+            else:
+                self.assertEqual(self.command('read', 'child').returncode, 0)
+                self.assert_scope_snapshot(self.revoke_scope(), {'first', 'field', 'record', 'child'}, 7)
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+
+    def test_scope_revocation_rejects_overflow_corrupt_state_and_stale_candidate(self):
+        self.bootstrap()
+        candidate = self.publish_args()[0]
+        self.assertEqual(self.revoke_scope(lookup='column/record/value').returncode, 0)
+        self.assertEqual(self.command('verify', candidate, self.tag.hex(), 'column/record/value').returncode, 1)
+        snapshot = dict(self.snapshot, generation=0xffffffffffffffff)
+        body, tag, anchor = contract.issue(snapshot, b'k' * 32)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute('update registry_current set body=?,tag=?,anchor=?', (body, tag, bytes.fromhex(token(anchor))))
+        before = self.current()
+        self.assertEqual(self.revoke_scope(lookup='column/record/value').returncode, 1)
+        self.assertEqual(self.current(), before)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute('update registry_current set tag=?', (bytes(32),))
+        self.assertEqual(self.revoke_scope(lookup='column/record/value', expected=before).returncode, 1)
+    def test_scope_revocation_capacity_failure_never_partially_revokes(self):
+        entries = [dict(lookup=f'record/{i:04}', state='active',
+                        context=dict(self.context, record=i.to_bytes(16, 'big').hex()))
+                   for i in range(1, contract.MAX_ENTRIES + 1)]
+        low, high = 1, len(entries)
+        while low < high:
+            middle = (low + high + 1) // 2
+            try:
+                contract.canonical(dict(self.snapshot, entries=entries[:middle]))
+                low = middle
+            except ValueError:
+                high = middle - 1
+        snapshot = dict(self.snapshot, entries=entries[:low])
+        self.assertEqual(self.publish(snapshot).returncode, 0)
+        revoked = copy.deepcopy(snapshot)
+        revoked['generation'] = 2
+        for entry in revoked['entries']:
+            entry['state'] = 'revoked'
+        with self.assertRaises(ValueError):
+            contract.canonical(revoked)
+        before = self.current()
+        self.assertEqual(self.revoke_scope(lookup='record/0001', scope=2).returncode, 1)
+        self.assertEqual(self.current(), before)
+        for lookup in ('record/0001', entries[low - 1]['lookup']):
+            self.assertEqual(self.command('read', lookup).returncode, 0)
+
 
 if __name__ == '__main__':
     unittest.main()

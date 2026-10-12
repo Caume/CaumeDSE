@@ -45,9 +45,11 @@ int main(int argc, char **argv)
         cmeFixturePrint(token,8); printf("%02x",anchor.minimumFormat); cmeFixturePrint(anchor.digest,32);
         putchar('\n'); result=0; goto done;
     }
-    if ((!strcmp(argv[2],"provision") && argc==12) || (!strcmp(argv[2],"revoke") && argc==7))
+    if ((!strcmp(argv[2],"provision") && argc==12) || (!strcmp(argv[2],"revoke") && argc==7) ||
+        (!strcmp(argv[2],"revoke-scope") && argc==8))
     {
-        const char *previous=!strcmp(argv[2],"provision") ? argv[11] : argv[6];
+        const char *previous=!strcmp(argv[2],"provision") ? argv[11] :
+            (!strcmp(argv[2],"revoke-scope") ? argv[7] : argv[6]);
         const cmeContextAnchor *expectedPointer=NULL;
         cmeContextAnchor *publishedPointer=&anchor;
         if (strcmp(previous,"-"))
@@ -64,6 +66,9 @@ int main(int argc, char **argv)
             result=cmeContextManagerProvision(manager,argv[5],(cmeContextAllocation)strtoul(argv[6],NULL,10),
                 (unsigned int)strtoul(argv[7],NULL,10),argv[8],argv[9],strcmp(argv[10],"-") ? argv[10] : NULL,
                 expectedPointer,&context,publishedPointer);
+        else if (!strcmp(argv[2],"revoke-scope"))
+            result=cmeContextManagerRevokeScope(manager,argv[5],
+                (cmeContextRevocationScope)strtoul(argv[6],NULL,10),expectedPointer,publishedPointer);
         else result=cmeContextManagerRevoke(manager,argv[5],expectedPointer,publishedPointer);
         if (result)
         {
