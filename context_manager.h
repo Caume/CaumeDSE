@@ -8,9 +8,25 @@ typedef struct cmeContextBinding cmeContextBinding;
 
 typedef struct
 {
+    uint64_t revision;
+    unsigned char digest[32];
+} cmeContextMapAnchor;
+
+typedef struct
+{
     const char *lookup, *table, *field;
     int64_t row; /* Physical operation-local slot, never a cryptographic ID. */
 } cmeContextSlot;
+
+/* Read-only owned metadata; keep pointers/count unchanged until MapFree. */
+typedef struct
+{
+    char *resource;
+    unsigned int role;
+    int active;
+    size_t count;
+    cmeContextSlot *slots;
+} cmeContextMap;
 
 typedef enum
 {
@@ -113,5 +129,41 @@ int cmeContextBindingLookup(const cmeContextBinding *binding, const char *table,
    a point-in-time recheck, not a lock/lease or atomic commit with storage writes. */
 int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *binding);
 void cmeContextBindingFree(cmeContextBinding **binding);
+
+/* Opt-in trusted-owner catalog in the private manager DB. Init is explicit and
+   one-time; missing/corrupt state is never recreated. All writes require the
+   full current registry anchor; Store/Remove also require the current catalog
+   revision/digest. Map names are stable owner handles, not candidate filenames.
+   Store replaces a whole approved slot map atomically. Its resource handle/role
+   cannot change; Remove retains a permanent name tombstone. Catalog limits:
+   4096 retained names, 4096 total slots, 1 MiB authenticated encoding.
+   Returns 0 success, 2 CAS conflict, 1 invalid/unavailable. Outputs are cleared
+   on failure. Expected map/published anchors may alias; all other inputs must
+   remain stable and not overlap outputs. Lost acknowledgements require refresh
+   and reconciliation, never blind reset/retry. No backing-file transaction,
+   remote owner authentication, V2 writes or independent rollback protection. */
+int cmeContextManagerMapInit(cmeContextManager *manager, const cmeContextAnchor *expected,
+                             cmeContextMapAnchor *published);
+int cmeContextManagerMapFetch(cmeContextManager *manager, cmeContextMapAnchor *anchor);
+int cmeContextManagerMapStore(cmeContextManager *manager, const char *name, const char *resource,
+                              unsigned int role, const cmeContextSlot *slots, size_t count,
+                              const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                              cmeContextMapAnchor *published);
+int cmeContextManagerMapRemove(cmeContextManager *manager, const char *name,
+                               const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                               cmeContextMapAnchor *published);
+/* Owned authenticated metadata for exact reconciliation, including tombstones
+   and mappings whose registrations were subsequently revoked. This is NOT a
+   validated storage binding. Free with MapFree; never use it to skip MapBind. */
+int cmeContextManagerMapRead(cmeContextManager *manager, const char *name,
+                             const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                             cmeContextMap **map);
+void cmeContextMapFree(cmeContextMap **map);
+/* Select only by an independently trusted owner map name. Authenticates the
+   durable map, revalidates active contexts and pins both anchors. Check then
+   detects registry OR catalog changes; local Lookup remains operation-scoped. */
+int cmeContextManagerMapBind(cmeContextManager *manager, const char *name,
+                             const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                             cmeContextBinding **binding);
 
 #endif

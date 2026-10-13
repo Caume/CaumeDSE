@@ -4,6 +4,7 @@ import copy
 from contextlib import closing
 from dataclasses import replace
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,24 @@ FIXTURE = str(Path(os.environ.get('CDSE_CONTEXT_MANAGER_FIXTURE', './context-man
 def token(anchor):
     return struct.pack('>16s16sQB32s', bytes.fromhex(anchor.deployment), bytes.fromhex(anchor.organization),
                        anchor.generation, anchor.minimum_format, anchor.digest).hex()
+
+
+def catalog_bytes(deployment, organization, revision, maps, slots):
+    def text(value):
+        data = value.encode('ascii')
+        return bytes([len(data)]) + data
+
+    body = bytearray(b'CDSE-HKX-MAP-v1\0' + bytes.fromhex(deployment) + bytes.fromhex(organization))
+    body.extend(struct.pack('>QI', revision, len(maps)))
+    grouped = {}
+    for name, table, row, field, lookup in slots:
+        grouped.setdefault(name, []).append((table, row, field, lookup))
+    for name, resource, role, active in sorted(maps):
+        entries = sorted(grouped.get(name, []))
+        body.extend(text(name) + text(resource) + struct.pack('>BBI', role, active, len(entries)))
+        for table, row, field, lookup in entries:
+            body.extend(text(table) + struct.pack('>q', row) + text(field) + text(lookup))
+    return bytes(body)
 
 
 class ManagerTests(unittest.TestCase):
@@ -829,6 +848,388 @@ class ManagerTests(unittest.TestCase):
                          [i.to_bytes(16, 'big').hex() for i in (1, 513, 1024, 0)])
         self.assertEqual([entry['result'] for entry in result['results']], [0, 0, 0, 1])
         self.assertEqual(self.current(), before)
+
+
+    def map_current(self):
+        result = self.command('map-anchor')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.decode().strip()
+
+    def map_init(self):
+        result = self.command('map-init', self.current())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.decode().strip()
+
+    def map_store_args(self, slots, name='view', resource='first', role=4, registry=None, catalog=None):
+        args = [name, resource, role, registry or self.current(), catalog or self.map_current(), len(slots)]
+        for slot in slots:
+            args.extend(slot)
+        return args
+
+    def map_store(self, slots, env=None, **options):
+        return self.command('map-store', *self.map_store_args(slots, **options), env=env)
+
+    def map_bind(self, queries=(), name='view', registry=None, catalog=None, env=None):
+        args = [name, registry or self.current(), catalog or self.map_current(), len(queries)]
+        for query in queries:
+            args.extend(query)
+        return self.command('map-bind', *args, env=env)
+
+    def map_remove(self, name='view', catalog=None, env=None):
+        return self.command('map-remove', name, self.current(), catalog or self.map_current(), env=env)
+
+    def map_read(self, name='view', catalog=None):
+        return self.command('map-read', name, self.current(), catalog or self.map_current())
+
+    def catalog_rows(self):
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db:
+            maps = db.execute('select name,resource,role,active from context_maps').fetchall()
+            slots = db.execute('select map_name,table_name,slot,field_name,lookup from context_map_slots').fetchall()
+            revision, tag = db.execute('select revision,tag from context_map_head').fetchone()
+        return maps, slots, int.from_bytes(revision, 'big'), tag
+
+    def assert_catalog(self):
+        maps, slots, revision, tag = self.catalog_rows()
+        body = catalog_bytes(self.anchor.deployment, self.anchor.organization, revision, maps, slots)
+        self.assertLessEqual(len(body), contract.MAX_BYTES)
+        self.assertEqual(tag, hmac.digest(b'k' * 32, body, 'sha256'))
+        expected = (struct.pack('>Q', revision) + hashlib.sha256(body).digest()).hex()
+        self.assertEqual(self.map_current(), expected)
+        return expected
+
+    def install_catalog(self, maps, slots, revision):
+        body = catalog_bytes(self.anchor.deployment, self.anchor.organization, revision, maps, slots)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute('delete from context_map_slots')
+            db.execute('delete from context_maps')
+            db.executemany('insert into context_maps values(?,?,?,?)', maps)
+            db.executemany('insert into context_map_slots values(?,?,?,?,?)', slots)
+            db.execute('update context_map_head set revision=?,tag=?',
+                       (struct.pack('>Q', revision), hmac.digest(b'k' * 32, body, 'sha256')))
+
+    def test_map_opt_in_initialization_and_legacy_compatibility(self):
+        self.binding_family()
+        before = self.current()
+        self.assertEqual(self.command('map-anchor').returncode, 1)
+        self.assertEqual(self.command('map-init', token(self.anchor)).returncode, 2)
+        self.assertEqual(self.bound([('first', 'data', 1, 'value')])['current'], 0)
+        self.map_init()
+        self.assert_catalog()
+        self.assertEqual(self.catalog_rows()[:3], ([], [], 1))
+        self.assertEqual(self.command('map-init', before).returncode, 1)
+        self.assertEqual(self.current(), before)
+
+    def test_map_durable_reopen_codec_and_signed_slots(self):
+        first, second, meta = self.binding_family()
+        self.map_init()
+        slots = [('second', 'data', (1 << 63) - 1, 'value'), ('field', 'data', -(1 << 63), 'other'),
+                 ('first', 'data', -(1 << 63), 'value'), ('meta', 'meta', 0, 'attribute')]
+        for name in ('z-view', 'a-view'):
+            self.assertEqual(self.map_store(slots, name=name).returncode, 0)
+            self.assert_catalog()
+        result = self.map_bind([('data', -(1 << 63), 'value'), ('data', (1 << 63) - 1, 'value'),
+                                ('meta', 0, 'attribute')], name='a-view')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        bound = json.loads(result.stdout)
+        self.assertEqual(bound['current'], 0)
+        self.assertEqual([r['record'] for r in bound['results']],
+                         [c['record'].hex() for c in (first, second, meta)])
+        self.assertEqual(self.catalog_rows()[2], 3)
+        metadata = self.map_read(name='a-view')
+        self.assertEqual(metadata.returncode, 0, metadata.stderr)
+        self.assertEqual(json.loads(metadata.stdout), dict(resource='first', role=4, active=1,
+                         slots=[list(s) for s in sorted(slots, key=lambda s: (s[1], s[2], s[3]))]))
+
+    def test_map_dual_cas_and_output_alias(self):
+        self.binding_family()
+        self.map_init()
+        old = self.map_current()
+        slots = [('first', 'data', 1, 'value')]
+        self.assertEqual(self.map_store(slots, env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'}).returncode, 0)
+        current = self.assert_catalog()
+        self.assertEqual(self.map_store(slots, catalog=old).returncode, 2)
+        self.assertEqual(self.map_store(slots, registry=token(self.anchor)).returncode, 2)
+        self.assertEqual(self.map_store(slots, catalog='00' * 40).returncode, 1)
+        self.assertEqual(self.map_bind(catalog=old).returncode, 2)
+        self.assertEqual(self.map_read(catalog=old).returncode, 2)
+        self.assertEqual(self.map_bind(registry=token(self.anchor)).returncode, 2)
+        self.assertEqual(self.map_current(), current)
+
+    def test_map_rejects_bad_bindings_without_catalog_change(self):
+        self.binding_family()
+        self.map_init()
+        self.allocated(lookup='other', expected=self.current())
+        before = self.map_current()
+        for slots in ([], [('missing', 'data', 1, 'value')], [('first', 'meta', 1, 'value')],
+                      [('first', 'data', 1, 'value'), ('second', 'data', 1, 'value')],
+                      [('first', 'data', 1, 'value'), ('field', 'data', 2, 'other')],
+                      [('other', 'data', 1, 'value')]):
+            self.assertEqual(self.map_store(slots).returncode, 1)
+            self.assertEqual(self.map_current(), before)
+        for name in ('', 'bad.name', 'x' * 129):
+            self.assertEqual(self.map_store([('first', 'data', 1, 'value')], name=name).returncode, 1)
+        self.assert_catalog()
+
+    def test_map_names_cannot_retarget_or_revive(self):
+        self.binding_family()
+        self.map_init()
+        slots = [('first', 'data', 1, 'value')]
+        self.assertEqual(self.map_store(slots).returncode, 0)
+        self.allocated(lookup='other', expected=self.current())
+        before = self.map_current()
+        self.assertEqual(self.map_store([('other', 'data', 1, 'value')], resource='other').returncode, 1)
+        self.assertEqual(self.map_remove(name='missing').returncode, 1)
+        self.assertEqual(self.map_current(), before)
+        self.assertEqual(self.map_remove(env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'}).returncode, 0)
+        self.assertEqual(self.map_bind().returncode, 1)
+        self.assertEqual(self.map_store(slots).returncode, 1)
+        self.assertEqual(self.map_remove().returncode, 1)
+        self.assertEqual(self.catalog_rows()[:2], ([('view', 'first', 4, 0)], []))
+        metadata = self.map_read()
+        self.assertEqual(metadata.returncode, 0, metadata.stderr)
+        self.assertEqual(json.loads(metadata.stdout), dict(resource='first', role=4, active=0, slots=[]))
+        self.assertEqual(self.map_read(name='missing').returncode, 1)
+        self.assert_catalog()
+
+    def test_map_stored_binding_rechecks_both_authorities(self):
+        self.binding_family()
+        self.map_init()
+        self.assertEqual(self.map_store([('first', 'data', 1, 'value')]).returncode, 0)
+        for env in ({'CDSE_CONTEXT_MAP_UPDATE': 'other-view'}, {'CDSE_CONTEXT_MAP_REVOKE': 'second'},
+                    {'CDSE_CONTEXT_MAP_REMOVE': '1'}):
+            result = self.map_bind([('data', 1, 'value')], env=env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)['current'], 2)
+            self.assertEqual(json.loads(result.stdout)['results'][0]['result'], 0)
+        self.assertEqual(self.map_bind().returncode, 1)
+
+    def test_map_revalidation_rejects_revoked_slots_and_seed(self):
+        self.binding_family()
+        self.map_init()
+        self.assertEqual(self.map_store([('first', 'data', 1, 'value'), ('second', 'data', 2, 'value')]).returncode, 0)
+        before = self.map_current()
+        self.assertEqual(self.command('revoke', 'second', self.current()).returncode, 0)
+        self.assertEqual(self.map_bind().returncode, 1)
+        self.assertEqual(self.map_current(), before)
+        metadata = self.map_read()
+        self.assertEqual(metadata.returncode, 0, metadata.stderr)
+        self.assertEqual(len(json.loads(metadata.stdout)['slots']), 2)
+        self.assertEqual(self.map_store([('first', 'data', 1, 'value')]).returncode, 0)
+        self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 0)
+        self.assertEqual(self.map_bind().returncode, 1)
+        self.assertEqual(self.map_remove().returncode, 0)
+        self.assert_catalog()
+
+    def test_map_authentication_rejects_corruption_types_and_foreign_scope(self):
+        self.binding_family()
+        self.map_init()
+        self.assertEqual(self.map_store([('first', 'data', 1, 'value')]).returncode, 0)
+        original = self.map_current()
+        updates = [('context_map_head', 'tag', bytes(32)), ('context_map_head', 'revision', bytes(8)),
+                   ('context_maps', 'resource', 'second'), ('context_maps', 'resource', b'first'),
+                   ('context_maps', 'role', 3), ('context_maps', 'role', b'4'),
+                   ('context_map_slots', 'table_name', b'data'),
+                   ('context_map_slots', 'lookup', 'first\0hidden'), ('context_map_slots', 'slot', 'not-an-integer')]
+        maps, slots, revision, tag = self.catalog_rows()
+        for table, field, changed in updates:
+            with self.subTest(field=field), closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+                previous = db.execute(f'select {field} from {table}').fetchone()[0]
+                db.execute(f'update {table} set {field}=?', (changed,))
+                db.commit()
+                self.assertEqual(self.command('map-anchor').returncode, 1)
+                self.assertEqual(self.map_bind(catalog=original).returncode, 1)
+                db.execute(f'update {table} set {field}=?', (previous,))
+        foreign = catalog_bytes(self.anchor.deployment, 'aa' * 16, revision, maps, slots)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute('update context_map_head set tag=?', (hmac.digest(b'k' * 32, foreign, 'sha256'),))
+        self.assertEqual(self.command('map-anchor').returncode, 1)
+
+    def test_map_missing_state_never_reinitializes(self):
+        self.binding_family()
+        self.map_init()
+        before = self.map_current()
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute('delete from context_map_head')
+        self.assertEqual(self.command('map-anchor').returncode, 1)
+        self.assertEqual(self.command('map-init', self.current()).returncode, 1)
+        self.assertEqual(self.map_store([('first', 'data', 1, 'value')], catalog=before).returncode, 1)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute('drop table context_map_slots')
+        self.assertEqual(self.command('map-init', self.current()).returncode, 1)
+        self.assertEqual(self.map_bind(catalog=before).returncode, 1)
+
+    def test_map_initialization_process_crashes(self):
+        for point in ('after-begin', 'after-write', 'after-commit'):
+            with self.subTest(point=point):
+                directory = self.root / point
+                directory.mkdir(mode=0o700)
+                self.assertEqual(self.command('init', directory=directory).returncode, 0)
+                self.assertEqual(self.command('publish', *self.publish_args(), directory=directory).returncode, 0)
+                result = self.command('map-init', token(self.anchor), directory=directory,
+                                      env={'CDSE_CONTEXT_MANAGER_CRASH': point})
+                self.assertEqual(result.returncode, 86)
+                committed = point == 'after-commit'
+                self.assertEqual(self.command('map-anchor', directory=directory).returncode, 0 if committed else 1)
+                self.assertEqual(self.command('map-init', token(self.anchor), directory=directory).returncode,
+                                 1 if committed else 0)
+
+    def test_map_replacement_process_crashes_are_all_or_none(self):
+        first, second, _ = self.binding_family()
+        self.map_init()
+        original = [('first', 'data', 1, 'value'), ('second', 'data', 2, 'value')]
+        replacement = [('first', 'data', 2, 'value'), ('second', 'data', 1, 'value')]
+        self.assertEqual(self.map_store(original).returncode, 0)
+        before = self.map_current()
+        for point in ('after-begin', 'after-write', 'after-commit'):
+            result = self.map_store(replacement, catalog=before, env={'CDSE_CONTEXT_MANAGER_CRASH': point})
+            self.assertEqual(result.returncode, 86)
+            committed = point == 'after-commit'
+            self.assertEqual(self.map_current() == before, not committed)
+            bound = self.map_bind([('data', 1, 'value'), ('data', 2, 'value')])
+            self.assertEqual(bound.returncode, 0, bound.stderr)
+            expected = (second, first) if committed else (first, second)
+            self.assertEqual([r['record'] for r in json.loads(bound.stdout)['results']],
+                             [c['record'].hex() for c in expected])
+            self.assert_catalog()
+        self.assertEqual(self.map_store(replacement, catalog=before).returncode, 2)
+
+    def test_map_removal_process_crashes_retain_tombstones(self):
+        self.binding_family()
+        self.map_init()
+        self.assertEqual(self.map_store([('first', 'data', 1, 'value')]).returncode, 0)
+        before = self.map_current()
+        for point in ('after-begin', 'after-write', 'after-commit'):
+            self.assertEqual(self.map_remove(catalog=before, env={'CDSE_CONTEXT_MANAGER_CRASH': point}).returncode, 86)
+            committed = point == 'after-commit'
+            self.assertEqual(self.map_bind().returncode, 1 if committed else 0)
+            self.assertEqual(self.map_current() == before, not committed)
+            self.assert_catalog()
+        self.assertEqual(self.map_remove(catalog=before).returncode, 2)
+
+    def test_map_two_owner_writers_share_one_catalog_cas(self):
+        self.binding_family()
+        self.map_init()
+        commands = [self.args('map-store', *self.map_store_args([('first', 'data', row, 'value')])) for row in (5, 6)]
+        processes = []
+        try:
+            for command in commands:
+                processes.append(subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+            for process in processes:
+                process.communicate(timeout=30)
+            self.assertEqual(sorted(p.returncode for p in processes), [0, 2])
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+        self.assert_catalog()
+        self.assertEqual(self.catalog_rows()[2], 2)
+        self.assertIn(self.catalog_rows()[1][0][2], (5, 6))
+
+    def test_map_uint64_overflow_fails_without_changes(self):
+        self.binding_family()
+        self.map_init()
+        self.assertEqual(self.map_store([('first', 'data', 1, 'value')]).returncode, 0)
+        maps, slots, _, _ = self.catalog_rows()
+        self.install_catalog(maps, slots, (1 << 64) - 1)
+        before = self.assert_catalog()
+        self.assertEqual(self.map_store([('first', 'data', 9, 'value')]).returncode, 1)
+        self.assertEqual(self.map_remove().returncode, 1)
+        self.assertEqual(self.map_current(), before)
+
+    def test_map_count_capacity_and_reserved_names(self):
+        self.binding_family()
+        self.map_init()
+        maps = [(f'view/{i:04}', 'first', 4, 1) for i in range(contract.MAX_ENTRIES)]
+        slots = [(name, 'data', 1, 'value', 'first') for name, _, _, _ in maps]
+        self.install_catalog(maps, slots, 2)
+        before = self.assert_catalog()
+        self.assertEqual(self.map_store([('first', 'data', 1, 'value')], name='overflow').returncode, 1)
+        self.assertEqual(self.map_current(), before)
+        self.assertEqual(self.map_remove(name=maps[0][0]).returncode, 0)
+        self.assertEqual(self.map_store([('first', 'data', 1, 'value')], name='overflow').returncode, 1)
+        self.assert_catalog()
+
+    def test_map_each_role_and_registry_floor_changes(self):
+        self.bootstrap()
+        self.map_init()
+        for role in range(1, 6):
+            root = f'role/{role}'
+            table, field = ('payload', 'bytes') if role == 5 else ('data', 'value')
+            self.allocated(lookup=root, role=role, level=2 if role < 4 else 1,
+                           table=table, field=field, expected=self.current())
+            self.assertEqual(self.map_store([(root, table, 1, field)], name=root, resource=root, role=role).returncode, 0)
+            self.assertEqual(self.map_bind([(table, 1, field)], name=root).returncode, 0)
+        # Raising the registry floor does not rewrite the independent catalog.
+        before = self.map_current()
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db:
+            snapshot = json.loads(db.execute('select body from registry_current').fetchone()[0])
+        _, _, anchor = contract.issue(snapshot, b'k' * 32)
+        snapshot.update(generation=snapshot['generation'] + 1, minimumFormat=2)
+        self.assertEqual(self.publish(snapshot, anchor).returncode, 0)
+        bound = self.map_bind([('data', 1, 'value')], name='role/1')
+        self.assertEqual(bound.returncode, 0, bound.stderr)
+        self.assertEqual(json.loads(bound.stdout)['results'][0]['floor'], 2)
+        self.assertEqual(self.map_current(), before)
+
+
+    def test_map_byte_capacity_failure_is_atomic(self):
+        resource, table, field = 'r' * 128, 'T' * 64, 'F' * 64
+        self.allocated(lookup=resource, table=table, field=field)
+        self.map_init()
+        maps = [(f'{i:04}' + 'v' * 124, resource, 4, 1) for i in range(contract.MAX_ENTRIES)]
+        slots = [(name, table, 1, field, resource) for name, _, _, _ in maps]
+        low, high = 0, len(maps)
+        while low < high:
+            middle = (low + high + 1) // 2
+            size = len(catalog_bytes(self.anchor.deployment, self.anchor.organization, 2, maps[:middle], slots[:middle]))
+            if size <= contract.MAX_BYTES:
+                low = middle
+            else:
+                high = middle - 1
+        self.install_catalog(maps[:low], slots[:low], 2)
+        before = self.assert_catalog()
+        self.assertGreater(len(catalog_bytes(self.anchor.deployment, self.anchor.organization, 3,
+                                             maps[:low + 1], slots[:low + 1])), contract.MAX_BYTES)
+        result = self.map_store([(resource, table, 1, field)], name=maps[low][0], resource=resource)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(self.map_current(), before)
+        self.assertEqual(len(self.catalog_rows()[0]), low)
+
+    def test_map_signed_invalid_semantics_and_orphan_rows_fail_closed(self):
+        self.binding_family()
+        self.map_init()
+        maps = [('view', 'first', 4, 1)]
+        slots = [('view', 'data', 1, 'value', 'first'), ('view', 'data', 2, 'other', 'field')]
+        self.install_catalog(maps, slots, 2)
+        self.assert_catalog()
+        self.assertEqual(self.map_bind().returncode, 1)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute('insert into context_map_slots values(?,?,?,?,?)',
+                       ('missing-view', 'data', 3, 'value', 'first'))
+        self.assertEqual(self.command('map-anchor').returncode, 1)
+
+    def test_map_registry_revocation_race_never_returns_usable_stale_map(self):
+        self.binding_family()
+        self.map_init()
+        commands = [self.args('map-store', *self.map_store_args([('first', 'data', 1, 'value')])),
+                    self.args('revoke', 'first', self.current())]
+        processes = []
+        try:
+            for command in commands:
+                processes.append(subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+            for process in processes:
+                process.communicate(timeout=30)
+            self.assertIn(processes[0].returncode, (0, 2))
+            self.assertEqual(processes[1].returncode, 0)
+            self.assertEqual(self.catalog_rows()[2], 2 if processes[0].returncode == 0 else 1)
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+        self.assert_catalog()
+        self.assertEqual(self.map_bind().returncode, 1)
 
 
 if __name__ == '__main__':

@@ -586,6 +586,8 @@ typedef struct
 struct cmeContextBinding
 {
     cmeContextAnchor anchor;
+    cmeContextMapAnchor mapAnchor;
+    int mapped;
     size_t count;
     cmeBoundSlot *slots;
 };
@@ -707,11 +709,382 @@ int cmeContextBindingLookup(const cmeContextBinding *binding, const char *table,
     return(1);
 }
 
+static int cmeManagerBindingCurrent(cmeContextManager *manager, const cmeContextBinding *binding);
+
 int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *binding)
 {
-    cmeManagerState current={0};
-    if (!manager || !binding || cmeContextManagerFetch(manager,binding->anchor.deployment,
-        binding->anchor.organization,&current.anchor)) return(1);
-    current.initialized=1;
-    return(cmeManagerCurrentMatch(&current,&binding->anchor));
+    if (!manager || !binding || memcmp(manager->deployment,binding->anchor.deployment,16) ||
+        memcmp(manager->organization,binding->anchor.organization,16)) return(1);
+    return(cmeManagerBindingCurrent(manager,binding));
+}
+
+typedef struct
+{
+    unsigned char *bytes;
+    size_t length;
+} cmeMapEncoding;
+
+static int cmeMapAppend(cmeMapEncoding *encoding, const void *bytes, size_t length)
+{
+    if (length>cmeContextRegistryMaxBytes-encoding->length) return(1);
+    memcpy(encoding->bytes+encoding->length,bytes,length); encoding->length+=length;
+    return(0);
+}
+
+static int cmeMapNumber(cmeMapEncoding *encoding, uint64_t value, unsigned int length)
+{
+    unsigned char bytes[8];
+    unsigned int i;
+    for (i=0;i<length;i++) bytes[i]=(unsigned char)(value>>(8*(length-i-1)));
+    return(cmeMapAppend(encoding,bytes,length));
+}
+
+static int cmeMapText(cmeMapEncoding *encoding, sqlite3_stmt *stmt, int column, int lookup)
+{
+    const char *value;
+    size_t length;
+    if (sqlite3_column_type(stmt,column)!=SQLITE_TEXT) return(1);
+    value=(const char *)sqlite3_column_text(stmt,column);
+    if (!value || cmeManagerName(value,lookup)) return(1);
+    length=strlen(value);
+    if ((size_t)sqlite3_column_bytes(stmt,column)!=length) return(1);
+    return(cmeMapNumber(encoding,length,1) || cmeMapAppend(encoding,value,length));
+}
+
+/* Canonical typed encoding of protected SQL rows, including tombstones. The
+   namespace and separate HMAC domain prevent cross-scope/protocol substitution. */
+static int cmeMapSign(cmeContextManager *manager, uint64_t revision,
+                       cmeContextMapAnchor *anchor, unsigned char tag[32])
+{
+    static const unsigned char domain[]="CDSE-HKX-MAP-v1";
+    cmeMapEncoding encoding={0};
+    sqlite3_stmt *maps=NULL,*slots=NULL;
+    sqlite3_int64 names,total,seen=0;
+    unsigned int written;
+    int result=1,step,slotStep;
+    encoding.bytes=malloc(cmeContextRegistryMaxBytes);
+    if (!encoding.bytes || !revision || sqlite3_prepare_v2(manager->db,
+        "SELECT (SELECT count(*) FROM context_maps),(SELECT count(*) FROM context_map_slots)",
+        -1,&maps,NULL)!=SQLITE_OK || sqlite3_step(maps)!=SQLITE_ROW) goto done;
+    names=sqlite3_column_int64(maps,0); total=sqlite3_column_int64(maps,1);
+    if (names<0 || names>cmeContextRegistryMaxEntries || total<0 || total>cmeContextRegistryMaxEntries ||
+        cmeMapAppend(&encoding,domain,sizeof(domain)) || cmeMapAppend(&encoding,manager->deployment,16) ||
+        cmeMapAppend(&encoding,manager->organization,16) || cmeMapNumber(&encoding,revision,8) ||
+        cmeMapNumber(&encoding,(uint64_t)names,4)) goto done;
+    sqlite3_finalize(maps); maps=NULL;
+    if (sqlite3_prepare_v2(manager->db,
+        "SELECT name,resource,role,active,(SELECT count(*) FROM context_map_slots WHERE map_name=name) "
+        "FROM context_maps ORDER BY name COLLATE BINARY",-1,&maps,NULL)!=SQLITE_OK ||
+        sqlite3_prepare_v2(manager->db,
+        "SELECT table_name,slot,field_name,lookup FROM context_map_slots WHERE map_name=?1 "
+        "ORDER BY table_name COLLATE BINARY,slot,field_name COLLATE BINARY",-1,&slots,NULL)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(maps))==SQLITE_ROW)
+    {
+        sqlite3_int64 count,role,active;
+        if (sqlite3_column_type(maps,2)!=SQLITE_INTEGER || sqlite3_column_type(maps,3)!=SQLITE_INTEGER) goto done;
+        count=sqlite3_column_int64(maps,4); role=sqlite3_column_int64(maps,2); active=sqlite3_column_int64(maps,3);
+        if (--names<0 || role<1 || role>5 || (active!=0 && active!=1) ||
+            count<0 || count>cmeContextRegistryMaxEntries || (active ? !count : count!=0) ||
+            cmeMapText(&encoding,maps,0,1) || cmeMapText(&encoding,maps,1,1) ||
+            cmeMapNumber(&encoding,(uint64_t)role,1) || cmeMapNumber(&encoding,(uint64_t)active,1) ||
+            cmeMapNumber(&encoding,(uint64_t)count,4) || sqlite3_bind_text(slots,1,
+            (const char *)sqlite3_column_text(maps,0),-1,SQLITE_TRANSIENT)!=SQLITE_OK) goto done;
+        while ((slotStep=sqlite3_step(slots))==SQLITE_ROW)
+        {
+            if (--count<0 || ++seen>total || sqlite3_column_type(slots,1)!=SQLITE_INTEGER ||
+                cmeMapText(&encoding,slots,0,0) ||
+                cmeMapNumber(&encoding,(uint64_t)sqlite3_column_int64(slots,1),8) ||
+                cmeMapText(&encoding,slots,2,0) || cmeMapText(&encoding,slots,3,1)) goto done;
+        }
+        if (slotStep!=SQLITE_DONE || count || sqlite3_reset(slots)!=SQLITE_OK) goto done;
+    }
+    if (step!=SQLITE_DONE || names || seen!=total ||
+        !HMAC(EVP_sha256(),manager->key,32,encoding.bytes,encoding.length,tag,&written) || written!=32 ||
+        !EVP_Digest(encoding.bytes,encoding.length,anchor->digest,&written,EVP_sha256(),NULL) || written!=32) goto done;
+    anchor->revision=revision; result=0;
+done:
+    sqlite3_finalize(maps); sqlite3_finalize(slots); free(encoding.bytes);
+    return(result);
+}
+
+static int cmeMapLoad(cmeContextManager *manager, cmeContextMapAnchor *anchor)
+{
+    sqlite3_stmt *stmt=NULL;
+    unsigned char saved[32],tag[32];
+    uint64_t revision=0;
+    unsigned int i;
+    int result=1;
+    if (sqlite3_prepare_v2(manager->db,"SELECT mapping_version FROM registry_meta WHERE singleton=1",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
+        sqlite3_column_type(stmt,0)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,0)!=1 ||
+        sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"SELECT revision,tag FROM context_map_head",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_ROW || sqlite3_column_type(stmt,0)!=SQLITE_BLOB ||
+        sqlite3_column_bytes(stmt,0)!=8 || !sqlite3_column_blob(stmt,0) ||
+        sqlite3_column_type(stmt,1)!=SQLITE_BLOB || sqlite3_column_bytes(stmt,1)!=32 || !sqlite3_column_blob(stmt,1)) goto done;
+    for (i=0;i<8;i++) revision=(revision<<8)|((const unsigned char *)sqlite3_column_blob(stmt,0))[i];
+    memcpy(saved,sqlite3_column_blob(stmt,1),32);
+    if (sqlite3_step(stmt)!=SQLITE_DONE || cmeMapSign(manager,revision,anchor,tag) || CRYPTO_memcmp(saved,tag,32)) goto done;
+    result=0;
+done:
+    sqlite3_finalize(stmt);
+    return(result);
+}
+
+static int cmeMapMatch(const cmeContextMapAnchor *actual, const cmeContextMapAnchor *expected)
+{
+    if (!expected || !expected->revision) return(1);
+    return(actual->revision!=expected->revision || CRYPTO_memcmp(actual->digest,expected->digest,32) ? 2 : 0);
+}
+
+static int cmeMapHead(cmeContextManager *manager, const cmeContextMapAnchor *anchor, const unsigned char tag[32])
+{
+    sqlite3_stmt *stmt=NULL;
+    unsigned char revision[8];
+    unsigned int i;
+    int result=1;
+    for (i=0;i<8;i++) revision[i]=(unsigned char)(anchor->revision>>(56-8*i));
+    if (sqlite3_prepare_v2(manager->db,"INSERT INTO context_map_head VALUES(1,?1,?2) "
+        "ON CONFLICT(singleton) DO UPDATE SET revision=excluded.revision,tag=excluded.tag",-1,&stmt,NULL)==SQLITE_OK &&
+        sqlite3_bind_blob(stmt,1,revision,8,SQLITE_STATIC)==SQLITE_OK &&
+        sqlite3_bind_blob(stmt,2,tag,32,SQLITE_STATIC)==SQLITE_OK && sqlite3_step(stmt)==SQLITE_DONE) result=0;
+    sqlite3_finalize(stmt); return(result);
+}
+
+int cmeContextManagerMapInit(cmeContextManager *manager, const cmeContextAnchor *expected,
+                             cmeContextMapAnchor *published)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor next={0};
+    sqlite3_stmt *stmt=NULL;
+    unsigned char tag[32];
+    int result=1;
+    if (published) memset(published,0,sizeof(*published));
+    if (!manager || !expected || !published) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state)) goto done;
+    result=cmeManagerCurrentMatch(&state,expected); if (result) goto done;
+    result=1; cmeManagerCheckpoint("after-begin");
+    if (sqlite3_prepare_v2(manager->db,"SELECT count(*) FROM pragma_table_info('registry_meta') "
+        "WHERE name='mapping_version'",-1,&stmt,NULL)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
+        sqlite3_column_int(stmt,0)!=0) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_exec(manager->db,
+        "ALTER TABLE registry_meta ADD COLUMN mapping_version INTEGER NOT NULL DEFAULT 1 CHECK(mapping_version=1);"
+        "CREATE TABLE context_map_head(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision BLOB NOT NULL CHECK(length(revision)=8),tag BLOB NOT NULL CHECK(length(tag)=32));"
+        "CREATE TABLE context_maps(name TEXT PRIMARY KEY,resource TEXT NOT NULL,role INTEGER NOT NULL,active INTEGER NOT NULL CHECK(active IN(0,1)));"
+        "CREATE TABLE context_map_slots(map_name TEXT NOT NULL,table_name TEXT NOT NULL,slot INTEGER NOT NULL,field_name TEXT NOT NULL,lookup TEXT NOT NULL,PRIMARY KEY(map_name,table_name,slot,field_name));",
+        NULL,NULL,NULL)!=SQLITE_OK || cmeMapSign(manager,1,&next,tag) || cmeMapHead(manager,&next,tag)) goto done;
+    cmeManagerCheckpoint("after-write");
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    cmeManagerCheckpoint("after-commit"); *published=next; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
+int cmeContextManagerMapFetch(cmeContextManager *manager, cmeContextMapAnchor *anchor)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0};
+    int result=1;
+    if (anchor) memset(anchor,0,sizeof(*anchor));
+    if (!manager || !anchor) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state) || !state.initialized || cmeMapLoad(manager,&current) ||
+        sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    *anchor=current; result=0;
+done:
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
+static int cmeManagerBindingCurrent(cmeContextManager *manager, const cmeContextBinding *binding)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor map={0};
+    int result=1;
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state)) goto done;
+    result=cmeManagerCurrentMatch(&state,&binding->anchor); if (result) goto done;
+    if (binding->mapped)
+    {
+        result=1; if (cmeMapLoad(manager,&map)) goto done;
+        result=cmeMapMatch(&map,&binding->mapAnchor); if (result) goto done;
+    }
+    result=sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)==SQLITE_OK ? 0 : 1;
+done:
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
+static int cmeManagerMapWrite(cmeContextManager *manager, const char *name, const char *resource,
+                              unsigned int role, const cmeContextSlot *slots, size_t count,
+                              const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                              cmeContextMapAnchor *published, int remove)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0},next={0},copy;
+    cmeContextBinding *verified=NULL;
+    sqlite3_stmt *stmt=NULL;
+    unsigned char tag[32];
+    size_t i;
+    int result=1,step;
+    if (mapExpected) { copy=*mapExpected; mapExpected=&copy; }
+    if (published) memset(published,0,sizeof(*published));
+    if (!manager || !published || !expected || !mapExpected || cmeManagerName(name,1)) return(1);
+    if (!remove)
+    {
+        result=cmeContextManagerBind(manager,resource,role,slots,count,expected,&verified);
+        cmeContextBindingFree(&verified); if (result) return(result);
+    }
+    result=1; pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state)) goto done;
+    result=cmeManagerCurrentMatch(&state,expected); if (result) goto done;
+    result=1; if (cmeMapLoad(manager,&current)) goto done;
+    result=cmeMapMatch(&current,mapExpected); if (result) goto done;
+    result=1; if (current.revision==UINT64_MAX) goto done;
+    cmeManagerCheckpoint("after-begin");
+    if (sqlite3_prepare_v2(manager->db,"SELECT resource,role,active FROM context_maps WHERE name=?1",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+    step=sqlite3_step(stmt);
+    if (step==SQLITE_ROW)
+    {
+        if (!sqlite3_column_int(stmt,2) || (!remove && (strcmp(resource,(const char *)sqlite3_column_text(stmt,0)) ||
+            role!=(unsigned int)sqlite3_column_int(stmt,1)))) goto done;
+    }
+    else if (step!=SQLITE_DONE || remove) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,remove ? "UPDATE context_maps SET active=0 WHERE name=?1" :
+        "INSERT INTO context_maps VALUES(?1,?2,?3,1) ON CONFLICT(name) DO NOTHING",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || (!remove &&
+        (sqlite3_bind_text(stmt,2,resource,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_bind_int(stmt,3,(int)role)!=SQLITE_OK)) ||
+        sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"DELETE FROM context_map_slots WHERE map_name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (!remove)
+    {
+        if (sqlite3_prepare_v2(manager->db,"INSERT INTO context_map_slots VALUES(?1,?2,?3,?4,?5)",-1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+        for (i=0;i<count;i++)
+            if (sqlite3_bind_text(stmt,2,slots[i].table,-1,SQLITE_STATIC)!=SQLITE_OK ||
+                sqlite3_bind_int64(stmt,3,slots[i].row)!=SQLITE_OK ||
+                sqlite3_bind_text(stmt,4,slots[i].field,-1,SQLITE_STATIC)!=SQLITE_OK ||
+                sqlite3_bind_text(stmt,5,slots[i].lookup,-1,SQLITE_STATIC)!=SQLITE_OK ||
+                sqlite3_step(stmt)!=SQLITE_DONE || sqlite3_reset(stmt)!=SQLITE_OK) goto done;
+        sqlite3_finalize(stmt); stmt=NULL;
+    }
+    if (cmeMapSign(manager,current.revision+1,&next,tag) || cmeMapHead(manager,&next,tag)) goto done;
+    cmeManagerCheckpoint("after-write");
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    cmeManagerCheckpoint("after-commit"); *published=next; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
+int cmeContextManagerMapStore(cmeContextManager *manager, const char *name, const char *resource,
+                              unsigned int role, const cmeContextSlot *slots, size_t count,
+                              const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                              cmeContextMapAnchor *published)
+{
+    return(cmeManagerMapWrite(manager,name,resource,role,slots,count,expected,mapExpected,published,0));
+}
+
+int cmeContextManagerMapRemove(cmeContextManager *manager, const char *name,
+                               const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                               cmeContextMapAnchor *published)
+{
+    return(cmeManagerMapWrite(manager,name,NULL,0,NULL,0,expected,mapExpected,published,1));
+}
+
+void cmeContextMapFree(cmeContextMap **map)
+{
+    size_t i;
+    if (!map || !*map) return;
+    for (i=0;i<(*map)->count;i++)
+    {
+        free((void *)(*map)->slots[i].lookup); free((void *)(*map)->slots[i].table);
+        free((void *)(*map)->slots[i].field);
+    }
+    free((*map)->slots); free((*map)->resource); free(*map); *map=NULL;
+}
+
+int cmeContextManagerMapRead(cmeContextManager *manager, const char *name,
+                             const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                             cmeContextMap **output)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor map={0};
+    cmeContextMap *candidate=NULL;
+    sqlite3_stmt *stmt=NULL;
+    int result=1,step;
+    if (output) *output=NULL;
+    if (!manager || !output || !expected || !mapExpected || cmeManagerName(name,1)) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state)) goto done;
+    result=cmeManagerCurrentMatch(&state,expected); if (result) goto done;
+    result=1; if (cmeMapLoad(manager,&map)) goto done;
+    result=cmeMapMatch(&map,mapExpected); if (result) goto done;
+    result=1;
+    if (sqlite3_prepare_v2(manager->db,"SELECT resource,role,active FROM context_maps WHERE name=?1",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_ROW) goto done;
+    candidate=calloc(1,sizeof(*candidate));
+    if (!candidate) goto done;
+    candidate->resource=strdup((const char *)sqlite3_column_text(stmt,0));
+    candidate->role=(unsigned int)sqlite3_column_int(stmt,1); candidate->active=sqlite3_column_int(stmt,2);
+    sqlite3_finalize(stmt); stmt=NULL;
+    candidate->slots=calloc(cmeContextRegistryMaxEntries,sizeof(*candidate->slots));
+    if (!candidate->resource || !candidate->slots || sqlite3_prepare_v2(manager->db,
+        "SELECT lookup,table_name,slot,field_name FROM context_map_slots WHERE map_name=?1 "
+        "ORDER BY table_name COLLATE BINARY,slot,field_name COLLATE BINARY",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(stmt))==SQLITE_ROW)
+    {
+        cmeContextSlot *slot;
+        if (candidate->count==cmeContextRegistryMaxEntries) goto done;
+        slot=&candidate->slots[candidate->count++];
+        slot->lookup=strdup((const char *)sqlite3_column_text(stmt,0));
+        slot->table=strdup((const char *)sqlite3_column_text(stmt,1));
+        slot->row=sqlite3_column_int64(stmt,2); slot->field=strdup((const char *)sqlite3_column_text(stmt,3));
+        if (!slot->lookup || !slot->table || !slot->field) goto done;
+    }
+    if (step!=SQLITE_DONE || sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    *output=candidate; candidate=NULL; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
+    cmeContextMapFree(&candidate); return(result);
+}
+
+int cmeContextManagerMapBind(cmeContextManager *manager, const char *name,
+                             const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                             cmeContextBinding **binding)
+{
+    cmeContextMap *map=NULL;
+    int result;
+    if (binding) *binding=NULL;
+    if (!binding) return(1);
+    result=cmeContextManagerMapRead(manager,name,expected,mapExpected,&map);
+    if (!result && !map->active) result=1;
+    if (!result) result=cmeContextManagerBind(manager,map->resource,map->role,map->slots,map->count,expected,binding);
+    if (!result)
+    {
+        (*binding)->mapped=1; (*binding)->mapAnchor=*mapExpected;
+        result=cmeContextBindingCheck(manager,*binding);
+        if (result) cmeContextBindingFree(binding);
+    }
+    cmeContextMapFree(&map); return(result);
 }

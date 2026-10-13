@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.9.0
+# Caume Data Security Engine (CaumeDSE) version 2.10.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2862,10 +2862,14 @@ Herradura-enabled binary for readback or rollback.
 
 The internal stable-context manager can provision identifiers, bind an approved
 owner row/field map to current resource contexts, and atomically revoke
-resource/storage registrations. Binding does not persist or authenticate the
-owner's map; a trusted owner adapter must provide it. These APIs are not wired
+resource/storage registrations. An opt-in authenticated owner-map catalog now
+persists approved slot maps in the protected manager database with atomic
+publication and a separate revision/digest CAS. Direct binding still requires
+an independently approved map; stored binding authenticates the catalog and
+revalidates current contexts. A trusted owner adapter must select the correct
+map and coordinate backing-file changes. These APIs are not wired
 to live storage routes and do not delete files. `CDSEHKX2` remains a draft with
-no V2 writes enabled; authenticated resource/row mapping and end-to-end provider
+no V2 writes enabled; live storage integration and end-to-end provider
 validation are still pending under TODO #147. See
 [`HERRADURAKEX_AT_REST_PLAN.md`](HERRADURAKEX_AT_REST_PLAN.md) for lifecycle,
 capacity and rollback limits.
