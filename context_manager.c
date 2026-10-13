@@ -1,5 +1,6 @@
 #include "common.h"
 #include "context_manager.h"
+#include "context_offline.h"
 #include <limits.h>
 #include <openssl/rand.h>
 
@@ -751,24 +752,137 @@ static int cmeMapText(cmeMapEncoding *encoding, sqlite3_stmt *stmt, int column, 
     return(cmeMapNumber(encoding,length,1) || cmeMapAppend(encoding,value,length));
 }
 
+static int cmeShuffleVersion(cmeContextManager *manager, int *enabled)
+{
+    sqlite3_stmt *stmt=NULL;
+    int result=1;
+    *enabled=0;
+    if (sqlite3_prepare_v2(manager->db,"SELECT count(*) FROM pragma_table_info('registry_meta') "
+        "WHERE name='shuffle_version'",-1,&stmt,NULL)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW) goto done;
+    if (!sqlite3_column_int(stmt,0)) { result=0; goto done; }
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"SELECT shuffle_version FROM registry_meta WHERE singleton=1",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
+        sqlite3_column_type(stmt,0)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,0)!=1 ||
+        sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    *enabled=1; result=0;
+done:
+    sqlite3_finalize(stmt); return(result);
+}
+
+static int cmeShufflePending(cmeContextManager *manager, const char *name, int *pending)
+{
+    sqlite3_stmt *stmt=NULL;
+    int enabled,step,result=1;
+    *pending=0;
+    if (cmeShuffleVersion(manager,&enabled)) return(1);
+    if (!enabled) return(0);
+    if (sqlite3_prepare_v2(manager->db,"SELECT state FROM context_shuffles WHERE map_name=?1",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+    step=sqlite3_step(stmt);
+    if (step==SQLITE_DONE) { result=0; goto done; }
+    if (step!=SQLITE_ROW || sqlite3_column_type(stmt,0)!=SQLITE_INTEGER ||
+        sqlite3_column_int64(stmt,0)<1 || sqlite3_column_int64(stmt,0)>3) goto done;
+    *pending=sqlite3_column_int(stmt,0)==1; result=0;
+done:
+    sqlite3_finalize(stmt); return(result);
+}
+
+static int cmeShuffleEncode(cmeContextManager *manager, uint64_t revision, cmeMapEncoding *encoding)
+{
+    sqlite3_stmt *jobs=NULL,*slots=NULL;
+    sqlite3_int64 names,total,seen=0;
+    int result=1,step,slotStep;
+    if (sqlite3_prepare_v2(manager->db,"SELECT (SELECT count(*) FROM context_shuffles),"
+        "(SELECT count(*) FROM context_shuffle_slots)",-1,&jobs,NULL)!=SQLITE_OK || sqlite3_step(jobs)!=SQLITE_ROW) goto done;
+    names=sqlite3_column_int64(jobs,0); total=sqlite3_column_int64(jobs,1);
+    if (names<0 || names>cmeContextRegistryMaxEntries || total<0 || total>cmeContextRegistryMaxEntries ||
+        cmeMapNumber(encoding,(uint64_t)names,4)) goto done;
+    sqlite3_finalize(jobs); jobs=NULL;
+    if (sqlite3_prepare_v2(manager->db,
+        "SELECT j.map_name,j.job,j.state,j.finished,j.active_path,j.staged_path,j.source,j.target,m.active,m.role,"
+        "(SELECT count(*) FROM context_shuffle_slots WHERE map_name=j.map_name) "
+        "FROM context_shuffles j JOIN context_maps m ON j.map_name=m.name ORDER BY j.map_name COLLATE BINARY",
+        -1,&jobs,NULL)!=SQLITE_OK || sqlite3_prepare_v2(manager->db,
+        "SELECT table_name,slot,field_name,lookup FROM context_shuffle_slots WHERE map_name=?1 "
+        "ORDER BY table_name COLLATE BINARY,slot,field_name COLLATE BINARY",-1,&slots,NULL)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(jobs))==SQLITE_ROW)
+    {
+        uint64_t finished=0;
+        sqlite3_int64 count;
+        unsigned int i,nonzero=0;
+        int state,column;
+        sqlite3_int64 storedState;
+        if (--names<0 || cmeMapText(encoding,jobs,0,1) || sqlite3_column_type(jobs,2)!=SQLITE_INTEGER) goto done;
+        storedState=sqlite3_column_int64(jobs,2);
+        if (storedState<1 || storedState>3) goto done;
+        state=(int)storedState;
+        if (sqlite3_column_int(jobs,9)!=4 ||
+            (state==1 && sqlite3_column_int(jobs,8)!=1)) goto done;
+        for (column=1;column<=7;column++)
+        {
+            if (column==2)
+            {
+                if (cmeMapNumber(encoding,(uint64_t)state,1)) goto done;
+            }
+            else if (column==4 || column==5)
+            {
+                const char *path;
+                size_t length;
+                if (sqlite3_column_type(jobs,column)!=SQLITE_TEXT) goto done;
+                path=(const char *)sqlite3_column_text(jobs,column);
+                if (!path || *path!='/' || !(length=strlen(path)) || length>=PATH_MAX ||
+                    length!=(size_t)sqlite3_column_bytes(jobs,column) ||
+                    cmeMapNumber(encoding,length,2) || cmeMapAppend(encoding,path,length)) goto done;
+            }
+            else
+            {
+                size_t length=column==3 ? 8 : 32;
+                const unsigned char *bytes;
+                if (sqlite3_column_type(jobs,column)!=SQLITE_BLOB ||
+                    sqlite3_column_bytes(jobs,column)!=(int)length || !(bytes=sqlite3_column_blob(jobs,column)) ||
+                    cmeMapAppend(encoding,bytes,length)) goto done;
+                if (column==1) for (i=0;i<32;i++) nonzero|=bytes[i];
+                if (column==3) for (i=0;i<8;i++) finished=(finished<<8)|bytes[i];
+            }
+        }
+        count=sqlite3_column_int64(jobs,10);
+        if (!nonzero || (state==1 ? finished!=0 : (!finished || finished>revision)) ||
+            !strcmp((const char *)sqlite3_column_text(jobs,4),(const char *)sqlite3_column_text(jobs,5)) ||
+            !memcmp(sqlite3_column_blob(jobs,6),sqlite3_column_blob(jobs,7),32) ||
+            count<1 || count>cmeContextRegistryMaxEntries || cmeMapNumber(encoding,(uint64_t)count,4) ||
+            sqlite3_bind_text(slots,1,(const char *)sqlite3_column_text(jobs,0),-1,SQLITE_TRANSIENT)!=SQLITE_OK) goto done;
+        while ((slotStep=sqlite3_step(slots))==SQLITE_ROW)
+            if (--count<0 || ++seen>total || sqlite3_column_type(slots,1)!=SQLITE_INTEGER ||
+                cmeMapText(encoding,slots,0,0) || cmeMapNumber(encoding,(uint64_t)sqlite3_column_int64(slots,1),8) ||
+                cmeMapText(encoding,slots,2,0) || cmeMapText(encoding,slots,3,1)) goto done;
+        if (slotStep!=SQLITE_DONE || count || sqlite3_reset(slots)!=SQLITE_OK) goto done;
+    }
+    if (step!=SQLITE_DONE || names || total!=seen) goto done;
+    result=0;
+done:
+    sqlite3_finalize(jobs); sqlite3_finalize(slots); return(result);
+}
+
 /* Canonical typed encoding of protected SQL rows, including tombstones. The
    namespace and separate HMAC domain prevent cross-scope/protocol substitution. */
 static int cmeMapSign(cmeContextManager *manager, uint64_t revision,
                        cmeContextMapAnchor *anchor, unsigned char tag[32])
 {
     static const unsigned char domain[]="CDSE-HKX-MAP-v1";
+    static const unsigned char extendedDomain[]="CDSE-HKX-MAP-v2";
     cmeMapEncoding encoding={0};
     sqlite3_stmt *maps=NULL,*slots=NULL;
     sqlite3_int64 names,total,seen=0;
     unsigned int written;
-    int result=1,step,slotStep;
+    int result=1,step,slotStep,extended;
     encoding.bytes=malloc(cmeContextRegistryMaxBytes);
-    if (!encoding.bytes || !revision || sqlite3_prepare_v2(manager->db,
+    if (!encoding.bytes || !revision || cmeShuffleVersion(manager,&extended) || sqlite3_prepare_v2(manager->db,
         "SELECT (SELECT count(*) FROM context_maps),(SELECT count(*) FROM context_map_slots)",
         -1,&maps,NULL)!=SQLITE_OK || sqlite3_step(maps)!=SQLITE_ROW) goto done;
     names=sqlite3_column_int64(maps,0); total=sqlite3_column_int64(maps,1);
     if (names<0 || names>cmeContextRegistryMaxEntries || total<0 || total>cmeContextRegistryMaxEntries ||
-        cmeMapAppend(&encoding,domain,sizeof(domain)) || cmeMapAppend(&encoding,manager->deployment,16) ||
+        cmeMapAppend(&encoding,extended ? extendedDomain : domain,sizeof(domain)) || cmeMapAppend(&encoding,manager->deployment,16) ||
         cmeMapAppend(&encoding,manager->organization,16) || cmeMapNumber(&encoding,revision,8) ||
         cmeMapNumber(&encoding,(uint64_t)names,4)) goto done;
     sqlite3_finalize(maps); maps=NULL;
@@ -798,7 +912,7 @@ static int cmeMapSign(cmeContextManager *manager, uint64_t revision,
         }
         if (slotStep!=SQLITE_DONE || count || sqlite3_reset(slots)!=SQLITE_OK) goto done;
     }
-    if (step!=SQLITE_DONE || names || seen!=total ||
+    if (step!=SQLITE_DONE || names || seen!=total || (extended && cmeShuffleEncode(manager,revision,&encoding)) ||
         !HMAC(EVP_sha256(),manager->key,32,encoding.bytes,encoding.length,tag,&written) || written!=32 ||
         !EVP_Digest(encoding.bytes,encoding.length,anchor->digest,&written,EVP_sha256(),NULL) || written!=32) goto done;
     anchor->revision=revision; result=0;
@@ -934,7 +1048,7 @@ static int cmeManagerMapWrite(cmeContextManager *manager, const char *name, cons
     sqlite3_stmt *stmt=NULL;
     unsigned char tag[32];
     size_t i;
-    int result=1,step;
+    int result=1,step,pending;
     if (mapExpected) { copy=*mapExpected; mapExpected=&copy; }
     if (published) memset(published,0,sizeof(*published));
     if (!manager || !published || !expected || !mapExpected || cmeManagerName(name,1)) return(1);
@@ -949,7 +1063,7 @@ static int cmeManagerMapWrite(cmeContextManager *manager, const char *name, cons
     result=cmeManagerCurrentMatch(&state,expected); if (result) goto done;
     result=1; if (cmeMapLoad(manager,&current)) goto done;
     result=cmeMapMatch(&current,mapExpected); if (result) goto done;
-    result=1; if (current.revision==UINT64_MAX) goto done;
+    result=1; if (current.revision==UINT64_MAX || cmeShufflePending(manager,name,&pending) || pending) goto done;
     cmeManagerCheckpoint("after-begin");
     if (sqlite3_prepare_v2(manager->db,"SELECT resource,role,active FROM context_maps WHERE name=?1",
         -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
@@ -1044,6 +1158,7 @@ int cmeContextManagerMapRead(cmeContextManager *manager, const char *name,
     if (!candidate) goto done;
     candidate->resource=strdup((const char *)sqlite3_column_text(stmt,0));
     candidate->role=(unsigned int)sqlite3_column_int(stmt,1); candidate->active=sqlite3_column_int(stmt,2);
+    if (cmeShufflePending(manager,name,&candidate->blocked)) goto done;
     sqlite3_finalize(stmt); stmt=NULL;
     candidate->slots=calloc(cmeContextRegistryMaxEntries,sizeof(*candidate->slots));
     if (!candidate->resource || !candidate->slots || sqlite3_prepare_v2(manager->db,
@@ -1078,7 +1193,7 @@ int cmeContextManagerMapBind(cmeContextManager *manager, const char *name,
     if (binding) *binding=NULL;
     if (!binding) return(1);
     result=cmeContextManagerMapRead(manager,name,expected,mapExpected,&map);
-    if (!result && !map->active) result=1;
+    if (!result && (!map->active || map->blocked)) result=1;
     if (!result) result=cmeContextManagerBind(manager,map->resource,map->role,map->slots,map->count,expected,binding);
     if (!result)
     {
@@ -1087,4 +1202,303 @@ int cmeContextManagerMapBind(cmeContextManager *manager, const char *name,
         if (result) cmeContextBindingFree(binding);
     }
     cmeContextMapFree(&map); return(result);
+}
+
+static int cmeShuffleCurrent(cmeContextManager *manager, const cmeContextAnchor *expected,
+                             const cmeContextMapAnchor *mapExpected, cmeManagerState *state,
+                             cmeContextMapAnchor *map)
+{
+    int result;
+    if (cmeManagerPrivate(manager) || cmeManagerLoad(manager,state)) return(1);
+    result=cmeManagerCurrentMatch(state,expected); if (result) return(result);
+    if (cmeMapLoad(manager,map)) return(1);
+    return(cmeMapMatch(map,mapExpected));
+}
+
+int cmeContextManagerShuffleInit(cmeContextManager *manager, const cmeContextAnchor *expected,
+                                 const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0},next={0},copy;
+    unsigned char tag[32];
+    int result=1,enabled;
+    if (mapExpected) { copy=*mapExpected; mapExpected=&copy; }
+    if (published) memset(published,0,sizeof(*published));
+    if (!manager || !expected || !mapExpected || !published) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=cmeShuffleCurrent(manager,expected,mapExpected,&state,&current); if (result) goto done;
+    result=1;
+    if (current.revision==UINT64_MAX || cmeShuffleVersion(manager,&enabled) || enabled) goto done;
+    cmeManagerCheckpoint("after-begin");
+    if (sqlite3_exec(manager->db,
+        "ALTER TABLE registry_meta ADD COLUMN shuffle_version INTEGER NOT NULL DEFAULT 1 CHECK(shuffle_version=1);"
+        "CREATE TABLE context_shuffles(map_name TEXT PRIMARY KEY NOT NULL,job BLOB UNIQUE NOT NULL CHECK(length(job)=32),state INTEGER NOT NULL CHECK(state IN(1,2,3)),finished BLOB NOT NULL CHECK(length(finished)=8),active_path TEXT NOT NULL,staged_path TEXT NOT NULL,source BLOB NOT NULL CHECK(length(source)=32),target BLOB NOT NULL CHECK(length(target)=32));"
+        "CREATE TABLE context_shuffle_slots(map_name TEXT NOT NULL,table_name TEXT NOT NULL,slot INTEGER NOT NULL,field_name TEXT NOT NULL,lookup TEXT NOT NULL,PRIMARY KEY(map_name,table_name,slot,field_name));",
+        NULL,NULL,NULL)!=SQLITE_OK || cmeMapSign(manager,current.revision+1,&next,tag) || cmeMapHead(manager,&next,tag)) goto done;
+    cmeManagerCheckpoint("after-write");
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    cmeManagerCheckpoint("after-commit"); *published=next; result=0;
+done:
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
+void cmeContextShuffleFree(cmeContextShuffle **shuffle)
+{
+    if (!shuffle || !*shuffle) return;
+    free((*shuffle)->activePath); free((*shuffle)->stagedPath);
+    cmeContextMapFree(&(*shuffle)->target); free(*shuffle); *shuffle=NULL;
+}
+
+int cmeContextManagerShuffleRead(cmeContextManager *manager, const char *name,
+                                 const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                                 cmeContextShuffle **shuffle)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0};
+    cmeContextShuffle *candidate=NULL;
+    sqlite3_stmt *stmt=NULL;
+    unsigned int i;
+    int result=1,enabled,step;
+    if (shuffle) *shuffle=NULL;
+    if (!manager || !expected || !mapExpected || !shuffle || cmeManagerName(name,1)) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=cmeShuffleCurrent(manager,expected,mapExpected,&state,&current); if (result) goto done;
+    result=1; if (cmeShuffleVersion(manager,&enabled) || !enabled) goto done;
+    if (sqlite3_prepare_v2(manager->db,"SELECT j.job,j.state,j.finished,j.active_path,j.staged_path,j.source,j.target,m.resource,m.role "
+        "FROM context_shuffles j JOIN context_maps m ON j.map_name=m.name WHERE j.map_name=?1",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_ROW) goto done;
+    candidate=calloc(1,sizeof(*candidate));
+    if (!candidate) goto done;
+    candidate->target=calloc(1,sizeof(*candidate->target));
+    if (!candidate->target) goto done;
+    memcpy(candidate->job,sqlite3_column_blob(stmt,0),32); candidate->state=sqlite3_column_int(stmt,1);
+    for (i=0;i<8;i++) candidate->finishedRevision=(candidate->finishedRevision<<8)|((const unsigned char *)sqlite3_column_blob(stmt,2))[i];
+    candidate->activePath=strdup((const char *)sqlite3_column_text(stmt,3));
+    candidate->stagedPath=strdup((const char *)sqlite3_column_text(stmt,4));
+    memcpy(candidate->sourceDigest,sqlite3_column_blob(stmt,5),32); memcpy(candidate->targetDigest,sqlite3_column_blob(stmt,6),32);
+    candidate->target->resource=strdup((const char *)sqlite3_column_text(stmt,7));
+    candidate->target->role=(unsigned int)sqlite3_column_int(stmt,8); candidate->target->active=1;
+    candidate->target->slots=calloc(cmeContextRegistryMaxEntries,sizeof(*candidate->target->slots));
+    if (!candidate->activePath || !candidate->stagedPath || !candidate->target->resource || !candidate->target->slots) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"SELECT lookup,table_name,slot,field_name FROM context_shuffle_slots WHERE map_name=?1 "
+        "ORDER BY table_name COLLATE BINARY,slot,field_name COLLATE BINARY",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(stmt))==SQLITE_ROW)
+    {
+        cmeContextSlot *slot;
+        if (candidate->target->count==cmeContextRegistryMaxEntries) goto done;
+        slot=&candidate->target->slots[candidate->target->count++];
+        slot->lookup=strdup((const char *)sqlite3_column_text(stmt,0));
+        slot->table=strdup((const char *)sqlite3_column_text(stmt,1)); slot->row=sqlite3_column_int64(stmt,2);
+        slot->field=strdup((const char *)sqlite3_column_text(stmt,3));
+        if (!slot->lookup || !slot->table || !slot->field) goto done;
+    }
+    if (step!=SQLITE_DONE || sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    *shuffle=candidate; candidate=NULL; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); cmeContextShuffleFree(&candidate);
+    pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
+static int cmeShuffleSlotCompare(const void *left, const void *right)
+{
+    const cmeContextSlot *a=*(const cmeContextSlot *const *)left,*b=*(const cmeContextSlot *const *)right;
+    int result=strcmp(a->lookup,b->lookup);
+    if (!result) result=strcmp(a->table,b->table);
+    return(result ? result : strcmp(a->field,b->field));
+}
+
+static int cmeShufflePermutation(const cmeContextMap *source, const cmeContextSlot *target, size_t count)
+{
+    const cmeContextSlot **a=NULL,**b=NULL;
+    size_t i;
+    int result=1;
+    if (!count || count!=source->count || count>cmeContextRegistryMaxEntries) return(1);
+    a=calloc(count,sizeof(*a)); b=calloc(count,sizeof(*b));
+    if (!a || !b) goto done;
+    for (i=0;i<count;i++) { a[i]=&source->slots[i]; b[i]=&target[i]; }
+    qsort(a,count,sizeof(*a),cmeShuffleSlotCompare); qsort(b,count,sizeof(*b),cmeShuffleSlotCompare);
+    for (i=0;i<count;i++) if (cmeShuffleSlotCompare(&a[i],&b[i])) goto done;
+    result=0;
+done:
+    free(a); free(b); return(result);
+}
+
+static int cmeShuffleFilesSafe(cmeContextManager *manager, const cmeOfflineArtifact *active,
+                               const cmeOfflineArtifact *staged)
+{
+    struct stat authority;
+    if (fstat(manager->directory,&authority)) return(1);
+    return((active->status.st_dev==manager->device && active->status.st_ino==manager->inode) ||
+        (staged->file>=0 && staged->status.st_dev==manager->device && staged->status.st_ino==manager->inode) ||
+        (active->parent.st_dev==authority.st_dev && active->parent.st_ino==authority.st_ino) ||
+        (staged->parent.st_dev==authority.st_dev && staged->parent.st_ino==authority.st_ino) ||
+        (active->parent.st_dev==staged->parent.st_dev && active->parent.st_ino==staged->parent.st_ino) ||
+        active->parent.st_dev!=staged->parent.st_dev ||
+        (staged->file>=0 && active->status.st_dev!=staged->status.st_dev));
+}
+
+int cmeContextManagerShufflePrepare(cmeContextManager *manager, const char *name,
+                                    const char *activePath, const char *stagedPath,
+                                    const unsigned char sourceDigest[32], const unsigned char targetDigest[32],
+                                    const cmeContextSlot *slots, size_t count,
+                                    const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                                    unsigned char job[32], cmeContextMapAnchor *published)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0},next={0},copy;
+    cmeContextMap *source=NULL;
+    cmeContextBinding *verified=NULL;
+    cmeOfflineArtifact active={.file=-1,.directory=-1},staged={.file=-1,.directory=-1};
+    sqlite3_stmt *stmt=NULL;
+    unsigned char nonce[32],tag[32];
+    size_t i;
+    unsigned int nonzero=0;
+    int result=1,enabled;
+    if (mapExpected) { copy=*mapExpected; mapExpected=&copy; }
+    if (published) memset(published,0,sizeof(*published));
+    if (job) memset(job,0,32);
+    if (!manager || !job || !published || !expected || !mapExpected || !sourceDigest || !targetDigest ||
+        !slots || !count || count>cmeContextRegistryMaxEntries || !memcmp(sourceDigest,targetDigest,32)) return(1);
+    result=cmeContextManagerMapRead(manager,name,expected,mapExpected,&source); if (result) return(result);
+    result=1;
+    if (!source->active || source->blocked || source->role!=4) goto before;
+    result=cmeContextManagerBind(manager,source->resource,4,slots,count,expected,&verified); if (result) goto before;
+    result=1;
+    if (cmeShufflePermutation(source,slots,count) || cmeOfflineOpen(activePath,1,&active) ||
+        cmeOfflineOpen(stagedPath,1,&staged) || cmeShuffleFilesSafe(manager,&active,&staged) ||
+        CRYPTO_memcmp(active.digest,sourceDigest,32) || CRYPTO_memcmp(staged.digest,targetDigest,32)) goto before;
+    pthread_mutex_lock(&manager->mutex);
+    if (sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=cmeShuffleCurrent(manager,expected,mapExpected,&state,&current); if (result) goto done;
+    result=1;
+    if (current.revision==UINT64_MAX || cmeShuffleVersion(manager,&enabled) || !enabled ||
+        cmeOfflineVerify(&active) || cmeOfflineVerify(&staged) || cmeOfflineSync(&active,&staged)) goto done;
+    cmeManagerCheckpoint("after-begin");
+    if (sqlite3_prepare_v2(manager->db,"SELECT 1 FROM context_shuffles WHERE state=1 AND "
+        "(active_path IN(?1,?2) OR staged_path IN(?1,?2)) LIMIT 1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,activePath,-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,2,stagedPath,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+#ifdef CDSE_CONTEXT_MANAGER_TESTING
+    if (getenv("CDSE_CONTEXT_MANAGER_RANDOM") && !strcmp(getenv("CDSE_CONTEXT_MANAGER_RANDOM"),"fail")) goto done;
+#endif
+    if (RAND_bytes(nonce,32)!=1) goto done;
+    for (i=0;i<32;i++) nonzero|=nonce[i];
+    if (!nonzero || sqlite3_prepare_v2(manager->db,"INSERT INTO context_shuffles VALUES(?1,?2,1,zeroblob(8),?3,?4,?5,?6) "
+        "ON CONFLICT(map_name) DO UPDATE SET job=excluded.job,state=1,finished=excluded.finished,active_path=excluded.active_path,"
+        "staged_path=excluded.staged_path,source=excluded.source,target=excluded.target",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_bind_blob(stmt,2,nonce,32,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,3,activePath,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_bind_text(stmt,4,stagedPath,-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,5,sourceDigest,32,SQLITE_STATIC)!=SQLITE_OK || sqlite3_bind_blob(stmt,6,targetDigest,32,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"DELETE FROM context_shuffle_slots WHERE map_name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"INSERT INTO context_shuffle_slots VALUES(?1,?2,?3,?4,?5)",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+    for (i=0;i<count;i++)
+        if (sqlite3_bind_text(stmt,2,slots[i].table,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_bind_int64(stmt,3,slots[i].row)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,4,slots[i].field,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_bind_text(stmt,5,slots[i].lookup,-1,SQLITE_STATIC)!=SQLITE_OK ||
+            sqlite3_step(stmt)!=SQLITE_DONE || sqlite3_reset(stmt)!=SQLITE_OK) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (cmeMapSign(manager,current.revision+1,&next,tag) || cmeMapHead(manager,&next,tag)) goto done;
+    cmeManagerCheckpoint("after-write");
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    cmeManagerCheckpoint("after-commit"); memcpy(job,nonce,32); *published=next; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
+before:
+    cmeOfflineClose(&active); cmeOfflineClose(&staged);
+    cmeContextMapFree(&source); cmeContextBindingFree(&verified); return(result);
+}
+
+int cmeContextManagerShuffleRecover(cmeContextManager *manager, const char *name,
+                                    const unsigned char job[32], int complete,
+                                    const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                                    cmeContextMapAnchor *published)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0},next={0},copy;
+    cmeContextShuffle *shuffle=NULL;
+    cmeContextBinding *verified=NULL;
+    cmeOfflineArtifact active={.file=-1,.directory=-1},staged={.file=-1,.directory=-1};
+    sqlite3_stmt *stmt=NULL;
+    unsigned char tag[32],finished[8];
+    unsigned int i;
+    int result=1,isTarget;
+    if (mapExpected) { copy=*mapExpected; mapExpected=&copy; }
+    if (published) memset(published,0,sizeof(*published));
+    if (!manager || !job || !expected || !mapExpected || !published || (complete!=0 && complete!=1)) return(1);
+    result=cmeContextManagerShuffleRead(manager,name,expected,mapExpected,&shuffle); if (result) return(result);
+    result=1;
+    if (CRYPTO_memcmp(shuffle->job,job,32) || (shuffle->state!=1 && shuffle->state!=(complete ? 2 : 3))) goto before;
+    if (complete)
+    {
+        result=cmeContextManagerBind(manager,shuffle->target->resource,4,shuffle->target->slots,shuffle->target->count,expected,&verified);
+        if (result) goto before;
+    }
+    result=1; pthread_mutex_lock(&manager->mutex);
+    if (sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=cmeShuffleCurrent(manager,expected,mapExpected,&state,&current); if (result) goto done;
+    result=1;
+    if (shuffle->state!=1 && shuffle->finishedRevision!=current.revision) { result=2; goto done; }
+    if (shuffle->state==1 && current.revision==UINT64_MAX) goto done;
+    cmeManagerCheckpoint("after-begin");
+    if (cmeOfflineOpen(shuffle->activePath,1,&active) || cmeOfflineOpen(shuffle->stagedPath,0,&staged) ||
+        cmeShuffleFilesSafe(manager,&active,&staged)) goto done;
+    isTarget=!CRYPTO_memcmp(active.digest,shuffle->targetDigest,32);
+    if (!isTarget && CRYPTO_memcmp(active.digest,shuffle->sourceDigest,32)) goto done;
+    if (!complete && isTarget) goto done;
+    if (shuffle->state!=1)
+    {
+        if (complete!=isTarget || cmeOfflineSync(&active,&staged) ||
+            sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+        *published=current; result=0; goto done;
+    }
+    if (complete && !isTarget)
+    {
+        cmeOfflineClose(&staged);
+        if (cmeOfflineOpen(shuffle->stagedPath,1,&staged) || cmeShuffleFilesSafe(manager,&active,&staged) ||
+            CRYPTO_memcmp(staged.digest,shuffle->targetDigest,32) || cmeOfflineInstall(&active,&staged)) goto done;
+    }
+    else if (cmeOfflineSync(&active,&staged)) goto done;
+    cmeManagerCheckpoint("after-artifact-sync");
+    if (complete)
+    {
+        if (sqlite3_prepare_v2(manager->db,"DELETE FROM context_map_slots WHERE map_name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+        sqlite3_finalize(stmt); stmt=NULL;
+        if (sqlite3_prepare_v2(manager->db,"INSERT INTO context_map_slots SELECT map_name,table_name,slot,field_name,lookup "
+            "FROM context_shuffle_slots WHERE map_name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+        sqlite3_finalize(stmt); stmt=NULL;
+    }
+    for (i=0;i<8;i++) finished[i]=(unsigned char)((current.revision+1)>>(56-8*i));
+    if (sqlite3_prepare_v2(manager->db,"UPDATE context_shuffles SET state=?2,finished=?3 WHERE map_name=?1 AND job=?4",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_int(stmt,2,complete ? 2 : 3)!=SQLITE_OK || sqlite3_bind_blob(stmt,3,finished,8,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,4,job,32,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE || sqlite3_changes(manager->db)!=1) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (cmeMapSign(manager,current.revision+1,&next,tag) || cmeMapHead(manager,&next,tag)) goto done;
+    cmeManagerCheckpoint("after-write");
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    cmeManagerCheckpoint("after-commit"); *published=next; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
+before:
+    cmeOfflineClose(&active); cmeOfflineClose(&staged);
+    cmeContextShuffleFree(&shuffle); cmeContextBindingFree(&verified); return(result);
 }

@@ -241,6 +241,70 @@ done:
     cmeContextManagerClose(&second); return(result);
 }
 
+static int cmeFixtureShuffle(cmeContextManager *manager, int argc, char **argv)
+{
+    cmeContextAnchor registry={0};
+    cmeContextMapAnchor expected={0},next,empty={0},*output=&next;
+    cmeContextShuffle *shuffle=NULL;
+    cmeContextSlot *slots=NULL;
+    unsigned char bytes[40],job[32]={0},source[32],target[32];
+    size_t i,count=0;
+    int result=1,init=!strcmp(argv[2],"shuffle-init"),prepare=!strcmp(argv[2],"shuffle-prepare");
+    int read=!strcmp(argv[2],"shuffle-read");
+    memset(&next,0xff,sizeof(next));
+    if (argc<(init ? 7 : (prepare ? 13 : (read ? 8 : 10))) ||
+        cmeFixtureRegistryToken(argv[init ? 5 : (prepare ? 10 : (read ? 6 : 8))],&registry) ||
+        cmeFixtureDecode(argv[init ? 6 : (prepare ? 11 : (read ? 7 : 9))],bytes,40)) goto done;
+    for (i=0;i<8;i++) expected.revision=(expected.revision<<8)|bytes[i];
+    memcpy(expected.digest,bytes+8,32);
+    if (getenv("CDSE_CONTEXT_MANAGER_ALIAS")) output=&expected;
+    if (init) result=cmeContextManagerShuffleInit(manager,&registry,&expected,output);
+    else if (read)
+    {
+        result=cmeContextManagerShuffleRead(manager,argv[5],&registry,&expected,&shuffle);
+        if (result) { if (shuffle) result=3; goto done; }
+        printf("{\"job\":\""); cmeFixturePrint(shuffle->job,32);
+        printf("\",\"state\":%d,\"finished\":%llu,\"source\":\"",shuffle->state,(unsigned long long)shuffle->finishedRevision);
+        cmeFixturePrint(shuffle->sourceDigest,32); printf("\",\"target\":\""); cmeFixturePrint(shuffle->targetDigest,32);
+        printf("\",\"slots\":[");
+        for (i=0;i<shuffle->target->count;i++)
+            printf("%s[\"%s\",\"%s\",%lld,\"%s\"]",i ? "," : "",shuffle->target->slots[i].lookup,
+                shuffle->target->slots[i].table,(long long)shuffle->target->slots[i].row,shuffle->target->slots[i].field);
+        puts("]}"); goto done;
+    }
+    else if (prepare)
+    {
+        if (cmeFixtureDecode(argv[8],source,32) || cmeFixtureDecode(argv[9],target,32)) goto done;
+        count=strtoul(argv[12],NULL,10);
+        if (count>cmeContextRegistryMaxEntries+1 || 13+count*4!=(size_t)argc) goto done;
+        slots=calloc(count ? count : 1,sizeof(*slots)); if (!slots) goto done;
+        for (i=0;i<count;i++)
+        {
+            slots[i].lookup=argv[13+i*4]; slots[i].table=argv[14+i*4];
+            slots[i].row=strtoll(argv[15+i*4],NULL,10); slots[i].field=argv[16+i*4];
+        }
+        memset(job,0xff,32);
+        result=cmeContextManagerShufflePrepare(manager,argv[5],argv[6],argv[7],source,target,slots,count,
+            &registry,&expected,job,output);
+        if (result) for (i=0;i<32;i++) if (job[i]) result=3;
+        if (!result) { cmeFixturePrint(job,32); putchar('\n'); }
+    }
+    else if (!strcmp(argv[2],"shuffle-recover"))
+    {
+        if (cmeFixtureDecode(argv[6],job,32)) goto done;
+        result=cmeContextManagerShuffleRecover(manager,argv[5],job,(int)strtol(argv[7],NULL,10),&registry,&expected,output);
+    }
+    if (result && memcmp(output,&empty,sizeof(empty))) result=3;
+    if (!result)
+    {
+        for (i=0;i<8;i++) bytes[i]=(unsigned char)(output->revision>>(56-8*i));
+        cmeFixturePrint(bytes,8); cmeFixturePrint(output->digest,32); putchar('\n');
+    }
+done:
+    free(slots); cmeContextShuffleFree(&shuffle); cmeContextShuffleFree(&shuffle); cmeContextShuffleFree(NULL);
+    return(result);
+}
+
 int main(int argc, char **argv)
 {
     cmeContextManager *manager=NULL,*second=NULL;
@@ -257,6 +321,7 @@ int main(int argc, char **argv)
     if (cmeFixtureDecode(argv[3],next.deployment,16) || cmeFixtureDecode(argv[4],next.organization,16)) return(2);
     if (cmeContextManagerOpen(argv[1],!strcmp(argv[2],"init"),key,next.deployment,next.organization,&manager)) goto done;
     if (!strcmp(argv[2],"init") && argc==5) { result=0; goto done; }
+    if (!strncmp(argv[2],"shuffle-",8)) { result=cmeFixtureShuffle(manager,argc,argv); goto done; }
     if (!strncmp(argv[2],"map-",4)) { result=cmeFixtureMaps(manager,argc,argv); goto done; }
     if (!strcmp(argv[2],"bind")) { result=cmeFixtureBinding(manager,argc,argv); goto done; }
     if (!strcmp(argv[2],"anchor") && argc==5)

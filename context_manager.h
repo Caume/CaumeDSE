@@ -24,6 +24,7 @@ typedef struct
     char *resource;
     unsigned int role;
     int active;
+    int blocked; /* Pending offline intent; metadata is never a crypto binding. */
     size_t count;
     cmeContextSlot *slots;
 } cmeContextMap;
@@ -165,5 +166,50 @@ void cmeContextMapFree(cmeContextMap **map);
 int cmeContextManagerMapBind(cmeContextManager *manager, const char *name,
                              const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
                              cmeContextBinding **binding);
+
+typedef struct
+{
+    unsigned char job[32], sourceDigest[32], targetDigest[32];
+    char *activePath, *stagedPath;
+    int state; /* 1 prepared, 2 completed, 3 aborted */
+    uint64_t finishedRevision;
+    cmeContextMap *target;
+} cmeContextShuffle;
+
+/* Explicit upgrade to catalog authentication v2; older catalog readers fail
+   closed afterward. Registry-only APIs/formats remain unchanged. */
+int cmeContextManagerShuffleInit(cmeContextManager *manager, const cmeContextAnchor *expected,
+                                 const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published);
+/* OFFLINE trusted owner only: stop all readers/writers, close/checkpoint SQLite,
+   independently verify and approve both file digests and the complete shuffle.
+   Private canonical directories/files (0700/0600), no links/sidecars, same FS;
+   staging must be outside all exports. Only role-4, identity-preserving slot
+   permutations are accepted. File size bound is 256 MiB. No payload/tag proof.
+   Prepare fsyncs approved files/directories, persists intent and blocks stored
+   binding.
+   Outputs clear on failure; mapExpected/published may alias. Other inputs must
+   remain stable and nonoverlapping. Returns 0/2/1 as catalog writes do. */
+int cmeContextManagerShufflePrepare(cmeContextManager *manager, const char *name,
+                                    const char *activePath, const char *stagedPath,
+                                    const unsigned char sourceDigest[32], const unsigned char targetDigest[32],
+                                    const cmeContextSlot *slots, size_t count,
+                                    const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                                    unsigned char job[32], cmeContextMapAnchor *published);
+/* Owned authenticated metadata, not a payload/binding proof. Read clears the
+   output on failure; retain metadata unchanged until ShuffleFree. */
+int cmeContextManagerShuffleRead(cmeContextManager *manager, const char *name,
+                                 const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                                 cmeContextShuffle **shuffle);
+void cmeContextShuffleFree(cmeContextShuffle **shuffle);
+/* complete=1 installs the approved target (atomic rename + directory fsync),
+   then commits its map. complete=0 aborts only while approved source is active.
+   Unknown/missing bytes leave intent blocked. Receipts permit lost-ack retry
+   only at their exact finished catalog revision and matching file digest.
+   This is fail-closed recovery, not a cross-file transaction, live lease,
+   hardware rollback defense, or physical power-loss certification. */
+int cmeContextManagerShuffleRecover(cmeContextManager *manager, const char *name,
+                                    const unsigned char job[32], int complete,
+                                    const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+                                    cmeContextMapAnchor *published);
 
 #endif

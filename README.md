@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.10.0
+# Caume Data Security Engine (CaumeDSE) version 2.11.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2867,8 +2867,17 @@ persists approved slot maps in the protected manager database with atomic
 publication and a separate revision/digest CAS. Direct binding still requires
 an independently approved map; stored binding authenticates the catalog and
 revalidates current contexts. A trusted owner adapter must select the correct
-map and coordinate backing-file changes. These APIs are not wired
-to live storage routes and do not delete files. `CDSEHKX2` remains a draft with
+map and coordinate backing-file changes. An explicit catalog upgrade adds
+offline ColumnFile shuffle intents: approved source/target SHA-256 pins and an
+identity-preserving slot permutation, blocked binding while prepared, atomic
+file rename followed by map publication, and restart reconciliation. This
+requires exclusive offline ownership, private closed rollback-mode SQLite files
+(at most 256 MiB each), separate private staging outside every export, and
+independent owner verification of the candidate contents. It is not a cross-file
+transaction, payload-integrity proof or automatic restore. Older catalog readers
+fail closed after this opt-in upgrade; registry/frame formats are unchanged.
+These APIs are not wired to live storage routes and do not implement resource
+deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider
 validation are still pending under TODO #147. See
 [`HERRADURAKEX_AT_REST_PLAN.md`](HERRADURAKEX_AT_REST_PLAN.md) for lifecycle,
