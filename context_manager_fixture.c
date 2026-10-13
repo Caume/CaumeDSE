@@ -128,6 +128,119 @@ done:
     return(result);
 }
 
+static int cmeFixtureRegistryToken(const char *text, cmeContextAnchor *anchor)
+{
+    unsigned char bytes[73];
+    size_t i;
+    if (cmeFixtureDecode(text,bytes,sizeof(bytes))) return(1);
+    memset(anchor,0,sizeof(*anchor));
+    memcpy(anchor->deployment,bytes,16); memcpy(anchor->organization,bytes+16,16);
+    for (i=0;i<8;i++) anchor->generation=(anchor->generation<<8)|bytes[32+i];
+    anchor->minimumFormat=bytes[40]; memcpy(anchor->digest,bytes+41,32); return(0);
+}
+
+static int cmeFixtureMaps(cmeContextManager *manager, int argc, char **argv)
+{
+    cmeContextManager *second=NULL;
+    cmeContextMap *metadata=NULL;
+    cmeContextAnchor registry={0},changed={0};
+    cmeContextMapAnchor expected={0},next,empty={0},*output=&next;
+    cmeContextBinding *binding=NULL;
+    cmeContextSlot *slots=NULL;
+    unsigned char bytes[40],key[32];
+    size_t i,count=0;
+    int result=1,store=!strcmp(argv[2],"map-store"),remove=!strcmp(argv[2],"map-remove");
+    int read=!strcmp(argv[2],"map-read");
+    memset(&next,0xff,sizeof(next));
+    if (!strcmp(argv[2],"map-anchor") && argc==5) result=cmeContextManagerMapFetch(manager,&next);
+    else if (!strcmp(argv[2],"map-init") && argc==6)
+    {
+        if (cmeFixtureRegistryToken(argv[5],&registry)) goto done;
+        result=cmeContextManagerMapInit(manager,&registry,&next);
+    }
+    else if (store || remove || read || !strcmp(argv[2],"map-bind"))
+    {
+        if (argc<(store ? 11 : ((remove || read) ? 8 : 9)) ||
+            cmeFixtureRegistryToken(argv[store ? 8 : 6],&registry) ||
+            cmeFixtureDecode(argv[store ? 9 : 7],bytes,sizeof(bytes))) goto done;
+        for (i=0;i<8;i++) expected.revision=(expected.revision<<8)|bytes[i];
+        memcpy(expected.digest,bytes+8,32);
+        if (read)
+        {
+            result=cmeContextManagerMapRead(manager,argv[5],&registry,&expected,&metadata);
+            if (result) { if (metadata) result=3; goto done; }
+            printf("{\"resource\":\"%s\",\"role\":%u,\"active\":%d,\"slots\":[",
+                metadata->resource,metadata->role,metadata->active);
+            for (i=0;i<metadata->count;i++)
+                printf("%s[\"%s\",\"%s\",%lld,\"%s\"]",i ? "," : "",metadata->slots[i].lookup,
+                    metadata->slots[i].table,(long long)metadata->slots[i].row,metadata->slots[i].field);
+            puts("]}"); goto done;
+        }
+        if (getenv("CDSE_CONTEXT_MANAGER_ALIAS")) output=&expected;
+        if (store)
+        {
+            count=strtoul(argv[10],NULL,10);
+            if (count>cmeContextRegistryMaxEntries+1 || 11+count*4!=(size_t)argc) goto done;
+            slots=calloc(count ? count : 1,sizeof(*slots));
+            if (!slots) goto done;
+            for (i=0;i<count;i++)
+            {
+                slots[i].lookup=argv[11+i*4]; slots[i].table=argv[12+i*4];
+                slots[i].row=strtoll(argv[13+i*4],NULL,10); slots[i].field=argv[14+i*4];
+            }
+            result=cmeContextManagerMapStore(manager,argv[5],argv[6],(unsigned int)strtoul(argv[7],NULL,10),
+                slots,count,&registry,&expected,output);
+        }
+        else if (remove) result=cmeContextManagerMapRemove(manager,argv[5],&registry,&expected,output);
+        else
+        {
+            const char *update=getenv("CDSE_CONTEXT_MAP_UPDATE"),*revoke=getenv("CDSE_CONTEXT_MAP_REVOKE");
+            count=strtoul(argv[8],NULL,10);
+            if (count>(size_t)(argc-9)/3 || 9+count*3!=(size_t)argc) goto done;
+            result=cmeContextManagerMapBind(manager,argv[5],&registry,&expected,&binding);
+            if (result) { if (binding) result=3; goto done; }
+            if (getenv("CDSE_CONTEXT_MAP_REMOVE") || update || revoke)
+            {
+                memset(key,'k',32);
+                if (cmeContextManagerOpen(argv[1],0,key,registry.deployment,registry.organization,&second))
+                    { result=1; goto done; }
+            }
+            if (getenv("CDSE_CONTEXT_MAP_REMOVE") &&
+                cmeContextManagerMapRemove(second,argv[5],&registry,&expected,&next)) { result=1; goto done; }
+            if (update)
+            {
+                cmeContextSlot replacement={"first","data","value",99};
+                if (cmeContextManagerMapStore(second,update,"first",4,&replacement,1,&registry,&expected,&next))
+                    { result=1; goto done; }
+            }
+            if (revoke && cmeContextManagerRevoke(second,revoke,&registry,&changed)) { result=1; goto done; }
+            printf("{\"current\":%d,\"results\":[",cmeContextBindingCheck(manager,binding));
+            for (i=0;i<count;i++)
+            {
+                cmeStorageContext context,cleared={0};
+                unsigned int floor=99;
+                int found=cmeContextBindingLookup(binding,argv[9+i*3],strtoll(argv[10+i*3],NULL,10),
+                    argv[11+i*3],&context,&floor);
+                if (found && (floor || memcmp(&context,&cleared,sizeof(context)))) { result=3; goto done; }
+                printf("%s{\"result\":%d,\"floor\":%u,\"record\":\"",i ? "," : "",found,floor);
+                cmeFixturePrint(context.ids[4],16); printf("\"}");
+            }
+            puts("]}"); goto done;
+        }
+        if (result && memcmp(output,&empty,sizeof(empty))) result=3;
+        if (!result) next=*output;
+    }
+    if (!result)
+    {
+        for (i=0;i<8;i++) bytes[i]=(unsigned char)(next.revision>>(56-8*i));
+        cmeFixturePrint(bytes,8); cmeFixturePrint(next.digest,32); putchar('\n');
+    }
+done:
+    free(slots); cmeContextBindingFree(&binding); cmeContextMapFree(&metadata);
+    cmeContextMapFree(&metadata); cmeContextMapFree(NULL);
+    cmeContextManagerClose(&second); return(result);
+}
+
 int main(int argc, char **argv)
 {
     cmeContextManager *manager=NULL,*second=NULL;
@@ -144,6 +257,7 @@ int main(int argc, char **argv)
     if (cmeFixtureDecode(argv[3],next.deployment,16) || cmeFixtureDecode(argv[4],next.organization,16)) return(2);
     if (cmeContextManagerOpen(argv[1],!strcmp(argv[2],"init"),key,next.deployment,next.organization,&manager)) goto done;
     if (!strcmp(argv[2],"init") && argc==5) { result=0; goto done; }
+    if (!strncmp(argv[2],"map-",4)) { result=cmeFixtureMaps(manager,argc,argv); goto done; }
     if (!strcmp(argv[2],"bind")) { result=cmeFixtureBinding(manager,argc,argv); goto done; }
     if (!strcmp(argv[2],"anchor") && argc==5)
     {

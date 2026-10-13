@@ -928,3 +928,118 @@ corrupt authority, a valid 1024-slot map and the synthetic SQLite lifecycle.
 Durable authenticated owner mapping and atomic storage lifecycle integration remain pending, along
 with V2 provider/storage APIs and persisted substitution/legacy-readback tests.
 TODO #147 stays open; no storage-security or physical power-loss claim is added.
+
+## Durable Owner Maps (#147, Phase 8)
+
+The opt-in owner-map catalog adds durable authenticated physical slot mappings
+to the same protected manager SQLite database, outside every storage export.
+It does not add HTTP routes, enable V2, change registry snapshot/frame formats,
+or atomically commit changes to backing files. Trusted in-process owners still
+approve the resource handle, map name and complete slot map; HMAC authentication
+of that approval is not remote owner authentication or a substitute for access
+control/key custody. Map names are stable owner handles, not candidate filenames,
+request values or lookup columns read from an untrusted artifact.
+
+`cmeContextManagerMapInit` is an explicit one-time extension of an already
+initialized manager. In one SQLite transaction it adds `mapping_version=1` to
+`registry_meta`, creates `context_maps`, `context_map_slots` and
+`context_map_head`, and publishes authenticated empty catalog revision 1. The
+persistent marker prevents a missing head/table from being treated as fresh
+state. Reinitialization or implicit repair is forbidden. Existing registry-only
+databases remain unchanged until the owner opts in; their existing APIs and
+schema-1 registry snapshots remain compatible. Older registry-only code ignores
+the extra catalog columns/tables, but cannot read or update stored maps.
+
+The catalog has a separate `cmeContextMapAnchor`: unsigned 64-bit revision plus
+SHA-256 digest. Revision is stored as an 8-byte big-endian BLOB, not a signed SQL
+integer. Each publication advances it by exactly one; overflow fails closed.
+`MapFetch` authenticates current registry authority and every catalog row before
+returning this anchor. A valid catalog does not prove that all referenced
+registrations remain active; `MapBind` performs that separate current-state
+validation. Registry publications do not rewrite the catalog or its revision.
+
+### Catalog Authentication Encoding
+
+The HMAC-SHA256 key is the supplied registry-manager key, not an organization
+password. Domain separation uses the following canonical typed encoding, with
+all integers big-endian and all strings bounded ASCII:
+
+```text
+"CDSE-HKX-MAP-v1" || NUL || deployment[16] || organization[16]
+|| revision[8] || retained_map_count[4]
+|| each map, ordered by name using binary ASCII comparison:
+     name_length[1] || name || resource_lookup_length[1] || resource_lookup
+     || role[1] || active[1] || slot_count[4]
+     || each slot, ordered by table, signed row value, field:
+          table_length[1] || table || row[8, two's-complement]
+          || field_length[1] || field || lookup_length[1] || lookup
+```
+
+Names/resource/registration lookups use the existing 1..128-byte handle grammar;
+table/field names use the existing 1..64-byte schema grammar. Role is 1..5 and
+active is 0 or 1. Active maps have at least one slot; tombstones have none. The
+digest is SHA-256 over these same bytes. The stored head contains revision and
+HMAC; readers reconstruct and authenticate the complete encoding from typed SQL
+rows. Type/name/bounds violations, embedded NULs, orphan slots, bad signatures,
+foreign scope and missing state fail closed. Canonical ordering is independent
+of insertion order. Limits are 4096 retained names, 4096 total slots and 1 MiB of
+encoded catalog bytes. A separate Python encoder checks interoperability.
+
+### Publication And Binding
+
+`MapStore` replaces one entire approved map. It first applies the existing
+binding/schema/resource checks, then reloads current registry/catalog state in
+`BEGIN IMMEDIATE` and compares both full anchors. Slot rows, catalog revision
+and signature commit together using the manager's existing DELETE/EXTRA
+journaling policy. There is no separately committed partial row permutation.
+An existing name cannot change its resource registration handle or role.
+`MapRemove` retains that name/resource/role as an irreversible tombstone and
+removes its slots in the same publication. It does not revoke UUID registrations,
+other owner maps or backing files. Different approved maps may represent multiple
+views/staging positions of a resource; the API does not authorize identity clones.
+
+Initialization/writes return 0 success, 2 anchor conflict and 1 invalid/unavailable
+state, clearing outputs on failure. Expected/published catalog anchors may alias;
+other inputs remain stable and nonoverlapping until return. Failed CAS, size/count
+limits, bad binding shape or overflow roll back every candidate row. After a
+lost acknowledgement, refresh both anchors and reconcile intended map membership
+before deciding to retry. `MapRead` returns an owned authenticated copy of the
+complete map metadata, including tombstones and references that were later
+revoked, for exact membership/status comparison; free it with `MapFree`. It is
+not a validated crypto binding and must never bypass `MapBind`'s active-context
+checks. Do not recreate catalog authority or infer that a
+backing-file change committed from the catalog transaction alone.
+
+`MapBind` accepts an independently trusted map name and both expected anchors.
+It authenticates durable map state, copies the approved slots, validates their
+active resource/record/schema registrations against the expected registry, and
+rechecks both anchors before returning an operation-scoped handle. A concurrent
+catalog or registry publication causes failure/conflict rather than a usable
+partial binding. `cmeContextBindingCheck` compares both anchors in one current
+read transaction for stored bindings, including changes from other connections;
+direct phase-7 bindings continue to pin registry state only. Local Lookup retains
+the operation snapshot. Neither check is a lease or storage lock; rebind each
+operation and coordinate writes/revocation with a reviewed storage policy.
+
+An owner can publish an approved row permutation without allocating replacement
+UUIDs. Path rename/staging keeps the stable owner map name. However, the correct
+map must still be selected outside candidate metadata, and live ordering between
+storage mutations and catalog publication remains a rollout blocker. This phase
+does not implement a live storage adapter or an atomic two-database transaction.
+
+The protected database is still authority. Replaying an authentic complete
+catalog/head or whole manager backup is NOT detected by its own HMAC/revision;
+an independently retained newer anchor detects replay only while it remains
+trusted. Protect recovery with external monotonic policy before production use.
+No hardware rollback resistance, owner network service, key rotation or automatic
+restore/compaction is supplied. Tombstone names count toward the lifetime limit.
+
+Nineteen new integration checks cover opt-in/backward compatibility, independent
+encoding, reopen, all roles/signed slots/floors, both CAS pins, aliasing, immutable
+names/tombstones, map validation, fresh cross-connection checks, corrupt/foreign
+and missing authority, signed-but-invalid maps, orphan rows, revision overflow,
+count/byte exhaustion, competing owners, registry revocation races and old-or-new
+initialization/replacement/removal crash recovery. Process exits do not certify
+physical power-loss recovery. #147 remains open for authenticated owner deployment,
+live storage lifecycle ordering, V2 provider integration and persisted
+cross-context substitution/legacy-readback tests.
