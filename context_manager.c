@@ -576,3 +576,142 @@ int cmeContextManagerRevokeScope(cmeContextManager *manager, const char *lookup,
     int revoke=(scope==cmeContextRevokeResource || scope==cmeContextRevokeStorage) ? (int)scope+1 : 4;
     return(cmeManagerRegistration(manager,lookup,0,0,NULL,NULL,NULL,expected,NULL,published,revoke));
 }
+
+typedef struct
+{
+    int64_t row;
+    cmeStorageContext context;
+} cmeBoundSlot;
+
+struct cmeContextBinding
+{
+    cmeContextAnchor anchor;
+    size_t count;
+    cmeBoundSlot *slots;
+};
+
+static int cmeBindingSlotCompare(const void *left, const void *right)
+{
+    const cmeBoundSlot *a=left,*b=right;
+    int comparison=strcmp(a->context.table,b->context.table);
+    if (comparison) return(comparison);
+    if (a->row!=b->row) return(a->row<b->row ? -1 : 1);
+    return(strcmp(a->context.field,b->context.field));
+}
+
+static int cmeBindingRecordCompare(const void *left, const void *right)
+{
+    const cmeBoundSlot *a=*(const cmeBoundSlot *const *)left,*b=*(const cmeBoundSlot *const *)right;
+    int comparison=strcmp(a->context.table,b->context.table);
+    return(comparison ? comparison : memcmp(a->context.ids[4],b->context.ids[4],16));
+}
+
+void cmeContextBindingFree(cmeContextBinding **binding)
+{
+    if (!binding || !*binding) return;
+    free((*binding)->slots); free(*binding); *binding=NULL;
+}
+
+int cmeContextManagerBind(cmeContextManager *manager, const char *resource,
+                          unsigned int role, const cmeContextSlot *slots, size_t count,
+                          const cmeContextAnchor *expected, cmeContextBinding **binding)
+{
+    cmeManagerState state={0};
+    cmeContextRegistry *registry=NULL;
+    cmeContextBinding *candidate=NULL;
+    cmeBoundSlot **records=NULL;
+    cmeStorageContext seed={0};
+    unsigned int floor=0;
+    size_t i;
+    int result=1;
+    if (binding) *binding=NULL;
+    if (!manager || !binding || !expected || !slots || !count || count>cmeContextRegistryMaxEntries ||
+        role<1 || role>5 || cmeManagerName(resource,1)) return(1);
+    for (i=0;i<count;i++)
+        if (cmeManagerName(slots[i].lookup,1) || cmeManagerName(slots[i].table,0) ||
+            cmeManagerName(slots[i].field,0)) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state)) goto done;
+    result=cmeManagerCurrentMatch(&state,expected);
+    if (result) goto done;
+    result=1;
+    if (cmeContextRegistryOpen(state.body,state.length,state.tag,32,manager->key,32,
+        manager->deployment,manager->organization,cmeManagerAnchorFetch,&state.anchor,&registry) ||
+        cmeContextRegistryLookup(registry,resource,&seed,&floor) || seed.role!=role) goto done;
+    candidate=calloc(1,sizeof(*candidate));
+    records=calloc(count,sizeof(*records));
+    if (!candidate || !records) goto done;
+    candidate->slots=calloc(count,sizeof(*candidate->slots));
+    if (!candidate->slots) goto done;
+    candidate->anchor=state.anchor; candidate->count=count;
+    for (i=0;i<count;i++)
+    {
+        cmeStorageContext *context=&candidate->slots[i].context;
+        if (cmeContextRegistryLookup(registry,slots[i].lookup,context,&floor) || context->role!=role ||
+            memcmp(context->ids,seed.ids,4*16) || strcmp(context->table,slots[i].table) ||
+            strcmp(context->field,slots[i].field)) goto done;
+        candidate->slots[i].row=slots[i].row;
+    }
+    /* Two sorted indexes reject ambiguous physical slots and split record IDs
+       without trusting candidate row metadata or quadratic map scans. */
+    qsort(candidate->slots,count,sizeof(*candidate->slots),cmeBindingSlotCompare);
+    for (i=0;i<count;i++)
+    {
+        const cmeBoundSlot *slot=&candidate->slots[i];
+        records[i]=&candidate->slots[i];
+        if (i)
+        {
+            const cmeBoundSlot *previous=&candidate->slots[i-1];
+            if (!strcmp(slot->context.table,previous->context.table) && slot->row==previous->row &&
+                (!strcmp(slot->context.field,previous->context.field) ||
+                memcmp(slot->context.ids[4],previous->context.ids[4],16))) goto done;
+        }
+    }
+    qsort(records,count,sizeof(*records),cmeBindingRecordCompare);
+    for (i=1;i<count;i++)
+        if (!cmeBindingRecordCompare(&records[i-1],&records[i]) && records[i-1]->row!=records[i]->row) goto done;
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    *binding=candidate; candidate=NULL; result=0;
+done:
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); cmeContextRegistryFree(&registry);
+    cmeContextBindingFree(&candidate); free(records);
+    pthread_mutex_unlock(&manager->mutex);
+    return(result);
+}
+
+int cmeContextBindingLookup(const cmeContextBinding *binding, const char *table,
+                            int64_t row, const char *field, cmeStorageContext *context,
+                            unsigned int *minimumFormat)
+{
+    cmeBoundSlot wanted={0};
+    size_t low=0,high;
+    if (context) memset(context,0,sizeof(*context));
+    if (minimumFormat) *minimumFormat=0;
+    if (!binding || !context || !minimumFormat || cmeManagerName(table,0) || cmeManagerName(field,0)) return(1);
+    wanted.row=row; strcpy(wanted.context.table,table); strcpy(wanted.context.field,field);
+    high=binding->count;
+    while (low<high)
+    {
+        size_t middle=low+(high-low)/2;
+        int comparison=cmeBindingSlotCompare(&wanted,&binding->slots[middle]);
+        if (comparison<0) high=middle;
+        else if (comparison>0) low=middle+1;
+        else
+        {
+            *context=binding->slots[middle].context; *minimumFormat=binding->anchor.minimumFormat;
+            return(0);
+        }
+    }
+    return(1);
+}
+
+int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *binding)
+{
+    cmeManagerState current={0};
+    if (!manager || !binding || cmeContextManagerFetch(manager,binding->anchor.deployment,
+        binding->anchor.organization,&current.anchor)) return(1);
+    current.initialized=1;
+    return(cmeManagerCurrentMatch(&current,&binding->anchor));
+}

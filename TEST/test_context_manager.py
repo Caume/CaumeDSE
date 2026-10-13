@@ -635,5 +635,201 @@ class ManagerTests(unittest.TestCase):
             self.assertEqual(self.command('read', lookup).returncode, 0)
 
 
+    def bind(self, slots, queries=(), resource='first', role=4, expected=None, env=None):
+        args = [resource, role, self.current() if expected is None else expected, len(slots)]
+        for lookup, table, row, field in slots:
+            args.extend((lookup, table, row, field))
+        args.append(len(queries))
+        for table, row, field in queries:
+            args.extend((table, row, field))
+        return self.command('bind', *args, env=env)
+
+    def bound(self, slots, queries=(), **options):
+        result = self.bind(slots, queries, **options)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def binding_family(self):
+        first, _ = self.allocated(lookup='first')
+        self.allocated(lookup='field', level=4, parent='first', field='other', expected=self.current())
+        second, _ = self.allocated(lookup='second', level=3, parent='first', expected=self.current())
+        meta, _ = self.allocated(lookup='meta', level=3, parent='first', table='meta',
+                                 field='attribute', expected=self.current())
+        return first, second, meta
+
+    def test_binding_copies_unsorted_owner_slots_and_preserves_context(self):
+        first, second, meta = self.binding_family()
+        before = self.current()
+        slots = [('second', 'data', 20, 'value'), ('field', 'data', 10, 'other'),
+                 ('meta', 'meta', 10, 'attribute'), ('first', 'data', 10, 'value')]
+        queries = [('data', 10, 'value'), ('data', 10, 'other'), ('data', 20, 'value'), ('meta', 10, 'attribute')]
+        result = self.bound(slots, queries)
+        self.assertEqual((result['current'], result['fresh']), (0, 0))
+        for entry, context in zip(result['results'], (first, first, second, meta)):
+            self.assertEqual(entry, dict(result=0, floor=1, record=context['record'].hex(),
+                                         resource=context['resource'].hex()))
+        self.assertEqual(self.current(), before)
+
+    def test_binding_rejects_schema_and_role_mismatches(self):
+        self.binding_family()
+        for table, field in (('meta', 'value'), ('Data', 'value'), ('data', 'other')):
+            self.assertEqual(self.bind([('first', table, 1, field)]).returncode, 1)
+        for role in (0, 1, 5, 6):
+            self.assertEqual(self.bind([('first', 'data', 1, 'value')], role=role).returncode, 1)
+
+    def test_binding_rejects_other_resources_storages_and_roles(self):
+        self.binding_family()
+        self.allocated(lookup='other-resource', level=2, parent='first', expected=self.current())
+        self.allocated(lookup='other-storage', expected=self.current())
+        self.allocated(lookup='raw', level=2, role=5, parent='first', table='payload', field='bytes',
+                       expected=self.current())
+        for lookup, table, field in (('other-resource', 'data', 'value'), ('other-storage', 'data', 'value'),
+                                      ('raw', 'payload', 'bytes')):
+            self.assertEqual(self.bind([('first', 'data', 1, 'value'),
+                                        (lookup, table, 2, field)]).returncode, 1)
+
+    def test_binding_rejects_revoked_resource_or_slot_without_partial_handle(self):
+        self.binding_family()
+        self.assertEqual(self.command('revoke', 'second', self.current()).returncode, 0)
+        self.assertEqual(self.bind([('first', 'data', 1, 'value'),
+                                    ('second', 'data', 2, 'value')]).returncode, 1)
+        self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 0)
+        self.assertEqual(self.bind([('field', 'data', 1, 'other')]).returncode, 1)
+
+    def test_binding_rejects_duplicate_slots(self):
+        self.binding_family()
+        for duplicate in ('first', 'second'):
+            self.assertEqual(self.bind([('first', 'data', 1, 'value'),
+                                        (duplicate, 'data', 1, 'value')]).returncode, 1)
+
+    def test_binding_one_physical_row_cannot_mix_record_ids(self):
+        self.binding_family()
+        self.allocated(lookup='second-field', level=4, parent='second', field='other', expected=self.current())
+        self.assertEqual(self.bind([('first', 'data', 1, 'value'),
+                                    ('second-field', 'data', 1, 'other')]).returncode, 1)
+
+    def test_binding_record_cannot_be_split_between_physical_rows(self):
+        self.binding_family()
+        for field, name in (('other', 'field'), ('value', 'first')):
+            self.assertEqual(self.bind([('first', 'data', 1, 'value'),
+                                        (name, 'data', 2, field)]).returncode, 1)
+
+    def test_binding_table_is_part_of_physical_row_identity(self):
+        entries = [dict(lookup='first', state='active', context=self.context),
+                   dict(lookup='meta', state='active', context=dict(self.context, table='meta', field='attribute'))]
+        self.assertEqual(self.publish(dict(self.snapshot, entries=entries)).returncode, 0)
+        result = self.bound([('first', 'data', 1, 'value'), ('meta', 'meta', 99, 'attribute')],
+                            [('data', 1, 'value'), ('meta', 99, 'attribute')])
+        self.assertEqual([entry['record'] for entry in result['results']], [self.context['record']] * 2)
+
+    def test_binding_signed_slot_extremes_and_schema_name_bounds(self):
+        first, _ = self.allocated(lookup='first', table='T' * 64, field='F' * 64)
+        second, _ = self.allocated(lookup='second', level=3, parent='first', table='T' * 64,
+                                   field='F' * 64, expected=self.current())
+        slots = [('second', 'T' * 64, (1 << 63) - 1, 'F' * 64), ('first', 'T' * 64, -(1 << 63), 'F' * 64)]
+        queries = [('T' * 64, -(1 << 63), 'F' * 64), ('T' * 64, (1 << 63) - 1, 'F' * 64)]
+        result = self.bound(slots, queries)
+        self.assertEqual([entry['record'] for entry in result['results']],
+                         [first['record'].hex(), second['record'].hex()])
+
+    def test_binding_requires_exact_current_anchor(self):
+        self.binding_family()
+        slots = [('first', 'data', 1, 'value')]
+        self.assertEqual(self.bind(slots, expected=token(self.anchor)).returncode, 2)
+        current = self.current()
+        altered = current[:-2] + ('00' if current[-2:] != '00' else '01')
+        self.assertEqual(self.bind(slots, expected=altered).returncode, 2)
+        self.assertEqual(self.bind(slots, expected='00' * 73).returncode, 1)
+        self.assertEqual(self.current(), current)
+
+    def test_binding_supports_every_storage_role(self):
+        for role in range(1, 6):
+            table, field = ('payload', 'bytes') if role == 5 else ('data', 'value')
+            root = f'role/{role}'
+            context, _ = self.allocated(lookup=root, level=2 if role < 4 else 1, role=role,
+                                        table=table, field=field, expected='-' if role == 1 else self.current())
+            result = self.bound([(root, table, 0, field)], [(table, 0, field)], resource=root, role=role)
+            self.assertEqual(result['results'][0]['record'], context['record'].hex())
+
+    def test_binding_recheck_detects_revocation_and_unrelated_updates(self):
+        self.binding_family()
+        slots = [('first', 'data', 1, 'value'), ('second', 'data', 2, 'value')]
+        queries = [('data', 1, 'value'), ('data', 2, 'value')]
+        result = self.bound(slots, queries, env={'CDSE_CONTEXT_BIND_UPDATE': '1'})
+        self.assertEqual((result['current'], result['fresh']), (2, 0))
+        result = self.bound(slots, queries, env={'CDSE_CONTEXT_BIND_REVOKE': 'second'})
+        self.assertEqual((result['current'], result['fresh']), (2, 1))
+        # A copied operation handle is not a lease. It retains its old context;
+        # the explicit recheck/rebind, not local lookup, observes revocation.
+        self.assertEqual([entry['result'] for entry in result['results']], [0, 0])
+
+    def test_owner_binding_survives_sqlite_rename_shuffle_and_staging(self):
+        first, second, _ = self.binding_family()
+        database = self.root / 'column.sqlite'
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('create table data(id integer primary key, value text, candidateLookup text)')
+            db.executemany('insert into data values(?,?,?)', [(10, 'alpha', 'second'), (20, 'beta', 'first')])
+        approved = {'alpha': 'first', 'beta': 'second'}
+        contexts = {'alpha': first['record'].hex(), 'beta': second['record'].hex()}
+
+        def verify(path):
+            with closing(sqlite3.connect(path)) as db:
+                rows = db.execute('select id,value from data order by id').fetchall()
+            slots = [(approved[value], 'data', row, 'value') for row, value in rows]
+            result = self.bound(slots, [('data', row, 'value') for row, _ in rows])
+            self.assertEqual([entry['record'] for entry in result['results']], [contexts[value] for _, value in rows])
+
+        verify(database)
+        staged = self.root / 'staged-renamed.sqlite'
+        database.rename(staged)
+        verify(staged)
+        with closing(sqlite3.connect(staged)) as db, db:
+            db.execute('update data set id=-id')
+            db.execute('update data set id=case id when -10 then 20 else 10 end')
+        verify(staged)
+        # Only the synthetic trusted owner uses these plaintext fixture labels
+        # to construct a map; candidateLookup is deliberately never authority.
+
+    def test_binding_partial_map_missing_invalid_slots_and_floor(self):
+        self.bootstrap()
+        self.assertEqual(self.publish(dict(self.snapshot, generation=2, minimumFormat=2), self.anchor).returncode, 0)
+        result = self.bound([('column/record/value', 'data', 0, 'value')],
+                            [('data', 0, 'value'), ('data', 1, 'value'), ('meta', 0, 'value'),
+                             ('data', 0, 'other'), ('data', 0, 'x' * 65), ('bad.table', 0, 'value')],
+                            resource='column/record/value')
+        self.assertEqual(result['results'][0]['floor'], 2)
+        for entry in result['results'][1:]:
+            self.assertEqual(entry, dict(result=1, floor=0, record='00' * 16, resource='00' * 16))
+
+    def test_binding_input_limits_and_unknown_handles(self):
+        self.binding_family()
+        for slots in ([], [('missing', 'data', 0, 'value')], [('x' * 129, 'data', 0, 'value')],
+                      [('first', 'x' * 65, 0, 'value')], [('first', 'data', 0, '')],
+                      [('first', 'data', 0, 'value')] * (contract.MAX_ENTRIES + 1)):
+            self.assertEqual(self.bind(slots).returncode, 1)
+        for root in ('missing', '', 'x' * 129):
+            self.assertEqual(self.bind([('first', 'data', 0, 'value')], resource=root).returncode, 1)
+
+    def test_binding_recheck_fails_closed_on_corrupt_authority(self):
+        self.binding_family()
+        result = self.bound([('first', 'data', 0, 'value')], env={'CDSE_CONTEXT_BIND_CORRUPT': '1'})
+        self.assertEqual((result['current'], result['fresh']), (1, 1))
+
+    def test_binding_large_valid_map_sorting_and_binary_search(self):
+        entries = [dict(lookup=f'record/{i:04}', state='active',
+                        context=dict(self.context, record=i.to_bytes(16, 'big').hex()))
+                   for i in range(1, 1025)]
+        self.assertEqual(self.publish(dict(self.snapshot, entries=entries)).returncode, 0)
+        before = self.current()
+        slots = [(entry['lookup'], 'data', i * 101, 'value')
+                 for i, entry in reversed(list(enumerate(entries, 1)))]
+        queries = [('data', i * 101, 'value') for i in (1, 513, 1024, 0)]
+        result = self.bound(slots, queries, resource='record/0001')
+        self.assertEqual([entry['record'] for entry in result['results']],
+                         [i.to_bytes(16, 'big').hex() for i in (1, 513, 1024, 0)])
+        self.assertEqual([entry['result'] for entry in result['results']], [0, 0, 0, 1])
+        self.assertEqual(self.current(), before)
+
+
 if __name__ == '__main__':
     unittest.main()

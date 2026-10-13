@@ -4,6 +4,13 @@
 #include "context_registry.h"
 
 typedef struct cmeContextManager cmeContextManager;
+typedef struct cmeContextBinding cmeContextBinding;
+
+typedef struct
+{
+    const char *lookup, *table, *field;
+    int64_t row; /* Physical operation-local slot, never a cryptographic ID. */
+} cmeContextSlot;
 
 typedef enum
 {
@@ -80,5 +87,31 @@ int cmeContextManagerRevoke(cmeContextManager *manager, const char *lookup,
 int cmeContextManagerRevokeScope(cmeContextManager *manager, const char *lookup,
                                  cmeContextRevocationScope scope,
                                  const cmeContextAnchor *expected, cmeContextAnchor *published);
+
+/* Trusted owner supplies the resource handle, schema role and approved slot map
+   for the full expected anchor. Never construct it from candidate DB/frame
+   metadata, filenames, request parameters or untrusted lookup columns.
+   Bind verifies active registrations in one current authenticated snapshot.
+   All slots must match the seed's role/storage/resource and their schema names.
+   Within each table, a slot has one record ID and a record has one slot.
+   Partial maps are allowed, not complete-inventory or storage-integrity proofs.
+   Returns 0 success, 2 stale anchor, 1 invalid/unavailable; clears *binding on
+   failure. Copies all input data; inputs must remain stable until return and
+   must not overlap the output pointer. Finish concurrent lookups before Free.
+   Free and rebind for each operation; this does not persist/authenticate the
+   owner's map, acquire a revocation lease, or enable V2 storage paths. */
+int cmeContextManagerBind(cmeContextManager *manager, const char *resource,
+                          unsigned int role, const cmeContextSlot *slots, size_t count,
+                          const cmeContextAnchor *expected, cmeContextBinding **binding);
+/* Immutable operation-local lookup; schema names come from the trusted caller.
+   Copies context/floor; clears outputs for missing or invalid slots. Inputs must
+   not overlap outputs. */
+int cmeContextBindingLookup(const cmeContextBinding *binding, const char *table,
+                            int64_t row, const char *field, cmeStorageContext *context,
+                            unsigned int *minimumFormat);
+/* 0 still current, 2 changed anchor, 1 invalid/unavailable authority. This is
+   a point-in-time recheck, not a lock/lease or atomic commit with storage writes. */
+int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *binding);
+void cmeContextBindingFree(cmeContextBinding **binding);
 
 #endif
