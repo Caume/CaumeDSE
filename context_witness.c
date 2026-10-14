@@ -247,6 +247,52 @@ int cmeContextWitnessCheck(cmeContextWitness *witness, const cmeContextAnchor *r
     return(CRYPTO_memcmp(actual,expected,sizeof(actual)) ? 2 : 0);
 }
 
+static int cmeWitnessStep(const cmeWitnessRecord *current, const cmeContextAnchor *registry,
+                          const cmeContextMapAnchor *catalog, const unsigned char before[113],
+                          const unsigned char after[113])
+{
+    return(current->state.anchor.revision!=UINT64_MAX &&
+        ((current->state.registry.generation!=UINT64_MAX && registry->generation==current->state.registry.generation+1 &&
+          registry->minimumFormat>=current->state.registry.minimumFormat && !CRYPTO_memcmp(before+73,after+73,40)) ||
+         (current->state.catalog.revision!=UINT64_MAX && catalog->revision==current->state.catalog.revision+1 &&
+          !CRYPTO_memcmp(before,after,73))));
+}
+
+int cmeContextWitnessReconcile(cmeContextWitness *witness, const cmeContextWitnessAnchor *expected,
+                               const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog,
+                               cmeContextWitnessRecovery *recovery, cmeContextWitnessAnchor *current)
+{
+    cmeWitnessRecord record={0};
+    cmeContextWitnessAnchor copy;
+    cmeContextWitnessRecovery classification=cmeWitnessRecoveryInvalid;
+    unsigned char before[113],after[113],token[40];
+    int result=1;
+    if (expected) { copy=*expected; expected=&copy; }
+    if (current) memset(current,0,sizeof(*current));
+    if (recovery) *recovery=cmeWitnessRecoveryInvalid;
+    if (!witness || !expected || !expected->revision || !current || !recovery ||
+        cmeWitnessPair(witness,registry,catalog,after)) return(1);
+    cmeWitnessNumber(expected->revision,token); memcpy(token+8,expected->digest,32);
+    pthread_mutex_lock(&witness->mutex);
+    if (sqlite3_exec(witness->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK || cmeWitnessLoad(witness,&record) ||
+        cmeWitnessPair(witness,&record.state.registry,&record.state.catalog,before)) goto done;
+    result=2;
+    if (record.state.anchor.revision==expected->revision && !CRYPTO_memcmp(record.state.anchor.digest,expected->digest,32))
+    {
+        if (!CRYPTO_memcmp(before,after,113)) classification=cmeWitnessRecoveryCurrent;
+        else if (cmeWitnessStep(&record,registry,catalog,before,after)) classification=cmeWitnessRecoveryAdvanceRequired;
+    }
+    else if (!CRYPTO_memcmp(record.previous,token,40) && !CRYPTO_memcmp(before,after,113))
+        classification=cmeWitnessRecoveryAlreadyAdvanced;
+    if (classification==cmeWitnessRecoveryInvalid) goto done;
+    result=1;
+    if (sqlite3_exec(witness->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    *current=record.state.anchor; *recovery=classification; result=0;
+done:
+    if (!sqlite3_get_autocommit(witness->db)) sqlite3_exec(witness->db,"ROLLBACK",NULL,NULL,NULL);
+    pthread_mutex_unlock(&witness->mutex); return(result);
+}
+
 int cmeContextWitnessAdvance(cmeContextWitness *witness, const cmeContextWitnessAnchor *expected,
                              const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog,
                              cmeContextWitnessAnchor *published)
@@ -254,7 +300,7 @@ int cmeContextWitnessAdvance(cmeContextWitness *witness, const cmeContextWitness
     cmeWitnessRecord current={0},next={0};
     cmeContextWitnessAnchor copy;
     unsigned char before[113],after[113],token[40];
-    int result=1,registryStep,catalogStep;
+    int result=1;
     if (expected) { copy=*expected; expected=&copy; }
     if (published) memset(published,0,sizeof(*published));
     if (!witness || !expected || !expected->revision || !published || cmeWitnessPair(witness,registry,catalog,after)) return(1);
@@ -269,12 +315,7 @@ int cmeContextWitnessAdvance(cmeContextWitness *witness, const cmeContextWitness
         if (result || sqlite3_exec(witness->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) { if (!result) result=1; goto done; }
         *published=current.state.anchor; goto done;
     }
-    if (current.state.anchor.revision==UINT64_MAX) goto done;
-    registryStep=current.state.registry.generation!=UINT64_MAX && registry->generation==current.state.registry.generation+1 &&
-        registry->minimumFormat>=current.state.registry.minimumFormat && !CRYPTO_memcmp(before+73,after+73,40);
-    catalogStep=current.state.catalog.revision!=UINT64_MAX && catalog->revision==current.state.catalog.revision+1 &&
-        !CRYPTO_memcmp(before,after,73);
-    if (!registryStep && !catalogStep) goto done;
+    if (!cmeWitnessStep(&current,registry,catalog,before,after)) goto done;
     cmeWitnessCheckpoint("after-begin");
     next.state.anchor.revision=current.state.anchor.revision+1; next.state.registry=*registry; next.state.catalog=*catalog;
     memcpy(next.previous,token,40);

@@ -342,6 +342,7 @@ int cmeContextOwnerMain(int argc, char **argv)
     cmeContextWitness *witness=NULL;
     cmeContextWitnessState witnessed={0};
     cmeContextWitnessAnchor witnessExpected={0},witnessPublished={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
     const char *manifest=NULL,*keyFile=NULL,*confirmation=NULL,*action=NULL,*jobText=NULL,*witnessFile=NULL,*witnessDirectory=NULL;
     char *body=NULL,*keyText=NULL,*witnessText=NULL;
     unsigned char key[32]={0},witnessKey[32]={0},job[32]={0},bytes[40];
@@ -352,7 +353,7 @@ int cmeContextOwnerMain(int argc, char **argv)
              "  --confirmed-offline APPROVAL_REALPATH\n"
              "  Shuffle: (--init | --status | --prepare | --complete JOB_HEX | --abort JOB_HEX)\n"
              "  Schema 2: --witness-directory TRUSTED_DIRECTORY --witness-key-file FILE\n"
-             "  Witness: (--init | --status | --advance WITNESS_TOKEN)\n"
+             "  Witness: (--init | --status | --advance WITNESS_TOKEN | --reconcile WITNESS_TOKEN)\n"
              "Schema 2 requires witness directory and independent witness key; schema 1 is unchanged.\n"
              "Explicit registry/catalog pins, no automatic refresh. Witness advance is separately approved.\n"
              "Stop all readers/writers. Prepare verifies a complete byte-preserving row permutation.\n"
@@ -363,11 +364,11 @@ int cmeContextOwnerMain(int argc, char **argv)
     {
         const char **option=NULL;
         if (!strcmp(argv[i],"--init") || !strcmp(argv[i],"--status") || !strcmp(argv[i],"--prepare") ||
-            !strcmp(argv[i],"--complete") || !strcmp(argv[i],"--abort") || !strcmp(argv[i],"--advance"))
+            !strcmp(argv[i],"--complete") || !strcmp(argv[i],"--abort") || !strcmp(argv[i],"--advance") || !strcmp(argv[i],"--reconcile"))
         {
             if (action) goto done;
             action=argv[i];
-            if (!strcmp(action,"--complete") || !strcmp(action,"--abort") || !strcmp(action,"--advance"))
+            if (!strcmp(action,"--complete") || !strcmp(action,"--abort") || !strcmp(action,"--advance") || !strcmp(action,"--reconcile"))
             { if (++i>=argc) goto done; jobText=argv[i]; }
             continue;
         }
@@ -384,8 +385,8 @@ int cmeContextOwnerMain(int argc, char **argv)
         cmeOwnerPaths(&approval,manifest,keyFile) || cmeOwnerFile(keyFile,65,&keyText)) goto done;
     if (strlen(keyText)==65 && keyText[64]=='\n') keyText[64]=0;
     if (cmeOwnerHex(keyText,key,32) || (!witnessCommand && jobText && cmeOwnerHex(jobText,job,32)) ||
-        (witnessCommand && strcmp(action,"--init") && strcmp(action,"--status") && strcmp(action,"--advance")) ||
-        (!witnessCommand && !strcmp(action,"--advance")) ||
+        (witnessCommand && strcmp(action,"--init") && strcmp(action,"--status") && strcmp(action,"--advance") && strcmp(action,"--reconcile")) ||
+        (!witnessCommand && (!strcmp(action,"--advance") || !strcmp(action,"--reconcile"))) ||
         (approval.schema==1 && (witnessCommand || witnessFile || witnessDirectory)) ||
         cmeContextManagerOpen(approval.values[1],0,key,approval.deployment,approval.organization,&manager)) goto done;
     if (approval.schema==2)
@@ -398,19 +399,21 @@ int cmeContextOwnerMain(int argc, char **argv)
         result=1;
         if (cmeContextWitnessOpen(approval.values[12],witnessCommand && !strcmp(action,"--init"),witnessKey,
             approval.deployment,approval.organization,&approval.registry,&approval.catalog,&witness)) goto done;
-        if (witnessCommand && !strcmp(action,"--advance"))
+        if (witnessCommand && (!strcmp(action,"--advance") || !strcmp(action,"--reconcile")))
         {
             if (!jobText || cmeOwnerHex(jobText,bytes,40)) goto done;
             for (i=0;i<8;i++) witnessExpected.revision=(witnessExpected.revision<<8)|bytes[i];
             memcpy(witnessExpected.digest,bytes+8,32);
-            result=cmeContextWitnessAdvance(witness,&witnessExpected,&approval.registry,&approval.catalog,&witnessPublished);
+            if (!strcmp(action,"--reconcile"))
+                result=cmeContextWitnessReconcile(witness,&witnessExpected,&approval.registry,&approval.catalog,&recovery,&witnessPublished);
+            else result=cmeContextWitnessAdvance(witness,&witnessExpected,&approval.registry,&approval.catalog,&witnessPublished);
             if (result) goto done;
         }
         else
         { result=cmeContextWitnessCheck(witness,&approval.registry,&approval.catalog); if (result) goto done; }
         if (witnessCommand)
         {
-            if (!strcmp(action,"--advance")) witnessed.anchor=witnessPublished;
+            if (!strcmp(action,"--advance") || !strcmp(action,"--reconcile")) witnessed.anchor=witnessPublished;
             else
             {
                 result=cmeContextWitnessFetch(witness,&witnessed); if (result) goto done;
@@ -420,7 +423,8 @@ int cmeContextOwnerMain(int argc, char **argv)
                     witnessed.catalog.revision!=approval.catalog.revision || memcmp(witnessed.catalog.digest,approval.catalog.digest,32))
                 { result=2; goto done; }
             }
-            printf("state=current\nwitness=");
+            printf("state=%s\nwitness=",recovery==cmeWitnessRecoveryAdvanceRequired ? "advance-required" :
+                (recovery==cmeWitnessRecoveryAlreadyAdvanced ? "already-advanced" : "current"));
             for (i=0;i<8;i++) bytes[i]=(unsigned char)(witnessed.anchor.revision>>(56-8*i));
             cmeOwnerPrint(bytes,8); cmeOwnerPrint(witnessed.anchor.digest,32); putchar('\n');
             goto done;

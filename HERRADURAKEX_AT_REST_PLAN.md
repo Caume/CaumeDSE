@@ -1367,3 +1367,76 @@ asserting hardware rollback protection. Crash hooks are fixture-only.
 TODO #147 remains open for production key custody/rotation and independently
 monotonic recovery deployment, live lifecycle integration, V2 context APIs and
 persisted migration/floor/provider acceptance tests.
+
+### Read-only witness recovery (#147 phase 12)
+
+`context-witness --reconcile RETAINED_WITNESS_TOKEN` checks an independently
+retained token without updating the witness, manager, approval or payload files.
+Use the same schema-2 approval, protected keys, trusted witness directory and
+exclusive offline confirmation as `--advance`. The approved registry/catalog
+pair must first match current authenticated manager state in one read transaction;
+stale approval pins are rejected, not refreshed from candidate data.
+
+```sh
+caumedse-admin context-witness --approval "$APPROVAL" \
+  --registry-key-file "$MANAGER_KEY_FILE" --confirmed-offline "$APPROVAL" \
+  --witness-directory "$TRUSTED_WITNESS_DIRECTORY" --witness-key-file "$WITNESS_KEY_FILE" \
+  --reconcile "$RETAINED_WITNESS_TOKEN"
+```
+
+Successful output has `state` and `witness` fields only:
+
+- `current`: retained token and approved manager pair exactly match the witness.
+- `advance-required`: retained token matches, and the manager pair is exactly
+  one permitted publication ahead. Output is the unchanged witness token. Review
+  the publication and payload separately, then explicitly run `--advance` with
+  that token; this result does not authorize another guarded mutation.
+- `already-advanced`: the retained token is the signed previous token and the
+  approved manager pair exactly matches the current witness. A last advance
+  committed despite a lost acknowledgement. Retain the returned current token
+  independently; an exact `--advance` retry remains idempotent.
+
+Return 0 means classified, not recovered or payload-authenticated. Return 2
+means conflict (including stale tokens, rollback, forks, skipped or simultaneous
+publications); return 1 means malformed/unavailable state. No tokens are emitted
+on failure. A read transaction authenticates and classifies one witness snapshot.
+There is no manager/witness atomic snapshot or lease: maintain exclusive ownership
+and recheck before a mutation, whose normal CAS remains mandatory.
+
+#### Independent retention and restoration procedure
+
+1. Keep the canonical witness selector, separate key custody and latest acknowledged
+   token under operator control outside manager/export backups. Retain previous
+   tokens only as explicitly pending acknowledgement records. A disjoint directory
+   is not independent retention against whole-host rollback; use a separately
+   administered retention boundary and review its restore/access policy. This
+   local command does not implement that boundary or a remote monotonic authority.
+2. Stop every reader/writer and preserve failure artifacts before restore. Never
+   delete initialization markers, reinitialize authority, change trusted witness
+   selection or copy an older witness over the retained checkpoint to clear a
+   conflict. Restore manager/export state only into a reviewed offline recovery
+   workflow, with keys and witness kept out of automatic restore jobs.
+3. Independently authenticate/inventory the proposed manager and backing payload
+   state; explicitly reapprove exact manager pins. Run `--reconcile` using the
+   independently retained latest token (or the recorded pending transition token
+   after a lost acknowledgement), not a token read from the restored backup.
+4. For `current`, reconcile any prepared shuffle intent and verify persisted
+   payloads before resuming. For `advance-required`, verify the single intended
+   publication, explicitly advance, retain its receipt/token, and check again.
+   For `already-advanced`, retain the returned token and check `current` with it.
+   An installed-but-unpublished shuffle target still requires the phase-10
+   approved roll-forward path; witness classification does not finish it.
+5. On conflict, missing/corrupt state, skipped publications or incomplete bootstrap,
+   stop. Recover a matching approved manager/export checkpoint through review;
+   there is no skip, force, downgrade, key-rotation or automatic reconstruction
+   operation. A valid old manager/approval restore is rejected by a retained newer
+   witness. An old whole-witness restore is rejected when the independently
+   retained newer token is supplied; restoring both witness and token defeats
+   this check, as does key compromise or bypassing the guarded APIs.
+
+The additive C `cmeContextWitnessReconcile` API exposes these classifications
+with cleared outputs on failure and token/output alias support. Like the existing
+witness core it does not authenticate the manager pair itself; that is a mandatory
+caller responsibility. TODO #147 remains open for independently monotonic
+deployment, production key custody/rotation, live lifecycle adapters, V2 crypto
+operations and complete migration/provider acceptance gates.

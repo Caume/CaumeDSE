@@ -33,6 +33,21 @@ int cmeContextWitnessFetch(cmeContextWitness *witness, cmeContextWitnessState *s
 /* 0 exact current pair, 2 mismatch, 1 invalid/unavailable. No lease. */
 int cmeContextWitnessCheck(cmeContextWitness *witness, const cmeContextAnchor *registry,
                            const cmeContextMapAnchor *catalog);
+typedef enum
+{
+    cmeWitnessRecoveryInvalid=0,
+    cmeWitnessRecoveryCurrent=1,
+    cmeWitnessRecoveryAdvanceRequired=2,
+    cmeWitnessRecoveryAlreadyAdvanced=3
+} cmeContextWitnessRecovery;
+/* Read-only authenticated snapshot against an independently retained token and
+   owner-approved manager pair. 0 classified, 2 conflict, 1 invalid/unavailable.
+   No manager authentication or lease; caller must check manager pins separately.
+   Never advances/adopts state. Outputs clear on failure; token/output may alias.
+   Other inputs/outputs must not overlap. */
+int cmeContextWitnessReconcile(cmeContextWitness *witness, const cmeContextWitnessAnchor *expected,
+                               const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog,
+                               cmeContextWitnessRecovery *recovery, cmeContextWitnessAnchor *current);
 /* Full witness-anchor CAS; exactly one manager counter advances by one, other
    pin stays exact. Same-counter digest changes/floor decreases fail closed.
    Last transition supports exact lost-ack retry with its previous token.
