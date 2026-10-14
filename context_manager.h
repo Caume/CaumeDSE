@@ -146,6 +146,10 @@ void cmeContextBindingFree(cmeContextBinding **binding);
 int cmeContextManagerMapInit(cmeContextManager *manager, const cmeContextAnchor *expected,
                              cmeContextMapAnchor *published);
 int cmeContextManagerMapFetch(cmeContextManager *manager, cmeContextMapAnchor *anchor);
+/* Authenticate and compare both supplied pins in one current read transaction.
+   Returns 0 exact, 2 conflict, 1 invalid/unavailable; not a storage lease. */
+int cmeContextManagerCheckAnchors(cmeContextManager *manager, const cmeContextAnchor *registry,
+                                  const cmeContextMapAnchor *catalog);
 int cmeContextManagerMapStore(cmeContextManager *manager, const char *name, const char *resource,
                               unsigned int role, const cmeContextSlot *slots, size_t count,
                               const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,

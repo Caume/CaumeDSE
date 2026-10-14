@@ -1,6 +1,7 @@
 /* Synthetic manager owner only. This check program is never installed. */
 #include "common.h"
 #include "context_manager.h"
+#include "context_witness.h"
 
 static int cmeFixtureDecode(const char *text, unsigned char *bytes, size_t length)
 {
@@ -305,6 +306,49 @@ done:
     return(result);
 }
 
+static int cmeFixtureWitness(int argc, char **argv)
+{
+    cmeContextWitness *witness=NULL;
+    cmeContextWitnessState state={0};
+    cmeContextWitnessAnchor expected={0},published={0},empty={0};
+    cmeContextAnchor registry={0};
+    cmeContextMapAnchor catalog={0};
+    unsigned char bytes[73],key[32],deployment[16],organization[16];
+    size_t i;
+    int result=1,create=!strcmp(argv[2],"witness-init"),advance=!strcmp(argv[2],"witness-advance");
+    if (cmeFixtureDecode(argv[3],deployment,16) || cmeFixtureDecode(argv[4],organization,16)) goto done;
+    memset(key,getenv("CDSE_WITNESS_WRONG_KEY") ? 'x' : 'w',32);
+    if (create || advance || !strcmp(argv[2],"witness-check"))
+    {
+        if (argc<(advance ? 8 : 7) || cmeFixtureRegistryToken(argv[5],&registry) || cmeFixtureDecode(argv[6],bytes,40)) goto done;
+        for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
+        memcpy(catalog.digest,bytes+8,32);
+        if (advance)
+        {
+            if (cmeFixtureDecode(argv[7],bytes,40)) goto done;
+            for (i=0;i<8;i++) expected.revision=(expected.revision<<8)|bytes[i];
+            memcpy(expected.digest,bytes+8,32);
+        }
+    }
+    if (cmeContextWitnessOpen(argv[1],create,key,deployment,organization,&registry,&catalog,&witness)) goto done;
+    if (advance)
+    {
+        cmeContextWitnessAnchor *output=getenv("CDSE_CONTEXT_MANAGER_ALIAS") ? &expected : &published;
+        memset(&published,0xff,sizeof(published));
+        result=cmeContextWitnessAdvance(witness,&expected,&registry,&catalog,output);
+        if (result && memcmp(output,&empty,sizeof(empty))) result=3;
+        if (result) goto done;
+        published=*output;
+    }
+    else if (!strcmp(argv[2],"witness-check"))
+    { result=cmeContextWitnessCheck(witness,&registry,&catalog); goto done; }
+    if (cmeContextWitnessFetch(witness,&state)) goto done;
+    for (i=0;i<8;i++) bytes[i]=(unsigned char)(state.anchor.revision>>(56-8*i));
+    cmeFixturePrint(bytes,8); cmeFixturePrint(state.anchor.digest,32); putchar('\n'); result=0;
+done:
+    cmeContextWitnessClose(&witness); cmeContextWitnessClose(&witness); cmeContextWitnessClose(NULL); return(result);
+}
+
 int main(int argc, char **argv)
 {
     cmeContextManager *manager=NULL,*second=NULL;
@@ -317,6 +361,7 @@ int main(int argc, char **argv)
     FILE *file=NULL;
     int result=1;
     if (argc<5) return(2);
+    if (!strncmp(argv[2],"witness-",8)) return(cmeFixtureWitness(argc,argv));
     memset(key,getenv("CDSE_REGISTRY_WRONG_KEY") ? 'x' : 'k',32);
     if (cmeFixtureDecode(argv[3],next.deployment,16) || cmeFixtureDecode(argv[4],next.organization,16)) return(2);
     if (cmeContextManagerOpen(argv[1],!strcmp(argv[2],"init"),key,next.deployment,next.organization,&manager)) goto done;

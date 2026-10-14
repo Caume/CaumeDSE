@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.12.0
+# Caume Data Security Engine (CaumeDSE) version 2.13.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2885,6 +2885,16 @@ payloads, generate a candidate, bootstrap authority or automatically refresh
 trusted pins. Stop all readers/writers and independently verify the source first.
 See the [owner approval workflow](HERRADURAKEX_AT_REST_PLAN.md#offline-owner-command-147-phase-10)
 for manifest fields, exact confirmation and recovery requirements.
+Owner approval schema 2 adds an opt-in separately keyed anchor witness through
+`caumedse-admin context-witness`. Guarded shuffle commands require an independently
+selected witness directory and exact agreement with both authenticated manager
+anchors. After each manager publication, explicitly approve a one-step witness
+advance; no newer pins are adopted automatically. An independently retained newer
+witness rejects restoration of an older manager/approval pair. Its own complete
+backup replay, changes to trusted witness selection, key compromise and unguarded
+legacy writers are outside that guarantee. This is not hardware monotonic storage
+or an atomic transaction with the manager. See the
+[witness workflow](HERRADURAKEX_AT_REST_PLAN.md#independent-anchor-witness-147-phase-11).
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider
