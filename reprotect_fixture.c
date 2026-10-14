@@ -131,6 +131,56 @@ done:
     return(result);
 }
 
+static int cmeFixtureRegistered(const char *root, int target)
+{
+    sqlite3 *db=NULL;
+    sqlite3_stmt *read=NULL,*update=NULL;
+    char path[PATH_MAX],*salt=NULL,*plain[4]={0},*lookups[3]={0},*mac=NULL,*cipher=NULL,*tag=NULL,*combined=NULL,*bytes=NULL;
+    const char *fields[]={"documentId","storageId","orgResourceId"};
+    int result=1,step,i,written,length;
+    if (snprintf(path,sizeof(path),"%s/ResourcesDB",root)>=(int)sizeof(path) || sqlite3_open(path,&db)!=SQLITE_OK ||
+        sqlite3_prepare_v2(db,"SELECT * FROM documents ORDER BY id",-1,&read,NULL)!=SQLITE_OK ||
+        sqlite3_prepare_v2(db,target ? "UPDATE documents SET partMAC=?1 WHERE id=?2" :
+            "UPDATE documents SET documentIdLookup=?1,storageIdLookup=?2,orgResourceIdLookup=?3 WHERE id=?4",
+            -1,&update,NULL)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(read))==SQLITE_ROW)
+    {
+        salt=strdup((const char *)sqlite3_column_text(read,3));
+        if (!salt) goto done;
+        for (i=0;i<(target ? 1 : 3);i++)
+        {
+            int column=target ? 5 : 7+i;
+            const char *value=(const char *)sqlite3_column_text(read,column);
+            if (!value || strlen(value)<=64 || cmeUnprotectDBSaltedValue(value+64,&plain[i],cmeDefaultEncAlg,
+                &salt,cmeFixtureKey(),&written)) goto done;
+            if (!target && (cmeGetProtectDBLookupValue(fields[i],plain[i],cmeFixtureKey(),&lookups[i]) ||
+                sqlite3_bind_text(update,i+1,lookups[i],-1,SQLITE_TRANSIENT)!=SQLITE_OK)) goto done;
+        }
+        if (target)
+        {
+            if (snprintf(path,sizeof(path),"%s/%s",root,plain[0])>=(int)sizeof(path) ||
+                cmeLoadStrFromFile(&bytes,path,&length) || cmeHMACByteString((const unsigned char *)bytes,
+                    (unsigned char **)&mac,length,&written,cmeDefaultMACAlg,&salt,cmeFixtureKey()) ||
+                cmeProtectDBSaltedValue(mac,&cipher,cmeDefaultEncAlg,&salt,cmeFixtureKey(),&written) ||
+                cmeHMACByteString((const unsigned char *)cipher,(unsigned char **)&tag,strlen(cipher),&written,
+                    cmeDefaultMACAlg,&salt,cmeFixtureKey())) goto done;
+            cmeStrConstrAppend(&combined,"%s%s",tag,cipher);
+            if (sqlite3_bind_text(update,1,combined,-1,SQLITE_TRANSIENT)!=SQLITE_OK) goto done;
+        }
+        if (sqlite3_bind_int64(update,target ? 2 : 4,sqlite3_column_int64(read,0))!=SQLITE_OK || sqlite3_step(update)!=SQLITE_DONE) goto done;
+        sqlite3_reset(update); sqlite3_clear_bindings(update);
+        for (i=0;i<4;i++) cmeFree(plain[i]);
+        for (i=0;i<3;i++) cmeFree(lookups[i]);
+        cmeFree(salt); cmeFree(mac); cmeFree(cipher); cmeFree(tag); cmeFree(combined); cmeFree(bytes);
+    }
+    if (step==SQLITE_DONE) result=0;
+done:
+    for (i=0;i<4;i++) cmeFree(plain[i]);
+    for (i=0;i<3;i++) cmeFree(lookups[i]);
+    cmeFree(salt); cmeFree(mac); cmeFree(cipher); cmeFree(tag); cmeFree(combined); cmeFree(bytes);
+    sqlite3_finalize(read); sqlite3_finalize(update); sqlite3_close(db); return(result);
+}
+
 static int cmeFixtureReadBundle(const char *root)
 {
     sqlite3 *resources=NULL,*column=NULL;
@@ -235,6 +285,8 @@ int main(int argc, char **argv)
     if (!strcmp(argv[2],"legacy-provider")) { printf("%d\n",CDSE_HERRADURAKEX_LEGACY_DUPLEX); return(0); }
     if (!strcmp(argv[2],"verify-bundle")) return(cmeFixtureReadBundle(argv[1]));
     if (!strcmp(argv[2],"bundle")) return(cmeFixtureBundle(argv[1]));
+    if (!strcmp(argv[2],"registered-lookups")) return(cmeFixtureRegistered(argv[1],0));
+    if (!strcmp(argv[2],"registered-target")) return(cmeFixtureRegistered(argv[1],1));
     if (sqlite3_open(argv[1],&db)!=SQLITE_OK) return(1);
     result=cmeSQLRows(db,
         "CREATE TABLE data (id INTEGER PRIMARY KEY,userId TEXT,orgId TEXT,salt TEXT,value TEXT,rowOrder TEXT,MAC TEXT,sign TEXT,MACProtected TEXT,signProtected TEXT,otphDKey TEXT);"
@@ -256,6 +308,26 @@ int main(int argc, char **argv)
             "INSERT INTO meta VALUES (3,'fixtureUser','fixtureOrg','','shuffle','aes-256-gcm');"
             "UPDATE meta SET id=4 WHERE id=1; UPDATE meta SET id=1 WHERE id=3; UPDATE meta SET id=3 WHERE id=4;",NULL,NULL);
     if (!result && !strcmp(argv[2],"empty")) result=cmeSQLRows(db,"UPDATE data SET value='' WHERE id=2;",NULL,NULL);
+    if (!result && !strcmp(argv[2],"registered-column"))
+    {
+        sqlite3_stmt *profile=NULL;
+        if (getenv("CDSE_FIXTURE_REGISTERED_SHUFFLE"))
+        {
+            /* Match the engine's shuffle-before-protect metadata ordering. */
+            result=cmeSQLRows(db,"INSERT INTO meta VALUES (3,'fixtureUser','fixtureOrg','','shuffle','');"
+                "UPDATE meta SET id=4 WHERE id=1; UPDATE meta SET id=1 WHERE id=3; UPDATE meta SET id=3 WHERE id=4;",NULL,NULL);
+        }
+        if (!result && getenv("CDSE_FIXTURE_REGISTERED_TAGS"))
+            result=cmeSQLRows(db,
+                "INSERT INTO meta VALUES (3,'fixtureUser','fixtureOrg','','MAC','sha256');"
+                "INSERT INTO meta VALUES (4,'fixtureUser','fixtureOrg','','sign','sha256');"
+                "INSERT INTO meta VALUES (5,'fixtureUser','fixtureOrg','','MACProtected','sha256');"
+                "INSERT INTO meta VALUES (6,'fixtureUser','fixtureOrg','','signProtected','sha256');",NULL,NULL);
+        if (result) { sqlite3_close(db); return(1); }
+        result=sqlite3_prepare_v2(db,"UPDATE meta SET attributeData=?1 WHERE attribute IN ('protect','shuffle')",-1,&profile,NULL)!=SQLITE_OK ||
+            sqlite3_bind_text(profile,1,cmeDefaultEncAlg,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(profile)!=SQLITE_DONE;
+        sqlite3_finalize(profile);
+    }
     if (!result) result=cmeMemSecureDBProtect(db,cmeFixtureKey());
     if (!result && (!strncmp(argv[2],"rollback-",9) || !strcmp(argv[2],"interrupt")))
         result=cmeFixtureRollback(db,argv[2]);
