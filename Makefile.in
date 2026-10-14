@@ -130,14 +130,15 @@ CaumeDSE_debug_tests_OBJECTS = $(am_CaumeDSE_debug_tests_OBJECTS)
 CaumeDSE_debug_tests_LDADD = $(LDADD)
 am_caumedse_admin_OBJECTS = admin.$(OBJEXT) \
 	storage_migration.$(OBJEXT) context_owner.$(OBJEXT) \
-	$(am__objects_1)
+	context_witness.$(OBJEXT) $(am__objects_1)
 caumedse_admin_OBJECTS = $(am_caumedse_admin_OBJECTS)
 caumedse_admin_LDADD = $(LDADD)
 am_context_manager_fixture_OBJECTS =  \
 	context_manager_fixture-context_manager_fixture.$(OBJEXT) \
 	context_manager_fixture-context_manager.$(OBJEXT) \
 	context_manager_fixture-context_registry.$(OBJEXT) \
-	context_manager_fixture-context_offline.$(OBJEXT)
+	context_manager_fixture-context_offline.$(OBJEXT) \
+	context_manager_fixture-context_witness.$(OBJEXT)
 context_manager_fixture_OBJECTS =  \
 	$(am_context_manager_fixture_OBJECTS)
 context_manager_fixture_LDADD = $(LDADD)
@@ -171,9 +172,11 @@ am__depfiles_remade = ./$(DEPDIR)/admin.Po ./$(DEPDIR)/config.Po \
 	./$(DEPDIR)/context_manager_fixture-context_manager_fixture.Po \
 	./$(DEPDIR)/context_manager_fixture-context_offline.Po \
 	./$(DEPDIR)/context_manager_fixture-context_registry.Po \
+	./$(DEPDIR)/context_manager_fixture-context_witness.Po \
 	./$(DEPDIR)/context_offline.Po ./$(DEPDIR)/context_owner.Po \
 	./$(DEPDIR)/context_registry.Po \
-	./$(DEPDIR)/context_registry_fixture.Po ./$(DEPDIR)/crypto.Po \
+	./$(DEPDIR)/context_registry_fixture.Po \
+	./$(DEPDIR)/context_witness.Po ./$(DEPDIR)/crypto.Po \
 	./$(DEPDIR)/db.Po ./$(DEPDIR)/debug_tests.Po \
 	./$(DEPDIR)/engine_admin.Po ./$(DEPDIR)/engine_interface.Po \
 	./$(DEPDIR)/filehandling.Po ./$(DEPDIR)/function_tests.Po \
@@ -642,12 +645,12 @@ ipathdatadir = @DATADIR@
 caume_common_sources = common.h config.c crypto.c crypto.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 CaumeDSE_SOURCES = main.c $(caume_common_sources)
 CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
-caumedse_admin_SOURCES = admin.c admin.h storage_migration.c context_owner.c $(caume_common_sources)
-context_manager_fixture_SOURCES = context_manager_fixture.c context_manager.c context_manager.h context_registry.c context_registry.h context_offline.c context_offline.h
+caumedse_admin_SOURCES = admin.c admin.h storage_migration.c context_owner.c context_witness.c context_witness.h $(caume_common_sources)
+context_manager_fixture_SOURCES = context_manager_fixture.c context_manager.c context_manager.h context_registry.c context_registry.h context_offline.c context_offline.h context_witness.c context_witness.h
 context_manager_fixture_CPPFLAGS = $(AM_CPPFLAGS) -DCDSE_CONTEXT_MANAGER_TESTING
 context_registry_fixture_SOURCES = context_registry_fixture.c context_registry.c context_registry.h
 reprotect_fixture_SOURCES = reprotect_fixture.c $(caume_common_sources)
-TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh
+TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh test_context_witness.sh
 TESTS_ENVIRONMENT = srcdir='$(srcdir)'
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = $(TESTS) TEST samples favicon.ico CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md HERRADURAKEX_AT_REST_PLAN.md openapi.yaml herradura_compat.h
@@ -787,10 +790,12 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager_fixture-context_manager_fixture.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager_fixture-context_offline.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager_fixture-context_registry.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager_fixture-context_witness.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_offline.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_owner.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_registry.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_registry_fixture.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_witness.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/crypto.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/db.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/debug_tests.Po@am__quote@ # am--include-marker
@@ -884,6 +889,20 @@ context_manager_fixture-context_offline.obj: context_offline.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_offline.c' object='context_manager_fixture-context_offline.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_manager_fixture-context_offline.obj `if test -f 'context_offline.c'; then $(CYGPATH_W) 'context_offline.c'; else $(CYGPATH_W) '$(srcdir)/context_offline.c'; fi`
+
+context_manager_fixture-context_witness.o: context_witness.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_manager_fixture-context_witness.o -MD -MP -MF $(DEPDIR)/context_manager_fixture-context_witness.Tpo -c -o context_manager_fixture-context_witness.o `test -f 'context_witness.c' || echo '$(srcdir)/'`context_witness.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_manager_fixture-context_witness.Tpo $(DEPDIR)/context_manager_fixture-context_witness.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_witness.c' object='context_manager_fixture-context_witness.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_manager_fixture-context_witness.o `test -f 'context_witness.c' || echo '$(srcdir)/'`context_witness.c
+
+context_manager_fixture-context_witness.obj: context_witness.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_manager_fixture-context_witness.obj -MD -MP -MF $(DEPDIR)/context_manager_fixture-context_witness.Tpo -c -o context_manager_fixture-context_witness.obj `if test -f 'context_witness.c'; then $(CYGPATH_W) 'context_witness.c'; else $(CYGPATH_W) '$(srcdir)/context_witness.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_manager_fixture-context_witness.Tpo $(DEPDIR)/context_manager_fixture-context_witness.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_witness.c' object='context_manager_fixture-context_witness.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_manager_fixture-context_witness.obj `if test -f 'context_witness.c'; then $(CYGPATH_W) 'context_witness.c'; else $(CYGPATH_W) '$(srcdir)/context_witness.c'; fi`
 install-ipathdataDATA: $(ipathdata_DATA)
 	@$(NORMAL_INSTALL)
 	@list='$(ipathdata_DATA)'; test -n "$(ipathdatadir)" || list=; \
@@ -1220,6 +1239,13 @@ test_context_owner.sh.log: test_context_owner.sh
 	--log-file $$b.log --trs-file $$b.trs \
 	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
 	"$$tst" $(AM_TESTS_FD_REDIRECT)
+test_context_witness.sh.log: test_context_witness.sh
+	@p='test_context_witness.sh'; \
+	b='test_context_witness.sh'; \
+	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
+	--log-file $$b.log --trs-file $$b.trs \
+	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
+	"$$tst" $(AM_TESTS_FD_REDIRECT)
 .test.log:
 	@p='$<'; \
 	$(am__set_b); \
@@ -1494,10 +1520,12 @@ distclean: distclean-recursive
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_manager_fixture.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_offline.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_registry.Po
+	-rm -f ./$(DEPDIR)/context_manager_fixture-context_witness.Po
 	-rm -f ./$(DEPDIR)/context_offline.Po
 	-rm -f ./$(DEPDIR)/context_owner.Po
 	-rm -f ./$(DEPDIR)/context_registry.Po
 	-rm -f ./$(DEPDIR)/context_registry_fixture.Po
+	-rm -f ./$(DEPDIR)/context_witness.Po
 	-rm -f ./$(DEPDIR)/crypto.Po
 	-rm -f ./$(DEPDIR)/db.Po
 	-rm -f ./$(DEPDIR)/debug_tests.Po
@@ -1568,10 +1596,12 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_manager_fixture.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_offline.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_registry.Po
+	-rm -f ./$(DEPDIR)/context_manager_fixture-context_witness.Po
 	-rm -f ./$(DEPDIR)/context_offline.Po
 	-rm -f ./$(DEPDIR)/context_owner.Po
 	-rm -f ./$(DEPDIR)/context_registry.Po
 	-rm -f ./$(DEPDIR)/context_registry_fixture.Po
+	-rm -f ./$(DEPDIR)/context_witness.Po
 	-rm -f ./$(DEPDIR)/crypto.Po
 	-rm -f ./$(DEPDIR)/db.Po
 	-rm -f ./$(DEPDIR)/debug_tests.Po

@@ -1215,6 +1215,22 @@ static int cmeShuffleCurrent(cmeContextManager *manager, const cmeContextAnchor 
     return(cmeMapMatch(map,mapExpected));
 }
 
+int cmeContextManagerCheckAnchors(cmeContextManager *manager, const cmeContextAnchor *registry,
+                                  const cmeContextMapAnchor *catalog)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0};
+    int result=1;
+    if (!manager || !registry || !catalog) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=cmeShuffleCurrent(manager,registry,catalog,&state,&current);
+    if (!result && sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) result=1;
+done:
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
 int cmeContextManagerShuffleInit(cmeContextManager *manager, const cmeContextAnchor *expected,
                                  const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published)
 {

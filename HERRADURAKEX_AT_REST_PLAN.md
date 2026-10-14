@@ -1241,3 +1241,129 @@ roll-forward after the fixture interrupts atomic rename. They do not prove V2
 provider authentication, independently monotonic authority or power-loss safety.
 TODO #147 remains open for production trust/recovery and live lifecycle adapters,
 context-aware V2 operations, migration/floor closeout and acceptance tests.
+
+## Independent Anchor Witness (#147, Phase 11)
+
+An opt-in local witness retains the last explicitly approved registry/catalog
+anchor pair outside the manager/export/staging trees, using a separate HMAC key.
+It detects a manager plus approval backup restored behind an independently
+retained newer witness. This is an owner checkpoint, not a hardware counter,
+remote authority, storage lock, lease or atomic two-database transaction.
+Its own authentic complete backup replay is NOT detectable by the witness file
+itself. Protect its directory, key and identity in an independently retained
+recovery domain; merely placing a file in another directory is insufficient
+against whole-host rollback. All intended writers/readers must adopt this guard.
+Schema-1 approvals and direct manager APIs remain unchanged and can bypass it;
+no live production or V2 security claim is added.
+
+`context-witness` uses the same private owner approval contract as phase 10.
+Schema 2 has exactly the schema-1 fields plus `"witness": "/private/witness"`.
+Both witness and guarded shuffle commands additionally require:
+
+```sh
+--witness-directory "$TRUSTED_WITNESS_DIRECTORY" --witness-key-file "$WITNESS_KEY_FILE"
+```
+
+Select that directory and key from independent trusted owner configuration, never
+from a candidate artifact or restored manifest. The CLI directory must exactly
+match the manifest's canonical witness path; a replayed manifest cannot redirect
+the independently selected checkpoint. Keep both witness flags fixed to prevent
+an old schema-1 manifest from downgrading the guarded command. Changing trusted
+configuration to an old checkpoint defeats this guarantee by definition.
+Wrong scope or either key fails closed. Keys are separate externally provisioned
+random 32-byte values (64 lowercase hex digits, optional newline), must differ,
+and remain in separate private canonical 0600 one-link files under 0700 parents.
+The command does not generate, transport or rotate keys, prove their entropy or
+independent custody, or bootstrap registry identities. Both keys are cleansed
+from owner/witness/manager memory on cleanup; diagnostics omit keys and paths.
+
+Witness directory must be canonical uid-owned 0700, disjoint from the manager,
+the active export and staging parent trees. Exact directory inode aliases with
+manager/staging are rejected too. Manifest and both keys must be outside the
+witness tree; both keys must also be outside the manager tree, and the witness
+key outside the active export. The owner must exclude all control material from
+every other export and from shared rollback backups. Filesystem path checks do
+not prove independent backup policy or hardware isolation.
+
+`context-witness --init` requires existing authenticated manager/catalog state
+matching the explicit manifest pins, then provisions a new `witness.sqlite`
+and durable empty `witness.initialized` marker. Existing DB/marker refuses init.
+The marker is synced before DB creation, so missing or incompletely initialized
+DB state cannot silently become a new witness on retry. Reopen never creates,
+repairs or resets authority. A failed precommit initialization remains unavailable
+for explicit operator reconciliation in a reviewed recovery procedure; do not
+delete its marker or initialize another witness to bypass a recovery conflict.
+Lost initialization acknowledgement after commit is reconciled with `--status`.
+
+Both files are regular uid-owned 0600 one-link files; links, public modes,
+missing/corrupt records or version/type/length mismatches fail closed. SQLite uses
+FULLMUTEX, NOFOLLOW, DELETE journaling and synchronous EXTRA, with private inode
+guards and mutex-protected transactions. No secrets or deployment data are
+written into the witness beyond scope and non-secret checkpoint tokens.
+
+The fixed canonical HMAC-SHA-256 encoding is:
+
+```text
+"CDSE-HKX-WITNESS-v1" || NUL || deployment[16] || organization[16]
+|| witness_revision[8] || registry_anchor[73] || catalog_anchor[40]
+|| previous_witness_token[40]
+```
+
+Numbers are big-endian; registry/catalog tokens use phase-10 packing. The witness
+token is revision[8] plus SHA-256 of these bytes. Revision starts at 1 with a
+zero previous token; subsequent records retain the previous revision/digest as
+the last advance receipt. Version, singleton count and all typed BLOB lengths
+are checked before interpreting/authenticating rows. The independent witness
+key, not the manager key, authenticates the record in this distinct domain.
+
+`cmeContextManagerCheckAnchors` authenticates both supplied pins in one current
+manager read transaction. In schema-2 shuffle commands it runs before witness
+checking, and the manager operation still performs its own full CAS. No witness
+is advanced automatically. After a successful shuffle/catalog/registry publication
+the manager may be one step ahead, deliberately blocking the next guarded action
+until the owner retains/reconciles output and explicitly reapproves its manifest.
+
+```sh
+caumedse-admin context-witness --approval "$APPROVAL" \
+  --registry-key-file "$REGISTRY_KEY_FILE" --confirmed-offline "$APPROVAL" \
+  --witness-directory "$TRUSTED_WITNESS_DIRECTORY" --witness-key-file "$WITNESS_KEY_FILE" --init
+# Retain the returned witness token independently. Run one approved guarded action.
+# Reconcile/reapprove its published manager pins, then explicitly advance:
+caumedse-admin context-witness --approval "$APPROVAL" \
+  --registry-key-file "$REGISTRY_KEY_FILE" --confirmed-offline "$APPROVAL" \
+  --witness-directory "$TRUSTED_WITNESS_DIRECTORY" --witness-key-file "$WITNESS_KEY_FILE" \
+  --advance "$PREVIOUS_WITNESS_TOKEN"
+```
+
+`--advance` first checks the approved pair against current authenticated manager
+state, then uses the full previous witness token for witness CAS. Exactly one
+manager counter may advance by one; the other entire anchor must stay identical.
+Registry floor cannot decrease. Same-counter digest forks, rollback, skips,
+simultaneous counter changes and witness/counter overflow fail without publication.
+This counter check is not issuer-history, inventory or payload verification:
+owner approval and normal manager lifecycle checks remain necessary. Multiple
+unguarded publications cannot be silently reconciled; this patch supplies no
+skip/force/reset path or automated multi-step restoration procedure.
+
+Advance commits only the witness. Its signed last-transition receipt permits an
+exact lost-ack retry with the previous token and identical approved manager pair,
+returning the same witness token without increment. After another advance that
+receipt is gone and old tokens conflict. Stale pins/tokens return 2; malformed,
+unavailable or forbidden transitions return 1; success returns 0. Status reports
+the exact approved current witness token, not a payload verification result.
+If manager publication succeeded but witness advance was interrupted, reconcile
+the owner-approved current pair, then retry advance; never adopt a candidate's
+newer counter automatically. An installed shuffle target can still roll forward
+from the current prepared witness, followed by explicit witness advancement.
+
+Twenty-four new tests cover independent encoding, scoped authentication, CAS,
+last-transition receipts, aliasing, semantic counter/floor rules, corruption,
+overflow, missing DB/marker, crash ordering and competing publishers. Installed
+owner integration checks exercise manager/approval rollback, checkpoint redirect
+rejection, protected distinct keys, opt-in/backward compatibility, skipped
+unguarded publications and interrupted-target recovery. An explicit complete
+witness replay test documents the independent-retention limitation instead of
+asserting hardware rollback protection. Crash hooks are fixture-only.
+TODO #147 remains open for production key custody/rotation and independently
+monotonic recovery deployment, live lifecycle integration, V2 context APIs and
+persisted migration/floor/provider acceptance tests.

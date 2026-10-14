@@ -2,10 +2,12 @@
 #include "admin.h"
 #include "context_manager.h"
 #include "context_offline.h"
+#include "context_witness.h"
 
 typedef struct
 {
-    char *values[12];
+    char *values[13];
+    int schema;
     cmeContextSlot *slots;
     size_t count;
     unsigned char deployment[16],organization[16],source[32],target[32];
@@ -40,7 +42,7 @@ static void cmeOwnerPrint(const unsigned char *bytes, size_t length)
 static void cmeOwnerFree(cmeOwnerApproval *approval)
 {
     size_t i;
-    for (i=0;i<12;i++) free(approval->values[i]);
+    for (i=0;i<13;i++) free(approval->values[i]);
     for (i=0;i<approval->count;i++)
     {
         free((char *)approval->slots[i].lookup); free((char *)approval->slots[i].table);
@@ -63,7 +65,7 @@ static char *cmeOwnerText(sqlite3_stmt *stmt, int column, size_t maximum)
 static int cmeOwnerParse(const char *body, cmeOwnerApproval *approval)
 {
     static const char *names[]={"schema","manager","deployment","organization","map","registry",
-        "catalog","active","staged","source","target","slots"};
+        "catalog","active","staged","source","target","slots","witness"};
     sqlite3 *db=NULL;
     sqlite3_stmt *stmt=NULL,*slot=NULL;
     unsigned char bytes[73];
@@ -76,18 +78,22 @@ static int cmeOwnerParse(const char *body, cmeOwnerApproval *approval)
     {
         const char *key=(const char *)sqlite3_column_text(stmt,0),*type=(const char *)sqlite3_column_text(stmt,1);
         if (!key || !type || strlen(key)!=(size_t)sqlite3_column_bytes(stmt,0)) goto done;
-        for (i=0;i<12;i++) if (!strcmp(key,names[i])) break;
-        if (i==12 || approval->values[i] || strcmp(type,i==0 ? "integer" : (i==11 ? "array" : "text"))) goto done;
+        for (i=0;i<13;i++) if (!strcmp(key,names[i])) break;
+        if (i==13 || approval->values[i] || strcmp(type,i==0 ? "integer" : (i==11 ? "array" : "text"))) goto done;
         if (!i)
         {
-            if (sqlite3_column_type(stmt,2)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,2)!=1) goto done;
+            if (sqlite3_column_type(stmt,2)!=SQLITE_INTEGER ||
+                (sqlite3_column_int64(stmt,2)!=1 && sqlite3_column_int64(stmt,2)!=2)) goto done;
+            approval->schema=(int)sqlite3_column_int64(stmt,2);
             approval->values[i]=strdup("1");
         }
         else approval->values[i]=cmeOwnerText(stmt,2,i==11 ? cmeContextRegistryMaxBytes : PATH_MAX-1);
         if (!approval->values[i]) goto done;
         seen++;
     }
-    if (step!=SQLITE_DONE || seen!=12 || cmeOwnerHex(approval->values[2],approval->deployment,16) ||
+    if (step!=SQLITE_DONE || seen!=(approval->schema==1 ? 12U : 13U) ||
+        (approval->schema==1 ? approval->values[12]!=NULL : approval->values[12]==NULL) ||
+        cmeOwnerHex(approval->values[2],approval->deployment,16) ||
         cmeOwnerHex(approval->values[3],approval->organization,16) || cmeOwnerHex(approval->values[5],bytes,73)) goto done;
     memcpy(approval->registry.deployment,bytes,16); memcpy(approval->registry.organization,bytes+16,16);
     for (i=0;i<8;i++) approval->registry.generation=(approval->registry.generation<<8)|bytes[32+i];
@@ -187,6 +193,28 @@ static int cmeOwnerPaths(const cmeOwnerApproval *approval, const char *manifest,
 static int cmeOwnerSameSlot(const cmeContextSlot *a, const cmeContextSlot *b)
 {
     return(!strcmp(a->lookup,b->lookup) && !strcmp(a->table,b->table) && !strcmp(a->field,b->field));
+}
+
+static int cmeOwnerWitnessPaths(const cmeOwnerApproval *approval, const char *manifest, const char *keyFile, const char *witnessKey)
+{
+    char canonical[PATH_MAX],export[PATH_MAX],staging[PATH_MAX],*slash;
+    struct stat managerDirectory,witnessDirectory,stagedDirectory;
+    const char *directory=approval->values[12];
+    if (!directory || !witnessKey || !realpath(directory,canonical) || strcmp(directory,canonical) ||
+        !cmeOwnerOutside(approval->values[1],directory) || !cmeOwnerOutside(directory,approval->values[1]) ||
+        !cmeOwnerOutside(directory,keyFile) || !cmeOwnerOutside(directory,witnessKey) || !cmeOwnerOutside(directory,manifest) ||
+        !cmeOwnerOutside(approval->values[1],keyFile) || !cmeOwnerOutside(approval->values[1],witnessKey) ||
+        lstat(directory,&witnessDirectory) || lstat(approval->values[1],&managerDirectory) ||
+        (witnessDirectory.st_dev==managerDirectory.st_dev && witnessDirectory.st_ino==managerDirectory.st_ino)) return(1);
+    strcpy(staging,approval->values[8]); slash=strrchr(staging,'/');
+    if (!slash || slash==staging) return(1);
+    *slash=0;
+    if (!cmeOwnerOutside(directory,staging) || !cmeOwnerOutside(staging,directory) || lstat(staging,&stagedDirectory) ||
+        (witnessDirectory.st_dev==stagedDirectory.st_dev && witnessDirectory.st_ino==stagedDirectory.st_ino)) return(1);
+    strcpy(export,approval->values[7]); slash=strrchr(export,'/');
+    if (!slash || slash==export) return(1);
+    *slash=0;
+    return(!cmeOwnerOutside(export,directory) || !cmeOwnerOutside(directory,export) || !cmeOwnerOutside(export,witnessKey));
 }
 
 static int cmeOwnerReceipt(const cmeOwnerApproval *approval, const cmeContextShuffle *shuffle)
@@ -311,16 +339,22 @@ int cmeContextOwnerMain(int argc, char **argv)
     cmeContextBinding *binding=NULL;
     cmeContextShuffle *shuffle=NULL;
     cmeContextMapAnchor published={0};
-    const char *manifest=NULL,*keyFile=NULL,*confirmation=NULL,*action=NULL,*jobText=NULL;
-    char *body=NULL,*keyText=NULL;
-    unsigned char key[32]={0},job[32]={0},bytes[8];
-    int i,result=1;
+    cmeContextWitness *witness=NULL;
+    cmeContextWitnessState witnessed={0};
+    cmeContextWitnessAnchor witnessExpected={0},witnessPublished={0};
+    const char *manifest=NULL,*keyFile=NULL,*confirmation=NULL,*action=NULL,*jobText=NULL,*witnessFile=NULL,*witnessDirectory=NULL;
+    char *body=NULL,*keyText=NULL,*witnessText=NULL;
+    unsigned char key[32]={0},witnessKey[32]={0},job[32]={0},bytes[40];
+    int i,result=1,witnessCommand=argc>1 && !strcmp(argv[1],"context-witness");
     if (argc==3 && !strcmp(argv[2],"--help"))
     {
-        puts("Usage: caumedse-admin context-shuffle --approval FILE --registry-key-file FILE\n"
+        puts("Usage: caumedse-admin (context-shuffle | context-witness) --approval FILE --registry-key-file FILE\n"
              "  --confirmed-offline APPROVAL_REALPATH\n"
-             "  (--init | --status | --prepare | --complete JOB_HEX | --abort JOB_HEX)\n"
-             "Private owner approval schema 1; explicit registry/catalog pins, no automatic refresh.\n"
+             "  Shuffle: (--init | --status | --prepare | --complete JOB_HEX | --abort JOB_HEX)\n"
+             "  Schema 2: --witness-directory TRUSTED_DIRECTORY --witness-key-file FILE\n"
+             "  Witness: (--init | --status | --advance WITNESS_TOKEN)\n"
+             "Schema 2 requires witness directory and independent witness key; schema 1 is unchanged.\n"
+             "Explicit registry/catalog pins, no automatic refresh. Witness advance is separately approved.\n"
              "Stop all readers/writers. Prepare verifies a complete byte-preserving row permutation.\n"
              "No encryption rotation, automatic backup/restore, live lease or V2 activation.");
         return(0);
@@ -329,17 +363,19 @@ int cmeContextOwnerMain(int argc, char **argv)
     {
         const char **option=NULL;
         if (!strcmp(argv[i],"--init") || !strcmp(argv[i],"--status") || !strcmp(argv[i],"--prepare") ||
-            !strcmp(argv[i],"--complete") || !strcmp(argv[i],"--abort"))
+            !strcmp(argv[i],"--complete") || !strcmp(argv[i],"--abort") || !strcmp(argv[i],"--advance"))
         {
             if (action) goto done;
             action=argv[i];
-            if (!strcmp(action,"--complete") || !strcmp(action,"--abort"))
+            if (!strcmp(action,"--complete") || !strcmp(action,"--abort") || !strcmp(action,"--advance"))
             { if (++i>=argc) goto done; jobText=argv[i]; }
             continue;
         }
         if (!strcmp(argv[i],"--approval")) option=&manifest;
         else if (!strcmp(argv[i],"--registry-key-file")) option=&keyFile;
         else if (!strcmp(argv[i],"--confirmed-offline")) option=&confirmation;
+        else if (!strcmp(argv[i],"--witness-key-file")) option=&witnessFile;
+        else if (!strcmp(argv[i],"--witness-directory")) option=&witnessDirectory;
         if (!option || *option || ++i>=argc || !argv[i][0]) goto done;
         *option=argv[i];
     }
@@ -347,8 +383,49 @@ int cmeContextOwnerMain(int argc, char **argv)
         cmeOwnerFile(manifest,cmeContextRegistryMaxBytes,&body) || cmeOwnerParse(body,&approval) ||
         cmeOwnerPaths(&approval,manifest,keyFile) || cmeOwnerFile(keyFile,65,&keyText)) goto done;
     if (strlen(keyText)==65 && keyText[64]=='\n') keyText[64]=0;
-    if (cmeOwnerHex(keyText,key,32) || (jobText && cmeOwnerHex(jobText,job,32)) ||
+    if (cmeOwnerHex(keyText,key,32) || (!witnessCommand && jobText && cmeOwnerHex(jobText,job,32)) ||
+        (witnessCommand && strcmp(action,"--init") && strcmp(action,"--status") && strcmp(action,"--advance")) ||
+        (!witnessCommand && !strcmp(action,"--advance")) ||
+        (approval.schema==1 && (witnessCommand || witnessFile || witnessDirectory)) ||
         cmeContextManagerOpen(approval.values[1],0,key,approval.deployment,approval.organization,&manager)) goto done;
+    if (approval.schema==2)
+    {
+        if (!witnessDirectory || strcmp(witnessDirectory,approval.values[12]) ||
+            cmeOwnerWitnessPaths(&approval,manifest,keyFile,witnessFile) || cmeOwnerFile(witnessFile,65,&witnessText)) goto done;
+        if (strlen(witnessText)==65 && witnessText[64]=='\n') witnessText[64]=0;
+        if (cmeOwnerHex(witnessText,witnessKey,32) || !CRYPTO_memcmp(key,witnessKey,32)) goto done;
+        result=cmeContextManagerCheckAnchors(manager,&approval.registry,&approval.catalog); if (result) goto done;
+        result=1;
+        if (cmeContextWitnessOpen(approval.values[12],witnessCommand && !strcmp(action,"--init"),witnessKey,
+            approval.deployment,approval.organization,&approval.registry,&approval.catalog,&witness)) goto done;
+        if (witnessCommand && !strcmp(action,"--advance"))
+        {
+            if (!jobText || cmeOwnerHex(jobText,bytes,40)) goto done;
+            for (i=0;i<8;i++) witnessExpected.revision=(witnessExpected.revision<<8)|bytes[i];
+            memcpy(witnessExpected.digest,bytes+8,32);
+            result=cmeContextWitnessAdvance(witness,&witnessExpected,&approval.registry,&approval.catalog,&witnessPublished);
+            if (result) goto done;
+        }
+        else
+        { result=cmeContextWitnessCheck(witness,&approval.registry,&approval.catalog); if (result) goto done; }
+        if (witnessCommand)
+        {
+            if (!strcmp(action,"--advance")) witnessed.anchor=witnessPublished;
+            else
+            {
+                result=cmeContextWitnessFetch(witness,&witnessed); if (result) goto done;
+                if (witnessed.registry.generation!=approval.registry.generation ||
+                    witnessed.registry.minimumFormat!=approval.registry.minimumFormat ||
+                    memcmp(witnessed.registry.digest,approval.registry.digest,32) ||
+                    witnessed.catalog.revision!=approval.catalog.revision || memcmp(witnessed.catalog.digest,approval.catalog.digest,32))
+                { result=2; goto done; }
+            }
+            printf("state=current\nwitness=");
+            for (i=0;i<8;i++) bytes[i]=(unsigned char)(witnessed.anchor.revision>>(56-8*i));
+            cmeOwnerPrint(bytes,8); cmeOwnerPrint(witnessed.anchor.digest,32); putchar('\n');
+            goto done;
+        }
+    }
     if (!strcmp(action,"--init"))
         result=cmeContextManagerShuffleInit(manager,&approval.registry,&approval.catalog,&published);
     else if (!strcmp(action,"--prepare"))
@@ -381,10 +458,12 @@ int cmeContextOwnerMain(int argc, char **argv)
         printf("catalog="); cmeOwnerPrint(bytes,8); cmeOwnerPrint(published.digest,32); putchar('\n');
     }
 done:
-    if (result) fputs(result==2 ? "context-shuffle: stale approval; reconcile owner pins\n" :
-        "context-shuffle: invalid approval or unavailable state\n",stderr);
+    if (result) fprintf(stderr,"%s: %s\n",witnessCommand ? "context-witness" : "context-shuffle",
+        result==2 ? "stale approval; reconcile owner pins" : "invalid approval or unavailable state");
     if (keyText) { OPENSSL_cleanse(keyText,strlen(keyText)); free(keyText); }
-    OPENSSL_cleanse(key,sizeof(key)); free(body); cmeOwnerFree(&approval);
+    if (witnessText) { OPENSSL_cleanse(witnessText,strlen(witnessText)); free(witnessText); }
+    OPENSSL_cleanse(key,sizeof(key)); OPENSSL_cleanse(witnessKey,sizeof(witnessKey)); free(body); cmeOwnerFree(&approval);
+    cmeContextWitnessClose(&witness);
     cmeContextBindingFree(&binding); cmeContextMapFree(&source); cmeContextShuffleFree(&shuffle);
     cmeContextManagerClose(&manager); return(result);
 }
