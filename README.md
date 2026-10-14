@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.11.0
+# Caume Data Security Engine (CaumeDSE) version 2.12.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2876,6 +2876,15 @@ requires exclusive offline ownership, private closed rollback-mode SQLite files
 independent owner verification of the candidate contents. It is not a cross-file
 transaction, payload-integrity proof or automatic restore. Older catalog readers
 fail closed after this opt-in upgrade; registry/frame formats are unchanged.
+The installed `caumedse-admin context-shuffle` command provides a private
+owner-approval workflow for existing manager catalogs: explicit upgrade, prepare,
+status, complete and abort. Prepare verifies complete data/meta row coverage and
+typed cell equivalence for a byte-preserving primary-key permutation; salts,
+tags and `rowOrder` must stay unchanged. It does not decrypt or authenticate
+payloads, generate a candidate, bootstrap authority or automatically refresh
+trusted pins. Stop all readers/writers and independently verify the source first.
+See the [owner approval workflow](HERRADURAKEX_AT_REST_PLAN.md#offline-owner-command-147-phase-10)
+for manifest fields, exact confirmation and recovery requirements.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider
