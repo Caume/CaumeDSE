@@ -116,11 +116,11 @@ am__installdirs = "$(DESTDIR)$(ipathbindir)" \
 PROGRAMS = $(ipathbin_PROGRAMS)
 am__objects_1 = config.$(OBJEXT) crypto.$(OBJEXT) \
 	context_registry.$(OBJEXT) context_manager.$(OBJEXT) \
-	db.$(OBJEXT) engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
-	filehandling.$(OBJEXT) function_tests.$(OBJEXT) \
-	perl_interpreter.$(OBJEXT) runtime.$(OBJEXT) \
-	strhandling.$(OBJEXT) webservice_interface.$(OBJEXT) \
-	xs_init.$(OBJEXT)
+	context_offline.$(OBJEXT) db.$(OBJEXT) engine_admin.$(OBJEXT) \
+	engine_interface.$(OBJEXT) filehandling.$(OBJEXT) \
+	function_tests.$(OBJEXT) perl_interpreter.$(OBJEXT) \
+	runtime.$(OBJEXT) strhandling.$(OBJEXT) \
+	webservice_interface.$(OBJEXT) xs_init.$(OBJEXT)
 am_CaumeDSE_OBJECTS = main.$(OBJEXT) $(am__objects_1)
 CaumeDSE_OBJECTS = $(am_CaumeDSE_OBJECTS)
 CaumeDSE_LDADD = $(LDADD)
@@ -135,7 +135,8 @@ caumedse_admin_LDADD = $(LDADD)
 am_context_manager_fixture_OBJECTS =  \
 	context_manager_fixture-context_manager_fixture.$(OBJEXT) \
 	context_manager_fixture-context_manager.$(OBJEXT) \
-	context_manager_fixture-context_registry.$(OBJEXT)
+	context_manager_fixture-context_registry.$(OBJEXT) \
+	context_manager_fixture-context_offline.$(OBJEXT)
 context_manager_fixture_OBJECTS =  \
 	$(am_context_manager_fixture_OBJECTS)
 context_manager_fixture_LDADD = $(LDADD)
@@ -167,8 +168,9 @@ am__depfiles_remade = ./$(DEPDIR)/admin.Po ./$(DEPDIR)/config.Po \
 	./$(DEPDIR)/context_manager.Po \
 	./$(DEPDIR)/context_manager_fixture-context_manager.Po \
 	./$(DEPDIR)/context_manager_fixture-context_manager_fixture.Po \
+	./$(DEPDIR)/context_manager_fixture-context_offline.Po \
 	./$(DEPDIR)/context_manager_fixture-context_registry.Po \
-	./$(DEPDIR)/context_registry.Po \
+	./$(DEPDIR)/context_offline.Po ./$(DEPDIR)/context_registry.Po \
 	./$(DEPDIR)/context_registry_fixture.Po ./$(DEPDIR)/crypto.Po \
 	./$(DEPDIR)/db.Po ./$(DEPDIR)/debug_tests.Po \
 	./$(DEPDIR)/engine_admin.Po ./$(DEPDIR)/engine_interface.Po \
@@ -635,11 +637,11 @@ tpath = @TESTFILES@
 ipath = @PREFIX@
 ipathbindir = @BINDIR@
 ipathdatadir = @DATADIR@
-caume_common_sources = common.h config.c crypto.c crypto.h context_registry.c context_registry.h context_manager.c context_manager.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+caume_common_sources = common.h config.c crypto.c crypto.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 CaumeDSE_SOURCES = main.c $(caume_common_sources)
 CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
 caumedse_admin_SOURCES = admin.c admin.h storage_migration.c $(caume_common_sources)
-context_manager_fixture_SOURCES = context_manager_fixture.c context_manager.c context_manager.h context_registry.c context_registry.h
+context_manager_fixture_SOURCES = context_manager_fixture.c context_manager.c context_manager.h context_registry.c context_registry.h context_offline.c context_offline.h
 context_manager_fixture_CPPFLAGS = $(AM_CPPFLAGS) -DCDSE_CONTEXT_MANAGER_TESTING
 context_registry_fixture_SOURCES = context_registry_fixture.c context_registry.c context_registry.h
 reprotect_fixture_SOURCES = reprotect_fixture.c $(caume_common_sources)
@@ -781,7 +783,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager_fixture-context_manager.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager_fixture-context_manager_fixture.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager_fixture-context_offline.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager_fixture-context_registry.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_offline.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_registry.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_registry_fixture.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/crypto.Po@am__quote@ # am--include-marker
@@ -863,6 +867,20 @@ context_manager_fixture-context_registry.obj: context_registry.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_registry.c' object='context_manager_fixture-context_registry.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_manager_fixture-context_registry.obj `if test -f 'context_registry.c'; then $(CYGPATH_W) 'context_registry.c'; else $(CYGPATH_W) '$(srcdir)/context_registry.c'; fi`
+
+context_manager_fixture-context_offline.o: context_offline.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_manager_fixture-context_offline.o -MD -MP -MF $(DEPDIR)/context_manager_fixture-context_offline.Tpo -c -o context_manager_fixture-context_offline.o `test -f 'context_offline.c' || echo '$(srcdir)/'`context_offline.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_manager_fixture-context_offline.Tpo $(DEPDIR)/context_manager_fixture-context_offline.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_offline.c' object='context_manager_fixture-context_offline.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_manager_fixture-context_offline.o `test -f 'context_offline.c' || echo '$(srcdir)/'`context_offline.c
+
+context_manager_fixture-context_offline.obj: context_offline.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_manager_fixture-context_offline.obj -MD -MP -MF $(DEPDIR)/context_manager_fixture-context_offline.Tpo -c -o context_manager_fixture-context_offline.obj `if test -f 'context_offline.c'; then $(CYGPATH_W) 'context_offline.c'; else $(CYGPATH_W) '$(srcdir)/context_offline.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_manager_fixture-context_offline.Tpo $(DEPDIR)/context_manager_fixture-context_offline.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_offline.c' object='context_manager_fixture-context_offline.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_manager_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_manager_fixture-context_offline.obj `if test -f 'context_offline.c'; then $(CYGPATH_W) 'context_offline.c'; else $(CYGPATH_W) '$(srcdir)/context_offline.c'; fi`
 install-ipathdataDATA: $(ipathdata_DATA)
 	@$(NORMAL_INSTALL)
 	@list='$(ipathdata_DATA)'; test -n "$(ipathdatadir)" || list=; \
@@ -1464,7 +1482,9 @@ distclean: distclean-recursive
 	-rm -f ./$(DEPDIR)/context_manager.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_manager.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_manager_fixture.Po
+	-rm -f ./$(DEPDIR)/context_manager_fixture-context_offline.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_registry.Po
+	-rm -f ./$(DEPDIR)/context_offline.Po
 	-rm -f ./$(DEPDIR)/context_registry.Po
 	-rm -f ./$(DEPDIR)/context_registry_fixture.Po
 	-rm -f ./$(DEPDIR)/crypto.Po
@@ -1535,7 +1555,9 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f ./$(DEPDIR)/context_manager.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_manager.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_manager_fixture.Po
+	-rm -f ./$(DEPDIR)/context_manager_fixture-context_offline.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_registry.Po
+	-rm -f ./$(DEPDIR)/context_offline.Po
 	-rm -f ./$(DEPDIR)/context_registry.Po
 	-rm -f ./$(DEPDIR)/context_registry_fixture.Po
 	-rm -f ./$(DEPDIR)/crypto.Po

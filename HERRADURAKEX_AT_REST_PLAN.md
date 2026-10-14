@@ -1043,3 +1043,81 @@ initialization/replacement/removal crash recovery. Process exits do not certify
 physical power-loss recovery. #147 remains open for authenticated owner deployment,
 live storage lifecycle ordering, V2 provider integration and persisted
 cross-context substitution/legacy-readback tests.
+
+## Offline Shuffle Recovery (#147, Phase 9)
+
+The internal manager now coordinates one independently approved offline
+ColumnFile replacement with its durable owner map. This is an explicit opt-in
+facility, not a live storage adapter, shuffler or V2 encryption implementation.
+Stop every reader/writer, close/checkpoint SQLite and retain exclusive ownership
+until recovery is reconciled. File metadata checks are not locks or leases.
+The owner must independently verify source and target contents, approve their
+SHA-256 digests and supply the complete identity-preserving permutation of the
+stored map's slots. Partial maps still do not prove complete file inventory.
+
+`cmeContextManagerShuffleInit` requires both current anchors and upgrades the
+catalog once, atomically, adding `shuffle_version=1`, `context_shuffles` and
+`context_shuffle_slots`. Registry schema, snapshot format and frame format do
+not change. Existing catalogs keep phase-8 behavior until explicit upgrade.
+Older catalog implementations fail authentication afterward; registry-only
+operations remain compatible. Missing or corrupt upgraded state never resets.
+
+The v2 authenticated encoding retains the phase-8 layout with domain
+`CDSE-HKX-MAP-v2\0`, followed by a four-byte job count. Jobs sort by map name
+in binary order and encode: one-byte-length map name, 32-byte random job token,
+one-byte state (1 prepared, 2 completed, 3 aborted), eight-byte finished revision,
+two-byte-length active and staged path bytes, 32-byte source and target digests,
+and four-byte target-slot count. Target slots use the phase-8 table/row/field/
+lookup encoding and ordering. Numbers are big-endian; signed rows use two's
+complement. Prepared finished revision is zero; receipts retain their commit
+revision. The same independent HMAC-SHA-256 key and SHA-256 anchor construction
+authenticate the entire encoding. Limits remain 1 MiB total encoding and 4096
+map names/ordinary slots, with at most 4096 retained jobs and 4096 target slots.
+
+`ShufflePrepare` accepts only active role-4 maps and the same set of lookup,
+table and field identities. Active contexts and row/record bijection are checked
+against the current registry. Source and target must be distinct approved bytes,
+regular uid-owned 0600 files, no symlinks/hardlinks or SQLite sidecars, in distinct
+canonical uid-owned 0700 directories on the same filesystem. Neither parent may
+be the manager directory; staging must be outside every storage export (an owner
+precondition, not an export-discovery check). Files are bounded to 256 MiB and
+must have a rollback-format SQLite header. Header checks do not validate SQL
+integrity, ciphertext, tags or equivalence of payloads to the supplied map.
+
+Prepare verifies digest pins, fsyncs files and parent directories, then commits
+the signed intent and target slots using both full-anchor CAS pins. It does not
+replace the file. A pending intent blocks `MapBind`, `MapStore` and `MapRemove`
+for that map and reserves both paths against other pending jobs. Authenticated
+metadata reads remain available for reconciliation. Direct caller-approved
+binding is not a bypass for the required offline/exclusive ownership policy.
+
+`ShuffleRecover(..., complete=1)` rechecks both authorities and active target
+contexts. If approved source bytes are active, it verifies staged target bytes,
+atomically renames staged over active and fsyncs both directories. If approved
+target bytes are already active after an interrupted install, it syncs the
+directories and rolls forward. Only afterward does one manager transaction
+replace the map and record a completed receipt. `complete=0` records an aborted
+receipt only while approved source bytes remain active; it never restores the
+source after target installation. Unknown/missing bytes, revoked contexts or
+unsafe files leave the intent blocked for explicit operator reconciliation.
+No files are automatically deleted during abort and no backup is created.
+
+`ShuffleRead` returns owned authenticated intent/receipt metadata; free with
+`cmeContextShuffleFree`. Receipts support lost-ack retries only with matching
+job/mode/file digest and the exact finished catalog revision. A later catalog
+change returns conflict and requires reconciliation. The next prepare on the
+same active map replaces its old receipt with a fresh job token; old tokens
+cannot complete a new job. Map tombstones remain permanent. Registry revocation
+is independent: completion refuses newly revoked contexts before installation;
+source abort can unblock metadata but does not make revoked bindings usable.
+
+Nineteen new tests cover the independent v2 encoder, UUID preservation and real
+SQLite readback, intent/receipt lifecycle, dual CAS, aliasing, path reservation,
+competing recoveries, revocation, unsafe files, corruption/types/orphans, overflow,
+and process crashes before/after intent commit, rename, directory sync and final
+map commit. Test hooks are fixture-only. Recovery is fail-closed and forward-only,
+not an atomic two-database transaction or physical power-loss certification.
+The protected manager database remains authority: its own HMAC/revision does not
+detect replay of a complete authentic backup. Independent monotonic recovery,
+authenticated owner deployment, live storage lifecycle integration, V2 provider
+integration and persisted substitution/legacy-readback tests keep #147 open.

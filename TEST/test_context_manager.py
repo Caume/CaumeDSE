@@ -25,12 +25,13 @@ def token(anchor):
                        anchor.generation, anchor.minimum_format, anchor.digest).hex()
 
 
-def catalog_bytes(deployment, organization, revision, maps, slots):
+def catalog_bytes(deployment, organization, revision, maps, slots, shuffles=None, targets=()):
     def text(value):
         data = value.encode('ascii')
         return bytes([len(data)]) + data
 
-    body = bytearray(b'CDSE-HKX-MAP-v1\0' + bytes.fromhex(deployment) + bytes.fromhex(organization))
+    domain = b'CDSE-HKX-MAP-v1\0' if shuffles is None else b'CDSE-HKX-MAP-v2\0'
+    body = bytearray(domain + bytes.fromhex(deployment) + bytes.fromhex(organization))
     body.extend(struct.pack('>QI', revision, len(maps)))
     grouped = {}
     for name, table, row, field, lookup in slots:
@@ -40,6 +41,18 @@ def catalog_bytes(deployment, organization, revision, maps, slots):
         body.extend(text(name) + text(resource) + struct.pack('>BBI', role, active, len(entries)))
         for table, row, field, lookup in entries:
             body.extend(text(table) + struct.pack('>q', row) + text(field) + text(lookup))
+    if shuffles is not None:
+        body.extend(struct.pack('>I', len(shuffles)))
+        for name, job, state, finished, active, staged, source, target in sorted(shuffles):
+            body.extend(text(name) + job + bytes([state]) + finished)
+            for path in (active, staged):
+                encoded = path.encode('utf-8')
+                body.extend(struct.pack('>H', len(encoded)) + encoded)
+            entries = sorted((table, row, field, lookup) for owner, table, row, field, lookup in targets
+                             if owner == name)
+            body.extend(source + target + struct.pack('>I', len(entries)))
+            for table, row, field, lookup in entries:
+                body.extend(text(table) + struct.pack('>q', row) + text(field) + text(lookup))
     return bytes(body)
 
 
@@ -1230,6 +1243,370 @@ class ManagerTests(unittest.TestCase):
                 process.communicate()
         self.assert_catalog()
         self.assertEqual(self.map_bind().returncode, 1)
+
+
+class ShuffleTests(ManagerTests):
+    # Inherit helpers, not the legacy test cases (selected below).
+    def shuffle_setup(self):
+        self.binding_family()
+        self.map_init()
+        self.source_slots = [('first', 'data', 10, 'value'), ('second', 'data', 20, 'value')]
+        self.target_slots = [('first', 'data', 20, 'value'), ('second', 'data', 10, 'value')]
+        self.assertEqual(self.map_store(self.source_slots).returncode, 0)
+        self.assertEqual(self.command('shuffle-init', self.current(), self.map_current()).returncode, 0)
+        self.active = self.root / 'export' / 'data.sqlite'
+        self.staged = self.root / 'staging' / 'next.sqlite'
+        for path, slots in ((self.active, self.source_slots), (self.staged, self.target_slots)):
+            path.parent.mkdir(mode=0o700)
+            with closing(sqlite3.connect(path)) as db, db:
+                db.execute('create table data(value text)')
+                db.executemany('insert into data(rowid,value) values(?,?)', [(s[2], s[0]) for s in slots])
+            path.chmod(0o600)
+        self.source_hash = hashlib.sha256(self.active.read_bytes()).hexdigest()
+        self.target_hash = hashlib.sha256(self.staged.read_bytes()).hexdigest()
+        self.assert_shuffle_catalog()
+
+    def prepare(self, env=None, **changes):
+        slots = changes.get('slots', self.target_slots)
+        args = [changes.get('name', 'view'), changes.get('active', self.active), changes.get('staged', self.staged),
+                changes.get('source', self.source_hash), changes.get('target', self.target_hash),
+                changes.get('registry', self.current()), changes.get('catalog', self.map_current()), len(slots)]
+        for slot in slots:
+            args.extend(slot)
+        return self.command('shuffle-prepare', *args, env=env)
+
+    def prepared(self):
+        result = self.prepare()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        job, anchor = result.stdout.decode().splitlines()
+        self.assertEqual(anchor, self.assert_shuffle_catalog())
+        self.assertEqual(self.map_bind().returncode, 1)
+        return job
+
+    def shuffle_read(self):
+        result = self.command('shuffle-read', 'view', self.current(), self.map_current())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def recover(self, job, complete=1, env=None, catalog=None):
+        return self.command('shuffle-recover', 'view', job, complete, self.current(),
+                            catalog or self.map_current(), env=env)
+
+    def assert_shuffle_catalog(self):
+        maps, slots, revision, tag = self.catalog_rows()
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db:
+            jobs = db.execute('select * from context_shuffles').fetchall()
+            targets = db.execute('select * from context_shuffle_slots').fetchall()
+        body = catalog_bytes(self.anchor.deployment, self.anchor.organization, revision, maps, slots, jobs, targets)
+        self.assertEqual(tag, hmac.digest(b'k' * 32, body, 'sha256'))
+        anchor = (struct.pack('>Q', revision) + hashlib.sha256(body).digest()).hex()
+        self.assertEqual(self.map_current(), anchor)
+        return anchor
+
+    def test_shuffle_complete_authenticated_receipt_and_uuid_preservation(self):
+        self.shuffle_setup()
+        registry = self.current()
+        job = self.prepared()
+        self.assertEqual(self.recover(job, env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'}).returncode, 0)
+        self.assertEqual(hashlib.sha256(self.active.read_bytes()).hexdigest(), self.target_hash)
+        self.assertFalse(self.staged.exists())
+        with closing(sqlite3.connect(self.active)) as db:
+            self.assertEqual(db.execute('select rowid,value from data order by rowid').fetchall(),
+                             [(10, 'second'), (20, 'first')])
+        self.assertEqual(self.map_bind().returncode, 0)
+        self.assertEqual(self.current(), registry)
+        self.assertEqual(self.shuffle_read()['state'], 2)
+        before = self.assert_shuffle_catalog()
+        self.assertEqual(self.recover(job).returncode, 0)
+        self.assertEqual(self.assert_shuffle_catalog(), before)
+        self.assertEqual(self.recover(job, 0).returncode, 1)
+
+    def test_shuffle_abort_and_new_job_replace_receipt(self):
+        self.shuffle_setup()
+        job = self.prepared()
+        self.assertEqual(self.recover(job, 0).returncode, 0)
+        before = self.assert_shuffle_catalog()
+        self.assertEqual(self.recover(job, 0).returncode, 0)
+        self.assertEqual(self.map_current(), before)
+        self.assertEqual(self.shuffle_read()['state'], 3)
+        self.assertEqual(self.map_bind().returncode, 0)
+        new = self.prepared()
+        self.assertNotEqual(new, job)
+        self.assertEqual(self.recover(job).returncode, 1)
+        self.assertEqual(self.recover(new).returncode, 0)
+
+    def test_shuffle_pending_blocks_map_edits_and_reserves_paths(self):
+        self.shuffle_setup()
+        job = self.prepared()
+        self.assertEqual(self.map_store(self.source_slots).returncode, 1)
+        self.assertEqual(self.map_remove().returncode, 1)
+        self.assertEqual(self.prepare().returncode, 1)
+        self.assertEqual(self.map_store(self.source_slots, name='other').returncode, 0)
+        self.assertEqual(self.prepare(name='other').returncode, 1)
+        self.assertEqual(self.recover(job).returncode, 0)
+        self.assert_shuffle_catalog()
+
+    def test_shuffle_exact_cas_nonce_and_late_receipt_retry(self):
+        self.shuffle_setup()
+        old = self.map_current()
+        job = self.prepared()
+        self.assertEqual(self.recover(job, catalog=old).returncode, 2)
+        self.assertEqual(self.recover('00' * 32).returncode, 1)
+        self.assertEqual(self.recover(job).returncode, 0)
+        self.assertEqual(self.map_store(self.target_slots, name='other').returncode, 0)
+        self.assertEqual(self.recover(job).returncode, 2)
+        self.assert_shuffle_catalog()
+
+    def test_shuffle_prepare_process_crashes(self):
+        self.shuffle_setup()
+        for point in ('after-begin', 'after-write', 'after-commit'):
+            before = self.map_current()
+            self.assertEqual(self.prepare(env={'CDSE_CONTEXT_MANAGER_CRASH': point}).returncode, 86)
+            if point == 'after-commit':
+                self.assertEqual(self.map_bind().returncode, 1)
+                self.assertEqual(self.recover(self.shuffle_read()['job'], 0).returncode, 0)
+            else:
+                self.assertEqual(self.map_current(), before)
+                self.assertEqual(self.map_bind().returncode, 0)
+            self.assertEqual(hashlib.sha256(self.active.read_bytes()).hexdigest(), self.source_hash)
+            self.assert_shuffle_catalog()
+
+    def test_shuffle_recovery_process_crashes(self):
+        self.shuffle_setup()
+        original = self.active.read_bytes()
+        candidate = self.staged.read_bytes()
+        for point in ('after-begin', 'after-rename', 'after-artifact-sync', 'after-write', 'after-commit'):
+            with self.subTest(point=point):
+                job = self.prepared()
+                key = 'CDSE_CONTEXT_OFFLINE_CRASH' if point == 'after-rename' else 'CDSE_CONTEXT_MANAGER_CRASH'
+                self.assertEqual(self.recover(job, env={key: point}).returncode, 86)
+                self.assertEqual(self.map_bind().returncode, 0 if point == 'after-commit' else 1)
+                self.assertEqual(self.recover(job).returncode, 0)
+                self.assertEqual(self.shuffle_read()['state'], 2)
+                self.assert_shuffle_catalog()
+                self.active.write_bytes(original)
+                self.staged.write_bytes(candidate)
+                self.staged.chmod(0o600)
+                self.assertEqual(self.map_store(self.source_slots).returncode, 0)
+
+    def test_shuffle_installed_target_requires_forward_recovery(self):
+        self.shuffle_setup()
+        job = self.prepared()
+        self.staged.replace(self.active)
+        self.assertEqual(self.recover(job, 0).returncode, 1)
+        self.assertEqual(self.map_bind().returncode, 1)
+        self.assertEqual(self.recover(job).returncode, 0)
+
+    def test_shuffle_unknown_active_and_missing_stage_fail_closed(self):
+        self.shuffle_setup()
+        original = self.active.read_bytes()
+        staged = self.staged.read_bytes()
+        job = self.prepared()
+        self.active.write_bytes(original + b'unknown')
+        self.assertEqual(self.recover(job).returncode, 1)
+        self.assertEqual(self.recover(job, 0).returncode, 1)
+        self.active.write_bytes(original)
+        self.staged.unlink()
+        self.assertEqual(self.recover(job).returncode, 1)
+        self.staged.write_bytes(staged + b'unknown')
+        self.staged.chmod(0o600)
+        self.assertEqual(self.recover(job).returncode, 1)
+        self.assertEqual(self.map_bind().returncode, 1)
+        self.assertEqual(self.recover(job, 0).returncode, 0)
+
+    def test_shuffle_revocation_before_install_preserves_source(self):
+        self.shuffle_setup()
+        job = self.prepared()
+        self.assertEqual(self.command('revoke', 'second', self.current()).returncode, 0)
+        self.assertEqual(self.recover(job).returncode, 1)
+        self.assertEqual(hashlib.sha256(self.active.read_bytes()).hexdigest(), self.source_hash)
+        self.assertEqual(self.recover(job, 0).returncode, 0)
+        self.assertEqual(self.map_bind().returncode, 1)
+
+    def test_shuffle_prepare_rejects_nonpermutation_and_bad_pins(self):
+        self.shuffle_setup()
+        before = self.map_current()
+        for changes in (dict(slots=self.target_slots[:1]), dict(slots=[('first', 'data', 1, 'other')]),
+                        dict(slots=[('first', 'data', 1, 'value'), ('second', 'data', 1, 'value')]),
+                        dict(source='00' * 32), dict(target='00' * 32), dict(target=self.source_hash),
+                        dict(staged=self.active), dict(active=self.authority / 'registry.sqlite')):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.prepare(**changes).returncode, 1)
+                self.assertEqual(self.map_current(), before)
+        self.assertEqual(self.prepare(env={'CDSE_CONTEXT_MANAGER_RANDOM': 'fail'}).returncode, 1)
+        self.assertEqual(self.prepare(registry=token(self.anchor)).returncode, 2)
+        self.assertEqual(self.prepare(env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'}).returncode, 0)
+
+    def test_shuffle_private_files_sidecars_and_header_checks(self):
+        self.shuffle_setup()
+        candidate = self.staged.read_bytes()
+        for mode in (0o644, 0o400, 0o660):
+            self.staged.chmod(mode)
+            self.assertEqual(self.prepare().returncode, 1)
+        self.staged.chmod(0o600)
+        self.staged.parent.chmod(0o755)
+        self.assertEqual(self.prepare().returncode, 1)
+        self.staged.parent.chmod(0o700)
+        for suffix in ('-wal', '-shm', '-journal'):
+            sidecar = Path(str(self.staged) + suffix)
+            sidecar.touch()
+            self.assertEqual(self.prepare().returncode, 1)
+            sidecar.unlink()
+        for data in (b'x' * 100, candidate[:18] + b'\x02\x02' + candidate[20:]):
+            self.staged.write_bytes(data)
+            self.assertEqual(self.prepare(target=hashlib.sha256(data).hexdigest()).returncode, 1)
+        self.staged.write_bytes(candidate)
+        same = self.active.parent / 'next.sqlite'
+        same.write_bytes(candidate)
+        same.chmod(0o600)
+        self.assertEqual(self.prepare(staged=same).returncode, 1)
+        self.assert_shuffle_catalog()
+
+    def test_shuffle_symlinks_hardlinks_fifo_and_size_limit(self):
+        self.shuffle_setup()
+        alias = self.staged.parent / 'alias.sqlite'
+        alias.symlink_to(self.staged)
+        self.assertEqual(self.prepare(staged=alias).returncode, 1)
+        alias.unlink()
+        os.link(self.staged, alias)
+        self.assertEqual(self.prepare().returncode, 1)
+        alias.unlink()
+        os.mkfifo(alias, 0o600)
+        self.assertEqual(self.prepare(staged=alias).returncode, 1)
+        alias.unlink()
+        with self.staged.open('r+b') as stream:
+            stream.truncate(256 * 1024 * 1024 + 1)
+        self.assertEqual(self.prepare().returncode, 1)
+
+    def test_shuffle_corrupt_intent_or_target_fails_authentication(self):
+        self.shuffle_setup()
+        self.prepared()
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute("update context_shuffle_slots set slot=slot+1")
+        self.assertEqual(self.command('map-anchor').returncode, 1)
+        self.assertEqual(self.map_bind(catalog='00' * 40).returncode, 1)
+        self.assertEqual(self.command('shuffle-init', self.current(), '00' * 40).returncode, 1)
+
+    def test_shuffle_opt_in_crashes_and_missing_state(self):
+        self.binding_family()
+        self.map_init()
+        for point in ('after-begin', 'after-write'):
+            before = self.map_current()
+            self.assertEqual(self.command('shuffle-init', self.current(), before,
+                                         env={'CDSE_CONTEXT_MANAGER_CRASH': point}).returncode, 86)
+            self.assertEqual(self.assert_catalog(), before)
+        self.assertEqual(self.command('shuffle-init', self.current(), self.map_current(),
+                                     env={'CDSE_CONTEXT_MANAGER_CRASH': 'after-commit'}).returncode, 86)
+        self.assert_shuffle_catalog()
+        self.assertEqual(self.command('shuffle-init', self.current(), self.map_current()).returncode, 1)
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            db.execute('drop table context_shuffles')
+        self.assertEqual(self.command('map-anchor').returncode, 1)
+        self.assertEqual(self.command('shuffle-init', self.current(), '00' * 40).returncode, 1)
+
+    def resign_shuffle(self, revision):
+        maps, slots, _, _ = self.catalog_rows()
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            jobs = db.execute('select * from context_shuffles').fetchall()
+            targets = db.execute('select * from context_shuffle_slots').fetchall()
+            body = catalog_bytes(self.anchor.deployment, self.anchor.organization, revision, maps, slots, jobs, targets)
+            db.execute('update context_map_head set revision=?,tag=?',
+                       (struct.pack('>Q', revision), hmac.digest(b'k' * 32, body, 'sha256')))
+
+    def test_shuffle_signed_invalid_state_types_and_orphans(self):
+        self.shuffle_setup()
+        self.prepared()
+        database = self.authority / 'registry.sqlite'
+        pristine = database.read_bytes()
+        mutations = ("update context_shuffles set job=zeroblob(32)",
+                     "update context_shuffles set state=4294967297",
+                     "update context_shuffles set active_path=cast(active_path as blob)",
+                     "update context_shuffles set active_path=active_path||char(0)||'extra'",
+                     "update context_shuffles set staged_path=active_path",
+                     "update context_shuffles set target=source",
+                     "update context_shuffles set finished=x'0000000000000001'",
+                     "update context_shuffle_slots set slot=cast(slot as blob)",
+                     "update context_shuffle_slots set lookup=cast(lookup as blob)",
+                     "update context_maps set active=0",
+                     "update context_maps set role=5",
+                     "update context_shuffles set map_name='orphan'",
+                     "update context_shuffle_slots set map_name='orphan'",
+                     "update registry_meta set shuffle_version=2")
+        for sql in mutations:
+            with self.subTest(sql=sql):
+                with closing(sqlite3.connect(database)) as db, db:
+                    db.execute('pragma ignore_check_constraints=on')
+                    db.execute(sql)
+                self.assertEqual(self.command('map-anchor').returncode, 1)
+                database.write_bytes(pristine)
+        # Even a valid HMAC must not authorize a pending intent on a tombstone.
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('update context_maps set active=0')
+        self.resign_shuffle(self.catalog_rows()[2])
+        self.assertEqual(self.command('map-anchor').returncode, 1)
+
+    def test_shuffle_revision_overflow_never_installs_target(self):
+        self.shuffle_setup()
+        job = self.prepared()
+        self.resign_shuffle(2**64 - 1)
+        before = self.assert_shuffle_catalog()
+        self.assertEqual(self.recover(job).returncode, 1)
+        self.assertEqual(self.map_current(), before)
+        self.assertEqual(hashlib.sha256(self.active.read_bytes()).hexdigest(), self.source_hash)
+        self.assertTrue(self.staged.exists())
+
+    def test_shuffle_competing_recoveries_share_exact_catalog_cas(self):
+        self.shuffle_setup()
+        job = self.prepared()
+        args = self.args('shuffle-recover', 'view', job, 1, self.current(), self.map_current())
+        processes = []
+        try:
+            for _ in range(2):
+                processes.append(subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+            for process in processes:
+                process.communicate(timeout=30)
+            self.assertEqual(sorted(p.returncode for p in processes), [0, 2])
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+        self.assertEqual(self.map_bind().returncode, 0)
+        self.assert_shuffle_catalog()
+
+    def test_shuffle_abort_crashes_keep_source_and_tombstone_is_final(self):
+        self.shuffle_setup()
+        job = self.prepared()
+        for point in ('after-artifact-sync', 'after-write', 'after-commit'):
+            self.assertEqual(self.recover(job, 0, env={'CDSE_CONTEXT_MANAGER_CRASH': point}).returncode, 86)
+            self.assertEqual(self.map_bind().returncode, 0 if point == 'after-commit' else 1)
+            self.assertEqual(hashlib.sha256(self.active.read_bytes()).hexdigest(), self.source_hash)
+            self.assert_shuffle_catalog()
+        self.assertEqual(self.recover(job, 0).returncode, 0)
+        self.assertEqual(self.map_remove().returncode, 0)
+        self.assertEqual(self.prepare().returncode, 1)
+        self.assertEqual(self.recover(job, 0).returncode, 2)
+        self.assertEqual(self.map_store(self.source_slots).returncode, 1)
+        self.assert_shuffle_catalog()
+
+    def test_shuffle_only_columnfile_role_and_explicit_upgrade(self):
+        self.binding_family()
+        self.map_init()
+        self.assertEqual(self.command('shuffle-read', 'view', self.current(), self.map_current()).returncode, 1)
+        self.assertEqual(self.command('shuffle-init', token(self.anchor), self.map_current()).returncode, 2)
+        self.assertEqual(self.command('shuffle-init', self.current(), self.map_current()).returncode, 0)
+        self.allocated(lookup='internal', level=2, role=1, table='internal', field='value', expected=self.current())
+        slots = [('internal', 'internal', 1, 'value')]
+        self.assertEqual(self.map_store(slots, name='internal', resource='internal', role=1).returncode, 0)
+        self.assertEqual(self.command('shuffle-prepare', 'internal', '/missing/a', '/missing/b', '11' * 32,
+                                     '22' * 32, self.current(), self.map_current(), 1, *slots[0]).returncode, 1)
+        self.assert_shuffle_catalog()
+
+
+# Reuse the fixture setup/helpers without running the inherited legacy suite twice.
+for _name in tuple(vars(ManagerTests)):
+    if _name.startswith('test_'):
+        setattr(ShuffleTests, _name, None)
 
 
 if __name__ == '__main__':
