@@ -311,19 +311,21 @@ static int cmeFixtureWitness(int argc, char **argv)
     cmeContextWitness *witness=NULL;
     cmeContextWitnessState state={0};
     cmeContextWitnessAnchor expected={0},published={0},empty={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
     cmeContextAnchor registry={0};
     cmeContextMapAnchor catalog={0};
     unsigned char bytes[73],key[32],deployment[16],organization[16];
     size_t i;
-    int result=1,create=!strcmp(argv[2],"witness-init"),advance=!strcmp(argv[2],"witness-advance");
+    int result=1,create=!strcmp(argv[2],"witness-init"),advance=!strcmp(argv[2],"witness-advance"),
+        reconcile=!strcmp(argv[2],"witness-reconcile");
     if (cmeFixtureDecode(argv[3],deployment,16) || cmeFixtureDecode(argv[4],organization,16)) goto done;
     memset(key,getenv("CDSE_WITNESS_WRONG_KEY") ? 'x' : 'w',32);
-    if (create || advance || !strcmp(argv[2],"witness-check"))
+    if (create || advance || reconcile || !strcmp(argv[2],"witness-check"))
     {
-        if (argc<(advance ? 8 : 7) || cmeFixtureRegistryToken(argv[5],&registry) || cmeFixtureDecode(argv[6],bytes,40)) goto done;
+        if (argc<((advance || reconcile) ? 8 : 7) || cmeFixtureRegistryToken(argv[5],&registry) || cmeFixtureDecode(argv[6],bytes,40)) goto done;
         for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
         memcpy(catalog.digest,bytes+8,32);
-        if (advance)
+        if (advance || reconcile)
         {
             if (cmeFixtureDecode(argv[7],bytes,40)) goto done;
             for (i=0;i<8;i++) expected.revision=(expected.revision<<8)|bytes[i];
@@ -331,14 +333,39 @@ static int cmeFixtureWitness(int argc, char **argv)
         }
     }
     if (cmeContextWitnessOpen(argv[1],create,key,deployment,organization,&registry,&catalog,&witness)) goto done;
-    if (advance)
+    if (advance || reconcile)
     {
         cmeContextWitnessAnchor *output=getenv("CDSE_CONTEXT_MANAGER_ALIAS") ? &expected : &published;
         memset(&published,0xff,sizeof(published));
-        result=cmeContextWitnessAdvance(witness,&expected,&registry,&catalog,output);
+        if (reconcile)
+        {
+            if (getenv("CDSE_WITNESS_INVALID_INPUTS"))
+            {
+                int invalid;
+                for (invalid=0;invalid<6;invalid++)
+                {
+                    memset(&published,0xff,sizeof(published)); recovery=cmeWitnessRecoveryAlreadyAdvanced;
+                    result=cmeContextWitnessReconcile(invalid==0 ? NULL : witness,invalid==1 ? NULL : &expected,
+                        invalid==2 ? NULL : &registry,invalid==3 ? NULL : &catalog,
+                        invalid==4 ? NULL : &recovery,invalid==5 ? NULL : &published);
+                    if (result!=1 || (invalid!=4 && recovery!=cmeWitnessRecoveryInvalid) ||
+                        (invalid!=5 && memcmp(&published,&empty,sizeof(empty)))) { result=3; goto done; }
+                }
+            }
+            recovery=cmeWitnessRecoveryAlreadyAdvanced;
+            result=cmeContextWitnessReconcile(witness,&expected,&registry,&catalog,&recovery,output);
+            if (result && recovery!=cmeWitnessRecoveryInvalid) result=3;
+        }
+        else result=cmeContextWitnessAdvance(witness,&expected,&registry,&catalog,output);
         if (result && memcmp(output,&empty,sizeof(empty))) result=3;
         if (result) goto done;
         published=*output;
+        if (reconcile)
+        {
+            printf("%u\n",(unsigned int)recovery);
+            for (i=0;i<8;i++) bytes[i]=(unsigned char)(published.revision>>(56-8*i));
+            cmeFixturePrint(bytes,8); cmeFixturePrint(published.digest,32); putchar('\n'); goto done;
+        }
     }
     else if (!strcmp(argv[2],"witness-check"))
     { result=cmeContextWitnessCheck(witness,&registry,&catalog); goto done; }

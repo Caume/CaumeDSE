@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.13.0
+# Caume Data Security Engine (CaumeDSE) version 2.14.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2895,6 +2895,12 @@ backup replay, changes to trusted witness selection, key compromise and unguarde
 legacy writers are outside that guarantee. This is not hardware monotonic storage
 or an atomic transaction with the manager. See the
 [witness workflow](HERRADURAKEX_AT_REST_PLAN.md#independent-anchor-witness-147-phase-11).
+Read-only `context-witness --reconcile RETAINED_WITNESS_TOKEN` distinguishes
+current, one-step advance required and an already committed last advance without
+refreshing pins or writing recovery state. It requires independently retained
+tokens and explicit current manager approval. See the
+[recovery procedure](HERRADURAKEX_AT_REST_PLAN.md#read-only-witness-recovery-147-phase-12)
+for independent retention and restore constraints; no force/reset path is supplied.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider

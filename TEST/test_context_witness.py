@@ -49,6 +49,106 @@ class WitnessTests(manager_tests.ManagerTests):
         self.assertEqual(self.map_store([('column/record/value', 'data', row, 'value')],
                                        resource='column/record/value').returncode, 0)
 
+    def inspect(self, token, registry=None, catalog=None, env=None):
+        return self.wcommand('witness-reconcile', registry or self.current(), catalog or self.map_current(), token, env=env)
+
+    def test_reconcile_snapshot_current_pending_receipt_and_alias(self):
+        token = self.initialized()
+        path = self.witness / 'witness.sqlite'
+        original = path.read_bytes()
+        self.assertEqual(self.inspect(token).stdout.decode().splitlines(), ['1', token])
+        self.change_catalog()
+        result = self.inspect(token, env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.decode().splitlines(), ['2', token])
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_reconcile_null_api_inputs_clear_outputs(self):
+        token = self.initialized()
+        result = self.inspect(token, env={'CDSE_WITNESS_INVALID_INPUTS': '1'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.decode().splitlines(), ['1', token])
+
+    def test_reconcile_lost_ack_receipt_does_not_write_checkpoint(self):
+        token = self.initialized()
+        self.change_catalog()
+        self.assertEqual(self.advance(token).returncode, 0)
+        current = self.witnessed()
+        path = self.witness / 'witness.sqlite'
+        original = path.read_bytes()
+        self.assertEqual(self.inspect(token).stdout.decode().splitlines(), ['3', current])
+        self.assertEqual(self.inspect(current).stdout.decode().splitlines(), ['1', current])
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_reconcile_rejects_forks_skips_floor_decrease_and_two_counters(self):
+        token = self.initialized()
+        registry, catalog = self.current(), self.map_current()
+        reg = bytearray.fromhex(registry)
+        reg[32:40] = struct.pack('>Q', 2)
+        advanced = reg.hex()
+        reg[40] = 0
+        for r, c, code in ((registry[:-2] + 'ff', catalog, 2),
+                           (registry, catalog[:-2] + 'ff', 2),
+                           (registry, (struct.pack('>Q', 3) + bytes.fromhex(catalog)[8:]).hex(), 2),
+                           (advanced, (struct.pack('>Q', 2) + bytes.fromhex(catalog)[8:]).hex(), 2),
+                           (reg.hex(), catalog, 1)):
+            with self.subTest(registry=r, catalog=c):
+                result = self.inspect(token, r, c, env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'})
+                self.assertEqual(result.returncode, code)
+                self.assertEqual(result.stdout, b'')
+                self.assertEqual(self.witnessed(), token)
+
+    def test_reconcile_independent_token_rejects_complete_witness_backup_replay(self):
+        token = self.initialized()
+        path = self.witness / 'witness.sqlite'
+        backup = path.read_bytes()
+        self.change_catalog()
+        self.assertEqual(self.advance(token).returncode, 0)
+        retained = self.witnessed()
+        path.write_bytes(backup)
+        self.assertEqual(self.inspect(retained).returncode, 2)
+        # An old retained token cannot detect the same whole-witness replay.
+        self.assertEqual(self.inspect(token).stdout.decode().splitlines(), ['2', token])
+
+    def test_reconcile_registry_floor_decrease_and_witness_revision_overflow(self):
+        token = self.initialized()
+        self.assertEqual(self.publish(dict(self.snapshot, generation=2, minimumFormat=2), self.anchor).returncode, 0)
+        self.assertEqual(self.advance(token).returncode, 0)
+        current = self.witnessed()
+        reg = bytearray.fromhex(self.current())
+        reg[32:40] = struct.pack('>Q', 3)
+        reg[40] = 1
+        self.assertEqual(self.inspect(current, registry=reg.hex()).returncode, 2)
+        path = self.witness / 'witness.sqlite'
+        with closing(sqlite3.connect(path)) as db, db:
+            registry, catalog, previous = db.execute('select registry,catalog,previous from witness_current').fetchone()
+            revision = struct.pack('>Q', 2**64 - 1)
+            previous = struct.pack('>Q', 2**64 - 2) + previous[8:]
+            body = witness_body(self.anchor.deployment, self.anchor.organization, revision, registry, catalog, previous)
+            db.execute('update witness_current set revision=?,previous=?,tag=?',
+                       (revision, previous, hmac.digest(b'w' * 32, body, 'sha256')))
+        current = self.witnessed()
+        self.assertEqual(self.inspect(current).stdout.decode().splitlines(), ['1', current])
+        self.change_catalog()
+        self.assertEqual(self.inspect(current).returncode, 2)
+
+    def test_reconcile_invalid_tokens_corruption_and_expired_receipts(self):
+        token = self.initialized()
+        self.assertEqual(self.inspect('00' * 40).returncode, 1)
+        wrong = bytearray.fromhex(token)
+        wrong[-1] ^= 1
+        self.assertEqual(self.inspect(wrong.hex()).returncode, 2)
+        self.change_catalog()
+        self.assertEqual(self.advance(token).returncode, 0)
+        current = self.witnessed()
+        self.change_catalog(2)
+        self.assertEqual(self.inspect(token).returncode, 2)
+        self.assertEqual(self.advance(current).returncode, 0)
+        self.assertEqual(self.inspect(token).returncode, 2)
+        with closing(sqlite3.connect(self.witness / 'witness.sqlite')) as db, db:
+            db.execute('update witness_current set tag=zeroblob(32)')
+        self.assertEqual(self.inspect(current).returncode, 1)
+
     def assert_codec(self):
         with closing(sqlite3.connect(self.witness / 'witness.sqlite')) as db:
             version, revision, registry, catalog, previous, tag = db.execute(
@@ -259,6 +359,8 @@ class GuardedOwnerTests(owner_tests.OwnerTests):
                                 env=dict(os.environ, **(env or {})), timeout=30)
         for secret in ((b'w' * 32).hex(), (b'k' * 32).hex(), str(self.witness), str(self.active), 'fixture-alpha'):
             self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        if result.returncode:
+            self.assertEqual(result.stdout, b'')
         return result
 
     def accepted_guarded(self, command, *action):
@@ -271,6 +373,75 @@ class GuardedOwnerTests(owner_tests.OwnerTests):
         self.approval['catalog'] = self.map_current()
         self.write_approval()
         return self.accepted_guarded('context-witness', '--advance', token)['witness']
+
+    def test_owner_readonly_reconciliation_requires_reapproved_manager_pair(self):
+        token = self.accepted_guarded('context-witness', '--init')['witness']
+        self.assertEqual(self.accepted_guarded('context-witness', '--reconcile', token),
+                         dict(state='current', witness=token))
+        self.accepted_guarded('context-shuffle', '--init')
+        self.assertEqual(self.guarded('context-witness', '--reconcile', token).returncode, 2)
+        self.approval['catalog'] = self.map_current()
+        self.write_approval()
+        db = self.witness / 'witness.sqlite'
+        before = db.read_bytes()
+        manifest = self.approval_file.read_bytes()
+        artifacts = (self.authority / 'registry.sqlite', self.active, self.staged)
+        saved = [path.read_bytes() for path in artifacts]
+        self.assertEqual(self.accepted_guarded('context-witness', '--reconcile', token),
+                         dict(state='advance-required', witness=token))
+        self.assertEqual(db.read_bytes(), before)
+        self.assertEqual(self.approval_file.read_bytes(), manifest)
+        self.assertEqual([path.read_bytes() for path in artifacts], saved)
+        self.assertEqual(self.guarded('context-shuffle', '--prepare').returncode, 2)
+        current = self.reconcile(token)
+        before = db.read_bytes()
+        self.assertEqual(self.accepted_guarded('context-witness', '--reconcile', token),
+                         dict(state='already-advanced', witness=current))
+        self.assertEqual(db.read_bytes(), before)
+
+    def test_owner_reconciliation_registry_step_and_crashed_witness_advance(self):
+        token = self.accepted_guarded('context-witness', '--init')['witness']
+        self.assertEqual(self.command('revoke', 'second', self.current()).returncode, 0)
+        self.approval['registry'] = self.current()
+        self.write_approval()
+        self.assertEqual(self.accepted_guarded('context-witness', '--reconcile', token)['state'], 'advance-required')
+        result = self.command('witness-advance', self.current(), self.map_current(), token, directory=self.witness,
+                              env={'CDSE_CONTEXT_WITNESS_CRASH': 'after-commit'})
+        self.assertEqual(result.returncode, 86)
+        self.assertEqual(self.accepted_guarded('context-witness', '--reconcile', token)['state'], 'already-advanced')
+
+    def test_owner_reconciliation_rejects_manager_restore_with_retained_witness(self):
+        token = self.accepted_guarded('context-witness', '--init')['witness']
+        db = self.authority / 'registry.sqlite'
+        backup, manifest = db.read_bytes(), self.approval_file.read_bytes()
+        self.accepted_guarded('context-shuffle', '--init')
+        current = self.reconcile(token)
+        db.write_bytes(backup)
+        self.approval_file.write_bytes(manifest)
+        self.assertEqual(self.guarded('context-witness', '--reconcile', current).returncode, 2)
+        self.assertEqual(self.guarded('context-witness', '--reconcile', token).returncode, 2)
+
+    def test_owner_reconciliation_rejects_witness_restore_with_retained_new_token(self):
+        token = self.accepted_guarded('context-witness', '--init')['witness']
+        db = self.witness / 'witness.sqlite'
+        backup = db.read_bytes()
+        self.accepted_guarded('context-shuffle', '--init')
+        current = self.reconcile(token)
+        db.write_bytes(backup)
+        self.assertEqual(self.guarded('context-witness', '--reconcile', current).returncode, 2)
+
+    def test_owner_reconciliation_refuses_skipped_publications_and_bad_arguments(self):
+        token = self.accepted_guarded('context-witness', '--init')['witness']
+        for action in (('--reconcile',), ('--reconcile', '00' * 40), ('--reconcile', token, '--status'),
+                       ('--reconcile', token, '--reconcile', token)):
+            self.assertEqual(self.guarded('context-witness', *action).returncode, 1)
+        self.assertEqual(self.guarded('context-shuffle', '--reconcile', token).returncode, 1)
+        self.assertEqual(self.map_store(self.original_slots).returncode, 0)
+        self.assertEqual(self.map_store(self.original_slots).returncode, 0)
+        self.approval['catalog'] = self.map_current()
+        self.write_approval()
+        self.assertEqual(self.guarded('context-witness', '--reconcile', token).returncode, 2)
+        self.assertEqual(self.guarded('context-witness', '--advance', token).returncode, 1)
 
     def test_guarded_owner_explicit_witness_reconciliation_between_mutations(self):
         token = self.accepted_guarded('context-witness', '--init')['witness']
@@ -307,9 +478,11 @@ class GuardedOwnerTests(owner_tests.OwnerTests):
 
     def test_guarded_owner_missing_witness_never_bootstraps_during_shuffle(self):
         self.assertEqual(self.guarded('context-shuffle', '--init').returncode, 1)
+        self.assertEqual(self.guarded('context-witness', '--reconcile', '01' * 40).returncode, 1)
         self.assertFalse((self.witness / 'witness.sqlite').exists())
         self.accepted_guarded('context-witness', '--init')
         (self.witness / 'witness.sqlite').unlink()
+        self.assertEqual(self.guarded('context-witness', '--reconcile', '01' * 40).returncode, 1)
         self.assertEqual(self.guarded('context-shuffle', '--init').returncode, 1)
         self.assertEqual(self.guarded('context-witness', '--init').returncode, 1)
 
