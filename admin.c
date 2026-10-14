@@ -223,6 +223,7 @@ int main(int argc, char **argv)
     int i,mode=0,result=1,fd;
     FILE *output;
     if (argc>1 && !strcmp(argv[1],"reprotect-storage")) return(cmeStorageMain(argc,argv));
+    if (argc>1 && !strcmp(argv[1],"context-shuffle")) return(cmeContextOwnerMain(argc,argv));
     if (argc==2 && !strcmp(argv[1],"--help"))
     {
         puts("Usage: caumedse-admin reprotect-columnfile --database PATH --confirmed-scope REALPATH\n"
@@ -232,7 +233,8 @@ int main(int argc, char **argv)
              "Key files: owned regular files, mode 0600 or stricter, 1-256 bytes.\n"
              "Commit writes before.sqlite, after.sqlite, and verified checkpoint status.\n"
              "MAC/sign tags are verified and recomputed. Shuffle and extra schemas are refused.\n"
-             "Whole exports: caumedse-admin reprotect-storage --help");
+             "Whole exports: caumedse-admin reprotect-storage --help\n"
+             "Owner-approved offline shuffles: caumedse-admin context-shuffle --help");
         return(0);
     }
     if (argc<2 || strcmp(argv[1],"reprotect-columnfile")) goto arguments;

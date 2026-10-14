@@ -9,4 +9,5 @@ int cmeAdminCompare(sqlite3 *before, sqlite3 *after);
 int cmeAdminPlain(sqlite3 *db, const char *key, const char *profile);
 int cmeAdminSave(sqlite3 *db, const char *directory, const char *name);
 int cmeStorageMain(int argc, char **argv);
+int cmeContextOwnerMain(int argc, char **argv);
 #endif

@@ -1121,3 +1121,123 @@ The protected manager database remains authority: its own HMAC/revision does not
 detect replay of a complete authentic backup. Independent monotonic recovery,
 authenticated owner deployment, live storage lifecycle integration, V2 provider
 integration and persisted substitution/legacy-readback tests keep #147 open.
+
+## Offline Owner Command (#147, Phase 10)
+
+`caumedse-admin context-shuffle` exposes the phase-9 coordinator to a trusted
+local operator. It requires an existing provisioned manager and owner-map
+catalog; it never initializes registry authority, provisions identities or
+discovers expected context from candidate metadata. Manager key provisioning,
+complete-backup rollback defense and live adapters remain separate open gates.
+
+An independently approved JSON manifest selects the manager, deployment/scope,
+map, both full anchors, source/target paths and SHA-256 pins, and target slots.
+Manifest and registry-key file must be canonical uid-owned regular 0600 files,
+with one link, in canonical uid-owned 0700 parent directories. Symlinks, hardlinks,
+FIFOs, embedded NULs, oversized files and public control directories fail closed.
+The registry-key file contains exactly 64 lowercase hex digits encoding the
+separate 32-byte manager key, optionally one trailing newline. It is not an
+organization password. Never supply key bytes on the command line.
+
+Schema 1 has exactly these fields (no unknown/duplicate keys):
+
+```json
+{
+  "schema": 1,
+  "manager": "/private/manager",
+  "deployment": "11111111111111111111111111111111",
+  "organization": "22222222222222222222222222222222",
+  "map": "approved-column",
+  "registry": "OWNER_APPROVED_REGISTRY_ANCHOR_HEX",
+  "catalog": "OWNER_APPROVED_CATALOG_ANCHOR_HEX",
+  "active": "/offline/export/column.sqlite",
+  "staged": "/private/staging/column.sqlite",
+  "source": "OWNER_APPROVED_SOURCE_SHA256_HEX",
+  "target": "OWNER_APPROVED_TARGET_SHA256_HEX",
+  "slots": [["approved-record-field", "data", 20, "value"]]
+}
+```
+
+The example is a field template, not a complete inventory or valid approval.
+Registry anchor is 73 bytes as lowercase hex: deployment[16], organization[16],
+generation[8 big-endian], minimum-format[1], digest[32]. Catalog anchor is 40 bytes:
+revision[8 big-endian], digest[32]. IDs/digests/job tokens are lowercase hex.
+Slots are `[lookup, table, signed-integer-row, field]`, with the existing handle/
+schema bounds and at most 4096 entries. JSON strings must not contain NULs;
+booleans, real/string rows, duplicate slots and malformed tuples are refused.
+Manifest limit is 1 MiB. Protect its integrity outside storage exports: ownership
+and file modes are the local authorization boundary, not a remote signature or
+proof that a person approved the correct resource. The owner, not candidate DB
+contents, must choose all pins and registration handles.
+
+Stop every reader/writer, checkpoint and close SQLite, independently verify the
+source payload, and retain exclusive offline ownership through reconciliation.
+`--confirmed-offline` must exactly equal the approval's canonical absolute path.
+This acknowledges the offline precondition; it cannot prove that another process
+stopped writing. Manager, staged artifact, manifest and key must be outside the
+active file's export directory tree. The adapter checks this one export boundary;
+the owner must additionally keep control/staging files outside every other export.
+Private same-filesystem artifact/parent and 256 MiB limits still apply.
+
+```sh
+caumedse-admin context-shuffle --approval "$APPROVAL" \
+  --registry-key-file "$REGISTRY_KEY_FILE" --confirmed-offline "$APPROVAL" --init
+# Independently reconcile the returned catalog pin and reapprove the manifest.
+caumedse-admin context-shuffle --approval "$APPROVAL" \
+  --registry-key-file "$REGISTRY_KEY_FILE" --confirmed-offline "$APPROVAL" --prepare
+# Retain the returned job token, reconcile/reapprove the returned catalog pin.
+caumedse-admin context-shuffle --approval "$APPROVAL" \
+  --registry-key-file "$REGISTRY_KEY_FILE" --confirmed-offline "$APPROVAL" --status
+caumedse-admin context-shuffle --approval "$APPROVAL" \
+  --registry-key-file "$REGISTRY_KEY_FILE" --confirmed-offline "$APPROVAL" --complete "$JOB"
+```
+
+`--init` explicitly upgrades a phase-8 catalog once; omit it if already upgraded.
+Each invocation has exactly one action. `--prepare` does not change the active
+file. It authenticates the current map, validates target binding, checks approved
+digests, and requires complete row coverage of both `data` and `meta`. Both files
+must have the existing supported ColumnFile schema, matching table DDL and no
+extra application objects, triggers, indexes, unsupported helper data or invalid
+IDs. Full SQLite integrity checks must pass. Each source row is selected through
+its authenticated owner slots, never candidate labels; its target row must have
+the same SQLite types and values in every column except integer primary key `id`.
+This includes salts, ciphertext, integrity tags and logical `rowOrder`. All map
+fields must name actual non-id columns. Missing/extra rows, partial inventories,
+changed cells, inconsistent mappings or excessive verification work fail before
+intent publication. Verification bounds SQLite values/rows to 1 MiB, SQL to
+64 KiB and approximately 20 million VM instructions per file. No decrypt/tag
+verification is performed; byte equivalence preserves the independently verified
+source, but does not turn an invalid source into a valid encrypted artifact.
+This narrow command cannot rotate keys/tags, regenerate shuffle metadata or
+replace registered ResourcesDB file MACs/lookups; do not use it for live exports.
+
+`--status` reads an existing authenticated intent/receipt and reports state, job
+and the approved catalog anchor. It does not inspect payload bytes, establish
+binding usability or discover/adopt a newer trusted pin. Complete/abort require
+the job token and exact agreement of the manifest's paths, digests and entire
+target map with signed intent metadata, including after restart. `--abort JOB`
+is allowed only while approved source bytes remain active. If target bytes are
+already installed and the staged file is absent, `--complete JOB` rolls forward
+using the recorded intent; retain both private parent directories for recovery.
+This relies on prior trusted intent approval; it is not
+an attestation that an intent created by another API was verified by this CLI.
+
+Successful mutations emit only state, catalog token and (for prepare) job token.
+The manifest is never rewritten. Retain/reconcile output, then explicitly update
+and reapprove the catalog pin before the next command; reconcile registry pins
+separately after registry changes. Status includes the job token for lost prepare
+acknowledgements once the owner supplies the reconciled current catalog pin.
+Stale valid pins return conflict (2), invalid/missing pins or unavailable state return 1, and
+success returns 0. Never auto-refresh a pin from candidate metadata or restore
+authority to resolve a conflict. Receipts permit exact-revision idempotent retry;
+a later catalog edit requires manual reconciliation. Errors omit paths, keys and
+payloads. No implicit backup, file cleanup, restore, lock/lease or V2 activation.
+
+Eighteen command regressions use protected synthetic ColumnFiles and cover
+persisted AES readback after byte-preserving data/meta shuffles, explicit pins,
+approval parsing/types/limits/protection, scope/key/job mismatch, complete row
+coverage, cell/schema tampering, exact receipt reconciliation, revocation and
+roll-forward after the fixture interrupts atomic rename. They do not prove V2
+provider authentication, independently monotonic authority or power-loss safety.
+TODO #147 remains open for production trust/recovery and live lifecycle adapters,
+context-aware V2 operations, migration/floor closeout and acceptance tests.
