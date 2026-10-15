@@ -1440,3 +1440,124 @@ witness core it does not authenticate the manager pair itself; that is a mandato
 caller responsibility. TODO #147 remains open for independently monotonic
 deployment, production key custody/rotation, live lifecycle adapters, V2 crypto
 operations and complete migration/provider acceptance gates.
+
+### Registered shuffle preflight (#147 phase 13)
+
+`caumedse-admin context-registered-shuffle --check` adds an offline, read-only
+paired-artifact gate before a future registered-resource publisher. A ColumnFile
+primary-key permutation changes its serialized bytes, so its registered ResourcesDB
+`partMAC` must change even though encrypted values, salts, tags and logical
+`rowOrder` stay exact. The older single-file coordinator cannot atomically publish
+that second artifact. This command does NOT install either file, prepare an
+intent, modify lookup values or update the manager/witness. It emits only:
+
+```text
+state=verified-pair
+publication=disabled
+```
+
+Use a private canonical schema-3 approval with exactly the schema-2 fields plus:
+
+```json
+{
+  "resources": "/offline/export/ResourcesDB",
+  "stagedResources": "/offline/staging/ResourcesDB",
+  "resourcesSource": "64 lowercase hex SHA256 characters",
+  "resourcesTarget": "64 lowercase hex SHA256 characters",
+  "registration": [1, "document-id", "storage-id", "organization-id", "column-id"],
+  "profile": "aes-256-gcm"
+}
+```
+
+The fragment is not a standalone manifest. `registration` has exactly five
+entries: positive signed-64-bit ResourcesDB document row id followed by four
+nonempty strings (at most 128 bytes each). These are independent owner selectors,
+not labels adopted from a candidate. The organization string is the registered
+`orgResourceId`, not the manager organization UUID. Resource and staged resource
+paths must be the `ResourcesDB` sibling of the approved active and staged
+ColumnFile respectively. All four file SHA256 digests must be independently
+reviewed/reapproved; a newer candidate pin is never refreshed automatically.
+
+```sh
+caumedse-admin context-registered-shuffle --approval "$REGISTERED_APPROVAL" \
+  --registry-key-file "$MANAGER_KEY_FILE" --confirmed-offline "$REGISTERED_APPROVAL" \
+  --witness-directory "$TRUSTED_WITNESS_DIRECTORY" --witness-key-file "$WITNESS_KEY_FILE" \
+  --retained-witness-token "$RETAINED_CURRENT_WITNESS_TOKEN" \
+  --org-key-file "$ORG_KEY_FILE" --check
+```
+
+The retained token must exactly identify the current witness, not its previous
+receipt. The explicitly approved manager pair must be current and match the
+independently selected witness. Resolve any phase-12 pending advance first and
+retain the new token independently. The source owner map must be active, unblocked
+and role 4. The existing complete-slot permutation comparison verifies every
+data/meta row and non-id cell; authenticated bindings/pins are rechecked after
+the crypto preflight. These checks are snapshots, not a lease or atomic cross-DB
+transaction. Stop every reader/writer for the entire operation.
+
+Scope is deliberately bounded: one local, single-part `file.csv` registration,
+one organization key, current ResourcesDB schema/definitions and populated
+document/storage/organization lookup columns. Verification is legacy/floor-1
+only; floor 2 is rejected even with
+current authenticated pins. Do not lower a raised floor to run this command.
+Metadata, value and optional encrypted-row-order protection must use the
+approved AES-256-GCM, AES-256-CBC or compiled-in allowed NLA1 profile.
+No algorithm/key migration occurs.
+Approved AES checks reject Herradura frame prefixes; NLA1 checks require the
+V1 NLA1 frame id before provider dispatch. Self-dispatch cannot substitute
+another framed profile for owner approval. Legacy
+duplex and research/demo profiles are not accepted as approved profiles. Mixed
+metadata/data/shuffle fallback profiles, NULL selected protected fields, missing
+lookup values, remote storage and multipart registrations require a separate
+reviewed adapter. Key files contain 1-256 bytes plus an optional final newline,
+are canonical private 0600 one-link files in 0700 parents, and remain outside
+export, staging, manager and witness trees. Approval and both authority keys must
+also remain outside those trees for this contract.
+
+Verification authenticates/decrypts every selected protected registration field,
+checks the independent selectors/type/part counters and unique backing filename,
+recomputes all three selected lookups, and authenticates the complete source and
+candidate ColumnFile bytes against their selected decrypted `partMAC` values.
+It decrypts persisted data/meta fields, validates complete logical row-order
+permutations (including encrypted `rowOrder`) and checks declared MAC/sign tags
+through the existing integrity verifier. Unsupported attributes/profile settings,
+NUL aliases and malformed salted plaintext fail closed. Full typed logical
+ResourcesDB comparison allows only the selected encrypted `partMAC` to differ;
+salt, identity, timestamps, lookup values, all other records and every schema
+object must remain exact. Exactly one matching protected local storage record
+must be present. This is not a whole-export crypto inventory: unchanged unrelated
+records/payloads are not certified, and other document filenames/storage selectors
+must be readable with the same approved key/profile for ambiguity checks.
+
+Files must be closed rollback-format SQLite in private canonical 0700 directories,
+0600 regular one-link files with no symlinks or journal/WAL/SHM sidecars. Existing
+256 MiB per-file, 1 MiB per-cell, 4096-slot limits apply; ResourcesDB comparison
+also caps the combined table/schema row count at 4096. SQLite SQL/VM budgets bound
+parsing/verification. Source/candidate directories must be disjoint.
+The command requires JSON and `pragma_table_list` support in SQLite; unavailable
+features fail closed rather than enabling a weaker schema check. DEBUG helper
+output is silenced before crypto calls; failures emit only generic diagnostics,
+not keys, paths, decrypted identifiers or candidate-derived approval tokens.
+Return 0 means the approved pair passed this gate, 2 means stale/conflicting
+authority, and 1 means invalid/unavailable state. No durable receipt is written.
+
+Owners must build/review both candidates independently before checking: copy the
+approved ResourcesDB and replace only the selected `partMAC`, encrypted using
+the unchanged row salt and organization key with the usual field-HMAC prefix.
+Do not use key-rotation output as a byte-preserving shuffle candidate. Candidate
+generation is not supplied by this command. Interrupted checks can be repeated
+against the same pins without restoration/publication because they are read-only.
+A partial/missing candidate is rejected, never repaired or silently adopted.
+
+Schema 3 is accepted ONLY by the new check-only command: existing witness and
+single-file shuffle commands reject it, and `--prepare`, `--complete`, `--abort`
+and `--init` cannot publish a registered approval. Older schema-1/2 commands and
+direct APIs remain compatible and unguarded with respect to ResourcesDB pairing;
+do not strip registration fields or use them as a publication bypass. A successful
+preflight is not an install authorization, recovery receipt, ResourcesDB context
+binding or proof of V2 cross-context rejection. TODO #147 remains open. The next
+publisher must durably authenticate both files/digests, the selected registration,
+slot permutation and phase ordering, keep bindings blocked through partial
+installation, and reconcile file/ResourcesDB/catalog/witness crash boundaries
+before any live-use claim. Production custody/monotonic deployment, V2 APIs and
+migration/floor/provider acceptance gates are also still pending.
