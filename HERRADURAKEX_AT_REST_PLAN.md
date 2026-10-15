@@ -1561,3 +1561,94 @@ slot permutation and phase ordering, keep bindings blocked through partial
 installation, and reconcile file/ResourcesDB/catalog/witness crash boundaries
 before any live-use claim. Production custody/monotonic deployment, V2 APIs and
 migration/floor/provider acceptance gates are also still pending.
+
+### Paired manager recovery (#147 phase 14)
+
+The trusted in-process manager adds `cmeContextManagerShufflePairInit`,
+`cmeContextManagerShufflePairPrepare` and `cmeContextManagerShufflePairRecover`.
+This is the durable paired-file coordinator core, NOT an installed publisher.
+`context-registered-shuffle` remains schema-3/check-only; existing installed
+shuffle/witness commands still reject schema 3. No live route uses these APIs.
+The guarded owner adapter and its acceptance tests are still required; never
+substitute direct fixture calls for the missing authorization/preflight handoff.
+
+An explicit idle-catalog upgrade from shuffle catalog v2 enables `pair_version=1`
+and the separate `CDSE-HKX-MAP-v3\0` authentication domain. It advances only the
+catalog revision by one; no prepared intent may exist. Existing v1/v2 catalogs
+remain compatible, and older readers fail authentication on upgraded catalogs.
+Never downgrade the marker or restore old authority to circumvent an intent.
+
+The v3 canonical encoding is the entire v2 encoding under the new domain, then a
+big-endian uint32 companion-row count and rows ordered by binary map name. Each
+row encodes uint8-length map-name text, uint16-length active/staged ResourcesDB
+paths, and three 32-byte values: source SHA256, target SHA256 and nonzero
+`selectionDigest`. Counts, types, lengths, orphans, NUL aliases and sibling path
+relations are checked before authentication succeeds. The independent Python
+encoder verifies the resulting HMAC and digest, including finished receipts.
+
+`cmeContextShufflePair` supplies those paths/digests and an **opaque owner-reviewed
+SHA256 commitment to the registration selectors and algorithm profile**. The core
+authenticates the commitment but does not interpret, generate or verify its
+preimage. A future adapter must define a canonical selector/profile encoding and
+compare it across prepare/status/recovery, never adopt it from a candidate.
+The phase-13 registration, lookup, field/file MAC, payload/tag, salt and allowed
+`partMAC`-only mutation checks remain mandatory caller preconditions. Synthetic
+manager fixtures verify mechanics, not cryptographic payload acceptance.
+
+Prepare requires approved four-file digests, a complete identity-preserving slot
+permutation, and closed private rollback-format SQLite files with the existing
+256 MiB/file and catalog capacity limits. Parents are canonical owned 0700
+directories; files are owned 0600 regular one-link files without sidecars.
+Companions must be distinct `ResourcesDB` siblings of the respective ColumnFiles;
+export/staging parents must be disjoint and on the same filesystem. Stop every
+reader/writer and protect parent paths throughout: these checks are not a lease
+or an atomic snapshot against concurrent writes.
+
+Prepare syncs artifacts/directories and atomically commits both file pairs,
+selection commitment, target slots, random job id and prepared state into the
+authenticated catalog. No other prepared intent is allowed when preparing a
+pair. A pending pair blocks **all stored maps** against binding, edits, deletion
+and new shuffle preparation because ResourcesDB may be shared. Previously issued
+mapped bindings fail their catalog pin check. Read-only map/intent metadata
+remains available; registry-only binding/provisioning APIs are not disabled and
+must not be used to bypass the storage guard.
+
+Complete checks current registry/catalog CAS, active registrations and both
+active digests. It validates both remaining candidates before any install, then:
+
+1. Renames ColumnFile into place and syncs export/staging directories.
+2. Renames ResourcesDB into place and syncs both directories.
+3. Atomically commits target slots and the completed exact-revision receipt,
+   unblocking stored maps.
+
+The durable prepared intent survives partial installation. Retry recognizes
+source/source, target/source and target/target states, syncs installed artifacts
+and recovers forward. Source/target violates publication order and fails closed.
+Unknown/missing active bytes, corrupt/missing remaining candidates, stale pins,
+revoked target registrations or revision overflow never unblock maps. Abort
+requires both sources; it does not restore files or delete candidates. After
+either install, abort is forbidden.
+
+`cmeContextManagerShuffleRead` returns owned companion metadata in `pair`.
+Single-file recovery rejects paired jobs, even abort/finished retries; paired
+recovery rejects single-file jobs. Finished retries require the exact job,
+compatible outcome, exact finished catalog revision and BOTH active digests.
+Later catalog publication expires a receipt; a new job may replace a receipt
+under ordinary exact-pin CAS.
+
+Witness advancement stays explicit: review/reapprove and advance/retain after
+each upgrade, prepare and complete/abort publication before another publication.
+A partial file install does not change the prepared manager pair; current witness
+agreement therefore does not imply usable bindings. Skipping the prepared
+checkpoint and advancing directly from pre-prepare to completion is rejected.
+Tests cover independent witness advance and lost acknowledgements, but these
+manager primitives do not enforce witness authorization themselves.
+
+TODO #147 stays open. Next add the guarded installed owner adapter, canonical
+selector/profile commitment, preflight-to-prepare handoff, authenticated-intent
+recovery without deleted candidates, retained-current-witness checks, explicit
+reapproval at each catalog revision and exact paired receipt comparisons.
+Production key custody/rotation, independent monotonic deployment, live lifecycle
+adapters, V2 crypto and migration/provider acceptance gates remain pending.
+No two-file atomic visibility to unguarded readers or physical power-loss
+certification is claimed.

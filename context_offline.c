@@ -104,7 +104,10 @@ int cmeOfflineInstall(cmeOfflineArtifact *active, cmeOfflineArtifact *staged)
         !cmeOfflineSame(&staged->status,&status) || cmeOfflineSidecars(staged) ||
         renameat(staged->directory,staged->name,active->directory,active->name)) return(1);
 #ifdef CDSE_CONTEXT_MANAGER_TESTING
-    if (getenv("CDSE_CONTEXT_OFFLINE_CRASH") && !strcmp(getenv("CDSE_CONTEXT_OFFLINE_CRASH"),"after-rename")) _exit(86);
+    if (getenv("CDSE_CONTEXT_OFFLINE_CRASH") &&
+        (!strcmp(getenv("CDSE_CONTEXT_OFFLINE_CRASH"),"after-rename") ||
+         (!strcmp(getenv("CDSE_CONTEXT_OFFLINE_CRASH"),"after-resources-rename") &&
+          !strcmp(active->name,"ResourcesDB")))) _exit(86);
 #endif
     return(cmeOfflineSync(active,staged));
 }

@@ -25,12 +25,14 @@ def token(anchor):
                        anchor.generation, anchor.minimum_format, anchor.digest).hex()
 
 
-def catalog_bytes(deployment, organization, revision, maps, slots, shuffles=None, targets=()):
+def catalog_bytes(deployment, organization, revision, maps, slots, shuffles=None, targets=(), pairs=None):
     def text(value):
         data = value.encode('ascii')
         return bytes([len(data)]) + data
 
     domain = b'CDSE-HKX-MAP-v1\0' if shuffles is None else b'CDSE-HKX-MAP-v2\0'
+    if pairs is not None:
+        domain = b'CDSE-HKX-MAP-v3\0'
     body = bytearray(domain + bytes.fromhex(deployment) + bytes.fromhex(organization))
     body.extend(struct.pack('>QI', revision, len(maps)))
     grouped = {}
@@ -53,6 +55,14 @@ def catalog_bytes(deployment, organization, revision, maps, slots, shuffles=None
             body.extend(source + target + struct.pack('>I', len(entries)))
             for table, row, field, lookup in entries:
                 body.extend(text(table) + struct.pack('>q', row) + text(field) + text(lookup))
+    if pairs is not None:
+        body.extend(struct.pack('>I', len(pairs)))
+        for name, active, staged, source, target, selection in sorted(pairs):
+            body.extend(text(name))
+            for path in (active, staged):
+                encoded = path.encode('utf-8')
+                body.extend(struct.pack('>H', len(encoded)) + encoded)
+            body.extend(source + target + selection)
     return bytes(body)
 
 
@@ -1297,7 +1307,9 @@ class ShuffleTests(ManagerTests):
         with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db:
             jobs = db.execute('select * from context_shuffles').fetchall()
             targets = db.execute('select * from context_shuffle_slots').fetchall()
-        body = catalog_bytes(self.anchor.deployment, self.anchor.organization, revision, maps, slots, jobs, targets)
+            paired = any(row[1] == 'pair_version' for row in db.execute('pragma table_info(registry_meta)'))
+            pairs = db.execute('select * from context_shuffle_pairs').fetchall() if paired else None
+        body = catalog_bytes(self.anchor.deployment, self.anchor.organization, revision, maps, slots, jobs, targets, pairs)
         self.assertEqual(tag, hmac.digest(b'k' * 32, body, 'sha256'))
         anchor = (struct.pack('>Q', revision) + hashlib.sha256(body).digest()).hex()
         self.assertEqual(self.map_current(), anchor)
@@ -1607,6 +1619,393 @@ class ShuffleTests(ManagerTests):
 for _name in tuple(vars(ManagerTests)):
     if _name.startswith('test_'):
         setattr(ShuffleTests, _name, None)
+
+
+class PairShuffleTests(ShuffleTests):
+    """Manager primitives only: payload registration validation remains an owner gate."""
+
+    def pair_setup(self, upgrade=True):
+        self.shuffle_setup()
+        self.assertEqual(self.map_store(self.source_slots, name='other').returncode, 0)
+        self.resources = self.active.with_name('ResourcesDB')
+        self.staged_resources = self.staged.with_name('ResourcesDB')
+        for path, mac in ((self.resources, 'source-mac'), (self.staged_resources, 'target-mac')):
+            with closing(sqlite3.connect(path)) as db, db:
+                db.execute('create table documents(id integer primary key, partMAC text)')
+                db.execute('insert into documents values(1,?)', (mac,))
+            path.chmod(0o600)
+        self.resources_source = hashlib.sha256(self.resources.read_bytes()).hexdigest()
+        self.resources_target = hashlib.sha256(self.staged_resources.read_bytes()).hexdigest()
+        self.selection = hashlib.sha256(b'owner-reviewed-registration-and-profile').hexdigest()
+        if upgrade:
+            self.assertEqual(self.command('shuffle-pair-init', self.current(), self.map_current()).returncode, 0)
+            self.assert_shuffle_catalog()
+
+    def pair_prepare(self, env=None, **changes):
+        slots = changes.get('slots', self.target_slots)
+        args = [changes.get('name', 'view'), self.active, self.staged, self.source_hash, self.target_hash,
+                changes.get('registry', self.current()), changes.get('catalog', self.map_current()), len(slots)]
+        for slot in slots:
+            args.extend(slot)
+        args.extend((changes.get('resources', self.resources), changes.get('staged_resources', self.staged_resources),
+                     changes.get('source', self.resources_source), changes.get('target', self.resources_target),
+                     changes.get('selection', self.selection)))
+        return self.command('shuffle-pair-prepare', *args, env=env)
+
+    def pair_prepared(self):
+        result = self.pair_prepare()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        job, anchor = result.stdout.decode().splitlines()
+        self.assertEqual(anchor, self.assert_shuffle_catalog())
+        self.assertEqual(self.map_bind().returncode, 1)
+        self.assertEqual(self.map_bind(name='other').returncode, 1)
+        receipt = self.shuffle_read()
+        self.assertTrue(receipt['paired'])
+        self.assertEqual(receipt['selection'], self.selection)
+        self.assertEqual(receipt['resourcesSource'], self.resources_source)
+        self.assertEqual(receipt['resourcesTarget'], self.resources_target)
+        return job
+
+    def pair_recover(self, job, complete=1, env=None, catalog=None):
+        return self.command('shuffle-pair-recover', 'view', job, complete, self.current(),
+                            catalog or self.map_current(), env=env)
+
+    def assert_sources(self):
+        self.assertEqual(hashlib.sha256(self.active.read_bytes()).hexdigest(), self.source_hash)
+        self.assertEqual(hashlib.sha256(self.resources.read_bytes()).hexdigest(), self.resources_source)
+
+    def assert_targets(self):
+        self.assertEqual(hashlib.sha256(self.active.read_bytes()).hexdigest(), self.target_hash)
+        self.assertEqual(hashlib.sha256(self.resources.read_bytes()).hexdigest(), self.resources_target)
+        self.assertEqual(self.map_bind().returncode, 0)
+        self.assertEqual(self.map_bind(name='other').returncode, 0)
+        self.assert_shuffle_catalog()
+
+    def test_pair_complete_receipt_and_single_file_refusal(self):
+        self.pair_setup()
+        registry = self.current()
+        job = self.pair_prepared()
+        self.assertEqual(self.recover(job).returncode, 1)
+        self.assertEqual(self.recover(job, 0).returncode, 1)
+        self.assert_sources()
+        self.assertEqual(self.pair_recover(job, env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'}).returncode, 0)
+        self.assert_targets()
+        self.assertEqual(self.current(), registry)
+        self.assertFalse(self.staged.exists())
+        self.assertFalse(self.staged_resources.exists())
+        before = self.map_current()
+        self.assertEqual(self.pair_recover(job).returncode, 0)
+        self.assertEqual(self.map_current(), before)
+        self.assertEqual(self.pair_recover(job, 0).returncode, 1)
+        self.assertEqual(self.shuffle_read()['state'], 2)
+
+    def test_pair_abort_requires_sources_and_can_replace_receipt(self):
+        self.pair_setup()
+        job = self.pair_prepared()
+        self.assertEqual(self.pair_recover(job, 0).returncode, 0)
+        self.assert_sources()
+        self.assertEqual(self.shuffle_read()['state'], 3)
+        before = self.map_current()
+        self.assertEqual(self.pair_recover(job, 0).returncode, 0)
+        self.assertEqual(self.map_current(), before)
+        self.assertEqual(self.map_bind(name='other').returncode, 0)
+        new_job = self.pair_prepared()
+        self.assertNotEqual(new_job, job)
+        self.assertEqual(self.pair_recover(job).returncode, 1)
+        self.assertEqual(self.pair_recover(new_job).returncode, 0)
+        self.assert_targets()
+
+    def test_pair_global_block_and_no_parallel_intents(self):
+        self.pair_setup()
+        job = self.pair_prepared()
+        self.assertEqual(self.map_store(self.source_slots, name='other').returncode, 1)
+        self.assertEqual(self.map_store(self.source_slots, name='new').returncode, 1)
+        self.assertEqual(self.map_remove(name='other').returncode, 1)
+        self.assertEqual(self.prepare(name='other').returncode, 1)
+        self.assertEqual(self.pair_prepare(name='other').returncode, 1)
+        self.assertEqual(self.pair_recover(job, 0).returncode, 0)
+        single = self.prepared()
+        self.assertEqual(self.pair_prepare(name='other').returncode, 1)
+        self.assertEqual(self.pair_recover(single).returncode, 1)
+        self.assertEqual(self.recover(single, 0).returncode, 0)
+
+    def test_pair_explicit_upgrade_requires_idle_v2(self):
+        self.pair_setup(upgrade=False)
+        self.assertEqual(self.pair_prepare().returncode, 1)
+        single = self.prepared()
+        self.assertEqual(self.command('shuffle-pair-init', self.current(), self.map_current()).returncode, 1)
+        self.assertEqual(self.recover(single, 0).returncode, 0)
+        self.assertEqual(self.command('shuffle-pair-init', self.current(), self.map_current()).returncode, 0)
+        self.assertEqual(self.command('shuffle-pair-init', self.current(), self.map_current()).returncode, 1)
+        self.assert_shuffle_catalog()
+
+    def test_pair_rejects_bad_paths_digests_selection_and_permutation(self):
+        self.pair_setup()
+        before = self.map_current()
+        for changes in ({'resources': self.active}, {'staged_resources': self.resources},
+                        {'resources': self.resources.parent / '..' / 'export' / 'ResourcesDB'},
+                        {'selection': '00' * 32}, {'source': '00' * 32}, {'target': self.resources_source},
+                        {'slots': self.source_slots[:1]}, {'catalog': '00' * 40}):
+            with self.subTest(changes=changes):
+                self.assertNotEqual(self.pair_prepare(**changes).returncode, 0)
+                self.assertEqual(self.map_current(), before)
+                self.assert_sources()
+
+    def test_pair_rejects_unsafe_companion_and_sidecars(self):
+        self.pair_setup()
+        for path in (self.resources, self.staged_resources):
+            path.chmod(0o644)
+            self.assertEqual(self.pair_prepare().returncode, 1)
+            path.chmod(0o600)
+            for suffix in ('-wal', '-shm', '-journal'):
+                sidecar = Path(str(path) + suffix)
+                sidecar.touch()
+                self.assertEqual(self.pair_prepare().returncode, 1)
+                sidecar.unlink()
+        self.assert_sources()
+
+    def test_pair_checks_both_candidates_before_first_install(self):
+        self.pair_setup()
+        job = self.pair_prepared()
+        saved = self.staged_resources.read_bytes()
+        self.staged_resources.write_bytes(self.resources.read_bytes())
+        self.assertEqual(self.pair_recover(job).returncode, 1)
+        self.assert_sources()
+        self.assertEqual(self.map_bind(name='other').returncode, 1)
+        self.staged_resources.write_bytes(saved)
+        self.assertEqual(self.pair_recover(job).returncode, 0)
+        self.assert_targets()
+
+    def test_pair_resources_first_state_rejected(self):
+        self.pair_setup()
+        job = self.pair_prepared()
+        self.staged_resources.replace(self.resources)
+        self.assertEqual(self.pair_recover(job).returncode, 1)
+        self.assertEqual(self.pair_recover(job, 0).returncode, 1)
+        self.assertEqual(self.map_bind(name='other').returncode, 1)
+
+    def test_pair_partial_unknown_bytes_remain_blocked(self):
+        self.pair_setup()
+        job = self.pair_prepared()
+        self.staged.replace(self.active)
+        saved = self.resources.read_bytes()
+        with closing(sqlite3.connect(self.resources)) as db, db:
+            db.execute("update documents set partMAC='unknown'")
+        self.assertEqual(self.pair_recover(job).returncode, 1)
+        self.assertEqual(self.map_bind(name='other').returncode, 1)
+        self.resources.write_bytes(saved)
+        self.assertEqual(self.pair_recover(job, 0).returncode, 1)
+        self.assertEqual(self.pair_recover(job).returncode, 0)
+        self.assert_targets()
+
+    def test_pair_receipt_requires_both_active_digests_and_exact_revision(self):
+        self.pair_setup()
+        job = self.pair_prepared()
+        self.assertEqual(self.pair_recover(job).returncode, 0)
+        saved = self.resources.read_bytes()
+        with closing(sqlite3.connect(self.resources)) as db, db:
+            db.execute("update documents set partMAC='unknown'")
+        self.assertEqual(self.pair_recover(job).returncode, 1)
+        self.resources.write_bytes(saved)
+        self.assertEqual(self.pair_recover(job).returncode, 0)
+        self.assertEqual(self.map_store(self.target_slots, name='other').returncode, 0)
+        self.assertEqual(self.pair_recover(job).returncode, 2)
+
+    def test_pair_tampering_and_missing_table_fail_authentication(self):
+        self.pair_setup()
+        self.pair_prepared()
+        saved = (self.authority / 'registry.sqlite').read_bytes()
+        for mutation in ("update context_shuffle_pairs set selection=zeroblob(32)",
+                         "update context_shuffle_pairs set active_path=staged_path",
+                         "update context_shuffle_pairs set source=target",
+                         "update context_shuffle_pairs set map_name='orphan'",
+                         "update registry_meta set pair_version=2", "drop table context_shuffle_pairs"):
+            with self.subTest(mutation=mutation):
+                with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+                    db.execute('pragma ignore_check_constraints=on')
+                    db.execute(mutation)
+                self.assertEqual(self.command('map-anchor').returncode, 1)
+                self.assertEqual(self.map_bind(name='other', catalog='00' * 40).returncode, 1)
+                (self.authority / 'registry.sqlite').write_bytes(saved)
+        self.assert_shuffle_catalog()
+
+    def test_pair_competing_completion_cas(self):
+        self.pair_setup()
+        job = self.pair_prepared()
+        args = self.args('shuffle-pair-recover', 'view', job, 1, self.current(), self.map_current())
+        with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as first, \
+                subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as second:
+            first.communicate(timeout=30)
+            second.communicate(timeout=30)
+            self.assertEqual(sorted((first.returncode, second.returncode)), [0, 2])
+        self.assert_targets()
+
+    def test_pair_companion_links_missing_candidate_and_abort(self):
+        self.pair_setup()
+        saved = self.staged_resources.read_bytes()
+        self.staged_resources.unlink()
+        self.staged_resources.symlink_to(self.resources)
+        self.assertEqual(self.pair_prepare().returncode, 1)
+        self.staged_resources.unlink()
+        os.link(self.resources, self.staged_resources)
+        self.assertEqual(self.pair_prepare().returncode, 1)
+        self.staged_resources.unlink()
+        self.staged_resources.write_bytes(saved)
+        self.staged_resources.chmod(0o600)
+        job = self.pair_prepared()
+        self.staged_resources.unlink()
+        self.assertEqual(self.pair_recover(job).returncode, 1)
+        self.assert_sources()
+        self.assertEqual(self.pair_recover(job, 0).returncode, 0)
+        self.assert_sources()
+
+    def test_pair_revocation_before_install_leaves_sources(self):
+        self.pair_setup()
+        job = self.pair_prepared()
+        self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 0)
+        self.assertEqual(self.pair_recover(job).returncode, 1)
+        self.assert_sources()
+        self.assertEqual(self.pair_recover(job, 0).returncode, 0)
+
+    def resign_pair(self, revision):
+        maps, slots, _, _ = self.catalog_rows()
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db, db:
+            jobs = db.execute('select * from context_shuffles').fetchall()
+            targets = db.execute('select * from context_shuffle_slots').fetchall()
+            pairs = db.execute('select * from context_shuffle_pairs').fetchall()
+            body = catalog_bytes(self.anchor.deployment, self.anchor.organization, revision, maps, slots, jobs, targets, pairs)
+            db.execute('update context_map_head set revision=?,tag=?',
+                       (struct.pack('>Q', revision), hmac.digest(b'k' * 32, body, 'sha256')))
+
+    def test_pair_revision_overflow_never_installs(self):
+        self.pair_setup()
+        job = self.pair_prepared()
+        self.resign_pair(2**64 - 1)
+        self.assert_shuffle_catalog()
+        self.assertEqual(self.pair_recover(job).returncode, 1)
+        self.assertEqual(self.pair_recover(job, 0).returncode, 1)
+        self.assert_sources()
+        self.assertEqual(self.map_bind(name='other').returncode, 1)
+
+    def test_pair_signed_invalid_metadata_rejected(self):
+        self.pair_setup()
+        self.pair_prepared()
+        database = self.authority / 'registry.sqlite'
+        saved = database.read_bytes()
+        revision = self.catalog_rows()[2]
+        for mutation in ("update context_shuffle_pairs set selection=zeroblob(32)",
+                         "update context_shuffle_pairs set active_path=active_path||char(0)||'extra'",
+                         "update context_shuffle_pairs set active_path=replace(active_path,'ResourcesDB','other')",
+                         "update context_shuffle_pairs set staged_path=active_path",
+                         "update context_shuffle_pairs set target=source",
+                         "update context_shuffle_pairs set map_name='orphan'"):
+            with self.subTest(mutation=mutation):
+                with closing(sqlite3.connect(database)) as db, db:
+                    db.execute(mutation)
+                self.resign_pair(revision)
+                self.assertEqual(self.command('map-anchor').returncode, 1)
+                database.write_bytes(saved)
+        self.assert_shuffle_catalog()
+
+    def test_pair_witness_advancement_and_lost_ack_remain_explicit(self):
+        self.pair_setup()
+        witness = self.root / 'witness'
+        witness.mkdir(mode=0o700)
+
+        def wcommand(action, *args, env=None):
+            return self.command(action, *args, directory=witness, env=env)
+
+        initial = wcommand('witness-init', self.current(), self.map_current())
+        self.assertEqual(initial.returncode, 0)
+        retained = initial.stdout.decode().strip()
+        job = self.pair_prepared()
+        self.assertEqual(wcommand('witness-anchor').stdout.decode().strip(), retained)
+        self.assertEqual(wcommand('witness-reconcile', self.current(), self.map_current(), retained).stdout.decode().splitlines(),
+                         ['2', retained])
+        advance = wcommand('witness-advance', self.current(), self.map_current(), retained,
+                           env={'CDSE_CONTEXT_WITNESS_CRASH': 'after-commit'})
+        self.assertEqual(advance.returncode, 86)
+        current = wcommand('witness-anchor').stdout.decode().strip()
+        self.assertEqual(wcommand('witness-reconcile', self.current(), self.map_current(), retained).stdout.decode().splitlines(),
+                         ['3', current])
+        self.assertEqual(self.pair_recover(job, env={'CDSE_CONTEXT_MANAGER_CRASH': 'after-column-install'}).returncode, 86)
+        self.assertEqual(wcommand('witness-reconcile', self.current(), self.map_current(), current).stdout.decode().splitlines(),
+                         ['1', current])
+        self.assertEqual(self.map_bind(name='other').returncode, 1)
+        self.assertEqual(self.pair_recover(job).returncode, 0)
+        self.assertEqual(wcommand('witness-anchor').stdout.decode().strip(), current)
+        self.assertEqual(wcommand('witness-reconcile', self.current(), self.map_current(), current).stdout.decode().splitlines(),
+                         ['2', current])
+        self.assertEqual(wcommand('witness-advance', self.current(), self.map_current(), current).returncode, 0)
+        self.assert_targets()
+
+    def check_pair_rename_crash(self, checkpoint):
+        self.pair_setup()
+        job = self.pair_prepared()
+        result = self.pair_recover(job, env={'CDSE_CONTEXT_OFFLINE_CRASH': checkpoint})
+        self.assertEqual(result.returncode, 86)
+        self.assertEqual(self.map_bind(name='other').returncode, 1)
+        self.assertEqual(self.pair_recover(job, 0).returncode, 1)
+        self.assertEqual(self.pair_recover(job).returncode, 0)
+        self.assert_targets()
+
+    def test_pair_crash_after_column_rename_before_sync(self):
+        self.check_pair_rename_crash('after-rename')
+
+    def test_pair_crash_after_resources_rename_before_sync(self):
+        self.check_pair_rename_crash('after-resources-rename')
+
+    def check_pair_crash(self, action, checkpoint):
+        self.pair_setup(upgrade=action != 'init')
+        before = self.map_current()
+        env = {'CDSE_CONTEXT_MANAGER_CRASH': checkpoint}
+        if action == 'init':
+            result = self.command('shuffle-pair-init', self.current(), before, env=env)
+        elif action == 'prepare':
+            result = self.pair_prepare(env=env)
+        else:
+            job = self.pair_prepared()
+            result = self.pair_recover(job, int(action != 'abort'), env=env)
+        self.assertEqual(result.returncode, 86, result.stderr)
+        self.assert_shuffle_catalog()
+        if action in ('init', 'prepare'):
+            self.assert_sources()
+            if checkpoint != 'after-commit':
+                self.assertEqual(self.map_current(), before)
+                self.assertEqual(self.map_bind().returncode, 0)
+                return
+            if action == 'init':
+                self.assertEqual(self.map_bind().returncode, 0)
+                return
+            job = self.shuffle_read()['job']
+        if checkpoint != 'after-commit' or action == 'prepare':
+            self.assertEqual(self.map_bind(name='other').returncode, 1)
+        if action == 'abort':
+            self.assertEqual(self.pair_recover(job, 0).returncode, 0)
+            self.assert_sources()
+        else:
+            if action == 'complete' and checkpoint in ('after-column-install', 'after-resources-install',
+                                                       'after-artifact-sync', 'after-write', 'after-commit'):
+                self.assertEqual(self.pair_recover(job, 0).returncode, 1)
+            self.assertEqual(self.pair_recover(job).returncode, 0)
+            self.assert_targets()
+
+
+for _name in tuple(vars(ShuffleTests)):
+    if _name.startswith('test_'):
+        setattr(PairShuffleTests, _name, None)
+
+for _action, _points in (
+        ('init', ('after-begin', 'after-write', 'after-commit')),
+        ('prepare', ('after-begin', 'after-write', 'after-commit')),
+        ('complete', ('after-begin', 'after-column-install', 'after-resources-install',
+                      'after-artifact-sync', 'after-write', 'after-commit')),
+        ('abort', ('after-begin', 'after-column-install', 'after-resources-install',
+                   'after-artifact-sync', 'after-write', 'after-commit'))):
+    for _point in _points:
+        def _crash_case(self, action=_action, point=_point):
+            self.check_pair_crash(action, point)
+        setattr(PairShuffleTests, 'test_pair_crash_' + _action + '_' + _point.replace('-', '_'), _crash_case)
 
 
 if __name__ == '__main__':

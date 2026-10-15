@@ -8,6 +8,12 @@ typedef struct cmeContextBinding cmeContextBinding;
 
 typedef struct
 {
+    char *activePath, *stagedPath;
+    unsigned char sourceDigest[32], targetDigest[32], selectionDigest[32];
+} cmeContextShufflePair;
+
+typedef struct
+{
     uint64_t revision;
     unsigned char digest[32];
 } cmeContextMapAnchor;
@@ -178,6 +184,7 @@ typedef struct
     int state; /* 1 prepared, 2 completed, 3 aborted */
     uint64_t finishedRevision;
     cmeContextMap *target;
+    cmeContextShufflePair *pair; /* Optional authenticated ResourcesDB companion. */
 } cmeContextShuffle;
 
 /* Explicit upgrade to catalog authentication v2; older catalog readers fail
@@ -215,5 +222,30 @@ int cmeContextManagerShuffleRecover(cmeContextManager *manager, const char *name
                                     const unsigned char job[32], int complete,
                                     const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
                                     cmeContextMapAnchor *published);
+
+/* Explicit opt-in catalog-v3 upgrade, only with no prepared intents. Older
+   readers fail authentication. These are trusted OFFLINE manager primitives,
+   not installed commands or payload/registration validators. Pair paths must
+   be ResourcesDB siblings of the respective ColumnFiles. selectionDigest is
+   an owner-reviewed SHA256 commitment to registration selectors and profile;
+   the caller must independently verify the phase-13 paired-artifact contract.
+   Prepare blocks ALL stored maps until both files and the catalog reconcile.
+   Single-file Recover rejects paired intents. Witness advance remains explicit.
+   Complete installs ColumnFile first, then ResourcesDB, then publishes the map;
+   abort requires both sources. Partial installs recover forward only. Exact
+   finished-revision retries verify BOTH active digests. No live lease, V2 crypto,
+   independent rollback defense or physical power-loss certification is implied.
+   Output/alias/error conventions match the single-file APIs above. */
+int cmeContextManagerShufflePairInit(cmeContextManager *manager, const cmeContextAnchor *expected,
+                                     const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published);
+int cmeContextManagerShufflePairPrepare(cmeContextManager *manager, const char *name,
+    const char *activePath, const char *stagedPath,
+    const unsigned char sourceDigest[32], const unsigned char targetDigest[32],
+    const cmeContextSlot *slots, size_t count, const cmeContextShufflePair *pair,
+    const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+    unsigned char job[32], cmeContextMapAnchor *published);
+int cmeContextManagerShufflePairRecover(cmeContextManager *manager, const char *name,
+    const unsigned char job[32], int complete, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published);
 
 #endif

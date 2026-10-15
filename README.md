@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.15.0
+# Caume Data Security Engine (CaumeDSE) version 2.16.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2907,7 +2907,11 @@ identity/lookup values and persisted payload integrity. It requires an independe
 retained current witness token and never publishes or installs files. Existing
 single-file commands reject schema 3. See the
 [registered preflight contract](HERRADURAKEX_AT_REST_PLAN.md#registered-shuffle-preflight-147-phase-13)
-for supported layouts and the still-pending two-file publication/recovery boundary.
+for supported layouts. The opt-in manager
+[paired recovery primitives](HERRADURAKEX_AT_REST_PLAN.md#paired-manager-recovery-147-phase-14)
+durably bind both files and block all stored maps through partial installation.
+They are not exposed by the installed command: guarded owner publication/recovery
+integration and its acceptance tests remain pending.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider
