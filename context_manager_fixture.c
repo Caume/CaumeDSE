@@ -247,10 +247,13 @@ static int cmeFixtureShuffle(cmeContextManager *manager, int argc, char **argv)
     cmeContextAnchor registry={0};
     cmeContextMapAnchor expected={0},next,empty={0},*output=&next;
     cmeContextShuffle *shuffle=NULL;
+    cmeContextShufflePair companion={0};
     cmeContextSlot *slots=NULL;
     unsigned char bytes[40],job[32]={0},source[32],target[32];
     size_t i,count=0;
-    int result=1,init=!strcmp(argv[2],"shuffle-init"),prepare=!strcmp(argv[2],"shuffle-prepare");
+    int paired=!strncmp(argv[2],"shuffle-pair-",13);
+    const char *operation=argv[2]+(paired ? 13 : 8);
+    int result=1,init=!strcmp(operation,"init"),prepare=!strcmp(operation,"prepare");
     int read=!strcmp(argv[2],"shuffle-read");
     memset(&next,0xff,sizeof(next));
     if (argc<(init ? 7 : (prepare ? 13 : (read ? 8 : 10))) ||
@@ -259,7 +262,8 @@ static int cmeFixtureShuffle(cmeContextManager *manager, int argc, char **argv)
     for (i=0;i<8;i++) expected.revision=(expected.revision<<8)|bytes[i];
     memcpy(expected.digest,bytes+8,32);
     if (getenv("CDSE_CONTEXT_MANAGER_ALIAS")) output=&expected;
-    if (init) result=cmeContextManagerShuffleInit(manager,&registry,&expected,output);
+    if (init) result=paired ? cmeContextManagerShufflePairInit(manager,&registry,&expected,output) :
+        cmeContextManagerShuffleInit(manager,&registry,&expected,output);
     else if (read)
     {
         result=cmeContextManagerShuffleRead(manager,argv[5],&registry,&expected,&shuffle);
@@ -267,7 +271,14 @@ static int cmeFixtureShuffle(cmeContextManager *manager, int argc, char **argv)
         printf("{\"job\":\""); cmeFixturePrint(shuffle->job,32);
         printf("\",\"state\":%d,\"finished\":%llu,\"source\":\"",shuffle->state,(unsigned long long)shuffle->finishedRevision);
         cmeFixturePrint(shuffle->sourceDigest,32); printf("\",\"target\":\""); cmeFixturePrint(shuffle->targetDigest,32);
-        printf("\",\"slots\":[");
+        printf("\",\"paired\":%s",shuffle->pair ? "true" : "false");
+        if (shuffle->pair)
+        {
+            printf(",\"resourcesSource\":\""); cmeFixturePrint(shuffle->pair->sourceDigest,32);
+            printf("\",\"resourcesTarget\":\""); cmeFixturePrint(shuffle->pair->targetDigest,32);
+            printf("\",\"selection\":\""); cmeFixturePrint(shuffle->pair->selectionDigest,32); putchar('"');
+        }
+        printf(",\"slots\":[");
         for (i=0;i<shuffle->target->count;i++)
             printf("%s[\"%s\",\"%s\",%lld,\"%s\"]",i ? "," : "",shuffle->target->slots[i].lookup,
                 shuffle->target->slots[i].table,(long long)shuffle->target->slots[i].row,shuffle->target->slots[i].field);
@@ -277,7 +288,7 @@ static int cmeFixtureShuffle(cmeContextManager *manager, int argc, char **argv)
     {
         if (cmeFixtureDecode(argv[8],source,32) || cmeFixtureDecode(argv[9],target,32)) goto done;
         count=strtoul(argv[12],NULL,10);
-        if (count>cmeContextRegistryMaxEntries+1 || 13+count*4!=(size_t)argc) goto done;
+        if (count>cmeContextRegistryMaxEntries+1 || 13+count*4+(paired ? 5 : 0)!=(size_t)argc) goto done;
         slots=calloc(count ? count : 1,sizeof(*slots)); if (!slots) goto done;
         for (i=0;i<count;i++)
         {
@@ -285,15 +296,26 @@ static int cmeFixtureShuffle(cmeContextManager *manager, int argc, char **argv)
             slots[i].row=strtoll(argv[15+i*4],NULL,10); slots[i].field=argv[16+i*4];
         }
         memset(job,0xff,32);
-        result=cmeContextManagerShufflePrepare(manager,argv[5],argv[6],argv[7],source,target,slots,count,
-            &registry,&expected,job,output);
+        if (paired)
+        {
+            size_t offset=13+count*4;
+            companion.activePath=argv[offset]; companion.stagedPath=argv[offset+1];
+            if (cmeFixtureDecode(argv[offset+2],companion.sourceDigest,32) ||
+                cmeFixtureDecode(argv[offset+3],companion.targetDigest,32) ||
+                cmeFixtureDecode(argv[offset+4],companion.selectionDigest,32)) goto done;
+            result=cmeContextManagerShufflePairPrepare(manager,argv[5],argv[6],argv[7],source,target,slots,count,
+                &companion,&registry,&expected,job,output);
+        }
+        else result=cmeContextManagerShufflePrepare(manager,argv[5],argv[6],argv[7],source,target,slots,count,
+                &registry,&expected,job,output);
         if (result) for (i=0;i<32;i++) if (job[i]) result=3;
         if (!result) { cmeFixturePrint(job,32); putchar('\n'); }
     }
-    else if (!strcmp(argv[2],"shuffle-recover"))
+    else if (!strcmp(operation,"recover"))
     {
         if (cmeFixtureDecode(argv[6],job,32)) goto done;
-        result=cmeContextManagerShuffleRecover(manager,argv[5],job,(int)strtol(argv[7],NULL,10),&registry,&expected,output);
+        result=paired ? cmeContextManagerShufflePairRecover(manager,argv[5],job,(int)strtol(argv[7],NULL,10),&registry,&expected,output) :
+            cmeContextManagerShuffleRecover(manager,argv[5],job,(int)strtol(argv[7],NULL,10),&registry,&expected,output);
     }
     if (result && memcmp(output,&empty,sizeof(empty))) result=3;
     if (!result)

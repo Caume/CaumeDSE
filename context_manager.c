@@ -770,13 +770,41 @@ done:
     sqlite3_finalize(stmt); return(result);
 }
 
+static int cmePairVersion(cmeContextManager *manager, int *enabled)
+{
+    sqlite3_stmt *stmt=NULL;
+    int result=1;
+    *enabled=0;
+    if (sqlite3_prepare_v2(manager->db,"SELECT count(*) FROM pragma_table_info('registry_meta') "
+        "WHERE name='pair_version'",-1,&stmt,NULL)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW) goto done;
+    if (!sqlite3_column_int(stmt,0)) { result=0; goto done; }
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"SELECT pair_version FROM registry_meta WHERE singleton=1",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
+        sqlite3_column_type(stmt,0)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,0)!=1 ||
+        sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    *enabled=1; result=0;
+done:
+    sqlite3_finalize(stmt); return(result);
+}
+
 static int cmeShufflePending(cmeContextManager *manager, const char *name, int *pending)
 {
     sqlite3_stmt *stmt=NULL;
-    int enabled,step,result=1;
+    int enabled,paired,step,result=1;
     *pending=0;
     if (cmeShuffleVersion(manager,&enabled)) return(1);
     if (!enabled) return(0);
+    if (cmePairVersion(manager,&paired)) return(1);
+    if (paired)
+    {
+        if (sqlite3_prepare_v2(manager->db,"SELECT 1 FROM context_shuffle_pairs p JOIN context_shuffles j "
+            "ON p.map_name=j.map_name WHERE j.state=1 LIMIT 1",-1,&stmt,NULL)!=SQLITE_OK) goto done;
+        step=sqlite3_step(stmt);
+        if (step==SQLITE_ROW) { *pending=1; result=0; goto done; }
+        if (step!=SQLITE_DONE) goto done;
+        sqlite3_finalize(stmt); stmt=NULL;
+    }
     if (sqlite3_prepare_v2(manager->db,"SELECT state FROM context_shuffles WHERE map_name=?1",
         -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
     step=sqlite3_step(stmt);
@@ -864,6 +892,51 @@ done:
     sqlite3_finalize(jobs); sqlite3_finalize(slots); return(result);
 }
 
+static int cmePairPaths(const char *column, const char *resources);
+
+/* Pair metadata follows the entire v2 encoding under a distinct v3 domain. */
+static int cmePairEncode(cmeContextManager *manager, cmeMapEncoding *encoding)
+{
+    sqlite3_stmt *stmt=NULL;
+    sqlite3_int64 count;
+    int result=1,step,column;
+    if (sqlite3_prepare_v2(manager->db,"SELECT count(*) FROM context_shuffle_pairs",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_ROW || (count=sqlite3_column_int64(stmt,0))<0 ||
+        count>cmeContextRegistryMaxEntries || cmeMapNumber(encoding,(uint64_t)count,4)) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"SELECT p.map_name,p.active_path,p.staged_path,p.source,p.target,p.selection,j.active_path,j.staged_path "
+        "FROM context_shuffle_pairs p JOIN context_shuffles j ON p.map_name=j.map_name "
+        "ORDER BY p.map_name COLLATE BINARY",-1,&stmt,NULL)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(stmt))==SQLITE_ROW)
+    {
+        unsigned int nonzero=0,i;
+        if (--count<0 || cmeMapText(encoding,stmt,0,1)) goto done;
+        for (column=1;column<=5;column++)
+        {
+            if (column<3)
+            {
+                const char *path;
+                size_t length;
+                if (sqlite3_column_type(stmt,column)!=SQLITE_TEXT) goto done;
+                path=(const char *)sqlite3_column_text(stmt,column);
+                if (!path || *path!='/' ||
+                    !(length=strlen(path)) || length>=PATH_MAX || length!=(size_t)sqlite3_column_bytes(stmt,column) ||
+                    cmeMapNumber(encoding,length,2) || cmeMapAppend(encoding,path,length)) goto done;
+            }
+            else if (sqlite3_column_type(stmt,column)!=SQLITE_BLOB || sqlite3_column_bytes(stmt,column)!=32 ||
+                !sqlite3_column_blob(stmt,column) || cmeMapAppend(encoding,sqlite3_column_blob(stmt,column),32)) goto done;
+        }
+        for (i=0;i<32;i++) nonzero|=((const unsigned char *)sqlite3_column_blob(stmt,5))[i];
+        if (!nonzero || !strcmp((const char *)sqlite3_column_text(stmt,1),(const char *)sqlite3_column_text(stmt,2)) ||
+            !memcmp(sqlite3_column_blob(stmt,3),sqlite3_column_blob(stmt,4),32) ||
+            cmePairPaths((const char *)sqlite3_column_text(stmt,6),(const char *)sqlite3_column_text(stmt,1)) ||
+            cmePairPaths((const char *)sqlite3_column_text(stmt,7),(const char *)sqlite3_column_text(stmt,2))) goto done;
+    }
+    if (step==SQLITE_DONE && !count) result=0;
+done:
+    sqlite3_finalize(stmt); return(result);
+}
+
 /* Canonical typed encoding of protected SQL rows, including tombstones. The
    namespace and separate HMAC domain prevent cross-scope/protocol substitution. */
 static int cmeMapSign(cmeContextManager *manager, uint64_t revision,
@@ -871,18 +944,20 @@ static int cmeMapSign(cmeContextManager *manager, uint64_t revision,
 {
     static const unsigned char domain[]="CDSE-HKX-MAP-v1";
     static const unsigned char extendedDomain[]="CDSE-HKX-MAP-v2";
+    static const unsigned char pairDomain[]="CDSE-HKX-MAP-v3";
     cmeMapEncoding encoding={0};
     sqlite3_stmt *maps=NULL,*slots=NULL;
     sqlite3_int64 names,total,seen=0;
     unsigned int written;
-    int result=1,step,slotStep,extended;
+    int result=1,step,slotStep,extended,paired;
     encoding.bytes=malloc(cmeContextRegistryMaxBytes);
-    if (!encoding.bytes || !revision || cmeShuffleVersion(manager,&extended) || sqlite3_prepare_v2(manager->db,
+    if (!encoding.bytes || !revision || cmeShuffleVersion(manager,&extended) || cmePairVersion(manager,&paired) ||
+        (paired && !extended) || sqlite3_prepare_v2(manager->db,
         "SELECT (SELECT count(*) FROM context_maps),(SELECT count(*) FROM context_map_slots)",
         -1,&maps,NULL)!=SQLITE_OK || sqlite3_step(maps)!=SQLITE_ROW) goto done;
     names=sqlite3_column_int64(maps,0); total=sqlite3_column_int64(maps,1);
     if (names<0 || names>cmeContextRegistryMaxEntries || total<0 || total>cmeContextRegistryMaxEntries ||
-        cmeMapAppend(&encoding,extended ? extendedDomain : domain,sizeof(domain)) || cmeMapAppend(&encoding,manager->deployment,16) ||
+        cmeMapAppend(&encoding,paired ? pairDomain : (extended ? extendedDomain : domain),sizeof(domain)) || cmeMapAppend(&encoding,manager->deployment,16) ||
         cmeMapAppend(&encoding,manager->organization,16) || cmeMapNumber(&encoding,revision,8) ||
         cmeMapNumber(&encoding,(uint64_t)names,4)) goto done;
     sqlite3_finalize(maps); maps=NULL;
@@ -913,6 +988,7 @@ static int cmeMapSign(cmeContextManager *manager, uint64_t revision,
         if (slotStep!=SQLITE_DONE || count || sqlite3_reset(slots)!=SQLITE_OK) goto done;
     }
     if (step!=SQLITE_DONE || names || seen!=total || (extended && cmeShuffleEncode(manager,revision,&encoding)) ||
+        (paired && cmePairEncode(manager,&encoding)) ||
         !HMAC(EVP_sha256(),manager->key,32,encoding.bytes,encoding.length,tag,&written) || written!=32 ||
         !EVP_Digest(encoding.bytes,encoding.length,anchor->digest,&written,EVP_sha256(),NULL) || written!=32) goto done;
     anchor->revision=revision; result=0;
@@ -1260,10 +1336,50 @@ done:
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
 }
 
+int cmeContextManagerShufflePairInit(cmeContextManager *manager, const cmeContextAnchor *expected,
+                                     const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0},next={0},copy;
+    sqlite3_stmt *stmt=NULL;
+    unsigned char tag[32];
+    int result=1,enabled,paired;
+    if (mapExpected) { copy=*mapExpected; mapExpected=&copy; }
+    if (published) memset(published,0,sizeof(*published));
+    if (!manager || !expected || !mapExpected || !published) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=cmeShuffleCurrent(manager,expected,mapExpected,&state,&current); if (result) goto done;
+    result=1;
+    if (current.revision==UINT64_MAX || cmeShuffleVersion(manager,&enabled) || !enabled ||
+        cmePairVersion(manager,&paired) || paired || sqlite3_prepare_v2(manager->db,
+        "SELECT 1 FROM context_shuffles WHERE state=1 LIMIT 1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    cmeManagerCheckpoint("after-begin");
+    if (sqlite3_exec(manager->db,
+        "ALTER TABLE registry_meta ADD COLUMN pair_version INTEGER NOT NULL DEFAULT 1 CHECK(pair_version=1);"
+        "CREATE TABLE context_shuffle_pairs(map_name TEXT PRIMARY KEY NOT NULL,active_path TEXT NOT NULL,"
+        "staged_path TEXT NOT NULL,source BLOB NOT NULL CHECK(length(source)=32),target BLOB NOT NULL "
+        "CHECK(length(target)=32),selection BLOB NOT NULL CHECK(length(selection)=32));",
+        NULL,NULL,NULL)!=SQLITE_OK || cmeMapSign(manager,current.revision+1,&next,tag) || cmeMapHead(manager,&next,tag)) goto done;
+    cmeManagerCheckpoint("after-write");
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    cmeManagerCheckpoint("after-commit"); *published=next; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
 void cmeContextShuffleFree(cmeContextShuffle **shuffle)
 {
     if (!shuffle || !*shuffle) return;
     free((*shuffle)->activePath); free((*shuffle)->stagedPath);
+    if ((*shuffle)->pair)
+    {
+        free((*shuffle)->pair->activePath); free((*shuffle)->pair->stagedPath); free((*shuffle)->pair);
+    }
     cmeContextMapFree(&(*shuffle)->target); free(*shuffle); *shuffle=NULL;
 }
 
@@ -1276,7 +1392,7 @@ int cmeContextManagerShuffleRead(cmeContextManager *manager, const char *name,
     cmeContextShuffle *candidate=NULL;
     sqlite3_stmt *stmt=NULL;
     unsigned int i;
-    int result=1,enabled,step;
+    int result=1,enabled,paired,step;
     if (shuffle) *shuffle=NULL;
     if (!manager || !expected || !mapExpected || !shuffle || cmeManagerName(name,1)) return(1);
     pthread_mutex_lock(&manager->mutex);
@@ -1314,7 +1430,28 @@ int cmeContextManagerShuffleRead(cmeContextManager *manager, const char *name,
         slot->field=strdup((const char *)sqlite3_column_text(stmt,3));
         if (!slot->lookup || !slot->table || !slot->field) goto done;
     }
-    if (step!=SQLITE_DONE || sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    if (step!=SQLITE_DONE || cmePairVersion(manager,&paired)) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (paired)
+    {
+        if (sqlite3_prepare_v2(manager->db,"SELECT active_path,staged_path,source,target,selection "
+            "FROM context_shuffle_pairs WHERE map_name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+        step=sqlite3_step(stmt);
+        if (step==SQLITE_ROW)
+        {
+            candidate->pair=calloc(1,sizeof(*candidate->pair));
+            if (!candidate->pair) goto done;
+            candidate->pair->activePath=strdup((const char *)sqlite3_column_text(stmt,0));
+            candidate->pair->stagedPath=strdup((const char *)sqlite3_column_text(stmt,1));
+            memcpy(candidate->pair->sourceDigest,sqlite3_column_blob(stmt,2),32);
+            memcpy(candidate->pair->targetDigest,sqlite3_column_blob(stmt,3),32);
+            memcpy(candidate->pair->selectionDigest,sqlite3_column_blob(stmt,4),32);
+            if (!candidate->pair->activePath || !candidate->pair->stagedPath || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+        }
+        else if (step!=SQLITE_DONE) goto done;
+    }
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
     *shuffle=candidate; candidate=NULL; result=0;
 done:
     sqlite3_finalize(stmt);
@@ -1361,23 +1498,46 @@ static int cmeShuffleFilesSafe(cmeContextManager *manager, const cmeOfflineArtif
         (staged->file>=0 && active->status.st_dev!=staged->status.st_dev));
 }
 
-int cmeContextManagerShufflePrepare(cmeContextManager *manager, const char *name,
+/* Companions must be distinct ResourcesDB siblings, not arbitrary destinations. */
+static int cmePairPaths(const char *column, const char *resources)
+{
+    const char *a,*b;
+    if (!column || !resources || !(a=strrchr(column,'/')) || !(b=strrchr(resources,'/')) ||
+        strcmp(b+1,"ResourcesDB") || a-column!=b-resources || !strcmp(column,resources)) return(1);
+    return(memcmp(column,resources,(size_t)(a-column))!=0);
+}
+
+static int cmePairFiles(cmeContextManager *manager, const char *column, const char *stagedColumn,
+                        const cmeContextShufflePair *pair, int content,
+                        cmeOfflineArtifact *active, cmeOfflineArtifact *staged)
+{
+    unsigned int i,nonzero=0;
+    if (!pair || cmePairPaths(column,pair->activePath) || cmePairPaths(stagedColumn,pair->stagedPath) ||
+        !memcmp(pair->sourceDigest,pair->targetDigest,32)) return(1);
+    for (i=0;i<32;i++) nonzero|=pair->selectionDigest[i];
+    return(!nonzero || cmeOfflineOpen(pair->activePath,1,active) ||
+        cmeOfflineOpen(pair->stagedPath,content,staged) || cmeShuffleFilesSafe(manager,active,staged));
+}
+
+static int cmeShufflePrepare(cmeContextManager *manager, const char *name,
                                     const char *activePath, const char *stagedPath,
                                     const unsigned char sourceDigest[32], const unsigned char targetDigest[32],
                                     const cmeContextSlot *slots, size_t count,
                                     const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
-                                    unsigned char job[32], cmeContextMapAnchor *published)
+                                    unsigned char job[32], cmeContextMapAnchor *published,
+                                    const cmeContextShufflePair *pair)
 {
     cmeManagerState state={0};
     cmeContextMapAnchor current={0},next={0},copy;
     cmeContextMap *source=NULL;
     cmeContextBinding *verified=NULL;
     cmeOfflineArtifact active={.file=-1,.directory=-1},staged={.file=-1,.directory=-1};
+    cmeOfflineArtifact resources={.file=-1,.directory=-1},stagedResources={.file=-1,.directory=-1};
     sqlite3_stmt *stmt=NULL;
     unsigned char nonce[32],tag[32];
     size_t i;
     unsigned int nonzero=0;
-    int result=1,enabled;
+    int result=1,enabled,paired;
     if (mapExpected) { copy=*mapExpected; mapExpected=&copy; }
     if (published) memset(published,0,sizeof(*published));
     if (job) memset(job,0,32);
@@ -1391,18 +1551,47 @@ int cmeContextManagerShufflePrepare(cmeContextManager *manager, const char *name
     if (cmeShufflePermutation(source,slots,count) || cmeOfflineOpen(activePath,1,&active) ||
         cmeOfflineOpen(stagedPath,1,&staged) || cmeShuffleFilesSafe(manager,&active,&staged) ||
         CRYPTO_memcmp(active.digest,sourceDigest,32) || CRYPTO_memcmp(staged.digest,targetDigest,32)) goto before;
+    if (pair && (cmePairFiles(manager,activePath,stagedPath,pair,1,&resources,&stagedResources) ||
+        CRYPTO_memcmp(resources.digest,pair->sourceDigest,32) ||
+        CRYPTO_memcmp(stagedResources.digest,pair->targetDigest,32))) goto before;
     pthread_mutex_lock(&manager->mutex);
     if (sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK) goto done;
     result=cmeShuffleCurrent(manager,expected,mapExpected,&state,&current); if (result) goto done;
     result=1;
     if (current.revision==UINT64_MAX || cmeShuffleVersion(manager,&enabled) || !enabled ||
+        cmePairVersion(manager,&paired) || (pair && !paired) ||
         cmeOfflineVerify(&active) || cmeOfflineVerify(&staged) || cmeOfflineSync(&active,&staged)) goto done;
+    if (pair)
+    {
+        if (cmeOfflineVerify(&resources) || cmeOfflineVerify(&stagedResources) ||
+            cmeOfflineSync(&resources,&stagedResources) || sqlite3_prepare_v2(manager->db,
+            "SELECT 1 FROM context_shuffles WHERE state=1 LIMIT 1",-1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+        sqlite3_finalize(stmt); stmt=NULL;
+    }
     cmeManagerCheckpoint("after-begin");
     if (sqlite3_prepare_v2(manager->db,"SELECT 1 FROM context_shuffles WHERE state=1 AND "
         "(active_path IN(?1,?2) OR staged_path IN(?1,?2)) LIMIT 1",-1,&stmt,NULL)!=SQLITE_OK ||
         sqlite3_bind_text(stmt,1,activePath,-1,SQLITE_STATIC)!=SQLITE_OK ||
         sqlite3_bind_text(stmt,2,stagedPath,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
     sqlite3_finalize(stmt); stmt=NULL;
+    if (paired)
+    {
+        if (sqlite3_prepare_v2(manager->db,"DELETE FROM context_shuffle_pairs WHERE map_name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+        sqlite3_finalize(stmt); stmt=NULL;
+        if (pair)
+        {
+            if (sqlite3_prepare_v2(manager->db,"INSERT INTO context_shuffle_pairs VALUES(?1,?2,?3,?4,?5,?6)",-1,&stmt,NULL)!=SQLITE_OK ||
+                sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK ||
+                sqlite3_bind_text(stmt,2,pair->activePath,-1,SQLITE_STATIC)!=SQLITE_OK ||
+                sqlite3_bind_text(stmt,3,pair->stagedPath,-1,SQLITE_STATIC)!=SQLITE_OK ||
+                sqlite3_bind_blob(stmt,4,pair->sourceDigest,32,SQLITE_STATIC)!=SQLITE_OK ||
+                sqlite3_bind_blob(stmt,5,pair->targetDigest,32,SQLITE_STATIC)!=SQLITE_OK ||
+                sqlite3_bind_blob(stmt,6,pair->selectionDigest,32,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+            sqlite3_finalize(stmt); stmt=NULL;
+        }
+    }
 #ifdef CDSE_CONTEXT_MANAGER_TESTING
     if (getenv("CDSE_CONTEXT_MANAGER_RANDOM") && !strcmp(getenv("CDSE_CONTEXT_MANAGER_RANDOM"),"fail")) goto done;
 #endif
@@ -1436,29 +1625,59 @@ done:
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
 before:
     cmeOfflineClose(&active); cmeOfflineClose(&staged);
+    cmeOfflineClose(&resources); cmeOfflineClose(&stagedResources);
     cmeContextMapFree(&source); cmeContextBindingFree(&verified); return(result);
 }
 
-int cmeContextManagerShuffleRecover(cmeContextManager *manager, const char *name,
+int cmeContextManagerShufflePrepare(cmeContextManager *manager, const char *name,
+    const char *activePath, const char *stagedPath,
+    const unsigned char sourceDigest[32], const unsigned char targetDigest[32],
+    const cmeContextSlot *slots, size_t count, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *mapExpected, unsigned char job[32], cmeContextMapAnchor *published)
+{
+    return(cmeShufflePrepare(manager,name,activePath,stagedPath,sourceDigest,targetDigest,
+        slots,count,expected,mapExpected,job,published,NULL));
+}
+
+int cmeContextManagerShufflePairPrepare(cmeContextManager *manager, const char *name,
+    const char *activePath, const char *stagedPath,
+    const unsigned char sourceDigest[32], const unsigned char targetDigest[32],
+    const cmeContextSlot *slots, size_t count, const cmeContextShufflePair *pair,
+    const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
+    unsigned char job[32], cmeContextMapAnchor *published)
+{
+    if (!pair)
+    {
+        if (job) memset(job,0,32);
+        if (published) memset(published,0,sizeof(*published));
+        return(1);
+    }
+    return(cmeShufflePrepare(manager,name,activePath,stagedPath,sourceDigest,targetDigest,
+        slots,count,expected,mapExpected,job,published,pair));
+}
+
+static int cmeShuffleRecover(cmeContextManager *manager, const char *name,
                                     const unsigned char job[32], int complete,
                                     const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
-                                    cmeContextMapAnchor *published)
+                                    cmeContextMapAnchor *published, int paired)
 {
     cmeManagerState state={0};
     cmeContextMapAnchor current={0},next={0},copy;
     cmeContextShuffle *shuffle=NULL;
     cmeContextBinding *verified=NULL;
     cmeOfflineArtifact active={.file=-1,.directory=-1},staged={.file=-1,.directory=-1};
+    cmeOfflineArtifact resources={.file=-1,.directory=-1},stagedResources={.file=-1,.directory=-1};
     sqlite3_stmt *stmt=NULL;
     unsigned char tag[32],finished[8];
     unsigned int i;
-    int result=1,isTarget;
+    int result=1,isTarget,resourcesTarget=0;
     if (mapExpected) { copy=*mapExpected; mapExpected=&copy; }
     if (published) memset(published,0,sizeof(*published));
     if (!manager || !job || !expected || !mapExpected || !published || (complete!=0 && complete!=1)) return(1);
     result=cmeContextManagerShuffleRead(manager,name,expected,mapExpected,&shuffle); if (result) return(result);
     result=1;
-    if (CRYPTO_memcmp(shuffle->job,job,32) || (shuffle->state!=1 && shuffle->state!=(complete ? 2 : 3))) goto before;
+    if (paired!=(shuffle->pair!=NULL) || CRYPTO_memcmp(shuffle->job,job,32) ||
+        (shuffle->state!=1 && shuffle->state!=(complete ? 2 : 3))) goto before;
     if (complete)
     {
         result=cmeContextManagerBind(manager,shuffle->target->resource,4,shuffle->target->slots,shuffle->target->count,expected,&verified);
@@ -1476,9 +1695,25 @@ int cmeContextManagerShuffleRecover(cmeContextManager *manager, const char *name
     isTarget=!CRYPTO_memcmp(active.digest,shuffle->targetDigest,32);
     if (!isTarget && CRYPTO_memcmp(active.digest,shuffle->sourceDigest,32)) goto done;
     if (!complete && isTarget) goto done;
+    if (paired)
+    {
+        if (cmePairFiles(manager,shuffle->activePath,shuffle->stagedPath,shuffle->pair,0,&resources,&stagedResources)) goto done;
+        resourcesTarget=!CRYPTO_memcmp(resources.digest,shuffle->pair->targetDigest,32);
+        if ((!resourcesTarget && CRYPTO_memcmp(resources.digest,shuffle->pair->sourceDigest,32)) ||
+            (resourcesTarget && (!isTarget || !complete))) goto done;
+        /* Validate both remaining candidates BEFORE the first irreversible rename. */
+        if (complete && !resourcesTarget)
+        {
+            cmeOfflineClose(&stagedResources);
+            if (cmeOfflineOpen(shuffle->pair->stagedPath,1,&stagedResources) ||
+                cmeShuffleFilesSafe(manager,&resources,&stagedResources) ||
+                CRYPTO_memcmp(stagedResources.digest,shuffle->pair->targetDigest,32)) goto done;
+        }
+    }
     if (shuffle->state!=1)
     {
-        if (complete!=isTarget || cmeOfflineSync(&active,&staged) ||
+        if (complete!=isTarget || (paired && (complete!=resourcesTarget ||
+            cmeOfflineSync(&resources,&stagedResources))) || cmeOfflineSync(&active,&staged) ||
             sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
         *published=current; result=0; goto done;
     }
@@ -1489,6 +1724,16 @@ int cmeContextManagerShuffleRecover(cmeContextManager *manager, const char *name
             CRYPTO_memcmp(staged.digest,shuffle->targetDigest,32) || cmeOfflineInstall(&active,&staged)) goto done;
     }
     else if (cmeOfflineSync(&active,&staged)) goto done;
+    if (paired)
+    {
+        cmeManagerCheckpoint("after-column-install");
+        if (complete && !resourcesTarget)
+        {
+            if (cmeOfflineInstall(&resources,&stagedResources)) goto done;
+        }
+        else if (cmeOfflineSync(&resources,&stagedResources)) goto done;
+        cmeManagerCheckpoint("after-resources-install");
+    }
     cmeManagerCheckpoint("after-artifact-sync");
     if (complete)
     {
@@ -1516,5 +1761,20 @@ done:
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
 before:
     cmeOfflineClose(&active); cmeOfflineClose(&staged);
+    cmeOfflineClose(&resources); cmeOfflineClose(&stagedResources);
     cmeContextShuffleFree(&shuffle); cmeContextBindingFree(&verified); return(result);
+}
+
+int cmeContextManagerShuffleRecover(cmeContextManager *manager, const char *name,
+    const unsigned char job[32], int complete, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published)
+{
+    return(cmeShuffleRecover(manager,name,job,complete,expected,mapExpected,published,0));
+}
+
+int cmeContextManagerShufflePairRecover(cmeContextManager *manager, const char *name,
+    const unsigned char job[32], int complete, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published)
+{
+    return(cmeShuffleRecover(manager,name,job,complete,expected,mapExpected,published,1));
 }
