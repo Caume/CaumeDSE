@@ -51,6 +51,7 @@ expect_failure() {
 expect_pass "patch increment" "version:patch" "$FIXTURES_DIR/current-1.0.12.configure.ac" "1.0.11 -> 1.0.12 (patch)"
 expect_pass "minor increment" "version:minor" "$FIXTURES_DIR/current-1.1.0.configure.ac" "1.0.11 -> 1.1.0 (minor)"
 expect_pass "major increment" "version:major" "$FIXTURES_DIR/current-2.0.0.configure.ac" "1.0.11 -> 2.0.0 (major)"
+expect_failure "unchanged version on dependency update" "version:patch" "$BASE" "requires 1.0.12"
 expect_failure "skipped patch increment" "version:patch" "$FIXTURES_DIR/current-1.0.13.configure.ac" "requires 1.0.12"
 expect_failure "minor reset violation" "version:minor" "$FIXTURES_DIR/current-1.1.1.configure.ac" "requires 1.1.0"
 expect_failure "malformed version" "version:patch" "$FIXTURES_DIR/current-malformed.configure.ac" "must use a MAJOR.MINOR.PATCH version"
