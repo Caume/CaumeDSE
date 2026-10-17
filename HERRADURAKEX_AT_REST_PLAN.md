@@ -1549,7 +1549,7 @@ generation is not supplied by this command. Interrupted checks can be repeated
 against the same pins without restoration/publication because they are read-only.
 A partial/missing candidate is rejected, never repaired or silently adopted.
 
-Schema 3 is accepted ONLY by the new check-only command: existing witness and
+At phase 13, schema 3 was accepted ONLY by the new check-only command: existing witness and
 single-file shuffle commands reject it, and `--prepare`, `--complete`, `--abort`
 and `--init` cannot publish a registered approval. Older schema-1/2 commands and
 direct APIs remain compatible and unguarded with respect to ResourcesDB pairing;
@@ -1567,7 +1567,7 @@ migration/floor/provider acceptance gates are also still pending.
 The trusted in-process manager adds `cmeContextManagerShufflePairInit`,
 `cmeContextManagerShufflePairPrepare` and `cmeContextManagerShufflePairRecover`.
 This is the durable paired-file coordinator core, NOT an installed publisher.
-`context-registered-shuffle` remains schema-3/check-only; existing installed
+At phase 14, `context-registered-shuffle` remained schema-3/check-only; existing installed
 shuffle/witness commands still reject schema 3. No live route uses these APIs.
 The guarded owner adapter and its acceptance tests are still required; never
 substitute direct fixture calls for the missing authorization/preflight handoff.
@@ -1644,7 +1644,7 @@ checkpoint and advancing directly from pre-prepare to completion is rejected.
 Tests cover independent witness advance and lost acknowledgements, but these
 manager primitives do not enforce witness authorization themselves.
 
-TODO #147 stays open. Next add the guarded installed owner adapter, canonical
+At phase 14, the next gate was the guarded installed owner adapter, canonical
 selector/profile commitment, preflight-to-prepare handoff, authenticated-intent
 recovery without deleted candidates, retained-current-witness checks, explicit
 reapproval at each catalog revision and exact paired receipt comparisons.
@@ -1652,3 +1652,111 @@ Production key custody/rotation, independent monotonic deployment, live lifecycl
 adapters, V2 crypto and migration/provider acceptance gates remain pending.
 No two-file atomic visibility to unguarded readers or physical power-loss
 certification is claimed.
+
+### Guarded paired owner adapter (#147 phase 15)
+
+`caumedse-admin context-registered-shuffle` now accepts `--init`, `--prepare`,
+`--status`, `--complete JOB_HEX` and `--abort JOB_HEX`, in addition to the unchanged
+read-only `--check`. Every action requires the full private schema-3 approval,
+exact current registry/catalog pins, explicit offline confirmation, independent
+witness directory/key, independently retained **current** witness token and the
+protected organization-key file. All phase-13 path/key/layout limits and floor-1
+restriction remain. This is an offline owner operation, never a live API route.
+
+Init and prepare perform the complete phase-13 crypto preflight again, not merely
+trust a previous check. They verify the complete byte-preserving permutation,
+registration/file/field integrity, all lookups and allowed ResourcesDB mutation,
+then recheck bindings, both manager pins and the current witness checkpoint.
+`--init` explicitly upgrades an idle shuffle-v2 catalog to paired-v3; `--prepare`
+calls the paired manager coordinator with the same approved four file digests.
+Its fresh file hashes and catalog CAS prevent adopting bytes/authority different
+from those checked. Exclusive offline ownership of paths is still mandatory;
+there is no concurrent-writer lease or atomic manager/witness transaction.
+
+The registration/profile commitment is SHA256 over exactly:
+
+```text
+"CDSE-REGISTERED-SHUFFLE-v1\0"
+uint64_be(documentRowId)
+uint16_be(length(documentId_bytes)) || documentId_bytes
+uint16_be(length(storageId_bytes)) || storageId_bytes
+uint16_be(length(orgResourceId_bytes)) || orgResourceId_bytes
+uint16_be(length(columnId_bytes)) || columnId_bytes
+uint16_be(length(profile_bytes)) || profile_bytes
+```
+
+Lengths count the decoded JSON string bytes, not JSON escape spelling or code
+points. No string terminators are appended; the domain includes its final NUL.
+The existing positive signed-64 document-id and 128-byte selector limits apply.
+Manager/witness pins are deliberately excluded so the same intent can be
+explicitly reapproved at each catalog revision. Both file pairs, digests, map
+name and complete target slots are separately authenticated in the catalog and
+compared against approval. Reordering JSON or equivalent escaping does not change
+the commitment; changing a selector/profile does. It is not printed/adopted from
+candidate metadata.
+
+Status/recovery first authenticate the current manager/witness pair and retained
+token, then read the signed paired intent and compare every approved path/digest,
+slot and selection commitment. Single-file intents are refused. Status returns
+authenticated metadata only: `state`, `job` and `catalog`, not file acceptance or
+a usable binding. It may report prepared even if an active file was corrupted;
+complete/abort still refuse unknown bytes and preserve blocking. The older
+single-file command now also rejects paired metadata, not just paired recovery.
+
+Complete/abort recheck current authority and delegate to the paired coordinator.
+They do not reopen deleted candidates or repeat the source/candidate crypto
+comparison: preparation committed proof of the approved exact bytes, and recovery
+checks the installed/remaining bytes against that authenticated intent. The org
+key file remains a required protected control input, but recovery does not decrypt
+payloads or validate its contents as a crypto key. No rotation occurs. A missing
+remaining candidate, unknown bytes, unsafe paths or expired receipt still fail
+closed. Finished retries require the exact finished catalog revision and both
+active digests; status alone never renews a receipt.
+
+The operator workflow is deliberately explicit:
+
+1. Provision/approve the manager and independent witness using the existing
+   owner workflow. If the catalog is v1, use schema-2 `context-shuffle --init`
+   to enable shuffle-v2. Review the new catalog pin and separately advance/retain
+   the witness with a schema-2 `context-witness --advance CURRENT_TOKEN` approval.
+2. Independently build/review both candidates and a schema-3 approval, then run
+   registered `--init` with the exact current witness token to enable paired-v3.
+   Reapprove the new manager pair and explicitly advance/retain the witness again.
+3. Run registered `--prepare`; retain its job/catalog receipt. Reapprove the
+   prepared manager pair and separately advance/retain the witness before any
+   registered status/recovery action. All stored maps are blocked at prepare.
+4. Run registered `--complete JOB` (or `--abort JOB` only while both sources are
+   active). After catalog publication, reapprove and explicitly advance/retain
+   the witness again before status or a finished retry. Review receipts before
+   updating pins; no command refreshes the approval automatically.
+5. On partial installation, keep the same prepared pins and retained current
+   witness token, and recover forward with the same schema-3 selection/file pins
+   and job. After a lost prepare/complete/abort acknowledgement, independently
+   review the current catalog and advance its witness checkpoint before status
+   can reveal the signed job. A lost init acknowledgement instead requires
+   reviewing the authenticated catalog version/pin before proceeding to prepare;
+   init creates no job. A lost witness acknowledgement uses the existing schema-2
+   `--reconcile` receipt procedure. Never reset authority, skip counters, lower a
+   floor or strip registration fields to bypass these guards.
+
+Use the phase-13 invocation with the chosen action instead of `--check`; do not
+pass `--org-key-file`/`--retained-witness-token` to schema-2 witness commands.
+Schema-2 witness approvals retain exactly their original fields and independently
+reviewed current pins. Source/target digests and selections in the schema-3
+approval stay unchanged across recovery, even after staged files disappear.
+Keep both parent directories until receipt and witness reconciliation finish;
+the coordinator still needs them for safety checks and directory sync.
+Success emits only state/job/catalog tokens (check keeps its old two-line output).
+Failures emit generic diagnostics and no success tokens. Crypto DEBUG output
+remains silenced. Return codes remain 0 success, 2 stale/conflicting authority,
+1 invalid/unavailable state.
+
+Tests exercise installed-owner prepare and final reconciliation around fixture-
+injected crashes after each rename, sync and catalog write/commit, without
+compiling crash hooks into the installed command. Lost acknowledgements, explicit
+witness advance, exact selection encoding and file/slot/selector substitution are
+covered. Process crashes are not physical power-loss certification. Direct core
+APIs remain trusted-owner interfaces and do not enforce these command guards;
+production custody must prevent their misuse. TODO #147 remains open for reviewed
+production key custody/rotation and independent monotonic recovery deployment,
+live lifecycle/UUID adapters, V2 crypto and migration/floor/provider acceptance.

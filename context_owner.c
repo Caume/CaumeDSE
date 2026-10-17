@@ -35,10 +35,15 @@ static int cmeOwnerHex(const char *value, unsigned char *bytes, size_t length)
     return(0);
 }
 
-static void cmeOwnerPrint(const unsigned char *bytes, size_t length)
+static void cmeOwnerWriteHex(FILE *output, const unsigned char *bytes, size_t length)
 {
     size_t i;
-    for (i=0;i<length;i++) printf("%02x",bytes[i]);
+    for (i=0;i<length;i++) fprintf(output,"%02x",bytes[i]);
+}
+
+static void cmeOwnerPrint(const unsigned char *bytes, size_t length)
+{
+    cmeOwnerWriteHex(stdout,bytes,length);
 }
 
 static void cmeOwnerFree(cmeOwnerApproval *approval)
@@ -645,6 +650,60 @@ done:
     return(result);
 }
 
+/* Bind selectors/profile independently of reapproved manager and witness pins.
+   Length-prefixed UTF-8 bytes prevent JSON spelling/order and delimiter aliases. */
+static int cmeOwnerRegisteredPair(const cmeOwnerApproval *approval, cmeContextShufflePair *pair)
+{
+    static const unsigned char domain[]="CDSE-REGISTERED-SHUFFLE-v1";
+    EVP_MD_CTX *hash=EVP_MD_CTX_new();
+    unsigned char bytes[8];
+    unsigned int written;
+    int i,result=1;
+    pair->activePath=approval->values[13]; pair->stagedPath=approval->values[14];
+    memcpy(pair->sourceDigest,approval->resourcesSource,32); memcpy(pair->targetDigest,approval->resourcesTarget,32);
+    if (!hash || !EVP_DigestInit_ex(hash,EVP_sha256(),NULL) ||
+        !EVP_DigestUpdate(hash,domain,sizeof(domain))) goto done;
+    for (i=0;i<8;i++) bytes[i]=(unsigned char)((uint64_t)approval->documentRow>>(56-8*i));
+    if (!EVP_DigestUpdate(hash,bytes,8)) goto done;
+    for (i=0;i<5;i++)
+    {
+        const char *value=i==4 ? approval->values[18] : approval->registration[i];
+        size_t length=strlen(value);
+        if (!length || length>65535) goto done;
+        bytes[0]=(unsigned char)(length>>8); bytes[1]=(unsigned char)length;
+        if (!EVP_DigestUpdate(hash,bytes,2) || !EVP_DigestUpdate(hash,value,length)) goto done;
+    }
+    if (EVP_DigestFinal_ex(hash,pair->selectionDigest,&written) && written==32) result=0;
+done:
+    EVP_MD_CTX_free(hash); return(result);
+}
+
+static int cmeOwnerRegisteredReceipt(const cmeOwnerApproval *approval, const cmeContextShufflePair *pair,
+                                     const cmeContextShuffle *shuffle)
+{
+    return(!shuffle->pair || cmeOwnerReceipt(approval,shuffle) ||
+        strcmp(pair->activePath,shuffle->pair->activePath) || strcmp(pair->stagedPath,shuffle->pair->stagedPath) ||
+        CRYPTO_memcmp(pair->sourceDigest,shuffle->pair->sourceDigest,32) ||
+        CRYPTO_memcmp(pair->targetDigest,shuffle->pair->targetDigest,32) ||
+        CRYPTO_memcmp(pair->selectionDigest,shuffle->pair->selectionDigest,32));
+}
+
+static void cmeOwnerRegisteredOutput(FILE *output, const char *action, const cmeContextShuffle *shuffle,
+                                     const cmeContextMapAnchor *catalog, const unsigned char job[32])
+{
+    unsigned char revision[8];
+    int i;
+    fprintf(output,"state=%s\n",!strcmp(action,"--status") ?
+        (shuffle->state==1 ? "prepared" : (shuffle->state==2 ? "completed" : "aborted")) : action+2);
+    if (!strcmp(action,"--prepare") || !strcmp(action,"--status"))
+    {
+        fprintf(output,"job="); cmeOwnerWriteHex(output,job,32); fputc('\n',output);
+    }
+    for (i=0;i<8;i++) revision[i]=(unsigned char)(catalog->revision>>(56-8*i));
+    fprintf(output,"catalog="); cmeOwnerWriteHex(output,revision,8);
+    cmeOwnerWriteHex(output,catalog->digest,32); fputc('\n',output);
+}
+
 int cmeContextOwnerMain(int argc, char **argv)
 {
     cmeOwnerApproval approval={0};
@@ -653,6 +712,7 @@ int cmeContextOwnerMain(int argc, char **argv)
     cmeContextBinding *binding=NULL;
     cmeContextShuffle *shuffle=NULL;
     cmeContextMapAnchor published={0};
+    cmeContextShufflePair pair={0};
     cmeContextWitness *witness=NULL;
     cmeContextWitnessState witnessed={0};
     cmeContextWitnessAnchor witnessExpected={0},witnessPublished={0};
@@ -672,8 +732,10 @@ int cmeContextOwnerMain(int argc, char **argv)
              "  Shuffle: (--init | --status | --prepare | --complete JOB_HEX | --abort JOB_HEX)\n"
              "  Schema 2/3: --witness-directory TRUSTED_DIRECTORY --witness-key-file FILE\n"
              "  Witness: (--init | --status | --advance WITNESS_TOKEN | --reconcile WITNESS_TOKEN)\n"
-             "  Registered schema 3: --check --org-key-file FILE --retained-witness-token TOKEN\n"
-             "Registered checks are floor-1-only and never install files or publish manager/witness state.\n"
+             "  Registered schema 3: (--check | --init | --prepare | --status | --complete JOB_HEX | --abort JOB_HEX)\n"
+             "    --org-key-file FILE --retained-witness-token TOKEN\n"
+             "Registered actions are floor-1-only. Init upgrades shuffle catalog v2 to paired v3.\n"
+             "Init/prepare verify both artifacts; recovery requires exact authenticated paired receipts.\n"
              "Schemas 2/3 require witness directory and independent witness key; schema 1 is unchanged.\n"
              "Explicit registry/catalog pins, no automatic refresh. Witness advance is separately approved.\n"
              "Stop all readers/writers. Prepare verifies a complete byte-preserving row permutation.\n"
@@ -707,7 +769,7 @@ int cmeContextOwnerMain(int argc, char **argv)
         cmeOwnerFile(manifest,cmeContextRegistryMaxBytes,&body) || cmeOwnerParse(body,&approval) ||
         cmeOwnerPaths(&approval,manifest,keyFile) || cmeOwnerFile(keyFile,65,&keyText)) goto done;
     if (strlen(keyText)==65 && keyText[64]=='\n') keyText[64]=0;
-    if ((registeredCommand ? (approval.schema!=3 || strcmp(action,"--check") || !orgFile || !retainedToken ||
+    if ((registeredCommand ? (approval.schema!=3 || !orgFile || !retainedToken ||
         approval.registry.minimumFormat!=1) :
         (approval.schema==3 || orgFile || retainedToken || !strcmp(action,"--check"))) ||
         cmeOwnerHex(keyText,key,32) || (!witnessCommand && jobText && cmeOwnerHex(jobText,job,32)) ||
@@ -771,6 +833,27 @@ int cmeContextOwnerMain(int argc, char **argv)
         if (cmeOwnerRegisteredPaths(&approval,manifest,keyFile,witnessFile,orgFile) || cmeOwnerFile(orgFile,257,&orgText)) goto done;
         if (orgText[strlen(orgText)-1]=='\n') orgText[strlen(orgText)-1]=0;
         if (!*orgText || strlen(orgText)>256) goto done;
+        if (cmeOwnerRegisteredPair(&approval,&pair)) goto done;
+        output=fdopen(dup(STDOUT_FILENO),"w"); diagnostics=fdopen(dup(STDERR_FILENO),"w");
+        if (!output || !diagnostics || fflush(NULL) || !freopen("/dev/null","w",stdout) || !freopen("/dev/null","w",stderr)) goto done;
+        if (!strcmp(action,"--status") || !strcmp(action,"--complete") || !strcmp(action,"--abort"))
+        {
+            result=cmeContextManagerShuffleRead(manager,approval.values[4],&approval.registry,&approval.catalog,&shuffle);
+            if (result) goto done;
+            result=1;
+            if (cmeOwnerRegisteredReceipt(&approval,&pair,shuffle)) goto done;
+            /* Current guard was checked above; recheck immediately before any install. */
+            result=cmeContextManagerCheckAnchors(manager,&approval.registry,&approval.catalog); if (result) goto done;
+            result=cmeContextWitnessReconcile(witness,&witnessExpected,&approval.registry,&approval.catalog,&recovery,&witnessPublished);
+            if (result) goto done;
+            if (recovery!=cmeWitnessRecoveryCurrent) { result=2; goto done; }
+            if (!strcmp(action,"--status"))
+            { published=approval.catalog; memcpy(job,shuffle->job,32); result=0; }
+            else result=cmeContextManagerShufflePairRecover(manager,approval.values[4],job,!strcmp(action,"--complete"),
+                &approval.registry,&approval.catalog,&published);
+            if (!result) cmeOwnerRegisteredOutput(output,action,shuffle,&published,job);
+            goto done;
+        }
         result=cmeContextManagerMapRead(manager,approval.values[4],&approval.registry,&approval.catalog,&source);
         if (result) goto done;
         result=1;
@@ -778,8 +861,6 @@ int cmeContextOwnerMain(int argc, char **argv)
         result=cmeContextManagerMapBind(manager,approval.values[4],&approval.registry,&approval.catalog,&binding);
         if (result) goto done;
         result=1;
-        output=fdopen(dup(STDOUT_FILENO),"w"); diagnostics=fdopen(dup(STDERR_FILENO),"w");
-        if (!output || !diagnostics || fflush(NULL) || !freopen("/dev/null","w",stdout) || !freopen("/dev/null","w",stderr)) goto done;
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
         OpenSSL_add_all_algorithms();
 #else
@@ -791,7 +872,15 @@ int cmeContextOwnerMain(int argc, char **argv)
         result=cmeContextWitnessReconcile(witness,&witnessExpected,&approval.registry,&approval.catalog,&recovery,&witnessPublished);
         if (result) goto done;
         if (recovery!=cmeWitnessRecoveryCurrent) { result=2; goto done; }
-        fprintf(output,"state=verified-pair\npublication=disabled\n");
+        if (!strcmp(action,"--check")) fprintf(output,"state=verified-pair\npublication=disabled\n");
+        else
+        {
+            if (!strcmp(action,"--init"))
+                result=cmeContextManagerShufflePairInit(manager,&approval.registry,&approval.catalog,&published);
+            else result=cmeContextManagerShufflePairPrepare(manager,approval.values[4],approval.values[7],approval.values[8],
+                approval.source,approval.target,approval.slots,approval.count,&pair,&approval.registry,&approval.catalog,job,&published);
+            if (!result) cmeOwnerRegisteredOutput(output,action,NULL,&published,job);
+        }
         goto done;
     }
     if (!strcmp(action,"--init"))
@@ -811,7 +900,7 @@ int cmeContextOwnerMain(int argc, char **argv)
     {
         result=cmeContextManagerShuffleRead(manager,approval.values[4],&approval.registry,&approval.catalog,&shuffle);
         if (result) goto done;
-        result=1; if (cmeOwnerReceipt(&approval,shuffle)) goto done;
+        result=1; if (shuffle->pair || cmeOwnerReceipt(&approval,shuffle)) goto done;
         if (!strcmp(action,"--status")) { published=approval.catalog; memcpy(job,shuffle->job,32); result=0; }
         else result=cmeContextManagerShuffleRecover(manager,approval.values[4],job,!strcmp(action,"--complete"),
             &approval.registry,&approval.catalog,&published);

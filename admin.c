@@ -237,7 +237,7 @@ int main(int argc, char **argv)
              "Whole exports: caumedse-admin reprotect-storage --help\n"
              "Owner-approved offline shuffles: caumedse-admin context-shuffle --help\n"
              "Independent owner anchor checkpoint: caumedse-admin context-witness --help\n"
-             "Registered shuffle preflight only: caumedse-admin context-registered-shuffle --help");
+             "Guarded registered shuffles: caumedse-admin context-registered-shuffle --help");
         return(0);
     }
     if (argc<2 || strcmp(argv[1],"reprotect-columnfile")) goto arguments;

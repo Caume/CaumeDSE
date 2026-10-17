@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guarded paired-artifact preflight only; synthetic keys and registrations."""
+"""Guarded registered preflight/publication; synthetic keys and registrations."""
 from contextlib import closing
 import base64
 import copy
@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import struct
 import subprocess
 import time
 import unittest
@@ -23,19 +24,19 @@ class RegisteredTests(witness_tests.GuardedOwnerTests):
     def setUp(self):
         super().setUp()
         self.profile = 'aes-256-gcm'
-        if self._testMethodName == 'test_cbc_registered_pair':
+        if self._testMethodName == 'test_cbc_registered_pair' or self._testMethodName.endswith('_cbc'):
             self.profile = 'aes-256-cbc'
-        if self._testMethodName == 'test_optional_nla1_registered_pair':
+        if self._testMethodName == 'test_optional_nla1_registered_pair' or self._testMethodName.endswith('_nla1'):
             probe = subprocess.run([owner_tests.PAYLOAD, 'unused', 'nla1-provider'], capture_output=True, timeout=30)
             if probe.returncode or probe.stdout.strip() != b'1':
                 self.skipTest('NLA1 provider not compiled in')
             self.profile = 'herradura-hske-nla1-aead-256'
         self.env = dict(os.environ, CDSE_DEFAULT_ENC_ALG=self.profile)
         meta_count = 2
-        if self._testMethodName == 'test_registered_encrypted_row_order':
+        if self._testMethodName.endswith('encrypted_row_order'):
             self.env['CDSE_FIXTURE_REGISTERED_SHUFFLE'] = '1'
             meta_count = 3
-        if self._testMethodName == 'test_registered_mac_and_sign_integrity':
+        if self._testMethodName.endswith('mac_and_sign_integrity'):
             self.env['CDSE_FIXTURE_REGISTERED_TAGS'] = '1'
             meta_count = 6
         if meta_count > 2:
@@ -112,9 +113,9 @@ class RegisteredTests(witness_tests.GuardedOwnerTests):
     def digest(path):
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
-    def check(self, *action, token=None, org_key=None, extra=()):
+    def check(self, *action, token=None, org_key=None, extra=(), env=None):
         result = self.guarded('context-registered-shuffle', *(action or ('--check',)), extra=(
-            '--org-key-file', str(org_key or self.org_key), '--retained-witness-token', token or self.token, *extra))
+            '--org-key-file', str(org_key or self.org_key), '--retained-witness-token', token or self.token, *extra), env=env)
         for secret in ('fixture-source-key', 'fixture-document', 'fixtureOrg', 'fixtureStorage', str(self.resources), str(self.candidate)):
             self.assertNotIn(secret.encode(), result.stdout + result.stderr)
         return result
@@ -180,7 +181,7 @@ class RegisteredTests(witness_tests.GuardedOwnerTests):
             self.repin()
             self.assertEqual(self.check().returncode, 1)
 
-    def test_schema_three_cannot_enter_single_file_publisher_or_witness_commands(self):
+    def test_schema_three_rejects_other_commands_and_uninitialized_publication(self):
         for command, action in (('context-shuffle', '--prepare'), ('context-shuffle', '--init'),
                                 ('context-witness', '--status'), ('context-witness', '--init')):
             self.assertEqual(self.guarded(command, action).returncode, 1)
@@ -367,6 +368,282 @@ for _class in (owner_tests.OwnerTests, witness_tests.GuardedOwnerTests):
         if _name.startswith('test_'):
             setattr(RegisteredTests, _name, None)
 del _class
+
+
+class RegisteredPublisherTests(RegisteredTests):
+    def accepted_action(self, *action):
+        result = self.check(*action)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+
+    def witness_approval(self):
+        approval = dict(self.approval, schema=2)
+        for field in ('resources', 'stagedResources', 'resourcesSource', 'resourcesTarget', 'registration', 'profile'):
+            del approval[field]
+        return approval
+
+    def reapprove(self, advance=True):
+        self.approval.update(registry=self.current(), catalog=self.map_current())
+        if advance:
+            registered = self.approval
+            self.approval = self.witness_approval()
+            self.write_approval()
+            self.token = self.accepted_guarded('context-witness', '--advance', self.token)['witness']
+            self.approval = registered
+        self.write_approval()
+
+    def upgraded(self):
+        # Catalog-v2 bootstrap remains the existing schema-2 single-file upgrade.
+        registered = self.approval
+        self.approval = self.witness_approval()
+        self.write_approval()
+        self.accepted_guarded('context-shuffle', '--init')
+        self.approval = registered
+        self.reapprove()
+        result = self.accepted_action('--init')
+        self.assertEqual(result['catalog'], self.map_current())
+        self.assertEqual(self.check('--prepare').returncode, 2)
+        self.reapprove()
+
+    def prepared_pair(self):
+        self.upgraded()
+        result = self.accepted_action('--prepare')
+        self.assertEqual(result['catalog'], self.map_current())
+        self.assertEqual(self.map_bind().returncode, 1)
+        self.assertEqual(self.check('--status').returncode, 2)
+        self.reapprove()
+        self.assertEqual(self.accepted_action('--status')['state'], 'prepared')
+        return result['job']
+
+    def selection_digest(self):
+        body = b'CDSE-REGISTERED-SHUFFLE-v1\0' + struct.pack('>Q', self.approval['registration'][0])
+        for value in (*self.approval['registration'][1:], self.approval['profile']):
+            encoded = value.encode('utf-8')
+            body += struct.pack('>H', len(encoded)) + encoded
+        return hashlib.sha256(body).digest()
+
+    def test_publish_complete_and_exact_lost_ack_receipt(self):
+        job = self.prepared_pair()
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db:
+            self.assertEqual(db.execute('select selection from context_shuffle_pairs').fetchone()[0], self.selection_digest())
+        result = self.accepted_action('--complete', job)
+        self.assertEqual(result['catalog'], self.map_current())
+        self.assertFalse(self.staged.exists())
+        self.assertFalse(self.candidate.exists())
+        self.assertEqual(self.digest(self.active), self.approval['target'])
+        self.assertEqual(self.digest(self.resources), self.approval['resourcesTarget'])
+        self.assertEqual(self.check('--complete', job).returncode, 2)
+        self.reapprove()
+        self.assertEqual(self.accepted_action('--status')['state'], 'completed')
+        before = (self.map_current(), self.resources.read_bytes(), self.active.read_bytes())
+        self.accepted_action('--complete', job)
+        self.assertEqual((self.map_current(), self.resources.read_bytes(), self.active.read_bytes()), before)
+        self.assertEqual(self.check('--abort', job).returncode, 1)
+        self.assertEqual(self.map_bind().returncode, 0)
+        self.assertEqual(self.check().returncode, 1)  # No candidates means no new preflight.
+
+    def complete_profile(self):
+        job = self.prepared_pair()
+        self.accepted_action('--complete', job)
+        self.reapprove()
+        self.assertEqual(self.accepted_action('--status')['state'], 'completed')
+
+    def test_publish_complete_cbc(self):
+        self.complete_profile()
+
+    def test_publish_optional_nla1(self):
+        self.complete_profile()
+
+    def test_publish_encrypted_row_order(self):
+        self.complete_profile()
+
+    def test_publish_mac_and_sign_integrity(self):
+        self.complete_profile()
+
+    def test_publish_abort_retry_and_new_job(self):
+        job = self.prepared_pair()
+        sources = self.active.read_bytes(), self.resources.read_bytes()
+        self.accepted_action('--abort', job)
+        self.reapprove()
+        self.assertEqual(self.accepted_action('--status')['state'], 'aborted')
+        self.accepted_action('--abort', job)
+        self.assertEqual((self.active.read_bytes(), self.resources.read_bytes()), sources)
+        self.assertTrue(self.staged.exists())
+        new_job = self.accepted_action('--prepare')['job']
+        self.assertNotEqual(job, new_job)
+        self.reapprove()
+        self.assertEqual(self.check('--complete', job).returncode, 1)
+        self.accepted_action('--complete', new_job)
+
+    def test_recovery_binds_every_selector_profile_digest_path_and_slot(self):
+        job = self.prepared_pair()
+        original = copy.deepcopy(self.approval)
+        changes = [dict(profile='aes-256-cbc'), dict(resourcesSource='11' * 32), dict(resourcesTarget='11' * 32),
+                   dict(source='11' * 32), dict(target='11' * 32), dict(resources=str(self.active)),
+                   dict(stagedResources=str(self.resources)), dict(slots=self.original_slots)]
+        for index in range(5):
+            registration = list(original['registration'])
+            registration[index] = registration[index] + 1 if index == 0 else registration[index] + '-changed'
+            changes.append(dict(registration=registration))
+        for change in changes:
+            with self.subTest(change=change):
+                self.approval = dict(original, **change)
+                self.write_approval()
+                self.assertEqual(self.check('--status').returncode, 1)
+                self.assertEqual(self.check('--complete', job).returncode, 1)
+                self.assertEqual(self.check('--abort', job).returncode, 1)
+                self.assertEqual(self.map_bind().returncode, 1)
+        self.approval = original
+        self.write_approval()
+        self.accepted_action('--complete', job)
+
+    def test_json_order_and_escaping_do_not_change_commitment(self):
+        job = self.prepared_pair()
+        text = json.dumps(dict(reversed(list(self.approval.items()))), indent=2)
+        self.approval_file.write_text(text.replace('fixture-document', '\\u0066ixture-document'))
+        self.assertEqual(self.accepted_action('--status')['job'], job)
+        self.accepted_action('--complete', job)
+
+    def test_prepare_rechecks_crypto_and_does_not_reuse_prior_check(self):
+        self.upgraded()
+        self.accepted_pair()
+        before = self.map_current()
+        with closing(sqlite3.connect(self.candidate)) as db, db:
+            db.execute("update documents set partMAC='corrupt'")
+        self.repin()
+        self.assertEqual(self.check('--prepare').returncode, 1)
+        self.assertEqual(self.map_current(), before)
+        self.assertEqual(self.map_bind().returncode, 0)
+
+    def test_prepare_wrong_org_key_cannot_publish(self):
+        self.upgraded()
+        before = self.map_current()
+        self.org_key.write_text('wrong-key\n')
+        self.assertEqual(self.check('--prepare').returncode, 1)
+        self.assertEqual(self.map_current(), before)
+
+    def test_single_file_commands_reject_paired_receipts(self):
+        job = self.prepared_pair()
+        registered = self.approval
+        self.approval = self.witness_approval()
+        self.write_approval()
+        for action in (('--status',), ('--prepare',), ('--complete', job), ('--abort', job)):
+            self.assertEqual(self.guarded('context-shuffle', *action).returncode, 1)
+        self.approval = registered
+        self.write_approval()
+        self.accepted_action('--abort', job)
+
+    def test_stale_witness_token_blocks_install_even_after_reapproval(self):
+        self.upgraded()
+        old = self.token
+        job = self.accepted_action('--prepare')['job']
+        self.reapprove(advance=False)
+        sources = self.active.read_bytes(), self.resources.read_bytes()
+        self.assertEqual(self.check('--complete', job).returncode, 2)
+        self.reapprove()
+        self.assertEqual(self.check('--complete', job, token=old).returncode, 2)
+        self.assertEqual((self.active.read_bytes(), self.resources.read_bytes()), sources)
+        self.accepted_action('--complete', job)
+
+    def test_missing_remaining_candidate_keeps_binding_blocked(self):
+        job = self.prepared_pair()
+        saved = self.candidate.read_bytes()
+        self.candidate.unlink()
+        self.assertEqual(self.check('--complete', job).returncode, 1)
+        self.assertEqual(self.map_bind().returncode, 1)
+        self.candidate.write_bytes(saved)
+        self.candidate.chmod(0o600)
+        self.accepted_action('--complete', job)
+
+    def test_status_metadata_does_not_certify_unknown_active_bytes(self):
+        job = self.prepared_pair()
+        saved = self.active.read_bytes()
+        with closing(sqlite3.connect(self.active)) as db, db:
+            db.execute('pragma user_version=77')
+        self.assertEqual(self.accepted_action('--status')['state'], 'prepared')
+        self.assertEqual(self.check('--complete', job).returncode, 1)
+        self.assertEqual(self.check('--abort', job).returncode, 1)
+        self.assertEqual(self.map_bind().returncode, 1)
+        self.active.write_bytes(saved)
+        self.accepted_action('--complete', job)
+
+    def test_registered_recovery_rejects_single_file_intents(self):
+        self.upgraded()
+        self.assertEqual(self.check('--status').returncode, 1)
+        registered = self.approval
+        self.approval = self.witness_approval()
+        self.write_approval()
+        job = self.accepted_guarded('context-shuffle', '--prepare')['job']
+        self.approval = registered
+        self.reapprove()
+        for action in (('--status',), ('--complete', job), ('--abort', job)):
+            self.assertEqual(self.check(*action).returncode, 1)
+
+    def test_finished_receipt_expires_after_later_catalog_publication(self):
+        job = self.prepared_pair()
+        self.accepted_action('--complete', job)
+        self.reapprove()
+        self.assertEqual(self.map_store(self.target_slots, name='other').returncode, 0)
+        self.reapprove()
+        self.assertEqual(self.check('--complete', job).returncode, 2)
+
+    def test_registered_actions_cannot_bypass_raised_floor(self):
+        job = self.prepared_pair()
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db:
+            snapshot = json.loads(db.execute('select body from registry_current').fetchone()[0])
+        _, _, anchor = witness_tests.manager_tests.contract.issue(snapshot, b'k' * 32)
+        snapshot.update(generation=snapshot['generation'] + 1, minimumFormat=2)
+        self.assertEqual(self.publish(snapshot, anchor).returncode, 0)
+        self.reapprove()
+        for action in (('--check',), ('--init',), ('--prepare',), ('--status',), ('--complete', job), ('--abort', job)):
+            self.assertEqual(self.check(*action).returncode, 1)
+        self.assertEqual(self.map_bind().returncode, 1)
+
+    def test_restore_cannot_use_retained_newer_witness(self):
+        self.upgraded()
+        backup = (self.authority / 'registry.sqlite').read_bytes()
+        previous = copy.deepcopy(self.approval)
+        self.accepted_action('--prepare')
+        self.reapprove()
+        (self.authority / 'registry.sqlite').write_bytes(backup)
+        self.approval = previous
+        self.write_approval()
+        self.assertEqual(self.check('--prepare').returncode, 2)
+
+    def check_interrupted_install(self, checkpoint, offline=False):
+        job = self.prepared_pair()
+        before = self.map_current()
+        env = {'CDSE_CONTEXT_OFFLINE_CRASH' if offline else 'CDSE_CONTEXT_MANAGER_CRASH': checkpoint}
+        # Fault injection belongs only to the non-installed fixture. Prepare and
+        # final reconciliation use the installed owner boundary and real crypto.
+        result = self.command('shuffle-pair-recover', 'view', job, 1, self.current(), before, env=env)
+        self.assertEqual(result.returncode, 86)
+        self.assertEqual(self.map_bind().returncode, 1 if checkpoint != 'after-commit' else 0)
+        if checkpoint == 'after-commit':
+            self.assertEqual(self.check('--complete', job).returncode, 2)
+            self.reapprove()
+        else:
+            self.assertEqual(self.map_current(), before)
+            self.assertEqual(self.accepted_action('--status')['state'], 'prepared')
+            self.assertEqual(self.check('--abort', job).returncode, 1)
+        self.accepted_action('--complete', job)
+        if checkpoint != 'after-commit':
+            self.reapprove()
+        self.assertEqual(self.accepted_action('--status')['state'], 'completed')
+        self.assertEqual(self.digest(self.active), self.approval['target'])
+        self.assertEqual(self.digest(self.resources), self.approval['resourcesTarget'])
+
+
+for _name in tuple(vars(RegisteredTests)):
+    if _name.startswith('test_'):
+        setattr(RegisteredPublisherTests, _name, None)
+
+for _point, _offline in (('after-rename', True), ('after-resources-rename', True),
+                         ('after-column-install', False), ('after-resources-install', False),
+                         ('after-artifact-sync', False), ('after-write', False), ('after-commit', False)):
+    def _recovery_case(self, point=_point, offline=_offline):
+        self.check_interrupted_install(point, offline)
+    setattr(RegisteredPublisherTests, 'test_owner_recovery_' + _point.replace('-', '_'), _recovery_case)
 
 
 if __name__ == '__main__':
