@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.16.1
+# Caume Data Security Engine (CaumeDSE) version 2.17.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2903,15 +2903,21 @@ tokens and explicit current manager approval. See the
 for independent retention and restore constraints; no force/reset path is supplied.
 Schema-3 `caumedse-admin context-registered-shuffle --check` verifies an approved
 ColumnFile/ResourcesDB candidate pair, registered file MACs, selected protected
-identity/lookup values and persisted payload integrity. It requires an independently
-retained current witness token and never publishes or installs files. Existing
-single-file commands reject schema 3. See the
+identity/lookup values and persisted payload integrity. Check remains read-only.
+The same command now supports explicitly approved paired catalog `--init`,
+`--prepare`, `--status`, `--complete JOB` and `--abort JOB` operations. Every action
+requires an independently retained current witness token and exact manager pins.
+Existing single-file commands reject schema 3. See the
 [registered preflight contract](HERRADURAKEX_AT_REST_PLAN.md#registered-shuffle-preflight-147-phase-13)
 for supported layouts. The opt-in manager
 [paired recovery primitives](HERRADURAKEX_AT_REST_PLAN.md#paired-manager-recovery-147-phase-14)
 durably bind both files and block all stored maps through partial installation.
-They are not exposed by the installed command: guarded owner publication/recovery
-integration and its acceptance tests remain pending.
+The installed
+[guarded owner adapter](HERRADURAKEX_AT_REST_PLAN.md#guarded-paired-owner-adapter-147-phase-15)
+verifies the candidate pair again at prepare, binds registration/profile selectors
+to the authenticated intent and recovers partial installs without deleted
+candidates. Witness advancement and reapproval remain separate after every
+catalog publication. Status is authenticated metadata, not a payload certificate.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider
