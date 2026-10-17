@@ -24,6 +24,10 @@ typedef struct
     cmeContextAnchor anchor;
 } cmeManagerState;
 
+static int cmeMapLoad(cmeContextManager *manager, cmeContextMapAnchor *anchor);
+static int cmeMapMatch(const cmeContextMapAnchor *actual, const cmeContextMapAnchor *expected);
+static int cmeShufflePending(cmeContextManager *manager, const char *name, int *pending);
+
 static int cmeManagerAnchorFetch(void *opaque, const unsigned char deployment[16],
                                 const unsigned char organization[16], cmeContextAnchor *anchor)
 {
@@ -247,14 +251,23 @@ static void cmeManagerCheckpoint(const char *point)
 #ifdef CDSE_CONTEXT_MANAGER_TESTING
     const char *requested=getenv("CDSE_CONTEXT_MANAGER_CRASH");
     if (requested && !strcmp(requested,point)) _exit(86);
+    requested=getenv("CDSE_CONTEXT_MANAGER_PAUSE");
+    if (requested && !strcmp(requested,point))
+    {
+        const char *ready=getenv("CDSE_CONTEXT_MANAGER_READY_FD"),*resume=getenv("CDSE_CONTEXT_MANAGER_RESUME_FD");
+        char byte;
+        if (!ready || !resume || atoi(ready)<3 || atoi(resume)<3 ||
+            write(atoi(ready),"1",1)!=1 || read(atoi(resume),&byte,1)!=1) _exit(87);
+    }
 #else
     (void)point;
 #endif
 }
 
-int cmeContextManagerPublish(cmeContextManager *manager, const unsigned char *body, size_t length,
+static int cmeManagerPublishPinned(cmeContextManager *manager, const unsigned char *body, size_t length,
                              const unsigned char tag[32], const cmeContextAnchor *next,
-                             const cmeContextAnchor *expected)
+                             const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+                             const char *sourceMap)
 {
     cmeContextRegistry *verified=NULL;
     cmeManagerState state={0};
@@ -269,6 +282,15 @@ int cmeContextManagerPublish(cmeContextManager *manager, const unsigned char *bo
     pthread_mutex_lock(&manager->mutex);
     if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK ||
         cmeManagerLoad(manager,&state)) goto done;
+    if (catalog)
+    {
+        cmeContextMapAnchor current={0};
+        int pending=0;
+        if (cmeMapLoad(manager,&current)) goto done;
+        result=cmeMapMatch(&current,catalog); if (result) goto done;
+        result=1;
+        if (cmeShufflePending(manager,sourceMap,&pending) || pending) goto done;
+    }
     cmeManagerCheckpoint("after-begin");
     if ((!state.initialized && expected) || (state.initialized && !expected)) { result=2; goto done; }
     if (state.initialized)
@@ -305,6 +327,13 @@ done:
     if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
     return(result);
+}
+
+int cmeContextManagerPublish(cmeContextManager *manager, const unsigned char *body, size_t length,
+                             const unsigned char tag[32], const cmeContextAnchor *next,
+                             const cmeContextAnchor *expected)
+{
+    return(cmeManagerPublishPinned(manager,body,length,tag,next,expected,NULL,NULL));
 }
 
 static int cmeManagerName(const char *text, int lookup)
@@ -1305,6 +1334,104 @@ int cmeContextManagerCheckAnchors(cmeContextManager *manager, const cmeContextAn
 done:
     if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
+int cmeContextManagerCopyProvision(cmeContextManager *manager, const char *sourceName,
+    const char *const *lookups, size_t count, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published)
+{
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0};
+    cmeContextAnchor next={0},expectedCopy;
+    cmeContextMap *source=NULL,*candidate=NULL;
+    cmeContextBinding *binding=NULL;
+    cmeStorageContext *allocated=NULL;
+    sqlite3_stmt *stmt=NULL;
+    unsigned char *body=NULL,*added=NULL,tag[32];
+    size_t length=0,addedLength=0,i,j;
+    int result=1;
+    if (expected) { expectedCopy=*expected; expected=&expectedCopy; }
+    if (copy) *copy=NULL;
+    if (published) memset(published,0,sizeof(*published));
+    if (!manager || !copy || !published || !expected || !catalog || !lookups ||
+        !count || count>cmeContextRegistryMaxEntries || cmeManagerName(sourceName,1)) return(1);
+    for (i=0;i<count;i++)
+    {
+        if (cmeManagerName(lookups[i],1)) return(1);
+        for (j=0;j<i;j++) if (!strcmp(lookups[i],lookups[j])) return(1);
+    }
+    result=cmeContextManagerMapRead(manager,sourceName,expected,catalog,&source); if (result) goto before;
+    result=1;
+    if (!source->active || source->blocked || source->role!=4 || source->count!=count) goto before;
+    result=cmeContextManagerMapBind(manager,sourceName,expected,catalog,&binding); if (result) goto before;
+    result=1;
+    candidate=calloc(1,sizeof(*candidate)); allocated=calloc(count,sizeof(*allocated));
+    if (!candidate || !allocated) goto before;
+    candidate->slots=calloc(count,sizeof(*candidate->slots));
+    if (!candidate->slots) goto before;
+    candidate->count=count; candidate->role=4; candidate->active=1;
+    candidate->resource=strdup(lookups[0]);
+    if (!candidate->resource) goto before;
+    pthread_mutex_lock(&manager->mutex);
+    if (sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=cmeShuffleCurrent(manager,expected,catalog,&state,&current); if (result) goto done;
+    result=1;
+    if (state.anchor.minimumFormat!=1 || state.anchor.generation==UINT64_MAX ||
+        sqlite3_prepare_v2(manager->db,"SELECT json_array_length(?1,'$.entries')",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,(const char *)state.body,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
+        sqlite3_column_int64(stmt,0)>(sqlite3_int64)(cmeContextRegistryMaxEntries-count)) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    for (i=0;i<count;i++)
+    {
+        cmeContextSlot *slot=&candidate->slots[i];
+        cmeStorageContext *context=&allocated[i];
+        unsigned int floor=0;
+        char *json=NULL;
+        if (sqlite3_prepare_v2(manager->db,"SELECT 1 FROM json_each(?1,'$.entries') "
+            "WHERE json_extract(value,'$.lookup')=?2 LIMIT 1",-1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,1,(const char *)state.body,-1,SQLITE_STATIC)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,2,lookups[i],-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+        sqlite3_finalize(stmt); stmt=NULL;
+        if (cmeContextBindingLookup(binding,source->slots[i].table,source->slots[i].row,
+            source->slots[i].field,context,&floor) || floor!=1) goto done;
+        if (!i)
+        { if (cmeManagerUUID(manager,&state,context,3)) goto done; }
+        else memcpy(context->ids[3],allocated[0].ids[3],16);
+        /* Authenticated binding guarantees one record per table/physical slot.
+           Multiple fields of that record must retain a single new record UUID. */
+        for (j=0;j<i;j++) if (!strcmp(source->slots[i].table,source->slots[j].table) &&
+            source->slots[i].row==source->slots[j].row) break;
+        if (j<i) memcpy(context->ids[4],allocated[j].ids[4],16);
+        else if (cmeManagerUUID(manager,&state,context,4)) goto done;
+        slot->lookup=strdup(lookups[i]); slot->table=strdup(source->slots[i].table);
+        slot->field=strdup(source->slots[i].field); slot->row=source->slots[i].row;
+        if (!slot->lookup || !slot->table || !slot->field) goto done;
+        json=cmeManagerContextJSON(manager->db,context);
+        if (!json) goto done;
+        result=cmeManagerIssue(manager,&state,lookups[i],json,0,NULL,&added,&addedLength,tag,&next);
+        sqlite3_free(json);
+        if (result) goto done;
+        result=1;
+        free(state.body); state.body=added; added=NULL; state.length=addedLength;
+        /* Keep the original generation in state: all additions form ONE next
+           snapshot, and the UUID collision search sees earlier additions. */
+        cmeManagerCheckpoint("after-copy-entry");
+    }
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    body=state.body; state.body=NULL; length=state.length; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
+    if (!result)
+    {
+        cmeManagerCheckpoint("copy-before-publish");
+        result=cmeManagerPublishPinned(manager,body,length,tag,&next,expected,catalog,sourceName);
+        if (!result) { *published=next; *copy=candidate; candidate=NULL; }
+    }
+before:
+    free(body); free(added); free(allocated);
+    cmeContextMapFree(&source); cmeContextMapFree(&candidate); cmeContextBindingFree(&binding); return(result);
 }
 
 int cmeContextManagerShuffleInit(cmeContextManager *manager, const cmeContextAnchor *expected,
