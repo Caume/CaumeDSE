@@ -327,3 +327,31 @@ done:
     if (!sqlite3_get_autocommit(witness->db)) sqlite3_exec(witness->db,"ROLLBACK",NULL,NULL,NULL);
     pthread_mutex_unlock(&witness->mutex); return(result);
 }
+
+int cmeContextWitnessCopyCommit(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *witnessExpected, const unsigned char *plan, size_t length,
+    const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    cmeContextMap **copy, cmeContextAnchor *published)
+{
+    cmeContextAnchor original,next={0};
+    cmeContextWitnessAnchor current={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    cmeContextMap *candidate=NULL;
+    int result=1,state=0;
+    if (expected) { original=*expected; expected=&original; }
+    if (copy) *copy=NULL;
+    if (published) memset(published,0,sizeof(*published));
+    if (!copy || !published) return(1);
+    result=cmeContextManagerCopyPlanStatus(manager,plan,length,digest,expected,catalog,&state,&candidate,&next);
+    cmeContextMapFree(&candidate);
+    if (result) return(result);
+    result=cmeContextWitnessReconcile(witness,witnessExpected,state==1 ? expected : &next,catalog,&recovery,&current);
+    if (result) return(result);
+    if (state==1 && recovery!=cmeWitnessRecoveryCurrent) return(2);
+    if (state==2 && recovery==cmeWitnessRecoveryAdvanceRequired)
+    {
+        result=cmeContextWitnessCheck(witness,expected,catalog);
+        if (result) return(result);
+    }
+    return(cmeContextManagerCopyPlanCommit(manager,plan,length,digest,expected,catalog,copy,published));
+}

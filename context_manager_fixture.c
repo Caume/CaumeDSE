@@ -254,6 +254,16 @@ static int cmeFixtureCopy(cmeContextManager *manager, int argc, char **argv)
     for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
     memcpy(catalog.digest,bytes+8,32); count=strtoul(argv[8],NULL,10);
     if (count>cmeContextRegistryMaxEntries+1 || 9+count!=(size_t)argc) goto done;
+    if (!strcmp(argv[2],"copy-plan-prepare"))
+    {
+        unsigned char *plan=NULL,digest[32],zero[32]={0};
+        size_t length=0;
+        result=cmeContextManagerCopyPlanPrepare(manager,argv[5],(const char *const *)(argv+9),count,
+            &registry,&catalog,&plan,&length,digest);
+        if (!result) { fwrite(digest,1,32,stdout); fwrite(plan,1,length,stdout); }
+        else if (plan || length || memcmp(digest,zero,32)) result=3;
+        free(plan); goto done;
+    }
     memset(&next,0xff,sizeof(next));
     if (getenv("CDSE_CONTEXT_MANAGER_ALIAS")) output=&registry;
     copy=(cmeContextMap *)manager;
@@ -276,6 +286,59 @@ static int cmeFixtureCopy(cmeContextManager *manager, int argc, char **argv)
     puts("]}");
 done:
     cmeContextMapFree(&copy); cmeContextMapFree(&copy); return(result);
+}
+
+static int cmeFixtureCopyPlan(cmeContextManager *manager, int argc, char **argv)
+{
+    cmeContextAnchor expected={0},next,empty={0},*output=&next;
+    cmeContextMapAnchor catalog={0};
+    cmeContextWitnessAnchor retained={0};
+    cmeContextWitness *witness=NULL;
+    cmeContextMap *copy=NULL;
+    unsigned char *plan=NULL,bytes[73],digest[32],key[32];
+    FILE *file=NULL;
+    size_t length=0,i;
+    int result=1,state=99,status=!strcmp(argv[2],"copy-plan-status"),guard=!strcmp(argv[2],"copy-plan-guard");
+    if (argc!=(guard ? 11 : 9) || cmeFixtureDecode(argv[6],digest,32) ||
+        cmeFixtureRegistryToken(argv[7],&expected) || cmeFixtureDecode(argv[8],bytes,40)) goto done;
+    for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
+    memcpy(catalog.digest,bytes+8,32);
+    plan=malloc(cmeContextCopyPlanMaxBytes+1);
+    file=fopen(argv[5],"rb");
+    if (!plan || !file) goto done;
+    length=fread(plan,1,cmeContextCopyPlanMaxBytes+1,file);
+    if (ferror(file)) goto done;
+    if (guard)
+    {
+        if (cmeFixtureDecode(argv[10],bytes,40)) goto done;
+        for (i=0;i<8;i++) retained.revision=(retained.revision<<8)|bytes[i];
+        memcpy(retained.digest,bytes+8,32); memset(key,getenv("CDSE_WITNESS_WRONG_KEY") ? 'x' : 'w',32);
+        if (cmeContextWitnessOpen(argv[9],0,key,expected.deployment,expected.organization,&expected,&catalog,&witness)) goto done;
+    }
+    memset(&next,0xff,sizeof(next));
+    if (getenv("CDSE_CONTEXT_MANAGER_ALIAS")) output=&expected;
+    copy=(cmeContextMap *)manager;
+    if (status) result=cmeContextManagerCopyPlanStatus(manager,plan,length,digest,&expected,&catalog,&state,&copy,output);
+    else if (guard) result=cmeContextWitnessCopyCommit(manager,witness,&retained,plan,length,digest,&expected,&catalog,&copy,output);
+    else result=cmeContextManagerCopyPlanCommit(manager,plan,length,digest,&expected,&catalog,&copy,output);
+    if (result)
+    {
+        if (copy) { copy=NULL; result=3; }
+        if (memcmp(output,&empty,sizeof(empty)) || (status && state)) result=3;
+        goto done;
+    }
+    memcpy(bytes,output->deployment,16); memcpy(bytes+16,output->organization,16);
+    for (i=0;i<8;i++) bytes[32+i]=(unsigned char)(output->generation>>(56-8*i));
+    bytes[40]=(unsigned char)output->minimumFormat; memcpy(bytes+41,output->digest,32);
+    printf("{\"state\":%d,\"registry\":\"",status ? state : 2); cmeFixturePrint(bytes,73);
+    printf("\",\"resource\":\"%s\",\"slots\":[",copy->resource);
+    for (i=0;i<copy->count;i++)
+        printf("%s[\"%s\",\"%s\",%lld,\"%s\"]",i ? "," : "",copy->slots[i].lookup,
+            copy->slots[i].table,(long long)copy->slots[i].row,copy->slots[i].field);
+    puts("]}");
+done:
+    if (file) fclose(file);
+    free(plan); cmeContextMapFree(&copy); cmeContextMapFree(&copy); cmeContextWitnessClose(&witness); return(result);
 }
 
 static int cmeFixtureShuffle(cmeContextManager *manager, int argc, char **argv)
@@ -451,7 +514,9 @@ int main(int argc, char **argv)
     if (cmeFixtureDecode(argv[3],next.deployment,16) || cmeFixtureDecode(argv[4],next.organization,16)) return(2);
     if (cmeContextManagerOpen(argv[1],!strcmp(argv[2],"init"),key,next.deployment,next.organization,&manager)) goto done;
     if (!strcmp(argv[2],"init") && argc==5) { result=0; goto done; }
-    if (!strcmp(argv[2],"copy-provision")) { result=cmeFixtureCopy(manager,argc,argv); goto done; }
+    if (!strcmp(argv[2],"copy-provision") || !strcmp(argv[2],"copy-plan-prepare"))
+    { result=cmeFixtureCopy(manager,argc,argv); goto done; }
+    if (!strncmp(argv[2],"copy-plan-",10)) { result=cmeFixtureCopyPlan(manager,argc,argv); goto done; }
     if (!strncmp(argv[2],"shuffle-",8)) { result=cmeFixtureShuffle(manager,argc,argv); goto done; }
     if (!strncmp(argv[2],"map-",4)) { result=cmeFixtureMaps(manager,argc,argv); goto done; }
     if (!strcmp(argv[2],"bind")) { result=cmeFixtureBinding(manager,argc,argv); goto done; }

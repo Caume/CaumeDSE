@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.18.0
+# Caume Data Security Engine (CaumeDSE) version 2.19.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2923,6 +2923,10 @@ The trusted manager's
 allocates a fresh resource and grouped record UUIDs in one registry publication.
 It returns an allocation descriptor only: no file copy, map publication,
 registered-copy command or V2 re-encryption is enabled.
+The optional [retained allocation plan](HERRADURAKEX_AT_REST_PLAN.md#retained-copy-allocation-plans-147-phase-17)
+fixes candidate UUIDs before publication and supports exact lost-acknowledgement
+reconciliation. Its witness guard never advances the witness automatically;
+the owner must durably retain the reviewed plan before committing it.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider
