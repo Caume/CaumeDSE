@@ -177,6 +177,25 @@ int cmeContextManagerMapBind(cmeContextManager *manager, const char *name,
                              const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
                              cmeContextBinding **binding);
 
+/* Trusted OFFLINE identity preparation for a same-storage ColumnFile copy.
+   Select a current active/unblocked stored map, floor 1 only. Supply one unused
+   destination lookup per source slot, in MapRead's table/row/field order.
+   Atomically allocate a fresh resource and fresh records (shared by all fields
+   of a source table/slot), retaining scope/storage/schema and physical slots.
+   Both registry and catalog pins are checked under the final publication lock;
+   only registry generation advances, once. Existing registrations/maps/files
+   are untouched. Output is an owned ALLOCATION DESCRIPTOR, not a stored map,
+   inventory proof, physical copy authorization or V2 crypto binding. Free with
+   MapFree. A separately approved MapStore may publish it later, with explicit
+   witness advancement between registry and catalog publications. No witness
+   guard, file copy, AEAD re-encryption or cross-storage/org copy is supplied.
+   Return 0/2/1 and output/alias rules match Provision; copy/published clear on
+   failure. No partial identities survive failure before commit. Lost commit
+   acknowledgements require independent snapshot review, never blind retry. */
+int cmeContextManagerCopyProvision(cmeContextManager *manager, const char *sourceName,
+    const char *const *lookups, size_t count, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published);
+
 typedef struct
 {
     unsigned char job[32], sourceDigest[32], targetDigest[32];

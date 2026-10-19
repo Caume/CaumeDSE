@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.17.0
+# Caume Data Security Engine (CaumeDSE) version 2.18.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2918,6 +2918,11 @@ verifies the candidate pair again at prepare, binds registration/profile selecto
 to the authenticated intent and recovers partial installs without deleted
 candidates. Witness advancement and reapproval remain separate after every
 catalog publication. Status is authenticated metadata, not a payload certificate.
+The trusted manager's
+[copy-identity preparation API](HERRADURAKEX_AT_REST_PLAN.md#copy-identity-preparation-147-phase-16)
+allocates a fresh resource and grouped record UUIDs in one registry publication.
+It returns an allocation descriptor only: no file copy, map publication,
+registered-copy command or V2 re-encryption is enabled.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider

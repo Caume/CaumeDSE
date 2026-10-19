@@ -7,6 +7,8 @@ import hashlib
 import hmac
 import json
 import os
+import select
+import shutil
 from pathlib import Path
 import sqlite3
 import struct
@@ -2006,6 +2008,304 @@ for _action, _points in (
         def _crash_case(self, action=_action, point=_point):
             self.check_pair_crash(action, point)
         setattr(PairShuffleTests, 'test_pair_crash_' + _action + '_' + _point.replace('-', '_'), _crash_case)
+
+
+class CopyProvisionTests(ManagerTests):
+    def copy_setup(self):
+        self.binding_family()
+        self.map_init()
+        self.source_slots = [('first', 'data', 10, 'value'), ('field', 'data', 10, 'other'),
+                             ('second', 'data', 20, 'value'), ('meta', 'meta', 10, 'attribute')]
+        self.assertEqual(self.map_store(self.source_slots).returncode, 0)
+        self.ordered = json.loads(self.map_read().stdout)['slots']
+        self.lookups = [f'copy/{i}' for i in range(len(self.ordered))]
+
+    def copy_args(self, names=None, registry=None, catalog=None, name='view'):
+        lookups = self.lookups if names is None else names
+        return [name, registry or self.current(), catalog or self.map_current(), len(lookups), *lookups]
+
+    def copy_provision(self, env=None, **changes):
+        return self.command('copy-provision', *self.copy_args(**changes), env=env)
+
+    def copy_snapshot(self):
+        with closing(sqlite3.connect(self.authority / 'registry.sqlite')) as db:
+            body, tag = db.execute('select body,tag from registry_current').fetchone()
+        snapshot = json.loads(body)
+        canonical, expected_tag, anchor = contract.issue(snapshot, b'k' * 32)
+        self.assertEqual(body, canonical)
+        self.assertEqual(tag, expected_tag)
+        self.assertEqual(self.current(), token(anchor))
+        return snapshot
+
+    def copied(self, **options):
+        before = self.copy_snapshot()
+        catalog = self.map_current()
+        result = self.copy_provision(**options)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        descriptor = json.loads(result.stdout)
+        after = self.copy_snapshot()
+        self.assertEqual(descriptor['registry'], self.current())
+        self.assertEqual(after['generation'], before['generation'] + 1)
+        self.assertEqual(self.map_current(), catalog)
+        old = {entry['lookup']: entry for entry in before['entries']}
+        new = {entry['lookup']: entry for entry in after['entries']}
+        for lookup, entry in old.items():
+            self.assertEqual(new[lookup], entry)
+        self.assertEqual(len(new), len(old) + len(self.lookups))
+        old_ids = {entry['context'][key] for entry in old.values() for key in contract.UUID_FIELDS}
+        records = {}
+        resource = None
+        for source_slot, target_slot in zip(self.ordered, descriptor['slots']):
+            source = old[source_slot[0]]['context']
+            target = new[target_slot[0]]['context']
+            self.assertEqual(source_slot[1:], target_slot[1:])
+            for key in ('deployment', 'organization', 'storage', 'role', 'table', 'field'):
+                self.assertEqual(source[key], target[key])
+            if resource is None:
+                resource = target['resource']
+            self.assertEqual(target['resource'], resource)
+            self.assertNotIn(target['resource'], old_ids)
+            self.assertNotIn(target['record'], old_ids)
+            self.assertNotEqual(target['resource'], target['record'])
+            for key in ('resource', 'record'):
+                value = uuid.UUID(hex=target[key])
+                self.assertEqual(value.version, 4)
+                self.assertEqual(value.variant, uuid.RFC_4122)
+            group = tuple(source_slot[1:3])
+            if group in records:
+                self.assertEqual(records[group], target['record'])
+            else:
+                self.assertNotIn(target['record'], records.values())
+                records[group] = target['record']
+        self.assertEqual(descriptor['resource'], self.lookups[0])
+        self.assertEqual(descriptor['role'], 4)
+        self.assertEqual([slot[0] for slot in descriptor['slots']], self.lookups)
+        return descriptor
+
+    def test_copy_allocates_one_fresh_resource_and_grouped_records(self):
+        self.copy_setup()
+        descriptor = self.copied(env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'})
+        self.assertEqual(self.map_bind().returncode, 0)
+        self.assertEqual(self.map_read(name='copy').returncode, 1)  # No catalog publication yet.
+        self.assertEqual(self.map_store(descriptor['slots'], name='copy', resource=descriptor['resource']).returncode, 0)
+        self.assertEqual(self.map_bind(name='copy').returncode, 0)
+        self.assertEqual(self.bind(descriptor['slots'], resource='first').returncode, 1)
+        self.assertEqual(self.bind(self.source_slots, resource=descriptor['resource']).returncode, 1)
+        self.assert_catalog()
+
+    def test_copy_reopen_cas_and_no_blind_retry_after_commit(self):
+        self.copy_setup()
+        before = self.current()
+        self.copied()
+        committed = self.current()
+        self.assertEqual(self.copy_provision(registry=before).returncode, 2)
+        self.assertEqual(self.copy_provision().returncode, 1)
+        self.assertEqual(self.current(), committed)
+        self.assertEqual(self.command('read', self.lookups[-1]).returncode, 0)
+
+    def test_copy_invalid_names_counts_stale_pins_and_scope_fail_without_ids(self):
+        self.copy_setup()
+        before = self.copy_snapshot()
+        for changes in (dict(names=[]), dict(names=self.lookups[:-1]), dict(names=['same'] * 4),
+                        dict(names=['invalid name', *self.lookups[1:]]), dict(names=[None]),
+                        dict(names=['first', *self.lookups[1:]]), dict(name='missing'),
+                        dict(registry='00' * 73), dict(catalog='00' * 40)):
+            with self.subTest(changes=changes):
+                self.assertNotEqual(self.copy_provision(**changes).returncode, 0)
+                self.assertEqual(self.copy_snapshot(), before)
+
+    def test_copy_retained_tombstones_are_not_reused(self):
+        self.copy_setup()
+        self.allocated(lookup='retired', level=2, parent='first', expected=self.current())
+        self.assertEqual(self.command('revoke', 'retired', self.current()).returncode, 0)
+        before = self.copy_snapshot()
+        self.assertEqual(self.copy_provision(names=['retired', *self.lookups[1:]]).returncode, 1)
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def test_copy_revoked_removed_and_internal_maps_fail(self):
+        self.copy_setup()
+        self.allocated(lookup='internal', level=2, role=1, table='users', field='value', expected=self.current())
+        self.assertEqual(self.map_store([('internal', 'users', 1, 'value')], name='internal', resource='internal', role=1).returncode, 0)
+        self.assertEqual(self.copy_provision(name='internal', names=['new/internal']).returncode, 1)
+        self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 0)
+        self.assertEqual(self.copy_provision().returncode, 1)
+        self.assertEqual(self.map_remove().returncode, 0)
+        self.assertEqual(self.copy_provision().returncode, 1)
+
+    def test_copy_rng_failure_and_retained_or_batch_collisions_are_atomic(self):
+        self.copy_setup()
+        before = self.copy_snapshot()
+        for mode in ('fail', 'collision', 'aa' * 16):
+            with self.subTest(mode=mode):
+                self.assertEqual(self.copy_provision(env={'CDSE_CONTEXT_MANAGER_RANDOM': mode}).returncode, 1)
+                self.assertEqual(self.copy_snapshot(), before)
+        self.copied()
+
+    def test_copy_floor_two_and_generation_overflow_refuse_allocation(self):
+        self.copy_setup()
+        snapshot = self.copy_snapshot()
+        _, _, anchor = contract.issue(snapshot, b'k' * 32)
+        raised = dict(snapshot, generation=snapshot['generation'] + 1, minimumFormat=2)
+        self.assertEqual(self.publish(raised, anchor).returncode, 0)
+        self.assertEqual(self.copy_provision().returncode, 1)
+        database = self.authority / 'registry.sqlite'
+        maximum = dict(raised, generation=2**64 - 1, minimumFormat=1)
+        body, tag, anchor = contract.issue(maximum, b'k' * 32)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute('update registry_current set body=?,tag=?,anchor=?', (body, tag, bytes.fromhex(token(anchor))))
+        self.assertEqual(self.copy_provision().returncode, 1)
+        self.assertEqual(self.copy_snapshot(), maximum)
+
+    def test_copy_witness_separates_registry_and_catalog_publications(self):
+        self.copy_setup()
+        witness = self.root / 'witness'
+        witness.mkdir(mode=0o700)
+        first = self.command('witness-init', self.current(), self.map_current(), directory=witness)
+        self.assertEqual(first.returncode, 0)
+        retained = first.stdout.decode().strip()
+        descriptor = self.copied()
+        self.assertEqual(self.command('witness-check', self.current(), self.map_current(), directory=witness).returncode, 2)
+        advanced = self.command('witness-advance', self.current(), self.map_current(), retained, directory=witness)
+        self.assertEqual(advanced.returncode, 0)
+        self.assertEqual(self.map_store(descriptor['slots'], name='copy', resource=descriptor['resource']).returncode, 0)
+        self.assertEqual(self.command('witness-advance', self.current(), self.map_current(),
+                                      advanced.stdout.decode().strip(), directory=witness).returncode, 0)
+
+    def test_copy_pending_shuffle_blocks_identity_allocation(self):
+        self.copy_setup()
+        self.assertEqual(self.command('shuffle-init', self.current(), self.map_current()).returncode, 0)
+        active, staged = self.root / 'export' / 'column.sqlite', self.root / 'staging' / 'column.sqlite'
+        for path, order in ((active, (10, 20)), (staged, (20, 10))):
+            path.parent.mkdir(mode=0o700)
+            with closing(sqlite3.connect(path)) as db, db:
+                db.execute('create table data(value text, other text)')
+                db.execute('create table meta(attribute text)')
+                db.executemany('insert into data(rowid,value,other) values(?,?,?)',
+                               [(row, str(index), 'field') for index, row in enumerate(order)])
+                db.execute("insert into meta(rowid,attribute) values(10,'meta')")
+            path.chmod(0o600)
+        slots = [(lookup, table, 30-row if table == 'data' else row, field)
+                 for lookup, table, row, field in self.source_slots]
+        args = ['view', active, staged, hashlib.sha256(active.read_bytes()).hexdigest(),
+                hashlib.sha256(staged.read_bytes()).hexdigest(), self.current(), self.map_current(), len(slots)]
+        for slot in slots:
+            args.extend(slot)
+        self.assertEqual(self.command('shuffle-prepare', *args).returncode, 0)
+        before = self.copy_snapshot()
+        self.assertEqual(self.copy_provision().returncode, 1)
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def test_copy_encoding_capacity_never_leaves_partial_allocations(self):
+        self.copy_setup()
+        original = self.copy_snapshot()
+        extra = [dict(lookup=f'capacity/{i:04}', state='active',
+                      context=dict(original['entries'][0]['context'], record=(i + 1000).to_bytes(16, 'big').hex()))
+                 for i in range(contract.MAX_ENTRIES)]
+        low, high = 0, len(extra)
+        while low < high:
+            middle = (low + high + 1) // 2
+            try:
+                contract.canonical(dict(original, entries=sorted(original['entries'] + extra[:middle], key=lambda e: e['lookup'])))
+                low = middle
+            except ValueError:
+                high = middle - 1
+        full = dict(original, generation=original['generation'] + 1,
+                    entries=sorted(original['entries'] + extra[:low], key=lambda e: e['lookup']))
+        _, _, anchor = contract.issue(original, b'k' * 32)
+        self.assertEqual(self.publish(full, anchor).returncode, 0)
+        self.assertEqual(self.copy_provision().returncode, 1)
+        self.assertEqual(self.copy_snapshot(), full)
+
+    def test_copy_final_publication_rechecks_both_pins_against_concurrent_writers(self):
+        self.copy_setup()
+        database = self.authority / 'registry.sqlite'
+        saved = database.read_bytes()
+        for change in ('catalog', 'remove', 'registry'):
+            with self.subTest(change=change):
+                database.write_bytes(saved)
+                ready_read, ready_write = os.pipe()
+                resume_read, resume_write = os.pipe()
+                try:
+                    env = dict(os.environ, CDSE_CONTEXT_MANAGER_PAUSE='copy-before-publish',
+                               CDSE_CONTEXT_MANAGER_READY_FD=str(ready_write), CDSE_CONTEXT_MANAGER_RESUME_FD=str(resume_read))
+                    with subprocess.Popen(self.args('copy-provision', *self.copy_args()), env=env,
+                                          pass_fds=(ready_write, resume_read), stdout=subprocess.PIPE, stderr=subprocess.PIPE) as child:
+                        try:
+                            self.assertTrue(select.select([ready_read], [], [], 30)[0])
+                            self.assertEqual(os.read(ready_read, 1), b'1')
+                            if change == 'catalog':
+                                self.assertEqual(self.map_store(self.source_slots).returncode, 0)
+                            elif change == 'remove':
+                                self.assertEqual(self.map_remove().returncode, 0)
+                            else:
+                                self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 0)
+                            os.write(resume_write, b'1')
+                            child.communicate(timeout=30)
+                            self.assertEqual(child.returncode, 2)
+                        finally:
+                            if child.poll() is None:
+                                child.kill()
+                                child.communicate(timeout=30)
+                    self.assertTrue(all(not e['lookup'].startswith('copy/') for e in self.copy_snapshot()['entries']))
+                finally:
+                    for fd in (ready_read, ready_write, resume_read, resume_write):
+                        os.close(fd)
+
+    def test_owner_slot_shuffle_retains_ids_before_copy(self):
+        self.copy_setup()
+        before = self.copy_snapshot()
+        self.source_slots = [(lookup, table, row + 100, field) for lookup, table, row, field in self.source_slots]
+        self.assertEqual(self.map_store(self.source_slots).returncode, 0)
+        self.assertEqual(self.copy_snapshot(), before)
+        self.ordered = json.loads(self.map_read().stdout)['slots']
+        self.copied()
+
+    def test_rename_and_copy_preserve_legacy_readback_without_v2_claim(self):
+        self.copy_setup()
+        payload = str(Path(os.environ.get('CDSE_CONTEXT_OWNER_PAYLOAD', './reprotect-fixture')).resolve())
+        admin = str(Path(os.environ.get('CDSE_CONTEXT_OWNER_ADMIN', './caumedse-admin')).resolve())
+        artifact = self.root / 'legacy.sqlite'
+        self.assertEqual(subprocess.run([payload, str(artifact), 'normal'], capture_output=True, timeout=30).returncode, 0)
+        renamed = self.root / 'renamed.sqlite'
+        artifact.rename(renamed)
+        legacy_bytes = renamed.read_bytes()
+        target = self.root / 'copied.sqlite'
+        shutil.copyfile(renamed, target)
+        key = self.root / 'org.key'
+        key.write_text('fixture-source-key\n')
+        key.chmod(0o600)
+        descriptor = self.copied()
+        self.assertEqual(target.read_bytes(), legacy_bytes)
+        for path in (renamed, target):
+            path.chmod(0o600)
+            result = subprocess.run([admin, 'reprotect-columnfile', '--database', str(path), '--confirmed-scope', str(path),
+                                     '--source-key-file', str(key), '--target-key-file', str(key),
+                                     '--target-profile', 'aes-256-gcm', '--dry-run'], capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, 'legacy persisted readback failed')
+        self.assertNotEqual(descriptor['resource'], 'first')
+
+    def check_copy_crash(self, point):
+        self.copy_setup()
+        before = self.copy_snapshot()
+        result = self.copy_provision(env={'CDSE_CONTEXT_MANAGER_CRASH': point})
+        self.assertEqual(result.returncode, 86)
+        after = self.copy_snapshot()
+        if point == 'after-commit':
+            self.assertEqual(len(after['entries']), len(before['entries']) + len(self.lookups))
+            self.assertEqual(after['generation'], before['generation'] + 1)
+        else:
+            self.assertEqual(after, before)
+            self.copied()
+
+
+for _name in tuple(vars(ManagerTests)):
+    if _name.startswith('test_'):
+        setattr(CopyProvisionTests, _name, None)
+
+for _point in ('after-copy-entry', 'copy-before-publish', 'after-begin', 'after-write', 'after-commit'):
+    def _copy_crash_case(self, point=_point):
+        self.check_copy_crash(point)
+    setattr(CopyProvisionTests, 'test_copy_crash_' + _point.replace('-', '_'), _copy_crash_case)
 
 
 if __name__ == '__main__':

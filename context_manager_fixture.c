@@ -242,6 +242,42 @@ done:
     cmeContextManagerClose(&second); return(result);
 }
 
+static int cmeFixtureCopy(cmeContextManager *manager, int argc, char **argv)
+{
+    cmeContextAnchor registry={0},next,empty={0},*output=&next;
+    cmeContextMapAnchor catalog={0};
+    cmeContextMap *copy=NULL;
+    unsigned char bytes[73];
+    size_t i,count;
+    int result=1;
+    if (argc<9 || cmeFixtureRegistryToken(argv[6],&registry) || cmeFixtureDecode(argv[7],bytes,40)) goto done;
+    for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
+    memcpy(catalog.digest,bytes+8,32); count=strtoul(argv[8],NULL,10);
+    if (count>cmeContextRegistryMaxEntries+1 || 9+count!=(size_t)argc) goto done;
+    memset(&next,0xff,sizeof(next));
+    if (getenv("CDSE_CONTEXT_MANAGER_ALIAS")) output=&registry;
+    copy=(cmeContextMap *)manager;
+    result=cmeContextManagerCopyProvision(manager,argv[5],(const char *const *)(argv+9),count,
+        &registry,&catalog,&copy,output);
+    if (result)
+    {
+        if (copy) { copy=NULL; result=3; }
+        if (memcmp(output,&empty,sizeof(empty))) result=3;
+        goto done;
+    }
+    memcpy(bytes,output->deployment,16); memcpy(bytes+16,output->organization,16);
+    for (i=0;i<8;i++) bytes[32+i]=(unsigned char)(output->generation>>(56-8*i));
+    bytes[40]=(unsigned char)output->minimumFormat; memcpy(bytes+41,output->digest,32);
+    printf("{\"registry\":\""); cmeFixturePrint(bytes,73);
+    printf("\",\"resource\":\"%s\",\"role\":%u,\"slots\":[",copy->resource,copy->role);
+    for (i=0;i<copy->count;i++)
+        printf("%s[\"%s\",\"%s\",%lld,\"%s\"]",i ? "," : "",copy->slots[i].lookup,
+            copy->slots[i].table,(long long)copy->slots[i].row,copy->slots[i].field);
+    puts("]}");
+done:
+    cmeContextMapFree(&copy); cmeContextMapFree(&copy); return(result);
+}
+
 static int cmeFixtureShuffle(cmeContextManager *manager, int argc, char **argv)
 {
     cmeContextAnchor registry={0};
@@ -415,6 +451,7 @@ int main(int argc, char **argv)
     if (cmeFixtureDecode(argv[3],next.deployment,16) || cmeFixtureDecode(argv[4],next.organization,16)) return(2);
     if (cmeContextManagerOpen(argv[1],!strcmp(argv[2],"init"),key,next.deployment,next.organization,&manager)) goto done;
     if (!strcmp(argv[2],"init") && argc==5) { result=0; goto done; }
+    if (!strcmp(argv[2],"copy-provision")) { result=cmeFixtureCopy(manager,argc,argv); goto done; }
     if (!strncmp(argv[2],"shuffle-",8)) { result=cmeFixtureShuffle(manager,argc,argv); goto done; }
     if (!strncmp(argv[2],"map-",4)) { result=cmeFixtureMaps(manager,argc,argv); goto done; }
     if (!strcmp(argv[2],"bind")) { result=cmeFixtureBinding(manager,argc,argv); goto done; }

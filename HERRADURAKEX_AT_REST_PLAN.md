@@ -1760,3 +1760,85 @@ APIs remain trusted-owner interfaces and do not enforce these command guards;
 production custody must prevent their misuse. TODO #147 remains open for reviewed
 production key custody/rotation and independent monotonic recovery deployment,
 live lifecycle/UUID adapters, V2 crypto and migration/floor/provider acceptance.
+
+### Copy identity preparation (#147 phase 16)
+
+`cmeContextManagerCopyProvision` adds a trusted in-process identity-preparation
+adapter for a same-storage ColumnFile copy. It does NOT copy files, update a
+ResourcesDB registration, install a destination map or expose a live/installed
+copy command. It is the registry-allocation step needed before a future reviewed
+copy workflow can re-encrypt under new contexts and publish its artifacts.
+
+Supply an independently trusted source map name, exact registry/catalog anchors
+and one unused destination lookup per source slot. The order is the authenticated
+`MapRead` order: binary table name, signed row number, binary field name. Lookups
+are stable owner registration handles, never derived from filenames or candidate
+metadata. The first destination lookup becomes the new resource handle in the
+returned allocation descriptor. The source must be active, unblocked, role 4 and
+floor 1; internal DBs, RawPart and floor-2 sources require a different reviewed
+adapter. Neither another organization nor another storage can be selected.
+
+The adapter authenticates/binds the stored source map, retains its deployment,
+organization, storage, schema names and physical slots, and generates one fresh
+UUIDv4 resource plus one fresh UUIDv4 record for each source table/slot. Existing
+binding invariants guarantee that fields in a source table/slot share one record
+and a record occupies only one slot per table. Their copied fields therefore
+share one new record UUID. UUIDs are random, not hashes of names/positions, and
+are checked against every retained identity (including tombstones), earlier batch
+entries and the newly generated resource. Destination lookups must be distinct
+and absent even from revoked registrations.
+
+All additions are signed into one canonical next registry snapshot, preserving
+every original registration/context/tombstone and the format floor. Candidate
+construction commits no identity reservation. Final publication uses the existing
+authenticated immutable-transition checks and, in the SAME `BEGIN IMMEDIATE`
+transaction, rechecks both original anchors and source shuffle blocking. A source
+map change, removal, registry revocation or shuffle preparation between candidate
+construction and publication conflicts/fails without allocating any copy IDs.
+Only registry generation advances, exactly once; the catalog remains byte-for-
+byte unchanged. RNG/collision, capacity/encoding limits and generation overflow
+fail closed. Existing 4096-entry/1 MiB registry and owner-map limits apply; a stored
+map may be partial, so this is not a complete ColumnFile inventory proof.
+
+On success the caller owns a `cmeContextMap` allocation descriptor (free it with
+`cmeContextMapFree`), not a durable destination map or file acceptance receipt.
+Its lookup/table/row/field vectors can be reviewed for a later `MapStore` under a
+new owner-selected map name. The allocation advances the registry only: review
+and explicitly advance/retain the independent witness BEFORE a later catalog
+publication, then advance it again afterward. Advancing both counters at once or
+skipping either checkpoint remains forbidden. These core APIs do not enforce
+witness authorization themselves; a guarded installed copy adapter is pending.
+
+No output survives a failed call; expected/published registry anchors may alias.
+Return codes remain 0 success, 2 stale pins, 1 invalid/unavailable. Before commit,
+process failure leaves no new identities. A lost commit acknowledgement leaves
+the ENTIRE batch or none: independently inspect and authenticate the approved
+destination lookups/snapshot before proceeding. Never blindly retry with fresh
+lookups or reset authority. Old-pin retries conflict; refreshed retries with the
+same already committed lookups are rejected. This phase supplies no allocation
+job receipt, automatic orphan cleanup, cross-file recovery or owner authentication.
+
+Rename/row shuffle retain the original UUIDs through existing owner mappings;
+copy allocates fresh resource/record IDs. Tests cover grouped multi-field records,
+independent canonical registry verification, source/catalog preservation, output
+clearing/aliasing, RNG and batch collisions, retained tombstones, stale pins,
+source revocation/removal/blocking, capacity/floor/overflow, process crashes and
+controlled concurrent writes between preparation and publication. Pause/crash
+hooks exist only in the non-installed fixture build.
+
+Persisted legacy AES readback after path rename/byte copy remains compatible.
+Binding a destination descriptor against the source resource (or source slots
+against the new resource) is rejected by trusted registry checks. Neither is an
+AEAD cross-context tag-failure proof: same-key legacy ciphertext clones remain
+readable because V1/AES does not authenticate these new UUIDs. Do not publish such
+bytes as V2 or treat this allocation as authorization for a registered file copy.
+Actual persisted V2 substitution rejection and legacy/mixed-format migration
+acceptance remain required before enabling V2 writes.
+
+TODO #147 remains open. Next connect this preparation step to a guarded local
+copy owner protocol with authenticated allocation recovery, complete registration/
+payload inventory, context-aware re-encryption and durable artifact/catalog
+publication. Rename/delete lifecycle adapters, production custody/rotation and
+independent monotonic deployment, V2 provider APIs and migration/floor/provider
+acceptance remain pending. No runtime default, physical file format, live route,
+hardware rollback guarantee or physical power-loss certification changes.
