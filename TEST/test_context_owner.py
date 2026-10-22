@@ -5,6 +5,8 @@ import copy
 import hashlib
 import json
 import os
+import resource
+import signal
 from pathlib import Path
 import shutil
 import sqlite3
@@ -324,6 +326,308 @@ class OwnerTests(manager_tests.ManagerTests):
 for _name in vars(manager_tests.ManagerTests):
     if _name.startswith('test_'):
         setattr(OwnerTests, _name, None)
+
+
+class CopyOwnerTests(manager_tests.CopyProvisionTests):
+    def setUp(self):
+        manager_tests.ManagerTests.setUp(self)
+        self.copy_setup()
+        self.export = self.root / 'export'
+        self.custody = self.root / 'custody'
+        self.witness = self.root / 'witness'
+        for path in (self.export, self.custody, self.witness):
+            path.mkdir(mode=0o700)
+        self.plan = self.custody / 'allocation.plan'
+        self.key = self.root / 'registry.key'
+        self.witness_key = self.root / 'witness.key'
+        for path, value in ((self.key, b'k'), (self.witness_key, b'w')):
+            path.write_text((value * 32).hex() + '\n')
+            path.chmod(0o600)
+        result = self.command('witness-init', self.current(), self.map_current(), directory=self.witness)
+        self.assertEqual(result.returncode, 0)
+        self.retained = result.stdout.decode().strip()
+        self.approval_file = self.root / 'copy-approval.json'
+        self.approval = dict(schema=1, manager=str(self.authority), deployment=self.anchor.deployment,
+                             organization=self.anchor.organization, map='view', registry=self.current(),
+                             catalog=self.map_current(), witness=str(self.witness), export=str(self.export),
+                             plan=str(self.plan), lookups=self.lookups)
+        self.digest = None
+        self.write_copy_approval()
+
+    def write_copy_approval(self):
+        self.approval_file.write_text(json.dumps(self.approval))
+        self.approval_file.chmod(0o600)
+
+    def copy_owner(self, action, *, digest=None, token=None, extra=(), preexec_fn=None):
+        args = [ADMIN, 'context-copy-plan', '--approval', str(self.approval_file),
+                '--confirmed-offline', str(self.approval_file), '--registry-key-file', str(self.key),
+                '--witness-directory', str(self.witness), '--witness-key-file', str(self.witness_key),
+                '--retained-witness-token', token or self.retained, action]
+        if action != '--prepare' and (digest or self.digest):
+            args.extend(['--plan-digest', digest or self.digest])
+        result = subprocess.run([*args, *extra], capture_output=True, timeout=30, preexec_fn=preexec_fn)
+        for secret in (str(self.authority), str(self.plan), str(self.approval_file), str(self.export),
+                       str(self.witness), (b'k' * 32).hex(), (b'w' * 32).hex()):
+            self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        if result.returncode:
+            self.assertEqual(result.stdout, b'')
+        return result
+
+    def copy_accepted(self, action, **options):
+        result = self.copy_owner(action, **options)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+
+    def prepare_copy(self):
+        before = self.current(), self.map_current()
+        data = self.copy_accepted('--prepare')
+        self.digest = data['plan-digest']
+        self.assertEqual(self.digest, hashlib.sha256(self.plan.read_bytes()).hexdigest())
+        self.assertEqual((self.current(), self.map_current()), before)
+        self.assertEqual(self.plan.stat().st_mode & 0o7777, 0o600)
+        return data
+
+    def test_copy_command_prepare_status_commit_and_explicit_witness_advance(self):
+        prepared = self.prepare_copy()
+        witness_bytes = (self.witness / 'witness.sqlite').read_bytes()
+        self.assertEqual(self.copy_accepted('--status')['state'], 'ready')
+        committed = self.copy_accepted('--commit')
+        self.assertEqual(committed['registry'], prepared['registry'])
+        self.assertEqual(committed['witness-state'], 'advance-required')
+        self.assertEqual((self.witness / 'witness.sqlite').read_bytes(), witness_bytes)
+        before = self.copy_snapshot()
+        for action in ('--status', '--commit'):
+            self.assertEqual(self.copy_accepted(action)['state'], 'committed')
+            self.assertEqual(self.copy_snapshot(), before)
+        self.assertEqual(self.map_current(), self.approval['catalog'])
+        advanced = self.copy_accepted('--advance-witness', extra=('--approved-registry', committed['registry']))
+        self.assertEqual(advanced['state'], 'witness-advanced')
+        self.assertIn('witness-token', advanced)
+        witness_bytes = (self.witness / 'witness.sqlite').read_bytes()
+        for retained in (self.retained, advanced['witness-token']):
+            self.copy_accepted('--advance-witness', token=retained, extra=('--approved-registry', committed['registry']))
+            self.assertEqual((self.witness / 'witness.sqlite').read_bytes(), witness_bytes)
+
+    def test_copy_prepare_never_overwrites_even_after_lost_acknowledgement(self):
+        self.prepare_copy()
+        plan = self.plan.read_bytes()
+        self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+        self.assertEqual(self.plan.read_bytes(), plan)
+        self.digest = hashlib.sha256(plan).hexdigest()  # Independently review/retain after a lost prepare acknowledgement.
+        self.copy_accepted('--commit')
+
+    def test_copy_missing_receipt_never_allocates_or_recreates(self):
+        before = self.copy_snapshot()
+        for action in ('--status', '--commit'):
+            self.assertEqual(self.copy_owner(action, digest='00' * 32).returncode, 1)
+            self.assertFalse(self.plan.exists())
+            self.assertEqual(self.copy_snapshot(), before)
+
+    def test_copy_partial_write_retains_private_file_and_no_ids(self):
+        def limit_file_size():
+            signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+            resource.setrlimit(resource.RLIMIT_FSIZE, (128, 128))
+
+        before = self.copy_snapshot()
+        result = self.copy_owner('--prepare', preexec_fn=limit_file_size)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.plan.stat().st_size, 128)
+        self.assertEqual(self.plan.stat().st_mode & 0o7777, 0o600)
+        retained = self.plan.read_bytes()
+        self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+        self.assertEqual(self.plan.read_bytes(), retained)
+        self.assertEqual(self.copy_owner('--commit', digest=hashlib.sha256(retained).hexdigest()).returncode, 1)
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def test_copy_tampered_or_substituted_plan_digest_cannot_commit(self):
+        self.prepare_copy()
+        before = self.copy_snapshot()
+        self.assertEqual(self.copy_owner('--commit', digest='00' * 32).returncode, 1)
+        plan = bytearray(self.plan.read_bytes())
+        plan[-1] ^= 1
+        self.plan.write_bytes(plan)
+        self.assertEqual(self.copy_owner('--commit', digest=hashlib.sha256(plan).hexdigest()).returncode, 1)
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def test_copy_request_match_rejects_changed_source_and_lookup_order(self):
+        self.assertEqual(self.map_store(self.source_slots, name='alias').returncode, 0)
+        advanced = self.command('witness-advance', self.current(), self.map_current(), self.retained, directory=self.witness)
+        self.assertEqual(advanced.returncode, 0)
+        self.retained = advanced.stdout.decode().strip()
+        self.approval['catalog'] = self.map_current()
+        self.write_copy_approval()
+        self.prepare_copy()
+        for key, value in (('map', 'alias'), ('lookups', list(reversed(self.lookups))),
+                           ('lookups', self.lookups[:-1]), ('lookups', ['different', *self.lookups[1:]])):
+            with self.subTest(key=key, value=value):
+                old = self.approval[key]
+                self.approval[key] = value
+                self.write_copy_approval()
+                self.assertEqual(self.copy_owner('--commit').returncode, 1)
+                self.approval[key] = old
+        self.write_copy_approval()
+        self.copy_accepted('--commit')
+
+    def test_copy_advance_requires_committed_plan_and_exact_separate_pin(self):
+        prepared = self.prepare_copy()
+        self.assertEqual(self.copy_owner('--advance-witness').returncode, 1)
+        self.assertEqual(self.copy_owner('--advance-witness', extra=('--approved-registry', prepared['registry'])).returncode, 1)
+        self.copy_accepted('--commit')
+        witness_bytes = (self.witness / 'witness.sqlite').read_bytes()
+        self.assertEqual(self.copy_owner('--advance-witness', extra=('--approved-registry', self.approval['registry'])).returncode, 1)
+        self.assertEqual((self.witness / 'witness.sqlite').read_bytes(), witness_bytes)
+
+    def test_copy_unsafe_receipt_types_modes_and_links_fail_closed(self):
+        self.prepare_copy()
+        content = self.plan.read_bytes()
+        for kind in ('public', 'symlink', 'hardlink', 'fifo', 'directory'):
+            with self.subTest(kind=kind):
+                self.plan.unlink()
+                other = self.custody / 'other'
+                if other.exists():
+                    other.unlink()
+                if kind == 'public':
+                    self.plan.write_bytes(content)
+                    self.plan.chmod(0o644)
+                elif kind in ('symlink', 'hardlink'):
+                    other.write_bytes(content)
+                    other.chmod(0o600)
+                    if kind == 'symlink':
+                        self.plan.symlink_to(other)
+                    else:
+                        os.link(other, self.plan)
+                elif kind == 'fifo':
+                    os.mkfifo(self.plan, 0o600)
+                else:
+                    self.plan.mkdir(mode=0o700)
+                self.assertEqual(self.copy_owner('--commit').returncode, 1)
+                if kind == 'directory':
+                    self.plan.rmdir()
+                    self.plan.touch(mode=0o600)
+        self.assertEqual(self.current(), self.approval['registry'])
+
+    def test_copy_prepare_refuses_existing_unsafe_receipt_names(self):
+        for kind in ('file', 'symlink', 'fifo', 'directory'):
+            with self.subTest(kind=kind):
+                if kind == 'file':
+                    self.plan.write_bytes(b'retained owner evidence')
+                elif kind == 'symlink':
+                    self.plan.symlink_to(self.key)
+                elif kind == 'fifo':
+                    os.mkfifo(self.plan, 0o600)
+                else:
+                    self.plan.mkdir(mode=0o700)
+                self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+                if kind == 'directory':
+                    self.plan.rmdir()
+                else:
+                    self.plan.unlink()
+        self.assertEqual(self.current(), self.approval['registry'])
+
+    def test_copy_receipt_and_authority_directories_must_be_disjoint(self):
+        for directory in (self.authority, self.witness, self.export):
+            self.approval['plan'] = str(directory / 'allocation.plan')
+            self.write_copy_approval()
+            self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+            self.assertFalse((directory / 'allocation.plan').exists())
+        self.approval['plan'] = str(self.plan)
+        for directory in (self.authority, self.witness, self.custody):
+            self.approval['export'] = str(directory)
+            self.write_copy_approval()
+            self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+
+    def test_copy_noncanonical_private_directory_and_key_rules(self):
+        self.custody.chmod(0o755)
+        self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+        self.custody.chmod(0o700)
+        self.approval['plan'] = str(self.custody) + '/../custody/allocation.plan'
+        self.write_copy_approval()
+        self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+        self.approval['plan'] = str(self.plan)
+        self.write_copy_approval()
+        self.key.chmod(0o644)
+        self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+        self.key.chmod(0o600)
+        self.witness_key.write_bytes(self.key.read_bytes())
+        self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+
+    def test_copy_strict_schema_and_invalid_lookup_types(self):
+        original = copy.deepcopy(self.approval)
+        for key, value in (('schema', True), ('schema', 1.0), ('schema', 2), ('lookups', []),
+                           ('lookups', [False]), ('lookups', ['same'] * len(self.lookups)),
+                           ('lookups', ['invalid lookup']), ('extra', 'unsupported'), ('registry', '00' * 73)):
+            self.approval = dict(original, **{key: value})
+            self.write_copy_approval()
+            self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+            self.assertFalse(self.plan.exists())
+        self.approval = original
+        self.write_copy_approval()
+        text = self.approval_file.read_text()
+        self.approval_file.write_text(text[:-1] + ',"schema":1}')
+        self.assertEqual(self.copy_owner('--prepare').returncode, 1)
+
+    def test_copy_strict_options_require_independent_approvals(self):
+        for action, extra in (('--prepare', ('--prepare',)), ('--prepare', ('--plan-digest', '00' * 32)),
+                              ('--prepare', ('--approved-registry', self.approval['registry'])),
+                              ('--prepare', ('--unknown', 'value')), ('--status', ())):
+            self.assertEqual(self.copy_owner(action, extra=extra).returncode, 1)
+        self.assertEqual(self.copy_owner('--prepare', token='00' * 40).returncode, 1)
+
+    def test_copy_stale_registry_or_catalog_refuses_without_publication(self):
+        self.prepare_copy()
+        self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 0)
+        self.assertEqual(self.copy_owner('--commit').returncode, 2)
+        self.assertFalse(any(e['lookup'].startswith('copy/') for e in self.copy_snapshot()['entries']))
+
+    def test_copy_committed_receipt_expires_after_catalog_publication(self):
+        self.prepare_copy()
+        self.copy_accepted('--commit')
+        slots = [(lookup, *source[1:]) for lookup, source in zip(self.lookups, self.ordered)]
+        self.assertEqual(self.map_store(slots, name='copy', resource=self.lookups[0]).returncode, 0)
+        self.assertEqual(self.copy_owner('--status').returncode, 2)
+        self.assertEqual(self.copy_owner('--commit').returncode, 2)
+
+    def test_copy_missing_authority_is_never_reinitialized(self):
+        self.prepare_copy()
+        database = self.witness / 'witness.sqlite'
+        database.rename(self.witness / 'retained.sqlite')
+        self.assertEqual(self.copy_owner('--commit').returncode, 1)
+        self.assertFalse(database.exists())
+
+    def test_copy_retained_witness_rejects_replayed_checkpoint(self):
+        prepared = self.prepare_copy()
+        old = (self.witness / 'witness.sqlite').read_bytes()
+        self.copy_accepted('--commit')
+        advanced = self.copy_accepted('--advance-witness', extra=('--approved-registry', prepared['registry']))
+        (self.witness / 'witness.sqlite').write_bytes(old)
+        self.assertEqual(self.copy_owner('--commit', token=advanced['witness-token']).returncode, 2)
+
+    def test_copy_help_names_offline_boundaries(self):
+        result = subprocess.run([ADMIN, 'context-copy-plan', '--help'], capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn(b'No physical copy', result.stdout)
+
+    def check_installed_copy_crash_recovery(self, point):
+        self.prepare_copy()
+        result = self.command('copy-plan-guard', self.plan, self.digest, self.approval['registry'],
+                              self.approval['catalog'], self.witness, self.retained,
+                              env={'CDSE_CONTEXT_MANAGER_CRASH': point})
+        self.assertEqual(result.returncode, 86)
+        self.assertEqual(self.copy_accepted('--status')['state'], 'committed' if point == 'after-commit' else 'ready')
+        self.copy_accepted('--commit')
+        committed = self.copy_snapshot()
+        self.copy_accepted('--commit')
+        self.assertEqual(self.copy_snapshot(), committed)
+
+
+for _name in vars(manager_tests.CopyProvisionTests):
+    if _name.startswith('test_'):
+        setattr(CopyOwnerTests, _name, None)
+
+for _point in ('after-write', 'after-commit'):
+    def _copy_owner_crash(self, point=_point):
+        self.check_installed_copy_crash_recovery(point)
+    setattr(CopyOwnerTests, 'test_copy_installed_recovery_' + _point.replace('-', '_'), _copy_owner_crash)
 
 
 if __name__ == '__main__':

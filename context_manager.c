@@ -1605,6 +1605,26 @@ done:
     cmeContextRegistryFree(&registry); cmeContextMapFree(&candidate); return(result);
 }
 
+int cmeContextManagerCopyPlanMatch(cmeContextManager *manager, const unsigned char *plan,
+    size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, const char *sourceName, const char *const *lookups, size_t count)
+{
+    cmeContextMap *copy=NULL;
+    cmeContextAnchor next={0};
+    char *source=NULL;
+    const unsigned char *snapshot=NULL;
+    unsigned char tag[32];
+    size_t snapshotLength=0,i;
+    int result=1;
+    if (!sourceName || !lookups || !count || count>cmeContextRegistryMaxEntries ||
+        cmeCopyDecode(manager,plan,length,digest,expected,catalog,&copy,&next,&source,&snapshot,&snapshotLength,tag)) goto done;
+    if (strcmp(sourceName,source) || count!=copy->count) goto done;
+    for (i=0;i<count;i++) if (!lookups[i] || strcmp(lookups[i],copy->slots[i].lookup)) goto done;
+    result=0;
+done:
+    free(source); cmeContextMapFree(&copy); return(result);
+}
+
 static int cmeCopyPlanAction(cmeContextManager *manager, const unsigned char *plan, size_t length,
     const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
     int *status, cmeContextMap **copy, cmeContextAnchor *published, int commit)
