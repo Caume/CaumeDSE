@@ -1842,3 +1842,94 @@ publication. Rename/delete lifecycle adapters, production custody/rotation and
 independent monotonic deployment, V2 provider APIs and migration/floor/provider
 acceptance remain pending. No runtime default, physical file format, live route,
 hardware rollback guarantee or physical power-loss certification changes.
+
+### Retained copy allocation plans (#147 phase 17)
+
+The trusted offline manager now offers an optional two-phase alternative to
+`CopyProvision`: `cmeContextManagerCopyPlanPrepare`, `CopyPlanStatus` and
+`CopyPlanCommit`. Prepare performs the same active-source, floor-1, same-storage
+checks and fresh grouped UUID allocation, but publishes NOTHING. It returns owned
+opaque plan bytes and their SHA256. The plan fixes the exact original registry/
+catalog pins, source map, destination descriptor and signed next registry snapshot.
+There is no manager schema/catalog upgrade, reservation table or backing-file
+format change.
+The original one-shot API and its uncertain-acknowledgement rules remain unchanged.
+
+The owner must review the planned operation, independently retain the approved
+SHA256, and durably store the EXACT plan bytes before allowing Commit. Use a
+private file outside exports, protect it from replacement, finish/fsync its write
+and sync the containing directory. These core APIs supply bytes, not a file-save
+command or durability guarantee. Do not replace a lost plan by preparing a new
+one after an uncertain commit. Plans contain registration metadata, not keys;
+protect them under the same owner-custody rules as other authority metadata.
+
+Status authenticates both the retained digest and the plan MAC before decoding.
+It returns `state=1` only at the exact original registry/catalog pair and
+`state=2` only at the exact planned next registry with the original catalog.
+Commit publishes that snapshot using both original pins and the source-shuffle
+check under the existing final `BEGIN IMMEDIATE` transaction. An exact retry
+at the planned next pair succeeds without writing or allocating again. Another
+plan, later generation, changed catalog, revoked source or pending shuffle cannot
+be adopted as successful recovery. A separately prepared competing plan has
+different UUIDs/digest and conflicts after the first commits. The registry
+advances at most once; no destination map or backing file is published.
+
+Both APIs return owned allocation descriptors, not validated backing-file
+bindings or copy authorizations. Before commit, the descriptor is a candidate
+only. Supply the ORIGINAL owner-approved registry/catalog pins and retained
+plan/digest on every retry, never candidate-discovered refreshed pins. A later
+catalog publication expires this exact-pair recovery window. Retain the plan
+until independently approved witness recovery and subsequent workflow checkpoints
+are durable; no automatic receipt deletion, cancellation or orphan cleanup is
+provided. Explicitly abandoning an uncommitted plan needs no authority write,
+but protect old plans from accidental later submission while their pins are current.
+
+`cmeContextWitnessCopyCommit` adds an opt-in trusted in-process witness guard.
+For a ready plan it requires the exact current witness pair and independently
+retained token; an unapproved advance-required step is refused. For an already
+committed plan it permits authenticated current, advance-required or exact
+already-advanced reconciliation, including a lost witness acknowledgement.
+An advance-required witness must still match the plan's FULL original pair;
+a same-generation checkpoint with a different registry digest is rejected.
+It NEVER advances the witness. After allocation, explicitly approve its registry
+step, advance/retain the witness token, then separately approve any catalog step.
+Stop all readers/writers during the workflow: manager and witness checks are
+point-in-time, not a cross-database transaction, revocation lease or substitute
+for independent monotonic custody. Missing/corrupt/replayed authority fails closed
+against independently retained pins; replay of all owner evidence is not detected.
+
+The version-1 plan encoding is bounded and typed, not serialized C memory:
+
+1. ASCII `CDSE-HKX-COPY-v1` plus NUL; original registry anchor (73 bytes),
+   catalog anchor (8-byte revision plus 32-byte digest), planned next registry
+   anchor (73 bytes), and next snapshot HMAC (32 bytes).
+2. Source map name (one-byte length, ASCII bytes), slot count (four-byte unsigned
+   big-endian), then slots in binary table/signed row/binary field order. Each
+   slot has destination lookup and table (one-byte lengths and ASCII bytes),
+   row (eight-byte two's-complement big-endian) and field (one-byte length/ASCII).
+3. Snapshot length (four-byte big-endian), exact canonical registry JSON bytes,
+   and HMAC-SHA256 over ALL preceding plan bytes under the registry key. The
+   independently retained SHA256 covers the entire plan including its MAC.
+
+Existing name/count limits apply. Metadata through snapshot length is capped at
+1 MiB; the snapshot is separately capped at 1 MiB; total is at most 2 MiB + 32
+bytes. Parsing rejects truncation/trailing bytes, invalid names/order/counts,
+namespace/floor/generation changes and invalid inner snapshot authentication.
+The distinct domain binds scope and request metadata, while the inner registry
+MAC retains the existing registry domain. Holding the registry key still makes
+one a trusted issuer; this is not a provenance guarantee against that issuer.
+
+Tests independently decode/verify plan and snapshot encodings, retain/fsync plans,
+exercise prepare without publication, exact retry with unchanged authority bytes,
+competing plans, tampering even after rehashing, malformed signed metadata,
+signed-row extremes, stale pins/source removal, witness reapproval/rollback,
+and crashes before write, before commit and after commit. Existing one-shot
+copy-identity tests remain regression coverage. No physical power-loss, V2 AEAD
+cross-context rejection or complete payload-inventory claim is added.
+
+TODO #147 remains open. Next expose a reviewed owner-side durable-plan handoff
+and recovery command, then connect complete registration/payload inventory,
+context-aware re-encryption and durable artifact/catalog publication. Rename/
+delete adapters, production custody/rotation and independent monotonic deployment,
+V2/provider acceptance and migration/floor checks remain required. No installed
+copy command, live route, physical copy or V2 write is enabled by this phase.

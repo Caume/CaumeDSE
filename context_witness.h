@@ -57,4 +57,17 @@ int cmeContextWitnessAdvance(cmeContextWitness *witness, const cmeContextWitness
                              const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog,
                              cmeContextWitnessAnchor *published);
 
+/* Trusted OFFLINE copy allocation guard; caller must durably retain/review the
+   exact signed plan/digest BEFORE calling. Original plan pins remain required
+   on retry. A ready plan needs the exact currently retained witness pair/token.
+   Committed retries permit current, advance-required or exact lost-ack witness
+   reconciliation. Never advances the witness: explicitly approve/retain its
+   next token before any catalog change. No transaction/lease with witness or
+   files; quiesce all authority readers/writers. No installed copy command,
+   inventory proof or V2 encryption. Return/output rules match CopyPlanCommit. */
+int cmeContextWitnessCopyCommit(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *witnessExpected, const unsigned char *plan, size_t length,
+    const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    cmeContextMap **copy, cmeContextAnchor *published);
+
 #endif

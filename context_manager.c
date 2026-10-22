@@ -267,7 +267,7 @@ static void cmeManagerCheckpoint(const char *point)
 static int cmeManagerPublishPinned(cmeContextManager *manager, const unsigned char *body, size_t length,
                              const unsigned char tag[32], const cmeContextAnchor *next,
                              const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
-                             const char *sourceMap)
+                             const char *sourceMap, int retry)
 {
     cmeContextRegistry *verified=NULL;
     cmeManagerState state={0};
@@ -292,6 +292,8 @@ static int cmeManagerPublishPinned(cmeContextManager *manager, const unsigned ch
         if (cmeShufflePending(manager,sourceMap,&pending) || pending) goto done;
     }
     cmeManagerCheckpoint("after-begin");
+    if (retry && state.initialized && !cmeManagerAnchorPack(&state.anchor,currentBytes) &&
+        !CRYPTO_memcmp(currentBytes,nextBytes,CME_ANCHOR_BYTES)) { result=0; goto done; }
     if ((!state.initialized && expected) || (state.initialized && !expected)) { result=2; goto done; }
     if (state.initialized)
     {
@@ -333,7 +335,7 @@ int cmeContextManagerPublish(cmeContextManager *manager, const unsigned char *bo
                              const unsigned char tag[32], const cmeContextAnchor *next,
                              const cmeContextAnchor *expected)
 {
-    return(cmeManagerPublishPinned(manager,body,length,tag,next,expected,NULL,NULL));
+    return(cmeManagerPublishPinned(manager,body,length,tag,next,expected,NULL,NULL,0));
 }
 
 static int cmeManagerName(const char *text, int lookup)
@@ -1336,9 +1338,10 @@ done:
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
 }
 
-int cmeContextManagerCopyProvision(cmeContextManager *manager, const char *sourceName,
+static int cmeCopyPrepare(cmeContextManager *manager, const char *sourceName,
     const char *const *lookups, size_t count, const cmeContextAnchor *expected,
-    const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published)
+    const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published,
+    unsigned char **snapshot, size_t *snapshotLength, unsigned char snapshotTag[32])
 {
     cmeManagerState state={0};
     cmeContextMapAnchor current={0};
@@ -1425,13 +1428,243 @@ done:
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
     if (!result)
     {
-        cmeManagerCheckpoint("copy-before-publish");
-        result=cmeManagerPublishPinned(manager,body,length,tag,&next,expected,catalog,sourceName);
-        if (!result) { *published=next; *copy=candidate; candidate=NULL; }
+        *published=next; *copy=candidate; candidate=NULL;
+        *snapshot=body; body=NULL; *snapshotLength=length; memcpy(snapshotTag,tag,32);
     }
 before:
     free(body); free(added); free(allocated);
     cmeContextMapFree(&source); cmeContextMapFree(&candidate); cmeContextBindingFree(&binding); return(result);
+}
+
+int cmeContextManagerCopyProvision(cmeContextManager *manager, const char *sourceName,
+    const char *const *lookups, size_t count, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published)
+{
+    cmeContextAnchor original,next={0};
+    cmeContextMap *candidate=NULL;
+    unsigned char *body=NULL,tag[32];
+    size_t length=0;
+    int result;
+    if (expected) { original=*expected; expected=&original; }
+    if (copy) *copy=NULL;
+    if (published) memset(published,0,sizeof(*published));
+    if (!copy || !published) return(1);
+    result=cmeCopyPrepare(manager,sourceName,lookups,count,expected,catalog,&candidate,&next,&body,&length,tag);
+    if (!result)
+    {
+        cmeManagerCheckpoint("copy-before-publish");
+        result=cmeManagerPublishPinned(manager,body,length,tag,&next,expected,catalog,sourceName,0);
+        if (!result) { *published=next; *copy=candidate; candidate=NULL; }
+    }
+    free(body); cmeContextMapFree(&candidate); return(result);
+}
+
+static const unsigned char cmeCopyDomain[]="CDSE-HKX-COPY-v1";
+
+static int cmeCopyText(cmeMapEncoding *encoding, const char *text)
+{
+    size_t length=strlen(text);
+    return(cmeMapNumber(encoding,length,1) || cmeMapAppend(encoding,text,length));
+}
+
+int cmeContextManagerCopyPlanPrepare(cmeContextManager *manager, const char *sourceName,
+    const char *const *lookups, size_t count, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, unsigned char **plan, size_t *length, unsigned char digest[32])
+{
+    cmeContextMap *copy=NULL;
+    cmeContextAnchor next={0};
+    cmeMapEncoding encoding={0};
+    unsigned char beforeBytes[73],nextBytes[73],*snapshot=NULL,*candidate=NULL,tag[32];
+    size_t snapshotLength=0,total=0,i;
+    unsigned int written;
+    int result=1;
+    if (plan) *plan=NULL;
+    if (length) *length=0;
+    if (digest) memset(digest,0,32);
+    if (!plan || !length || !digest || !expected || !catalog || cmeManagerAnchorPack(expected,beforeBytes)) return(1);
+    result=cmeCopyPrepare(manager,sourceName,lookups,count,expected,catalog,&copy,&next,&snapshot,&snapshotLength,tag);
+    if (result) goto done;
+    result=1; encoding.bytes=malloc(cmeContextRegistryMaxBytes);
+    if (!encoding.bytes || cmeManagerAnchorPack(&next,nextBytes) ||
+        cmeMapAppend(&encoding,cmeCopyDomain,sizeof(cmeCopyDomain)) ||
+        cmeMapAppend(&encoding,beforeBytes,73) || cmeMapNumber(&encoding,catalog->revision,8) ||
+        cmeMapAppend(&encoding,catalog->digest,32) || cmeMapAppend(&encoding,nextBytes,73) ||
+        cmeMapAppend(&encoding,tag,32) || cmeCopyText(&encoding,sourceName) || cmeMapNumber(&encoding,count,4)) goto done;
+    for (i=0;i<count;i++)
+        if (cmeCopyText(&encoding,copy->slots[i].lookup) || cmeCopyText(&encoding,copy->slots[i].table) ||
+            cmeMapNumber(&encoding,(uint64_t)copy->slots[i].row,8) || cmeCopyText(&encoding,copy->slots[i].field)) goto done;
+    if (cmeMapNumber(&encoding,snapshotLength,4)) goto done;
+    total=encoding.length+snapshotLength+32;
+    candidate=malloc(total);
+    if (!candidate) goto done;
+    memcpy(candidate,encoding.bytes,encoding.length); memcpy(candidate+encoding.length,snapshot,snapshotLength);
+    if (!HMAC(EVP_sha256(),manager->key,32,candidate,total-32,candidate+total-32,&written) || written!=32 ||
+        !EVP_Digest(candidate,total,digest,&written,EVP_sha256(),NULL) || written!=32) goto done;
+    *plan=candidate; candidate=NULL; *length=total; result=0;
+done:
+    if (result) memset(digest,0,32);
+    free(candidate); free(encoding.bytes); free(snapshot); cmeContextMapFree(&copy); return(result);
+}
+
+typedef struct
+{
+    const unsigned char *bytes;
+    size_t remaining;
+} cmeCopyCursor;
+
+static int cmeCopyTake(cmeCopyCursor *cursor, void *output, size_t length)
+{
+    if (length>cursor->remaining) return(1);
+    if (output) memcpy(output,cursor->bytes,length);
+    cursor->bytes+=length; cursor->remaining-=length; return(0);
+}
+
+static int cmeCopyNumber(cmeCopyCursor *cursor, unsigned int length, uint64_t *value)
+{
+    unsigned int i;
+    *value=0;
+    if (length>cursor->remaining) return(1);
+    for (i=0;i<length;i++) *value=(*value<<8)|cursor->bytes[i];
+    return(cmeCopyTake(cursor,NULL,length));
+}
+
+static int cmeCopyName(cmeCopyCursor *cursor, char **name, int lookup)
+{
+    uint64_t length;
+    if (cmeCopyNumber(cursor,1,&length) || !length || length>cursor->remaining ||
+        length>(lookup ? 128U : 64U)) return(1);
+    *name=malloc((size_t)length+1);
+    if (!*name) return(1);
+    memcpy(*name,cursor->bytes,(size_t)length); (*name)[length]=0;
+    if (memchr(*name,0,(size_t)length) || cmeManagerName(*name,lookup)) return(1);
+    return(cmeCopyTake(cursor,NULL,(size_t)length));
+}
+
+/* Authenticate all bytes and the independently retained digest BEFORE parsing.
+   Signed plans are trusted issuer artifacts, not allocation provenance against
+   an owner holding the registry key. No file paths or keys are encoded. */
+static int cmeCopyDecode(cmeContextManager *manager, const unsigned char *plan, size_t length,
+    const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    cmeContextMap **copy, cmeContextAnchor *next, char **source,
+    const unsigned char **snapshot, size_t *snapshotLength, unsigned char snapshotTag[32])
+{
+    cmeCopyCursor cursor={plan,length>=32 ? length-32 : 0};
+    cmeContextMap *candidate=NULL;
+    cmeContextRegistry *registry=NULL;
+    unsigned char actual[32],tag[32],before[73],encoded[73],after[73];
+    uint64_t number;
+    size_t i,j;
+    unsigned int written;
+    int result=1;
+    if (!manager || !plan || !digest || !expected || !catalog || !catalog->revision ||
+        length<sizeof(cmeCopyDomain)+73+40+73+32+1+4+4+32 || length>cmeContextCopyPlanMaxBytes ||
+        cmeManagerAnchorPack(expected,before) ||
+        !EVP_Digest(plan,length,actual,&written,EVP_sha256(),NULL) || written!=32 || CRYPTO_memcmp(actual,digest,32) ||
+        !HMAC(EVP_sha256(),manager->key,32,plan,length-32,tag,&written) || written!=32 ||
+        CRYPTO_memcmp(tag,plan+length-32,32) || memcmp(plan,cmeCopyDomain,sizeof(cmeCopyDomain))) return(1);
+    if (cmeCopyTake(&cursor,NULL,sizeof(cmeCopyDomain)) || cmeCopyTake(&cursor,encoded,73) ||
+        CRYPTO_memcmp(before,encoded,73) || cmeCopyNumber(&cursor,8,&number) || number!=catalog->revision ||
+        cmeCopyTake(&cursor,actual,32) || CRYPTO_memcmp(actual,catalog->digest,32) ||
+        cmeCopyTake(&cursor,after,73) || cmeManagerAnchorUnpack(after,next) ||
+        expected->generation==UINT64_MAX || next->generation!=expected->generation+1 ||
+        expected->minimumFormat!=1 || next->minimumFormat!=1 || memcmp(before,after,32) ||
+        cmeCopyTake(&cursor,snapshotTag,32) || cmeCopyName(&cursor,source,1) ||
+        cmeCopyNumber(&cursor,4,&number) || !number || number>cmeContextRegistryMaxEntries) goto done;
+    candidate=calloc(1,sizeof(*candidate));
+    if (!candidate) goto done;
+    candidate->slots=calloc((size_t)number,sizeof(*candidate->slots));
+    if (!candidate->slots) goto done;
+    candidate->count=(size_t)number; candidate->active=1; candidate->role=4;
+    for (i=0;i<candidate->count;i++)
+    {
+        cmeContextSlot *slot=&candidate->slots[i];
+        char *lookup=NULL,*table=NULL,*field=NULL;
+        int failed=cmeCopyName(&cursor,&lookup,1) || cmeCopyName(&cursor,&table,0) ||
+            cmeCopyNumber(&cursor,8,&number) || cmeCopyName(&cursor,&field,0);
+        slot->lookup=lookup; slot->table=table; slot->field=field;
+        if (failed) goto done;
+        slot->row=number<=INT64_MAX ? (int64_t)number : -1-(int64_t)(UINT64_MAX-number);
+        for (j=0;j<i;j++) if (!strcmp(slot->lookup,candidate->slots[j].lookup)) goto done;
+        if (i)
+        {
+            const cmeContextSlot *previous=&candidate->slots[i-1];
+            int order=strcmp(previous->table,slot->table);
+            if (order>0 || (!order && (previous->row>slot->row ||
+                (previous->row==slot->row && strcmp(previous->field,slot->field)>=0)))) goto done;
+        }
+    }
+    if (cmeCopyNumber(&cursor,4,&number) || length-32-cursor.remaining>cmeContextRegistryMaxBytes ||
+        !number || number>cmeContextRegistryMaxBytes ||
+        cursor.remaining!=(size_t)number ||
+        cmeContextRegistryOpen(cursor.bytes,(size_t)number,snapshotTag,32,manager->key,32,
+            manager->deployment,manager->organization,cmeManagerAnchorFetch,next,&registry)) goto done;
+    candidate->resource=strdup(candidate->slots[0].lookup);
+    if (!candidate->resource) goto done;
+    *snapshot=cursor.bytes; *snapshotLength=(size_t)number; *copy=candidate; candidate=NULL; result=0;
+done:
+    cmeContextRegistryFree(&registry); cmeContextMapFree(&candidate); return(result);
+}
+
+static int cmeCopyPlanAction(cmeContextManager *manager, const unsigned char *plan, size_t length,
+    const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    int *status, cmeContextMap **copy, cmeContextAnchor *published, int commit)
+{
+    cmeContextAnchor original,next={0};
+    cmeContextMapAnchor current={0};
+    cmeContextMap *candidate=NULL;
+    cmeManagerState state={0};
+    char *source=NULL;
+    const unsigned char *snapshot=NULL;
+    unsigned char snapshotTag[32];
+    size_t snapshotLength=0;
+    int result=1,pending=0,classification=0;
+    if (expected) { original=*expected; expected=&original; }
+    if (status) *status=0;
+    if (copy) *copy=NULL;
+    if (published) memset(published,0,sizeof(*published));
+    if (!copy || !published || !status ||
+        cmeCopyDecode(manager,plan,length,digest,expected,catalog,&candidate,&next,&source,
+            &snapshot,&snapshotLength,snapshotTag)) goto done;
+    if (commit)
+    {
+        result=cmeManagerPublishPinned(manager,snapshot,snapshotLength,snapshotTag,&next,expected,catalog,source,1);
+        classification=2;
+    }
+    else
+    {
+        pthread_mutex_lock(&manager->mutex);
+        if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
+            cmeManagerLoad(manager,&state) || cmeMapLoad(manager,&current)) goto unlock;
+        result=cmeMapMatch(&current,catalog); if (result) goto unlock;
+        result=1;
+        if (cmeShufflePending(manager,source,&pending) || pending) goto unlock;
+        if (!cmeManagerCurrentMatch(&state,expected)) classification=1;
+        else if (!cmeManagerCurrentMatch(&state,&next)) classification=2;
+        else { result=2; goto unlock; }
+        if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto unlock;
+        result=0;
+unlock:
+        if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+        cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
+    }
+    if (!result) { *status=classification; *copy=candidate; candidate=NULL; *published=next; }
+done:
+    free(source); cmeContextMapFree(&candidate); return(result);
+}
+
+int cmeContextManagerCopyPlanStatus(cmeContextManager *manager, const unsigned char *plan,
+    size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, int *state, cmeContextMap **copy, cmeContextAnchor *next)
+{
+    return(cmeCopyPlanAction(manager,plan,length,digest,expected,catalog,state,copy,next,0));
+}
+
+int cmeContextManagerCopyPlanCommit(cmeContextManager *manager, const unsigned char *plan,
+    size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published)
+{
+    int state=0;
+    return(cmeCopyPlanAction(manager,plan,length,digest,expected,catalog,&state,copy,published,1));
 }
 
 int cmeContextManagerShuffleInit(cmeContextManager *manager, const cmeContextAnchor *expected,

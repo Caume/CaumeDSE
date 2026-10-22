@@ -196,6 +196,31 @@ int cmeContextManagerCopyProvision(cmeContextManager *manager, const char *sourc
     const char *const *lookups, size_t count, const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published);
 
+#define cmeContextCopyPlanMaxBytes (2U*cmeContextRegistryMaxBytes+32U)
+/* Trusted OFFLINE two-phase allocation. Prepare commits nothing; returns owned
+   opaque signed bytes and their SHA256. free(*plan) after use. Independently
+   review/retain the digest and durably save the EXACT bytes before Commit.
+   The caller supplies private-file creation, fsync and directory durability.
+   Do not regenerate after an uncertain commit. Plans contain metadata, no keys.
+   Status authenticates the plan and classifies the current exact pair as
+   1 ready (original registry), 2 committed (planned next registry); other pairs
+   conflict. Commit permits exact lost-ack retry only at that next registry and
+   unchanged catalog, never republishes or reallocates on retry. Both return
+   an owned allocation descriptor and planned next anchor, not file authority.
+   Supply the ORIGINAL independently approved registry/catalog pins on retries.
+   Low-level APIs do not guard witnesses. Return 0/2/1; outputs clear on failure.
+   expected/next may alias; other inputs/outputs must not overlap and remain
+   stable. Keep all readers/writers stopped; no storage or witness lease. */
+int cmeContextManagerCopyPlanPrepare(cmeContextManager *manager, const char *sourceName,
+    const char *const *lookups, size_t count, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, unsigned char **plan, size_t *length, unsigned char digest[32]);
+int cmeContextManagerCopyPlanStatus(cmeContextManager *manager, const unsigned char *plan,
+    size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, int *state, cmeContextMap **copy, cmeContextAnchor *next);
+int cmeContextManagerCopyPlanCommit(cmeContextManager *manager, const unsigned char *plan,
+    size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published);
+
 typedef struct
 {
     unsigned char job[32], sourceDigest[32], targetDigest[32];

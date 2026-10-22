@@ -2308,5 +2308,320 @@ for _point in ('after-copy-entry', 'copy-before-publish', 'after-begin', 'after-
     setattr(CopyProvisionTests, 'test_copy_crash_' + _point.replace('-', '_'), _copy_crash_case)
 
 
+class CopyPlanTests(CopyProvisionTests):
+    def plan_setup(self):
+        self.copy_setup()
+        self.plan_registry = self.current()
+        self.plan_catalog = self.map_current()
+        self.plan_path = self.root / 'allocation.plan'
+        self.prepare_plan()
+
+    def prepare_plan(self, path=None, names=None):
+        result = self.command('copy-plan-prepare', *self.copy_args(names=names))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        digest, plan = result.stdout[:32], result.stdout[32:]
+        self.assertEqual(digest, hashlib.sha256(plan).digest())
+        path = path or self.plan_path
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, 'wb') as output:
+            output.write(plan)
+            output.flush()
+            os.fsync(output.fileno())
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        if path == self.plan_path:
+            self.plan_digest = digest.hex()
+        return digest.hex(), plan
+
+    def plan_action(self, action='status', path=None, digest=None, registry=None, catalog=None, witness=None, env=None):
+        args = [path or self.plan_path, digest or self.plan_digest,
+                registry or self.plan_registry, catalog or self.plan_catalog]
+        if witness is not None:
+            action = 'guard'
+            args.extend(witness)
+        return self.command('copy-plan-' + action, *args, env=env)
+
+    def plan_result(self, action='status', **options):
+        result = self.plan_action(action, **options)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def init_plan_witness(self):
+        directory = self.root / 'copy-witness'
+        directory.mkdir(mode=0o700)
+        result = self.command('witness-init', self.current(), self.map_current(), directory=directory)
+        self.assertEqual(result.returncode, 0)
+        return directory, result.stdout.decode().strip()
+
+    def decode_plan(self):
+        plan = self.plan_path.read_bytes()
+        self.assertEqual(plan[:17], b'CDSE-HKX-COPY-v1\0')
+        self.assertEqual(plan[-32:], hmac.digest(b'k' * 32, plan[:-32], 'sha256'))
+        offset = 17
+
+        def take(length):
+            nonlocal offset
+            value = plan[offset:offset + length]
+            self.assertEqual(len(value), length)
+            offset += length
+            return value
+
+        def text():
+            return take(take(1)[0]).decode('ascii')
+
+        previous, catalog, following, snapshot_tag = take(73), take(40), take(73), take(32)
+        source = text()
+        slots = []
+        for _ in range(struct.unpack('>I', take(4))[0]):
+            lookup, table = text(), text()
+            row = struct.unpack('>q', take(8))[0]
+            slots.append([lookup, table, row, text()])
+        snapshot = take(struct.unpack('>I', take(4))[0])
+        self.assertEqual(offset, len(plan) - 32)
+        body, tag, anchor = contract.issue(json.loads(snapshot), b'k' * 32)
+        self.assertEqual(body, snapshot)
+        self.assertEqual(tag, snapshot_tag)
+        self.assertEqual(token(anchor), following.hex())
+        self.assertEqual(previous.hex(), self.plan_registry)
+        self.assertEqual(catalog.hex(), self.plan_catalog)
+        self.assertEqual(source, 'view')
+        return following.hex(), slots, json.loads(snapshot)
+
+    def test_plan_preparation_is_read_only_and_independently_encoded(self):
+        self.plan_setup()
+        before = self.copy_snapshot()
+        following, slots, candidate = self.decode_plan()
+        self.assertEqual(self.copy_snapshot(), before)
+        self.assertEqual(self.current(), self.plan_registry)
+        self.assertEqual(self.map_current(), self.plan_catalog)
+        self.assertEqual(candidate['generation'], before['generation'] + 1)
+        self.assertEqual(len(candidate['entries']), len(before['entries']) + len(self.lookups))
+        self.assertEqual([slot[0] for slot in slots], self.lookups)
+        result = self.plan_result(env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'})
+        self.assertEqual(result, dict(state=1, registry=following, resource=self.lookups[0], slots=slots))
+        self.assertEqual(self.map_read(name='copy').returncode, 1)
+
+    def test_plan_commit_and_exact_retry_preserve_bytes_and_generation(self):
+        self.plan_setup()
+        following, slots, candidate = self.decode_plan()
+        result = self.plan_result('commit', env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'})
+        self.assertEqual(result['registry'], following)
+        self.assertEqual(result['slots'], slots)
+        self.assertEqual(self.copy_snapshot(), candidate)
+        committed = (self.authority / 'registry.sqlite').read_bytes()
+        for action in ('status', 'commit', 'commit'):
+            self.assertEqual(self.plan_result(action), result)
+            self.assertEqual((self.authority / 'registry.sqlite').read_bytes(), committed)
+        self.assertEqual(self.map_current(), self.plan_catalog)
+
+    def test_plan_guard_requires_current_witness_and_never_advances_it(self):
+        self.plan_setup()
+        directory, retained = self.init_plan_witness()
+        witness_bytes = (directory / 'witness.sqlite').read_bytes()
+        result = self.plan_result(witness=(directory, retained))
+        self.assertEqual((directory / 'witness.sqlite').read_bytes(), witness_bytes)
+        self.assertEqual(self.plan_result(witness=(directory, retained)), result)
+        self.assertEqual(self.command('witness-check', self.current(), self.map_current(), directory=directory).returncode, 2)
+        advanced = self.command('witness-advance', self.current(), self.map_current(), retained, directory=directory)
+        self.assertEqual(advanced.returncode, 0)
+        for token_text in (retained, advanced.stdout.decode().strip()):
+            self.assertEqual(self.plan_result(witness=(directory, token_text)), result)
+        self.assertEqual(self.plan_action(witness=(directory, '00' * 40)).returncode, 1)
+
+    def test_plan_guard_refuses_unapproved_witness_step_before_allocation(self):
+        self.copy_setup()
+        directory, retained = self.init_plan_witness()
+        self.allocated(lookup='unrelated', level=3, parent='first', expected=self.current())
+        self.plan_registry, self.plan_catalog = self.current(), self.map_current()
+        self.plan_path = self.root / 'allocation.plan'
+        self.prepare_plan()
+        before = self.copy_snapshot()
+        self.assertEqual(self.plan_action(witness=(directory, retained)).returncode, 2)
+        self.assertEqual(self.copy_snapshot(), before)
+        advanced = self.command('witness-advance', self.current(), self.map_current(), retained, directory=directory)
+        self.assertEqual(advanced.returncode, 0)
+        self.plan_result(witness=(directory, advanced.stdout.decode().strip()))
+
+    def test_plan_competitors_cannot_adopt_each_others_allocations(self):
+        self.plan_setup()
+        second = self.root / 'other.plan'
+        digest, plan = self.prepare_plan(second)
+        self.assertNotEqual(plan, self.plan_path.read_bytes())
+        self.plan_result('commit')
+        committed = self.copy_snapshot()
+        for action in ('status', 'commit'):
+            self.assertEqual(self.plan_action(action, path=second, digest=digest).returncode, 2)
+        self.assertEqual(self.copy_snapshot(), committed)
+
+    def test_plan_stale_registry_catalog_and_source_removal_conflict(self):
+        self.plan_setup()
+        database = self.authority / 'registry.sqlite'
+        saved = database.read_bytes()
+        for change in ('registry', 'catalog', 'remove'):
+            with self.subTest(change=change):
+                database.write_bytes(saved)
+                if change == 'registry':
+                    self.assertEqual(self.command('revoke', 'first', self.current()).returncode, 0)
+                elif change == 'catalog':
+                    self.assertEqual(self.map_store(self.source_slots).returncode, 0)
+                else:
+                    self.assertEqual(self.map_remove().returncode, 0)
+                for action in ('status', 'commit'):
+                    self.assertEqual(self.plan_action(action).returncode, 2)
+                self.assertFalse(any(e['lookup'].startswith('copy/') for e in self.copy_snapshot()['entries']))
+
+    def test_plan_committed_receipt_expires_after_later_catalog_publication(self):
+        self.plan_setup()
+        descriptor = self.plan_result('commit')
+        self.assertEqual(self.map_store(descriptor['slots'], name='copy', resource=descriptor['resource']).returncode, 0)
+        for action in ('status', 'commit'):
+            self.assertEqual(self.plan_action(action).returncode, 2)
+
+    def test_plan_tampering_cannot_be_authorized_by_rehashing(self):
+        self.plan_setup()
+        original = self.plan_path.read_bytes()
+        before = self.copy_snapshot()
+        for offset in (0, 17, 90, 130, 203, len(original)//2, len(original)-1):
+            with self.subTest(offset=offset):
+                damaged = bytearray(original)
+                damaged[offset] ^= 1
+                self.plan_path.write_bytes(damaged)
+                digest = hashlib.sha256(damaged).hexdigest()
+                self.assertEqual(self.plan_action('commit', digest=digest).returncode, 1)
+                self.assertEqual(self.copy_snapshot(), before)
+
+    def test_plan_wrong_approval_digest_pins_and_key_refuse(self):
+        self.plan_setup()
+        for options in (dict(digest='00' * 32), dict(registry='00' * 73), dict(catalog='00' * 40),
+                        dict(env={'CDSE_REGISTRY_WRONG_KEY': '1'})):
+            self.assertEqual(self.plan_action('commit', **options).returncode, 1)
+        self.assertEqual(self.current(), self.plan_registry)
+
+    def test_plan_truncation_trailing_bytes_and_signed_unknown_domain_refuse(self):
+        self.plan_setup()
+        original = self.plan_path.read_bytes()
+        mutated = bytearray(original)
+        mutated[14] = ord('2')
+        mutated[-32:] = hmac.digest(b'k' * 32, mutated[:-32], 'sha256')
+        for plan in (b'', original[:100], original[:-1], original + b'\0', bytes(mutated)):
+            self.plan_path.write_bytes(plan)
+            self.assertEqual(self.plan_action('commit', digest=hashlib.sha256(plan).hexdigest()).returncode, 1)
+        self.assertEqual(self.current(), self.plan_registry)
+
+    def test_plan_preparation_rng_failure_has_no_reservation(self):
+        self.copy_setup()
+        before = self.copy_snapshot()
+        for mode in ('fail', 'collision', 'aa' * 16):
+            result = self.command('copy-plan-prepare', *self.copy_args(), env={'CDSE_CONTEXT_MANAGER_RANDOM': mode})
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stdout, b'')
+            self.assertEqual(self.copy_snapshot(), before)
+
+    def test_plan_signed_invalid_counts_names_and_size_fail_closed(self):
+        self.plan_setup()
+        original = self.plan_path.read_bytes()
+        variants = []
+        for offset, value in ((235, b'\0'), (240, struct.pack('>I', 0)),
+                              (240, struct.pack('>I', 4097)), (245, b'!'), (203, b'\0' * 32)):
+            damaged = bytearray(original)
+            damaged[offset:offset + len(value)] = value
+            damaged[-32:] = hmac.digest(b'k' * 32, damaged[:-32], 'sha256')
+            variants.append(damaged)
+        offset = 244
+        lookup_positions, row_positions = [], []
+        for _ in self.lookups:
+            lookup_positions.append((offset + 1, original[offset]))
+            offset += 1 + original[offset]
+            offset += 1 + original[offset]
+            row_positions.append(offset)
+            offset += 8
+            offset += 1 + original[offset]
+        for position, value in ((offset, struct.pack('>I', len(original))),
+                                (lookup_positions[1][0], original[lookup_positions[0][0]:
+                                  lookup_positions[0][0] + lookup_positions[0][1]]),
+                                (row_positions[1], struct.pack('>q', -(2**63)))):
+            damaged = bytearray(original)
+            damaged[position:position + len(value)] = value
+            damaged[-32:] = hmac.digest(b'k' * 32, damaged[:-32], 'sha256')
+            variants.append(damaged)
+        variants.append(b'\0' * (2 * contract.MAX_BYTES + 33))
+        for plan in variants:
+            self.plan_path.write_bytes(plan)
+            self.assertEqual(self.plan_action('commit', digest=hashlib.sha256(plan).hexdigest()).returncode, 1)
+        self.assertEqual(self.current(), self.plan_registry)
+
+    def test_plan_signed_slot_extremes_round_trip(self):
+        self.copy_setup()
+        self.source_slots = [(lookup, table, -(2**63) if row == 10 else 2**63-1, field)
+                             for lookup, table, row, field in self.source_slots]
+        self.assertEqual(self.map_store(self.source_slots).returncode, 0)
+        self.ordered = json.loads(self.map_read().stdout)['slots']
+        self.plan_registry, self.plan_catalog = self.current(), self.map_current()
+        self.plan_path = self.root / 'allocation.plan'
+        self.prepare_plan()
+        _, slots, _ = self.decode_plan()
+        self.assertEqual(self.plan_result('commit')['slots'], slots)
+        self.assertEqual([slot[1:] for slot in slots], [slot[1:] for slot in self.ordered])
+
+    def test_plan_guard_rejects_rolled_back_witness_with_retained_new_token(self):
+        self.plan_setup()
+        directory, retained = self.init_plan_witness()
+        database = directory / 'witness.sqlite'
+        old = database.read_bytes()
+        self.plan_result(witness=(directory, retained))
+        advanced = self.command('witness-advance', self.current(), self.map_current(), retained, directory=directory)
+        self.assertEqual(advanced.returncode, 0)
+        database.write_bytes(old)
+        before = self.copy_snapshot()
+        self.assertEqual(self.plan_action(witness=(directory, advanced.stdout.decode().strip())).returncode, 2)
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def test_plan_committed_retry_refuses_divergent_previous_witness_digest(self):
+        self.plan_setup()
+        directory = self.root / 'divergent-witness'
+        directory.mkdir(mode=0o700)
+        divergent = self.plan_registry[:-64] + 'ff' * 32
+        retained = self.command('witness-init', divergent, self.plan_catalog, directory=directory)
+        self.assertEqual(retained.returncode, 0)
+        self.plan_result('commit')
+        before = self.copy_snapshot()
+        self.assertEqual(self.plan_action(witness=(directory, retained.stdout.decode().strip())).returncode, 2)
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def test_plan_prepare_crash_does_not_allocate_or_return_partial_plan(self):
+        self.copy_setup()
+        before = self.copy_snapshot()
+        result = self.command('copy-plan-prepare', *self.copy_args(), env={'CDSE_CONTEXT_MANAGER_CRASH': 'after-copy-entry'})
+        self.assertEqual(result.returncode, 86)
+        self.assertEqual(result.stdout, b'')
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def check_plan_crash(self, point):
+        self.plan_setup()
+        directory, retained = self.init_plan_witness()
+        before = self.plan_registry
+        result = self.plan_action(witness=(directory, retained), env={'CDSE_CONTEXT_MANAGER_CRASH': point})
+        self.assertEqual(result.returncode, 86)
+        self.assertEqual(self.plan_result()['state'], 2 if point == 'after-commit' else 1)
+        result = self.plan_result(witness=(directory, retained))
+        self.assertNotEqual(result['registry'], before)
+        committed = self.copy_snapshot()
+        self.assertEqual(self.plan_result(witness=(directory, retained)), result)
+        self.assertEqual(self.copy_snapshot(), committed)
+
+
+for _name in tuple(vars(CopyProvisionTests)):
+    if _name.startswith('test_'):
+        setattr(CopyPlanTests, _name, None)
+
+for _point in ('after-begin', 'after-write', 'after-commit'):
+    def _plan_crash_case(self, point=_point):
+        self.check_plan_crash(point)
+    setattr(CopyPlanTests, 'test_plan_crash_' + _point.replace('-', '_'), _plan_crash_case)
+
+
 if __name__ == '__main__':
     unittest.main()
