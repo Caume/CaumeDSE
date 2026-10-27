@@ -1933,3 +1933,133 @@ context-aware re-encryption and durable artifact/catalog publication. Rename/
 delete adapters, production custody/rotation and independent monotonic deployment,
 V2/provider acceptance and migration/floor checks remain required. No installed
 copy command, live route, physical copy or V2 write is enabled by this phase.
+
+### Installed copy-plan handoff (#147 phase 18)
+
+`caumedse-admin context-copy-plan` exposes the retained-plan allocation protocol
+to a trusted local offline owner. Its schema-1 approval is a separate protocol
+from shuffle/witness approval schemas; it does not accept their extra fields.
+No backing files are opened, copied or re-encrypted, and no destination map or
+ResourcesDB registration is published. The command advances the registry only
+when `--commit` is explicitly requested, and advances the witness only through
+the separately approved `--advance-witness` action.
+
+Create a private uid-owned 0700 custody directory outside the manager, witness
+and approved export directories. All four directories must be canonical and
+disjoint (no equal/nested directory names or equal directory identities). Keep
+the manager outside ALL actual exports, not merely the one declared here, and
+hold the directory hierarchy fixed. Approval/key files must be canonical regular
+uid-owned 0600 single-link files outside manager/witness/export directories.
+Registry and witness keys must be distinct 32-byte lower-case hex values, with
+an optional final newline. The witness must already exist; this command never
+bootstraps, repairs or resets authority. Stop all authority/storage readers and
+writers throughout the workflow. These checks are not a filesystem or witness
+lease and do not authenticate an export declaration supplied by an untrusted user.
+
+The approval JSON has exactly these keys (no duplicates/unknown fields):
+
+```json
+{
+  "schema": 1,
+  "manager": "/private/manager",
+  "deployment": "OWNER_APPROVED_DEPLOYMENT_HEX_32",
+  "organization": "OWNER_APPROVED_ORGANIZATION_HEX_32",
+  "map": "source-owner-map",
+  "registry": "ORIGINAL_REGISTRY_TOKEN_HEX_146",
+  "catalog": "ORIGINAL_CATALOG_TOKEN_HEX_80",
+  "witness": "/private/witness",
+  "export": "/private/export",
+  "plan": "/private/copy-custody/allocation.plan",
+  "lookups": ["copy/field-0", "copy/field-1"]
+}
+```
+
+Replace placeholders with independently approved values. `lookups` must contain
+one unused destination registration handle per authenticated source slot, in
+`MapRead` order (binary table, signed row, binary field). These are stable handles,
+not filenames. Keep this approval's ORIGINAL registry/catalog pins unchanged
+through recovery; never refresh them from a candidate or from a changed manager.
+The source map name AND lookup vector are authenticated against the retained plan
+through `cmeContextManagerCopyPlanMatch`, so swapping another valid source map or
+reordering destination handles cannot silently authorize a different request.
+
+Each invocation requires these explicit common options:
+
+```sh
+caumedse-admin context-copy-plan \
+  --approval /private/copy-approval.json \
+  --confirmed-offline /private/copy-approval.json \
+  --registry-key-file /private/registry.key \
+  --witness-directory /private/witness \
+  --witness-key-file /private/witness.key \
+  --retained-witness-token "$INDEPENDENTLY_RETAINED_WITNESS_TOKEN" \
+  --prepare
+```
+
+`--prepare` requires exact current manager/witness pins. It creates the plan
+with `O_EXCL`/`O_NOFOLLOW`, mode 0600, writes the entire signed byte sequence,
+syncs the file and containing directory, verifies its identity, then acknowledges
+its SHA256 (`plan-digest`) and planned next `registry` pin. No registry IDs are
+reserved or published. Existing names of ANY type are refused, including after
+a lost prepare acknowledgement. Failed/uncertain writes retain partial files:
+never delete/replace them blindly or let a retry overwrite owner evidence.
+
+Review the saved plan/request, independently retain its SHA256 and planned next
+pin, and protect the exact file from replacement. For a lost prepare response,
+an owner may independently inspect/authenticate the retained file and compute its
+digest, then explicitly approve that digest; the command never adopts it
+automatically. A partial/invalid plan cannot be committed. Abandoning or replacing
+an unusable file requires independent review proving allocation has not occurred;
+there is no automatic cleanup/reset or physical power-loss certification.
+
+Use the SAME common options and unchanged original approval, replacing the action
+with `--status --plan-digest "$RETAINED_PLAN_DIGEST"` or
+`--commit --plan-digest "$RETAINED_PLAN_DIGEST"`. Both require an explicit retained
+digest and witness token, authenticate the request and exact original/planned
+pair, and read only private regular single-link 0600 plan files. The reader bounds
+length, checks file identity/metadata, and syncs the read plan and parent before
+allowing publication. Symlinks, hard links, FIFOs, noncanonical paths and public
+files/directories fail closed. Status publishes nothing: it reports `ready` or
+`committed`, the planned registry/catalog pins, digest and witness reconciliation
+class. Commit uses the guarded core protocol and supports exact lost-ack retries
+without reallocating, republishing or refreshing pins. No secret/key/path values
+are printed; output pins/digests remain owner-sensitive metadata.
+
+After a commit, `witness-state=advance-required` is expected until independently
+approved. Separately review the planned next registry token and run the common
+options with this explicit action (original approval/pins still unchanged):
+
+```sh
+--advance-witness --plan-digest "$RETAINED_PLAN_DIGEST" \
+  --approved-registry "$INDEPENDENTLY_APPROVED_PLANNED_NEXT_REGISTRY_TOKEN"
+```
+
+This refuses an uncommitted plan or a different registry token, revalidates the
+guard and current manager pair, then advances only the registry witness step.
+It emits `witness-token` only for this explicit action; independently retain it
+before any later catalog publication. Exact lost-ack witness retries and an
+already-current approved checkpoint do not advance again. Committed recovery
+with an advance-required witness still checks the FULL original pair, not only
+its generation. Restoring an older witness fails against a retained newer token;
+restoring all owner evidence together remains outside local rollback detection.
+
+Exit codes remain 0 success, 2 stale/conflicting authority, 1 invalid/unavailable.
+No failed operation prints a success response. An uncertain commit may already
+have allocated the entire batch: retain the exact plan/digest/original pins and
+reconcile status, never regenerate UUIDs blindly. Later registry/catalog changes
+expire this exact-pair recovery window. Later map/artifact publication is NOT
+provided by this command, and must use separately reviewed workflow checkpoints.
+
+Tests exercise the installed command's complete lifecycle, explicit witness
+advance/retry, request substitution, partial-write retention, unsafe file types,
+directory/key separation, strict schema/options, stale/replayed/missing authority,
+and installed recovery after fixture-injected write/commit crashes. Fault injection
+remains confined to the non-installed fixture; no CLI crash environment hooks are
+added. Metadata allocation is not complete inventory, file acceptance, V2 AEAD
+authentication or a physical power-loss guarantee.
+
+TODO #147 stays open. Next design guarded physical-copy inventory and candidate
+preflight/recovery without labeling byte-cloned legacy ciphertext as V2. Connect
+reviewed context-aware re-encryption and durable artifact/catalog publication only
+after the applicable V2/provider/migration gates. Rename/delete adapters,
+production key custody/rotation and independent monotonic deployment remain open.

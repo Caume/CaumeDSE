@@ -220,6 +220,13 @@ int cmeContextManagerCopyPlanStatus(cmeContextManager *manager, const unsigned c
 int cmeContextManagerCopyPlanCommit(cmeContextManager *manager, const unsigned char *plan,
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published);
+/* Authenticate a retained plan against the independently approved source map
+   name and destination lookup vector, as well as ORIGINAL pins and digest.
+   Read-only request matching, not a current-state check or witness approval.
+   Return 0 exact request, 1 invalid/mismatched/unavailable. */
+int cmeContextManagerCopyPlanMatch(cmeContextManager *manager, const unsigned char *plan,
+    size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, const char *sourceName, const char *const *lookups, size_t count);
 
 typedef struct
 {
