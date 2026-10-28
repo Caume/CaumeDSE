@@ -2,6 +2,7 @@
 """Private local owner approvals; no candidate-derived identity or V2 claims."""
 from contextlib import closing
 import copy
+import base64
 import hashlib
 import json
 import os
@@ -628,6 +629,208 @@ for _point in ('after-write', 'after-commit'):
     def _copy_owner_crash(self, point=_point):
         self.check_installed_copy_crash_recovery(point)
     setattr(CopyOwnerTests, 'test_copy_installed_recovery_' + _point.replace('-', '_'), _copy_owner_crash)
+
+
+class CopyCandidateTests(CopyOwnerTests):
+    def setUp(self):
+        super().setUp()
+        self.profile = 'aes-256-cbc' if self._testMethodName.endswith('_cbc') else 'aes-256-gcm'
+        self.source_file = self.export / 'source.sqlite'
+        self.candidate_directory = self.root / 'candidates'
+        self.candidate_directory.mkdir(mode=0o700)
+        self.candidate_file = self.candidate_directory / 'candidate.sqlite'
+        self.org_key = self.root / 'org.key'
+        self.org_key.write_text('fixture-source-key\n')
+        self.org_key.chmod(0o600)
+        env = dict(os.environ, CDSE_DEFAULT_ENC_ALG=self.profile)
+        result = subprocess.run([PAYLOAD, str(self.source_file), 'registered-column'], capture_output=True, env=env, timeout=30)
+        self.assertEqual(result.returncode, 0, 'synthetic legacy ColumnFile creation failed')
+        self.source_file.chmod(0o600)
+        self.cells = []
+        seed = None
+        for table, fields in (('data', ('value', 'userId', 'orgId', 'rowOrder')),
+                              ('meta', ('attribute', 'attributeData', 'userId', 'orgId'))):
+            for row in (1, 2):
+                record = None
+                for field in fields:
+                    if self._testMethodName.endswith('_unknown_field') and table == 'data' and row == 1 and field == 'value':
+                        field = 'salt'
+                    lookup = f'preflight/{table}/{row}/{field}'
+                    self.allocated(lookup=lookup, level=2 if seed is None else (3 if record is None else 4),
+                                   parent=(seed or 'first') if record is None else record, table=table, field=field, expected=self.current())
+                    seed = seed or lookup
+                    record = record or lookup
+                    self.cells.append((lookup, table, row, field))
+        if self._testMethodName.endswith('_partial_map'):
+            self.cells = [cell for cell in self.cells if cell[3] in ('value', 'attribute')]
+        elif self._testMethodName.endswith('_missing_row'):
+            self.cells = [cell for cell in self.cells if cell[1:3] != ('meta', 2)]
+        self.assertEqual(self.map_store(self.cells, name='inventory', resource=seed).returncode, 0)
+        self.approval.update(map='inventory', registry=self.current(), catalog=self.map_current(),
+                             lookups=[f'candidate/{i}' for i in range(len(self.cells))])
+        self.lookups = self.approval['lookups']
+        # Establish a fresh synthetic checkpoint AFTER constructing this test's source authority.
+        self.witness = self.root / 'preflight-witness'
+        self.witness.mkdir(mode=0o700)
+        checkpoint = self.command('witness-init', self.current(), self.map_current(), directory=self.witness)
+        self.assertEqual(checkpoint.returncode, 0)
+        self.retained = checkpoint.stdout.decode().strip()
+        self.approval['witness'] = str(self.witness)
+        self.write_copy_approval()
+        self.prepare_copy()
+        self.allocation_approval = copy.deepcopy(self.approval)
+        self.approval.update(schema=2, source=str(self.source_file), candidate=str(self.candidate_file), profile=self.profile)
+        self.clone_and_pin()
+
+    def clone_and_pin(self):
+        shutil.copyfile(self.source_file, self.candidate_file)
+        self.candidate_file.chmod(0o600)
+        self.pin_candidates()
+
+    def pin_candidates(self):
+        self.approval.update(sourceDigest=hashlib.sha256(self.source_file.read_bytes()).hexdigest(),
+                             candidateDigest=hashlib.sha256(self.candidate_file.read_bytes()).hexdigest())
+        self.write_copy_approval()
+
+    def candidate(self, **options):
+        return self.copy_owner('--check-candidate', extra=('--org-key-file', str(self.org_key)), **options)
+
+    def verified_candidate(self):
+        result = self.candidate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for secret in ('fixture-source-key', 'fixture-alpha', 'fixture-beta', str(self.source_file), str(self.candidate_file)):
+            self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        data = dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+        self.assertEqual(data['state'], 'verified-legacy-candidate')
+        self.assertEqual(data['publication'], 'disabled')
+        self.assertEqual(data['context-authentication'], 'absent')
+        return data
+
+    def commit_allocation(self):
+        selection = self.approval
+        self.approval = self.allocation_approval
+        self.write_copy_approval()
+        result = self.copy_accepted('--commit')
+        self.approval = selection
+        self.write_copy_approval()
+        return result
+
+    def test_candidate_complete_ready_preflight_is_read_only(self):
+        paths = (self.source_file, self.candidate_file, self.plan,
+                 self.authority / 'registry.sqlite', self.witness / 'witness.sqlite')
+        before = [path.read_bytes() for path in paths]
+        self.verified_candidate()
+        self.assertEqual([path.read_bytes() for path in paths], before)
+        self.assertEqual(self.current(), self.approval['registry'])
+        self.assertEqual(self.map_current(), self.approval['catalog'])
+
+    def test_candidate_complete_preflight_cbc(self):
+        self.verified_candidate()
+
+    def test_candidate_committed_allocation_still_requires_witness_and_plan(self):
+        self.commit_allocation()
+        before = self.copy_snapshot()
+        self.verified_candidate()
+        self.assertEqual(self.copy_snapshot(), before)
+        self.assertEqual(self.command('witness-check', self.current(), self.map_current(), directory=self.witness).returncode, 2)
+        self.assertEqual(self.candidate(digest='00' * 32).returncode, 1)
+
+    def test_candidate_rejects_partial_map(self):
+        self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_rejects_missing_row(self):
+        self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_rejects_unknown_field(self):
+        self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_rejects_unmapped_rows_even_with_approved_hashes(self):
+        with closing(sqlite3.connect(self.source_file)) as db, db:
+            db.execute("insert into data select 3,userId,orgId,salt,value,'3',MAC,sign,MACProtected,signProtected,otphDKey from data where id=1")
+        self.clone_and_pin()
+        self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_rejects_cryptographic_tampering_even_in_equal_copies(self):
+        for value in ('invalid ciphertext', base64.b64encode(b'CDSEHKX2' + b'\0' * 64).decode()):
+            with closing(sqlite3.connect(self.source_file)) as db, db:
+                db.execute('update data set value=? where id=1', (value,))
+            self.clone_and_pin()
+            result = self.candidate()
+            self.assertEqual(result.returncode, 1)
+            self.assertNotIn(b'invalid ciphertext', result.stdout + result.stderr)
+            self.assertNotIn(b'fixture-source-key', result.stdout + result.stderr)
+
+    def test_candidate_rejects_rehashed_nonidentical_clone(self):
+        with closing(sqlite3.connect(self.candidate_file)) as db, db:
+            db.execute('update data set id=3 where id=1')
+        self.pin_candidates()
+        self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_rejects_stale_file_pins(self):
+        self.approval['sourceDigest'] = '00' * 32
+        self.write_copy_approval()
+        self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_rejects_unknown_schema_objects(self):
+        with closing(sqlite3.connect(self.source_file)) as db, db:
+            db.execute('create table unexpected(value text)')
+        self.clone_and_pin()
+        self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_rejects_sidecars_public_files_and_links(self):
+        self.candidate_file.chmod(0o644)
+        self.assertEqual(self.candidate().returncode, 1)
+        self.candidate_file.chmod(0o600)
+        sidecar = Path(str(self.candidate_file) + '-wal')
+        sidecar.touch(mode=0o600)
+        self.assertEqual(self.candidate().returncode, 1)
+        sidecar.unlink()
+        self.candidate_file.unlink()
+        self.candidate_file.symlink_to(self.source_file)
+        self.assertEqual(self.candidate().returncode, 1)
+        self.candidate_file.unlink()
+        os.link(self.source_file, self.candidate_file)
+        self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_paths_cannot_alias_export_custody_or_authority(self):
+        for directory in (self.export, self.custody, self.authority, self.witness):
+            self.approval['candidate'] = str(directory / 'candidate.sqlite')
+            self.write_copy_approval()
+            self.assertEqual(self.candidate().returncode, 1)
+            self.assertFalse((directory / 'candidate.sqlite').exists())
+
+    def test_candidate_rejects_wrong_or_public_org_key(self):
+        self.org_key.write_text('wrong-organization-key\n')
+        self.assertEqual(self.candidate().returncode, 1)
+        self.org_key.write_text('fixture-source-key\n')
+        self.org_key.chmod(0o644)
+        self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_schema_cannot_authorize_allocation_or_witness_mutations(self):
+        before = self.copy_snapshot()
+        for action in ('--commit', '--prepare', '--status', '--advance-witness'):
+            self.assertEqual(self.copy_owner(action).returncode, 1)
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def test_candidate_rejects_v2_and_unapproved_profiles(self):
+        for profile in ('aes-128-gcm', 'herradura-hske-nla1-aead-256', 'CDSEHKX2', 'unknown'):
+            self.approval['profile'] = profile
+            self.write_copy_approval()
+            self.assertEqual(self.candidate().returncode, 1)
+
+    def test_candidate_rejects_stale_authority(self):
+        self.assertEqual(self.command('revoke', self.cells[0][0], self.current()).returncode, 0)
+        self.assertEqual(self.candidate().returncode, 2)
+
+    def test_candidate_request_substitution_is_rejected(self):
+        self.approval['lookups'] = list(reversed(self.lookups))
+        self.write_copy_approval()
+        self.assertEqual(self.candidate().returncode, 1)
+
+
+for _name in vars(CopyOwnerTests):
+    if _name.startswith('test_'):
+        setattr(CopyCandidateTests, _name, None)
 
 
 if __name__ == '__main__':
