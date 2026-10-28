@@ -2171,3 +2171,108 @@ Neither process-crash testing elsewhere nor this read-only check certifies
 physical power-loss recovery. TODO #147 stays open for complete registration/
 export preflight, reviewed candidate recovery/publication and the remaining
 V2/provider/migration, rename/delete and production custody/monotonic gates.
+
+### Source registration preflight (#147 phase 20)
+
+`context-copy-plan --check-registration` extends the legacy candidate check with
+a source ResourcesDB association check. It is a separate schema-3 CHECK-ONLY
+action, not a destination-registration publisher, artifact install, witness advance
+or durable acceptance receipt. All phase-19 ColumnFile crypto/inventory, distinct
+byte-exact candidate, retained-plan request matching and original manager/witness
+pin checks still apply, including ready/committed reconciliation and post-check
+binding validation. Schema-1 allocation actions and schema-2 candidate checks
+retain their existing contracts.
+
+Start from the complete phase-19 schema-2 approval, change `schema` to 3, and add
+exactly these four independently reviewed fields:
+
+```json
+{
+  "resources": "/private/export/ResourcesDB",
+  "resourcesDigest": "APPROVED_RESOURCESDB_SHA256_HEX_64",
+  "registration": [1, "approved-document", "approved-storage", "approved-org-resource", "1"],
+  "storageAccessPath": "/independently-approved/original-storage/"
+}
+```
+
+This is a fragment, not the full approval. Retain all sixteen prior keys,
+including the ORIGINAL registry/catalog pins, source map, destination lookup
+vector, plan path and independently approved ColumnFile/candidate hashes/profile.
+The registration vector is exactly `[documentRow, documentId, storageId,
+orgResourceId, columnId]`: positive signed-64-bit integer row and four nonempty
+strings of at most 128 bytes. Booleans/floats/overflow and missing/duplicate/extra
+fields fail closed. Independently approve this tuple for the manager's namespace;
+the command does not derive registry UUIDs from plaintext identifiers or discover
+approval from candidate metadata. Schema 3 permits ONLY `--check-registration`,
+not allocation, witness advancement, status or the weaker `--check-candidate`.
+
+Use the common phase-18 options with:
+
+```sh
+--check-registration --plan-digest "$INDEPENDENTLY_RETAINED_PLAN_DIGEST" \
+  --org-key-file /private/organization.key
+```
+
+`resources` must be exactly `ResourcesDB` in the approved source export directory.
+It must be a canonical private uid-owned 0600 single-link regular SQLite rollback-
+journal file, with no sidecars/symlink/hardlink, a distinct file identity from both
+ColumnFiles and its own approved full-file SHA256. The source ResourcesDB shares
+the source export directory; it is NOT placed beside or inferred from the candidate.
+No candidate ResourcesDB is accepted by this action. Existing private key/control
+and disjoint custody/export/candidate/authority rules remain unchanged.
+
+The check opens all three artifacts in bounded read-only SQLite transactions,
+disables trusted schema, verifies strict internal ResourcesDB schema/version/
+definitions and SQLite integrity, and rechecks file identities/metadata after
+closing. It never migrates or repairs a DB. It reuses the registered-owner verifier
+to check the selected document row's field MACs and protected values, `file.csv`
+type, exact source basename, approved selector tuple and all three domain-specific
+lookup values (`documentIdLookup`, `storageIdLookup`, `orgResourceIdLookup`). It
+requires a single part (`partId=1`, `totalParts=1`) and authenticates the decrypted
+`partMAC` against the ENTIRE pinned source ColumnFile bytes under the approved
+organization key and row salt. Fresh valid ciphertext with new salts is rejected
+if its source registration still carries the old file MAC, even when the weaker
+ColumnFile-only check and newly approved file hashes pass.
+
+Another document row may not reference the selected source basename or duplicate
+the approved document/storage/org-resource/column selector tuple, even under a
+different filename. A unique matching storage row must authenticate the same
+storage and org-resource identifiers, declare `type=local`, and have an encrypted
+access path exactly equal to the independently approved `storageAccessPath`.
+That expected string must be absolute, but is compared literally: it is historical
+storage metadata and need NOT equal the current offline export path or exist on
+this machine. It is never resolved, normalized, used to open files or refreshed
+from the DB. Remote, duplicate, mismatched and ambiguous associations fail closed.
+
+The selected source association is checked within the same preflight as the full
+ColumnFile cell inventory and candidate-byte equality. Reusing the bounded paired
+metadata verifier with the source snapshot on both sides preserves schema,
+duplicate-basename and unique-local-storage checks without manufacturing a target
+ResourcesDB. It is NOT a proof that every unrelated DB field/payload has been
+cryptographically verified or that all exported files/part groups are accounted
+for. A full-export inventory and destination registration design remain pending.
+Unreadable unrelated filename/selector/storage-identity fields are refused,
+not skipped; mixed-key/profile source snapshots are not silently accepted.
+Existing 4096-entry/row and offline-file limits apply; profiles remain AES-GCM/CBC
+only with their existing integrity properties. Neither CBC nor cloned legacy GCM
+bytes gain UUID-bound AEAD authentication.
+
+Success reports `state=verified-legacy-registration`,
+`registration=selected-source-columnfile`, the approved ResourcesDB hash and plan
+digest, `inventory=complete-columnfile-cells`, `context-authentication=absent` and
+`publication=disabled`. No IDs, plaintext selector/path values or keys are printed;
+crypto diagnostics remain suppressed. Pins/digests are still owner-sensitive.
+The result is point-in-time metadata, not a portable install token. Stop all
+readers/writers and keep directories fixed; authority/file checks are not leases.
+No file, map, registration or witness is published, and no V2 write is enabled.
+
+Tests cover ready/committed read-only GCM/CBC checks, selected-row/tuple mismatch,
+each lookup mismatch despite a newly approved DB hash, a valid new ColumnFile with
+the old registered file MAC, filename/selector/storage duplicates, multipart and
+remote refusal, org/access-path mismatches, private DB paths/modes/sidecars/links,
+schema/metadata downgrade and schema/action/plan/witness approval isolation.
+TODO #147 remains open for whole-export inventory, destination registration and
+guarded copy recovery/publication, context-aware re-encryption and persisted V2
+substitution rejection, provider/migration/floor acceptance, rename/delete adapters
+and production custody/independent monotonic deployment. No physical power-loss
+certification or live storage integration is added.
