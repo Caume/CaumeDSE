@@ -2063,3 +2063,111 @@ preflight/recovery without labeling byte-cloned legacy ciphertext as V2. Connect
 reviewed context-aware re-encryption and durable artifact/catalog publication only
 after the applicable V2/provider/migration gates. Rename/delete adapters,
 production key custody/rotation and independent monotonic deployment remain open.
+
+### Legacy copy candidate preflight (#147 phase 19)
+
+`context-copy-plan --check-candidate` adds a trusted offline CHECK-ONLY step for
+an independently selected ColumnFile and an already existing byte-exact legacy
+candidate. It uses schema 2, the retained allocation-plan digest, original plan
+pins and an independently retained witness token. It never allocates IDs, copies
+files, advances witnesses, publishes maps/artifacts/ResourcesDB registrations or
+creates a durable acceptance receipt. A successful check is point-in-time metadata,
+not authorization for a later install. Keep all readers/writers stopped and the
+directory hierarchy fixed; recheck after any approval, authority or file change.
+
+Start from the phase-18 schema-1 allocation approval, change `schema` to 2, and
+add exactly these five independently reviewed fields:
+
+```json
+{
+  "source": "/private/export/source.sqlite",
+  "candidate": "/private/copy-candidates/candidate.sqlite",
+  "sourceDigest": "APPROVED_SOURCE_SHA256_HEX_64",
+  "candidateDigest": "APPROVED_CANDIDATE_SHA256_HEX_64",
+  "profile": "aes-256-gcm"
+}
+```
+
+This is a fragment of the complete approval: retain ALL eleven phase-18 keys,
+including the unchanged original `registry`, `catalog`, source `map`, destination
+`lookups`, private `plan`, witness and export paths. Unknown/duplicate keys and
+missing fields fail closed. Schema 2 permits ONLY `--check-candidate`; it cannot
+authorize prepare/commit/witness advancement. Schema 1 remains unchanged and
+rejects these extra fields. Continue using a separately reviewed schema-1 approval
+for allocation operations; candidate validation does not gate that low-level
+allocation protocol or turn allocation into physical-copy authorization.
+
+Use the same common phase-18 options, then:
+
+```sh
+--check-candidate --plan-digest "$INDEPENDENTLY_RETAINED_PLAN_DIGEST" \
+  --org-key-file /private/organization.key
+```
+
+The organization key is a canonical private regular uid-owned 0600 single-link
+file containing 1-256 non-NUL bytes, with an optional final newline. It must be
+separate from registry/witness key paths and the plan, and outside manager,
+witness, export and candidate directories. No organization key is accepted on
+schema-1 allocation actions. Runtime crypto diagnostics are suppressed; failures
+emit only generic status, never protected values, keys, plaintext or file paths.
+
+The source must be an immediate child of the approved canonical private export
+directory. The existing candidate must have its own canonical uid-owned 0700
+directory, disjoint from export, manager, witness and plan custody (including
+equal directory identities); approval/control files stay outside it. Both files
+must be private regular single-link 0600 SQLite rollback-journal files, with
+distinct identities and parent directories, no symlinks/hard links/sidecars,
+and independently approved full-file SHA256 pins. The current profile supports
+ONLY byte-exact clones: both approved hashes AND both observed hashes must agree.
+Changed rows, re-encryption, fresh salts or physical SQLite rewrites are refused,
+even when they would preserve logical plaintext. The command does not create the
+candidate or infer its identity from a filename or embedded metadata.
+
+The retained plan must match the independently approved source map name and
+destination lookup vector. Current manager/witness checks permit the plan's exact
+ready pair or exact committed pair, with explicit witness reconciliation and the
+full original-pair check for advance-required committed recovery. Active source
+bindings and the catalog are checked before and after preflight; committed plans
+also validate destination bindings. Ready-plan destinations remain authenticated
+allocation candidates, not registered identities. Later registry/catalog changes
+expire this exact-pair window. No pins or witness tokens are adopted automatically.
+
+Coverage must be COMPLETE for the selected ColumnFile's identity-bearing cells:
+for EVERY physical `data.id`, exactly one source-map slot for each of `value`,
+`userId`, `orgId`, `rowOrder`; for EVERY `meta.id`, exactly one for each of
+`attribute`, `attributeData`, `userId`, `orgId`. The authenticated destination
+descriptor must retain the same table/row/field vector. Missing fields/rows,
+additional slots, unrecognized fields/tables and partial maps are rejected.
+Integer IDs, salt and integrity/helper columns are not separately allocated cell
+identities: legacy schema/crypto/integrity checks validate their supported form.
+Existing 4096-slot, registry and offline-file limits apply. This proves coverage
+of the selected ColumnFile only, NOT completeness of an export or its ResourcesDB
+registration, nor cryptographic provenance of its relation to an owner map.
+
+The check reuses strict registered-owner ColumnFile verification, SQLite schema
+and `integrity_check`, bounded read-only queries, and existing legacy decryption,
+metadata/profile, row-order and configured MAC/sign integrity checks. Supported
+profiles are `aes-256-gcm` and `aes-256-cbc`; CBC retains its existing configured
+integrity properties and gains no AEAD guarantee. Unknown/optional provider
+profiles and `CDSEHKX` frames (including forged V2 headers) fail closed in this
+legacy-only step. No new cryptographic primitive or storage format is introduced.
+File identity/metadata and current authority bindings are rechecked afterward.
+
+Success reports `state=verified-legacy-candidate`,
+`inventory=complete-columnfile-cells`, `context-authentication=absent`,
+`publication=disabled` and the approved plan digest. The fresh resource/record
+UUIDs exist only in the allocation protocol; legacy ciphertext clones remain
+same-key readable and do NOT authenticate those UUIDs. Do not label these bytes
+as V2, treat this report as a portable acceptance token or publish a destination
+registration using it. ResourcesDB partMAC/selector/storage association checks,
+whole-export inventory, context-aware re-encryption and cross-context V2 tag-failure
+proofs remain separate required gates before guarded physical-copy publication.
+
+Tests cover complete ready/committed plans, AES-GCM/CBC, absence of authority/file
+publication, partial maps and omitted rows/fields, unmapped rows despite reapproved
+equal hashes, ciphertext/V2-header tampering, rehashed nonidentical candidates,
+schema objects, stale pins, unsafe paths/files/sidecars and request substitution.
+Neither process-crash testing elsewhere nor this read-only check certifies
+physical power-loss recovery. TODO #147 stays open for complete registration/
+export preflight, reviewed candidate recovery/publication and the remaining
+V2/provider/migration, rename/delete and production custody/monotonic gates.

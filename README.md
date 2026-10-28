@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.20.0
+# Caume Data Security Engine (CaumeDSE) version 2.21.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2931,6 +2931,10 @@ The installed [context-copy-plan command](HERRADURAKEX_AT_REST_PLAN.md#installed
 provides exclusive private plan creation, authenticated status/commit recovery
 and separately approved witness advancement. It allocates registry identities
 only, not backing files or destination maps.
+Its optional [schema-2 candidate check](HERRADURAKEX_AT_REST_PLAN.md#legacy-copy-candidate-preflight-147-phase-19)
+verifies complete selected ColumnFile cell coverage and a distinct byte-exact
+legacy candidate under current plan/witness approval. It publishes nothing and
+does not authenticate UUIDs in ciphertext or accept ResourcesDB registrations.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider
