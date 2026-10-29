@@ -833,5 +833,220 @@ for _name in vars(CopyOwnerTests):
         setattr(CopyCandidateTests, _name, None)
 
 
+class CopyRegistrationTests(CopyCandidateTests):
+    def setUp(self):
+        super().setUp()
+        self.resources = self.export / 'ResourcesDB'
+        fixture_root = Path(__file__).resolve().parents[1] / 'TEST' / 'testDB_opt_cdse'
+        for name in ('ResourcesDB', 'RolesDB', 'LogsDB'):
+            with closing(sqlite3.connect(fixture_root / name)) as original, \
+                    closing(sqlite3.connect(self.export / name)) as target, target:
+                for sql, in original.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='schema_meta'"):
+                    target.execute(sql)
+                if name != 'ResourcesDB':
+                    continue
+                for field in ('documentIdLookup', 'storageIdLookup', 'orgResourceIdLookup'):
+                    target.execute(f'alter table documents add column {field} TEXT')
+                for table in ('documents', 'storage', 'users'):
+                    columns = [row[1] for row in target.execute(f'pragma table_info({table})')]
+                    values = dict.fromkeys(columns, '')
+                    values.update(id=1, userId='fixtureUser', orgId='fixtureOrg', orgResourceId='fixtureOrg')
+                    if table == 'documents':
+                        values.update(columnFile=self.source_file.name, type='file.csv', documentId='fixture-document',
+                                      storageId='fixtureStorage', columnId='1', partId='1', totalParts='1')
+                        for field in columns:
+                            if field.endswith('Lookup'):
+                                values[field] = None
+                        if self._testMethodName.endswith('_multipart'):
+                            values['totalParts'] = '2'
+                        if self._testMethodName.endswith('_wrong_filename'):
+                            values['columnFile'] = 'other.sqlite'
+                            shutil.copyfile(self.source_file, self.export / 'other.sqlite')
+                    elif table == 'storage':
+                        values.update(storageId='fixtureStorage', type='local', accessPath='/offline-original/')
+                        if self._testMethodName.endswith('_remote_storage'):
+                            values['type'] = 'remote'
+                        if self._testMethodName.endswith('_wrong_storage_org'):
+                            values['orgResourceId'] = 'another-org'
+                    rows = [values]
+                    if table == 'documents' and (self._testMethodName.endswith('_duplicate_filename') or
+                                                  self._testMethodName.endswith('_duplicate_selector')):
+                        duplicate = dict(values, id=2)
+                        if self._testMethodName.endswith('_duplicate_selector'):
+                            duplicate['columnFile'] = 'other.sqlite'
+                            shutil.copyfile(self.source_file, self.export / 'other.sqlite')
+                        rows.append(duplicate)
+                    if table == 'storage' and self._testMethodName.endswith('_duplicate_storage'):
+                        rows.append(dict(values, id=2))
+                    for row in rows:
+                        target.execute(f"insert into {table} ({','.join(columns)}) values ({','.join('?' for _ in columns)})",
+                                       [row[field] for field in columns])
+        self.registration_fixture('bundle')
+        with closing(sqlite3.connect(self.resources)) as db:
+            db.execute('pragma journal_mode=DELETE')
+        self.registration_fixture('registered-lookups')
+        self.resources.chmod(0o600)
+        self.approval.update(schema=3, resources=str(self.resources), registration=[
+            1, 'fixture-document', 'fixtureStorage', 'fixtureOrg', '1'], storageAccessPath='/offline-original/')
+        self.pin_resources()
+
+    def registration_fixture(self, action):
+        result = subprocess.run([PAYLOAD, str(self.export), action], capture_output=True, timeout=30,
+                                env=dict(os.environ, CDSE_DEFAULT_ENC_ALG=self.profile))
+        self.assertEqual(result.returncode, 0, f'synthetic registration {action} failed')
+
+    def pin_resources(self):
+        self.approval['resourcesDigest'] = hashlib.sha256(self.resources.read_bytes()).hexdigest()
+        self.write_copy_approval()
+
+    def registration_check(self, **options):
+        result = self.copy_owner('--check-registration', extra=('--org-key-file', str(self.org_key)), **options)
+        for secret in ('fixture-document', 'fixtureStorage', 'fixtureOrg', 'fixture-source-key', '/offline-original/'):
+            self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        return result
+
+    def verified_registration(self):
+        result = self.registration_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+        self.assertEqual(data['state'], 'verified-legacy-registration')
+        self.assertEqual(data['registration'], 'selected-source-columnfile')
+        self.assertEqual(data['resources-digest'], self.approval['resourcesDigest'])
+        self.assertEqual(data['publication'], 'disabled')
+        self.assertEqual(data['context-authentication'], 'absent')
+        return data
+
+    def test_registration_ready_preflight_is_read_only(self):
+        paths = (self.resources, self.source_file, self.candidate_file, self.plan,
+                 self.authority / 'registry.sqlite', self.witness / 'witness.sqlite')
+        before = [path.read_bytes() for path in paths]
+        self.verified_registration()
+        self.assertEqual([path.read_bytes() for path in paths], before)
+
+    def test_registration_preflight_cbc(self):
+        self.verified_registration()
+
+    def test_registration_committed_preflight_does_not_advance_witness(self):
+        self.commit_allocation()
+        before = self.copy_snapshot()
+        self.verified_registration()
+        self.assertEqual(self.copy_snapshot(), before)
+        self.assertEqual(self.command('witness-check', self.current(), self.map_current(), directory=self.witness).returncode, 2)
+
+    def test_registration_rejects_wrong_independent_selector(self):
+        original = list(self.approval['registration'])
+        for index, value in enumerate((2, 'another-document', 'another-storage', 'another-org', '2')):
+            self.approval['registration'] = list(original)
+            self.approval['registration'][index] = value
+            self.write_copy_approval()
+            self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_lookup_tampering_despite_reapproved_hash(self):
+        original = self.resources.read_bytes()
+        for field in ('documentIdLookup', 'storageIdLookup', 'orgResourceIdLookup'):
+            self.resources.write_bytes(original)
+            with closing(sqlite3.connect(self.resources)) as db, db:
+                db.execute(f'update documents set {field}=? where id=1', ('00' * 32,))
+            self.pin_resources()
+            self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_valid_new_ciphertext_with_old_file_mac(self):
+        self.source_file.unlink()
+        result = subprocess.run([PAYLOAD, str(self.source_file), 'registered-column'], capture_output=True, timeout=30,
+                                env=dict(os.environ, CDSE_DEFAULT_ENC_ALG=self.profile))
+        self.assertEqual(result.returncode, 0)
+        self.source_file.chmod(0o600)
+        self.clone_and_pin()
+        registered = self.approval
+        self.approval = {key: value for key, value in registered.items() if key not in (
+            'resources', 'resourcesDigest', 'registration', 'storageAccessPath')}
+        self.approval['schema'] = 2
+        self.write_copy_approval()
+        self.verified_candidate()  # Full ColumnFile crypto/inventory remains valid.
+        self.approval = registered
+        self.write_copy_approval()
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_wrong_filename(self):
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_duplicate_filename(self):
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_duplicate_selector(self):
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_multipart(self):
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_remote_storage(self):
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_duplicate_storage(self):
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_wrong_storage_org(self):
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_unapproved_stored_access_path(self):
+        self.approval['storageAccessPath'] = '/different-original/'
+        self.write_copy_approval()
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_stale_resources_digest(self):
+        self.approval['resourcesDigest'] = '00' * 32
+        self.write_copy_approval()
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_public_sidecar_and_linked_resources(self):
+        self.resources.chmod(0o644)
+        self.assertEqual(self.registration_check().returncode, 1)
+        self.resources.chmod(0o600)
+        sidecar = Path(str(self.resources) + '-wal')
+        sidecar.touch(mode=0o600)
+        self.assertEqual(self.registration_check().returncode, 1)
+        sidecar.unlink()
+        retained = self.custody / 'retained-resources'
+        self.resources.rename(retained)
+        self.resources.symlink_to(retained)
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_unapproved_resources_path(self):
+        self.approval['resources'] = str(self.source_file)
+        self.write_copy_approval()
+        self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_rejects_schema_objects_and_metadata_downgrade(self):
+        original = self.resources.read_bytes()
+        for sql in ("create table unexpected(value text)", "update schema_meta set value='0' where key='definitionsVersion'"):
+            self.resources.write_bytes(original)
+            with closing(sqlite3.connect(self.resources)) as db, db:
+                db.execute(sql)
+            self.pin_resources()
+            self.assertEqual(self.registration_check().returncode, 1)
+
+    def test_registration_strict_schema_cannot_publish_or_skip_plan_approval(self):
+        before = self.copy_snapshot()
+        for action in ('--prepare', '--commit', '--status', '--advance-witness', '--check-candidate'):
+            self.assertEqual(self.copy_owner(action, extra=('--org-key-file', str(self.org_key))).returncode, 1)
+        original = copy.deepcopy(self.approval)
+        for key, value in (('registration', [True, 'd', 's', 'o', '1']), ('registration', [1.0, 'd', 's', 'o', '1']),
+                           ('registration', [2**63, 'd', 's', 'o', '1']), ('registration', [1, '', 's', 'o', '1']),
+                           ('resourcesDigest', 'not-hex'), ('storageAccessPath', 'relative/path')):
+            self.approval = dict(original, **{key: value})
+            self.write_copy_approval()
+            self.assertEqual(self.registration_check().returncode, 1)
+        self.approval = original
+        self.write_copy_approval()
+        self.assertEqual(self.registration_check(digest='00' * 32).returncode, 1)
+        self.assertEqual(self.registration_check(token='00' * 40).returncode, 1)
+        self.assertEqual(self.copy_snapshot(), before)
+
+
+for _name in vars(CopyCandidateTests):
+    if _name.startswith('test_'):
+        setattr(CopyRegistrationTests, _name, None)
+
+
 if __name__ == '__main__':
     unittest.main()
