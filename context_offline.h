@@ -16,6 +16,8 @@ typedef struct
 } cmeOfflineArtifact;
 
 int cmeOfflineOpen(const char *path, int content, cmeOfflineArtifact *artifact);
+/* Opaque registered payload, with the same private-file and identity checks. */
+int cmeOfflineOpenPayload(const char *path, cmeOfflineArtifact *artifact);
 void cmeOfflineClose(cmeOfflineArtifact *artifact);
 int cmeOfflineSync(cmeOfflineArtifact *active, cmeOfflineArtifact *staged);
 int cmeOfflineInstall(cmeOfflineArtifact *active, cmeOfflineArtifact *staged);

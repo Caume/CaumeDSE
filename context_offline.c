@@ -30,7 +30,7 @@ void cmeOfflineClose(cmeOfflineArtifact *artifact)
     artifact->file=-1; artifact->directory=-1;
 }
 
-int cmeOfflineOpen(const char *path, int content, cmeOfflineArtifact *artifact)
+static int cmeOfflineRead(const char *path, int content, int sqlite, cmeOfflineArtifact *artifact)
 {
     char parent[PATH_MAX],canonical[PATH_MAX],*slash;
     unsigned char buffer[16384];
@@ -55,7 +55,7 @@ int cmeOfflineOpen(const char *path, int content, cmeOfflineArtifact *artifact)
     artifact->file=openat(artifact->directory,artifact->name,O_RDWR|O_NOFOLLOW|O_NONBLOCK);
     if (artifact->file<0 || fstat(artifact->file,&artifact->status) || !S_ISREG(artifact->status.st_mode) ||
         artifact->status.st_uid!=geteuid() || (artifact->status.st_mode&07777)!=0600 ||
-        artifact->status.st_nlink!=1 || artifact->status.st_size<100 ||
+        artifact->status.st_nlink!=1 || artifact->status.st_size<(sqlite ? 100 : 1) ||
         artifact->status.st_size>cmeOfflineMaxBytes || fsync(artifact->file)) goto done;
     hash=EVP_MD_CTX_new();
     if (!hash || !EVP_DigestInit_ex(hash,EVP_sha256(),NULL)) goto done;
@@ -67,7 +67,7 @@ int cmeOfflineOpen(const char *path, int content, cmeOfflineArtifact *artifact)
         got=pread(artifact->file,buffer,wanted,offset);
         if (got<0 && errno==EINTR) continue;
         if (got<=0) goto done;
-        if (!offset && (got<20 || memcmp(buffer,"SQLite format 3\0",16) || buffer[18]!=1 || buffer[19]!=1)) goto done;
+        if (sqlite && !offset && (got<20 || memcmp(buffer,"SQLite format 3\0",16) || buffer[18]!=1 || buffer[19]!=1)) goto done;
         if (!EVP_DigestUpdate(hash,buffer,(size_t)got)) goto done;
         offset+=got;
     }
@@ -80,6 +80,16 @@ done:
     EVP_MD_CTX_free(hash);
     if (result) cmeOfflineClose(artifact);
     return(result);
+}
+
+int cmeOfflineOpen(const char *path, int content, cmeOfflineArtifact *artifact)
+{
+    return(cmeOfflineRead(path,content,1,artifact));
+}
+
+int cmeOfflineOpenPayload(const char *path, cmeOfflineArtifact *artifact)
+{
+    return(cmeOfflineRead(path,1,0,artifact));
 }
 
 int cmeOfflineSync(cmeOfflineArtifact *active, cmeOfflineArtifact *staged)

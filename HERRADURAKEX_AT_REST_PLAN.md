@@ -2276,3 +2276,66 @@ guarded copy recovery/publication, context-aware re-encryption and persisted V2
 substitution rejection, provider/migration/floor acceptance, rename/delete adapters
 and production custody/independent monotonic deployment. No physical power-loss
 certification or live storage integration is added.
+
+### Source export inventory (#147 phase 21)
+
+`context-copy-plan --check-export` is a separate schema-4 read-only action.
+Use exactly the twenty phase-20 approval keys, changing `schema` from 3 to 4,
+and the same independent plan digest, witness token and organization-key options:
+
+```sh
+--check-export --plan-digest "$INDEPENDENTLY_RETAINED_PLAN_DIGEST" \
+  --org-key-file /private/organization.key
+```
+
+All selected ColumnFile/candidate, registration, original manager/plan and witness
+checks still apply. Schema 4 cannot authorize allocation, status, commit, witness
+advancement or either weaker check. Schemas 1 through 3 retain their contracts.
+The source must be a complete stopped local export, containing exactly
+ResourcesDB, RolesDB, LogsDB and the payloads named by its documents table.
+The candidate and custody files remain outside that export.
+
+The command authenticates every document's protected fields and three lookup
+values with the approved key/profile. It rejects empty or unsafe filenames,
+reserved DB names, duplicate filenames, invalid part numbers, incomplete groups,
+duplicate part IDs, inconsistent totals and missing storage associations. Groups
+are keyed by document, storage, org-resource, type and column identifiers. Each
+part and total must be decimal, positive and at most 4096; part IDs must cover
+exactly 1 through the group's common total. Identifiers and types are nonempty
+and at most 128 bytes. All storage records, including unused records, must have
+authenticated local type, unique storage/org-resource identity, and exactly the
+one independently approved historical `storageAccessPath`. Multi-root exports,
+remote storage and mixed-key/profile inventories fail closed. The historical path
+is compared literally and is never used to open files or infer UUID identities.
+
+For each payload, authenticate the entire file against its registered partMAC and
+row salt. Opaque files need not be SQLite; they must be nonempty, at most 256 MiB,
+canonical, private uid-owned 0600 single-link regular files, without sidecars or
+links. These checks do not decrypt or validate the internal representation of
+unselected payloads. Only the selected ColumnFile receives the complete phase-19
+cell/legacy crypto check. File MACs do not provide UUID-bound V2 authentication.
+
+ResourcesDB retains its independently approved hash and strict bounded read-only
+SQLite transaction. RolesDB and LogsDB must be private rollback-journal SQLite
+files with valid file headers; their protected contents, schemas and independent
+hash approvals are outside this inventory contract. They must not be treated as
+cryptographically accepted for a later migration or destination publication.
+Enumeration rejects every extra file or directory, including DB sidecars. Retain
+bounded payload file metadata rather than thousands of open descriptors; recheck
+every file identity/metadata through the held export directory, enumerate twice,
+and reject directory identity or modification changes. The 4096-row bounds and
+SQLite work budgets apply. Stop all readers/writers and hold the directory tree
+fixed throughout; this point-in-time check supplies no concurrent-reader lease.
+
+Success reports `state=verified-legacy-export`,
+`export-inventory=complete-registered-payloads`,
+`payload-authentication=registered-file-macs`, plus the selected-registration,
+plan/hash metadata, `publication=disabled` and `context-authentication=absent`
+fields. No plaintext paths, identifiers or keys are printed. No file, authority,
+map, registration or witness is changed and no acceptance receipt is created.
+
+TODO #147 remains open. Next design independently approved destination registration
+and guarded copy recovery/publication, then context-aware V2 re-encryption and
+persisted substitution rejection, provider/migration/floor acceptance,
+rename/delete adapters and production custody/independent monotonic deployment.
+This phase makes no physical power-loss or live storage integration claim.
