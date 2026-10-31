@@ -2339,3 +2339,93 @@ and guarded copy recovery/publication, then context-aware V2 re-encryption and
 persisted substitution rejection, provider/migration/floor acceptance,
 rename/delete adapters and production custody/independent monotonic deployment.
 This phase makes no physical power-loss or live storage integration claim.
+
+### Destination registration preflight (#147 phase 22)
+
+`context-copy-plan --check-destination` adds a read-only staged registration check
+to the complete source-export inventory. Start from the twenty phase-21 keys,
+set `schema` to 5, and add exactly four independently reviewed fields:
+
+```json
+{
+  "destinationResources": "/private/candidates/ResourcesDB",
+  "destinationResourcesDigest": "APPROVED_DESTINATION_RESOURCESDB_SHA256_HEX_64",
+  "destinationRegistration": [4, "approved-new-document", "approved-storage", "approved-org-resource", "1"],
+  "destinationStorageAccessPath": "/independently-approved/original-storage/"
+}
+```
+
+This is a fragment, not a complete manifest. Retain the ORIGINAL manager pins,
+source map and destination lookup vector, independently retained allocation-plan
+digest and witness token, source/candidate hashes, profile, source registration,
+ResourcesDB hash and historical storage path. Use the common command options with:
+
+```sh
+--check-destination --plan-digest "$INDEPENDENTLY_RETAINED_PLAN_DIGEST" \
+  --org-key-file /private/organization.key
+```
+
+Schema 5 permits only this check. It cannot authorize prepare/status/commit,
+witness advancement or a weaker check. Schemas 1 through 4 keep their contracts.
+Both ready and exactly committed allocation plans retain their existing guarded
+reconciliation and post-check binding/witness validation. All legacy candidate,
+selected source registration and whole source-export checks remain mandatory.
+
+`destinationResources` must be exactly `ResourcesDB` beside the candidate
+ColumnFile, in its disjoint private staging directory. The source and candidate
+ColumnFile basenames must differ; neither a reserved internal DB name nor a
+candidate alias for a source artifact is accepted. All four DB artifacts must
+have distinct file identities, private canonical uid-owned 0600 single-link
+regular rollback-journal files without links or sidecars. Each ResourcesDB has
+its own independently approved full-file SHA256. Existing disjoint control,
+custody, authority, source-export and candidate-directory rules still apply.
+
+The destination registration vector has the same exact five-element types and
+limits as the source vector. Its positive row ID must be unused in the source
+ResourcesDB and differ from the selected source row. Its document ID must differ
+from EVERY existing source document ID, including documents with another column
+or type. Storage ID, org-resource ID and column ID must equal the independently
+approved source association. The destination storage path must be independently
+supplied and equal the source's approved historical path literally. This phase
+supports only a fresh-document, same-storage, same-column legacy copy, not a
+cross-storage move or arbitrary metadata edit. Neither path is used to open files
+or derive registry UUIDs. The trusted owner must independently approve the bridge
+between those plaintext selectors and the manager namespace.
+
+Hold bounded read-only SQLite transactions on both ColumnFiles and both
+ResourcesDBs, disable trusted schema, and verify ResourcesDB schema/version,
+definitions and integrity. Authenticate every protected field of the new row,
+all three lookup values, its exact candidate basename, `file.csv`, single-part
+shape, unique selector/filename, unique approved local storage association and
+whole-candidate partMAC under that row's salt and the approved organization key.
+The candidate remains a byte-exact legacy clone, so a new row salt requires its
+own correct file MAC even though payload bytes are unchanged.
+
+Then compare the source DB against the staged DB with ONLY the new approved
+document row excluded. Every existing logical cell, SQL type, salt, protected
+value, lookup, metadata row and schema object must remain exact; deleting,
+replacing, modifying or adding other rows/objects fails closed. Only physical DB
+layout/free pages may differ, and the full-file approved hash pins those bytes.
+The new row must retain the source row's decoded user/org, resourceInfo, type,
+storage/org-resource, part count/ID, lastModified and column ID. Re-salting and
+re-encrypting that new row is allowed; its row/document identity, filename,
+salt/field ciphertexts and corresponding file MAC are the intended differences.
+
+Success adds `state=verified-legacy-destination`,
+`destination-registration=verified-add-only-copy` and the independently approved
+`destination-resources-digest`, retaining source inventory/registration and plan
+metadata, `publication=disabled` and `context-authentication=absent`. No plaintext
+paths, IDs or keys are printed. File identities/metadata and authority bindings
+are rechecked after verification. Existing 4096-row/work budgets and stopped,
+fixed-directory preconditions apply; this result is not a lease or durable
+acceptance receipt. Staging needs only the candidate ColumnFile and ResourcesDB;
+it is not accepted as a complete destination export or runtime installation.
+Unselected payload contents and RolesDB/LogsDB retain phase-21's limited checks.
+
+TODO #147 remains open. Next implement reviewed durable copy publication and crash
+reconciliation tying candidate artifacts, registration and destination map to the
+retained allocation plan and explicit witness approvals. Context-aware V2
+re-encryption/substitution rejection, provider/migration/floor acceptance,
+rename/delete adapters and production custody/independent monotonic deployment
+remain pending. No file copying, map/catalog publication, witness advancement,
+V2 write, live storage integration or physical power-loss guarantee is added.
