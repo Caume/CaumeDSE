@@ -1246,5 +1246,248 @@ for _name in vars(CopyRegistrationTests):
         setattr(CopyExportTests, _name, None)
 
 
+class CopyDestinationTests(CopyExportTests):
+    def setUp(self):
+        super().setUp()
+        self.destination_resources = self.candidate_directory / 'ResourcesDB'
+        self.registration_scratch = self.root / 'new-registration'
+        self.registration_scratch.mkdir(mode=0o700)
+        fixture_root = Path(__file__).resolve().parents[1] / 'TEST' / 'testDB_opt_cdse'
+        for name in ('ResourcesDB', 'RolesDB', 'LogsDB'):
+            with closing(sqlite3.connect(fixture_root / name)) as source, \
+                    closing(sqlite3.connect(self.registration_scratch / name)) as target, target:
+                for sql, in source.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='schema_meta'"):
+                    target.execute(sql)
+                if name != 'ResourcesDB':
+                    continue
+                for field in ('documentIdLookup', 'storageIdLookup', 'orgResourceIdLookup'):
+                    target.execute(f'alter table documents add column {field} TEXT')
+                columns = [row[1] for row in target.execute('pragma table_info(documents)')]
+                values = dict.fromkeys(columns, '')
+                values.update(id=4, userId='fixtureUser', orgId='fixtureOrg', columnFile=self.candidate_file.name,
+                              type='file.csv', documentId='copy-document', storageId='fixtureStorage',
+                              orgResourceId='fixtureOrg', columnId='1', partId='1', totalParts='1')
+                for field in columns:
+                    if field.endswith('Lookup'):
+                        values[field] = None
+                if self._testMethodName.endswith('_changed_metadata'):
+                    values['userId'] = 'changed-user'
+                if self._testMethodName.endswith('_multipart_copy'):
+                    values['totalParts'] = '2'
+                if self._testMethodName.endswith('_wrong_basename'):
+                    values['columnFile'] = 'wrong.sqlite'
+                if self._testMethodName.endswith('_existing_document_id'):
+                    values['documentId'] = 'raw-document'
+                payload = self.registration_scratch / values['columnFile']
+                shutil.copyfile(self.candidate_file, payload)
+                if self._testMethodName.endswith('_wrong_file_mac'):
+                    data = bytearray(payload.read_bytes())
+                    data[-1] ^= 1
+                    payload.write_bytes(data)
+                target.execute(f"insert into documents ({','.join(columns)}) values ({','.join('?' for _ in columns)})",
+                               [values[field] for field in columns])
+        for action in ('bundle', 'registered-lookups'):
+            result = subprocess.run([PAYLOAD, str(self.registration_scratch), action], capture_output=True,
+                                    timeout=30, env=dict(os.environ, CDSE_DEFAULT_ENC_ALG=self.profile))
+            self.assertEqual(result.returncode, 0, 'synthetic destination registration failed')
+        shutil.copyfile(self.resources, self.destination_resources)
+        self.destination_resources.chmod(0o600)
+        with closing(sqlite3.connect(self.registration_scratch / 'ResourcesDB')) as generated, \
+                closing(sqlite3.connect(self.destination_resources)) as target, target:
+            row = generated.execute('select * from documents where id=4').fetchone()
+            target.execute(f"insert into documents values ({','.join('?' for _ in row)})", row)
+        self.approval.update(schema=5, destinationResources=str(self.destination_resources),
+                             destinationRegistration=[4, 'copy-document', 'fixtureStorage', 'fixtureOrg', '1'],
+                             destinationStorageAccessPath='/offline-original/')
+        if self._testMethodName.endswith('_existing_document_id'):
+            self.approval['destinationRegistration'][1] = 'raw-document'
+        self.pin_destination()
+
+    def pin_destination(self):
+        self.approval['destinationResourcesDigest'] = hashlib.sha256(self.destination_resources.read_bytes()).hexdigest()
+        self.write_copy_approval()
+
+    def destination_check(self, **options):
+        result = self.copy_owner('--check-destination', extra=('--org-key-file', str(self.org_key)), **options)
+        for secret in ('copy-document', 'fixture-document', 'fixtureStorage', 'fixtureOrg',
+                       'fixture-source-key', '/offline-original/', str(self.destination_resources)):
+            self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        return result
+
+    def verified_destination(self):
+        result = self.destination_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+        self.assertEqual(data['state'], 'verified-legacy-destination')
+        self.assertEqual(data['destination-registration'], 'verified-add-only-copy')
+        self.assertEqual(data['destination-resources-digest'], self.approval['destinationResourcesDigest'])
+        self.assertEqual(data['export-inventory'], 'complete-registered-payloads')
+        self.assertEqual(data['context-authentication'], 'absent')
+        self.assertEqual(data['publication'], 'disabled')
+
+    def test_destination_ready_preflight_is_read_only(self):
+        paths = [*self.export.iterdir(), self.destination_resources, self.candidate_file, self.plan,
+                 self.authority / 'registry.sqlite', self.witness / 'witness.sqlite']
+        before = [path.read_bytes() for path in paths]
+        self.verified_destination()
+        self.assertEqual([path.read_bytes() for path in paths], before)
+
+    def test_destination_preflight_cbc(self):
+        self.verified_destination()
+
+    def test_destination_committed_preflight_does_not_advance_witness(self):
+        self.commit_allocation()
+        before = self.copy_snapshot()
+        self.verified_destination()
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def test_destination_requires_independent_selectors(self):
+        original = list(self.approval['destinationRegistration'])
+        for index, value in enumerate((5, 'another-document', 'another-storage', 'another-org', '2')):
+            self.approval['destinationRegistration'] = list(original)
+            self.approval['destinationRegistration'][index] = value
+            self.write_copy_approval()
+            self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_requires_same_approved_storage_path(self):
+        self.approval['destinationStorageAccessPath'] = '/another-storage/'
+        self.write_copy_approval()
+        self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_lookup_tampering_despite_reapproved_digest(self):
+        original = self.destination_resources.read_bytes()
+        for field in ('documentIdLookup', 'storageIdLookup', 'orgResourceIdLookup'):
+            self.destination_resources.write_bytes(original)
+            with closing(sqlite3.connect(self.destination_resources)) as db, db:
+                db.execute(f"update documents set {field}=printf('%064d',0) where id=4")
+            self.pin_destination()
+            self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_wrong_file_mac(self):
+        self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_changed_metadata(self):
+        self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_multipart_copy(self):
+        self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_wrong_basename(self):
+        self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_existing_document_id(self):
+        self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_rejects_missing_new_registration(self):
+        with closing(sqlite3.connect(self.destination_resources)) as db, db:
+            db.execute('delete from documents where id=4')
+        self.pin_destination()
+        self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_rejects_extra_and_replaced_rows(self):
+        original = self.destination_resources.read_bytes()
+        for sql in ('insert into documents select 5,' + ','.join(f'"{field}"' for field in (
+                        'userId', 'orgId', 'salt', 'resourceInfo', 'columnFile', 'type', 'documentId', 'storageId',
+                        'orgResourceId', 'partMAC', 'totalParts', 'partId', 'lastModified', 'columnId',
+                        'documentIdLookup', 'storageIdLookup', 'orgResourceIdLookup')) + ' from documents where id=4',
+                    'delete from documents where id=1',
+                    "update documents set resourceInfo=resourceInfo||'x' where id=2",
+                    "update users set userId=userId||'x' where id=1",
+                    "update storage set accessPath=accessPath||'x' where id=1"):
+            self.destination_resources.write_bytes(original)
+            with closing(sqlite3.connect(self.destination_resources)) as db, db:
+                db.execute(sql)
+            self.pin_destination()
+            self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_preserves_sql_types_and_schema(self):
+        original = self.destination_resources.read_bytes()
+        for sql in ("update users set resourceInfo=NULL where id=1",
+                    'create index extra_index on documents(type)',
+                    'create view unapproved as select * from documents',
+                    "update schema_meta set value='0' where key='schemaVersion'"):
+            self.destination_resources.write_bytes(original)
+            with closing(sqlite3.connect(self.destination_resources)) as db, db:
+                db.execute(sql)
+            self.pin_destination()
+            self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_stale_digest(self):
+        self.approval['destinationResourcesDigest'] = '00' * 32
+        self.write_copy_approval()
+        self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_private_paths_modes_links_and_sidecars(self):
+        path = self.destination_resources
+        path.chmod(0o644)
+        self.assertEqual(self.destination_check().returncode, 1)
+        path.chmod(0o600)
+        sidecar = Path(str(path) + '-wal')
+        sidecar.touch()
+        self.assertEqual(self.destination_check().returncode, 1)
+        sidecar.unlink()
+        content = path.read_bytes()
+        path.unlink()
+        path.symlink_to(self.resources)
+        self.assertEqual(self.destination_check().returncode, 1)
+        path.unlink()
+        os.link(self.resources, path)
+        self.assertEqual(self.destination_check().returncode, 1)
+        path.unlink()
+        os.mkfifo(path, 0o600)
+        self.assertEqual(self.destination_check().returncode, 1)
+        path.unlink()
+        path.write_bytes(content)
+        path.chmod(0o600)
+        self.verified_destination()
+
+    def test_destination_cannot_substitute_source_or_arbitrary_db_path(self):
+        for path in (self.resources, self.candidate_file, self.registration_scratch / 'ResourcesDB'):
+            self.approval['destinationResources'] = str(path)
+            self.write_copy_approval()
+            self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_requires_full_source_export_inventory(self):
+        (self.export / 'raw-2.bin').unlink()
+        self.assertEqual(self.destination_check().returncode, 1)
+
+    def test_destination_strict_approval_and_action_isolation(self):
+        before = self.copy_snapshot()
+        for action in ('--prepare', '--commit', '--status', '--advance-witness', '--check-candidate',
+                       '--check-registration', '--check-export'):
+            self.assertEqual(self.copy_owner(action, extra=('--org-key-file', str(self.org_key))).returncode, 1)
+        original = copy.deepcopy(self.approval)
+        serialized = json.dumps(original)
+        for key in ('destinationResources', 'destinationResourcesDigest', 'destinationRegistration', 'destinationStorageAccessPath'):
+            self.approval_file.write_text(serialized[:-1] + ',' + json.dumps(key) + ':' + json.dumps(original[key]) + '}')
+            self.assertEqual(self.destination_check().returncode, 1)
+        self.write_copy_approval()
+        for key, value in (('destinationRegistration', [True, 'd', 's', 'o', '1']),
+                           ('destinationRegistration', [4.0, 'd', 's', 'o', '1']),
+                           ('destinationRegistration', [2**63, 'd', 's', 'o', '1']),
+                           ('destinationRegistration', [0, 'd', 's', 'o', '1']),
+                           ('destinationRegistration', [4, '', 'fixtureStorage', 'fixtureOrg', '1']),
+                           ('destinationRegistration', [1, 'fixture-document', 'fixtureStorage', 'fixtureOrg', '1']),
+                           ('destinationResourcesDigest', 'invalid'), ('unexpected', 'value')):
+            self.approval = dict(original, **{key: value})
+            self.write_copy_approval()
+            self.assertEqual(self.destination_check().returncode, 1)
+        self.approval = original
+        del self.approval['destinationRegistration']
+        self.write_copy_approval()
+        self.assertEqual(self.destination_check().returncode, 1)
+        self.approval = original
+        self.approval['destinationRegistration'] = [4, 'copy-document', 'fixtureStorage', 'fixtureOrg', '1']
+        self.write_copy_approval()
+        self.assertEqual(self.destination_check(digest='00' * 32).returncode, 1)
+        self.assertEqual(self.destination_check(token='00' * 40).returncode, 1)
+        self.assertEqual(self.copy_snapshot(), before)
+
+
+for _name in vars(CopyExportTests):
+    if _name.startswith('test_'):
+        setattr(CopyDestinationTests, _name, None)
+
+
 if __name__ == '__main__':
     unittest.main()

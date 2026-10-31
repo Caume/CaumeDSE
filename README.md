@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.23.0
+# Caume Data Security Engine (CaumeDSE) version 2.24.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2945,6 +2945,12 @@ payload file MACs and local storage associations, and rejects missing or extra
 export artifacts. It accepts one approved historical storage access path;
 RolesDB/LogsDB are accounted for as private SQLite files, without checking their
 protected contents. It remains read-only and does not approve publication.
+The optional [schema-5 destination registration preflight](HERRADURAKEX_AT_REST_PLAN.md#destination-registration-preflight-147-phase-22)
+also verifies a separately pinned staged ResourcesDB. It must preserve all source
+rows and schema while adding exactly one independently approved copy registration
+with a fresh document ID, unchanged storage/column association and a valid file
+MAC for the candidate. This point-in-time check does not install files, publish a
+destination map or provide a durable acceptance receipt.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider
