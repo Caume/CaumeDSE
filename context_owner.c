@@ -3,6 +3,7 @@
 #include "context_manager.h"
 #include "context_offline.h"
 #include "context_witness.h"
+#include <dirent.h>
 
 typedef struct
 {
@@ -23,6 +24,8 @@ static int cmeCopyOwnerPreflight(const cmeOwnerApproval *approval, const cmeCont
     const cmeContextMap *destination, const char *key);
 static int cmeCopyOwnerRegistration(sqlite3 *db, const cmeOwnerApproval *approval,
     const cmeOfflineArtifact *column, const char *key);
+static int cmeCopyOwnerExport(sqlite3 *db, const cmeOwnerApproval *approval,
+    const cmeOfflineArtifact *resources, const char *key);
 
 static int cmeOwnerHex(const char *value, unsigned char *bytes, size_t length)
 {
@@ -228,7 +231,7 @@ static int cmeCopyOwnerParse(const char *body, cmeOwnerApproval *approval)
         if (!i)
         {
             if (sqlite3_column_type(stmt,2)!=SQLITE_INTEGER ||
-                (sqlite3_column_int64(stmt,2)<1 || sqlite3_column_int64(stmt,2)>3)) goto done;
+                (sqlite3_column_int64(stmt,2)<1 || sqlite3_column_int64(stmt,2)>4)) goto done;
             approval->schema=(int)sqlite3_column_int64(stmt,2);
             approval->values[column]=strdup("1");
         }
@@ -250,7 +253,7 @@ static int cmeCopyOwnerParse(const char *body, cmeOwnerApproval *approval)
     if (approval->schema>=2 && (cmeOwnerHex(approval->values[15],approval->source,32) ||
         cmeOwnerHex(approval->values[16],approval->target,32))) goto done;
     sqlite3_finalize(stmt); stmt=NULL;
-    if (approval->schema==3)
+    if (approval->schema>=3)
     {
         if (cmeOwnerHex(approval->values[20],approval->resourcesSource,32) || *approval->values[21]!='/' ||
             sqlite3_prepare_v2(db,"SELECT json_extract(?1,'$[0]'),json_extract(?1,'$[1]'),json_extract(?1,'$[2]'),"
@@ -362,7 +365,7 @@ static int cmeCopyOwnerCandidatePaths(const cmeOwnerApproval *approval, const cm
         cmeOfflineOpen(approval->values[13],0,&source) || cmeOfflineOpen(approval->values[14],0,&candidate)) goto done;
     strcpy(parent,approval->values[13]); slash=strrchr(parent,'/'); if (!slash) goto done; *slash=0;
     if (strcmp(parent,approval->values[7])) goto done;
-    if (approval->schema==3)
+    if (approval->schema>=3)
     {
         char expected[PATH_MAX];
         if (snprintf(expected,sizeof(expected),"%s/ResourcesDB",approval->values[7])>=(int)sizeof(expected) ||
@@ -405,7 +408,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     FILE *output=NULL,*diagnostics=NULL;
     unsigned char key[32]={0},witnessKey[32]={0},digest[32],bytes[73],approved[73],*prepared=NULL;
     size_t length=0,i;
-    int result=1,state=0,prepare=0,advance=0,check=0,registered=0;
+    int result=1,state=0,prepare=0,advance=0,check=0,registered=0,export=0;
     if (argc==3 && !strcmp(argv[2],"--help"))
     {
         puts("Usage: caumedse-admin context-copy-plan --approval FILE --confirmed-offline APPROVAL_REALPATH\n"
@@ -415,11 +418,13 @@ static int cmeCopyOwnerMain(int argc, char **argv)
              "  Advance only: --approved-registry PLANNED_NEXT_REGISTRY_TOKEN\n"
              "  Schema 2 only: --check-candidate --plan-digest SHA256 --org-key-file FILE\n"
              "  Schema 3 only: --check-registration --plan-digest SHA256 --org-key-file FILE\n"
+             "  Schema 4 only: --check-export --plan-digest SHA256 --org-key-file FILE\n"
              "Private schema-1 approval, original pins, independently retained digest/token.\n"
              "Prepare exclusively creates and syncs the plan, never overwrites or allocates IDs.\n"
              "Stop all readers/writers. Retain uncertain files; never reset/blindly regenerate.\n"
              "Candidate check verifies complete selected ColumnFile cells and a byte-exact legacy clone.\n"
              "Registration check also verifies the selected source ResourcesDB association.\n"
+             "Export check also accounts for all registered payloads, part groups and local storage.\n"
              "Neither check is destination registration acceptance or V2 context authentication.\n"
              "Witness advancement is separate. No physical copy, catalog publication or V2 writes.");
         return(0);
@@ -429,7 +434,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         const char **option=NULL;
         if (!strcmp(argv[i],"--prepare") || !strcmp(argv[i],"--status") ||
             !strcmp(argv[i],"--commit") || !strcmp(argv[i],"--advance-witness") || !strcmp(argv[i],"--check-candidate") ||
-            !strcmp(argv[i],"--check-registration"))
+            !strcmp(argv[i],"--check-registration") || !strcmp(argv[i],"--check-export"))
         { if (action) goto done; action=argv[i]; continue; }
         if (!strcmp(argv[i],"--approval")) option=&manifest;
         else if (!strcmp(argv[i],"--registry-key-file")) option=&keyFile;
@@ -449,8 +454,9 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         cmeCopyOwnerPaths(&approval,manifest,keyFile,witnessFile,&parent) ||
         cmeOwnerFile(keyFile,65,&keyText) || cmeOwnerFile(witnessFile,65,&witnessText)) goto done;
     prepare=!strcmp(action,"--prepare"); advance=!strcmp(action,"--advance-witness");
-    registered=!strcmp(action,"--check-registration"); check=registered || !strcmp(action,"--check-candidate");
-    if (check ? (approval.schema!=(registered ? 3 : 2) || !orgFile) : (approval.schema!=1 || orgFile)) goto done;
+    export=!strcmp(action,"--check-export");
+    registered=export || !strcmp(action,"--check-registration"); check=registered || !strcmp(action,"--check-candidate");
+    if (check ? (approval.schema!=(export ? 4 : (registered ? 3 : 2)) || !orgFile) : (approval.schema!=1 || orgFile)) goto done;
     if ((prepare ? digestText!=NULL : (!digestText || cmeOwnerHex(digestText,digest,32))) ||
         (advance ? (!approvedRegistry || cmeOwnerHex(approvedRegistry,approved,73)) : approvedRegistry!=NULL)) goto done;
     if (strlen(keyText)==65 && keyText[64]=='\n') keyText[64]=0;
@@ -524,13 +530,14 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         if (state==2 && recovery==cmeWitnessRecoveryAdvanceRequired)
         { result=cmeContextWitnessCheck(witness,&approval.registry,&approval.catalog); if (result) goto done; }
         fprintf(output,"state=%s\npublication=disabled\ninventory=complete-columnfile-cells\ncontext-authentication=absent\nplan-digest=",
-            registered ? "verified-legacy-registration" : "verified-legacy-candidate");
+            export ? "verified-legacy-export" : (registered ? "verified-legacy-registration" : "verified-legacy-candidate"));
         cmeOwnerWriteHex(output,digest,32); fputc('\n',output);
         if (registered)
         {
             fprintf(output,"registration=selected-source-columnfile\nresources-digest=");
             cmeOwnerWriteHex(output,approval.resourcesSource,32); fputc('\n',output);
         }
+        if (export) fprintf(output,"export-inventory=complete-registered-payloads\npayload-authentication=registered-file-macs\n");
         goto done;
     }
     if (prepare)
@@ -916,7 +923,7 @@ static int cmeCopyOwnerPreflight(const cmeOwnerApproval *approval, const cmeCont
     unsigned int budgets[3]={20000,20000,20000};
     cmeCryptoProfile profile;
     char savedProfile[64];
-    int i,j,result=1,count=approval->schema==3 ? 3 : 2;
+    int i,j,result=1,count=approval->schema>=3 ? 3 : 2;
     strcpy(savedProfile,cmeDefaultEncAlg);
     for (i=0;i<3;i++) { memset(&files[i],0,sizeof(files[i])); files[i].file=-1; files[i].directory=-1; }
     if ((strcmp(approval->values[18],"aes-256-gcm") && strcmp(approval->values[18],"aes-256-cbc")) ||
@@ -949,7 +956,8 @@ static int cmeCopyOwnerPreflight(const cmeOwnerApproval *approval, const cmeCont
         sqlite3_limit(db[2],SQLITE_LIMIT_SQL_LENGTH,65536);
         sqlite3_progress_handler(db[2],1000,cmeOwnerBudget,&budgets[2]);
         if (sqlite3_exec(db[2],"PRAGMA trusted_schema=OFF; BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
-            cmeCopyOwnerRegistration(db[2],approval,&files[0],key)) goto done;
+            cmeCopyOwnerRegistration(db[2],approval,&files[0],key) ||
+            (approval->schema==4 && cmeCopyOwnerExport(db[2],approval,&files[2],key))) goto done;
     }
     for (i=0;i<count;i++) for (j=0;j<i;j++)
         if (files[i].status.st_dev==files[j].status.st_dev && files[i].status.st_ino==files[j].status.st_ino) goto done;
@@ -1157,6 +1165,139 @@ done:
     for (i=0;i<4;i++) if (plain[i]) { OPENSSL_cleanse(plain[i],strlen(plain[i])); free(plain[i]); }
     if (path) { OPENSSL_cleanse(path,strlen(path)); free(path); }
     sqlite3_finalize(stmt); return(result);
+}
+
+/* Enumerate twice against authenticated names. Never interpret a registered name
+   as a path, or follow a protected historical storage accessPath. */
+static int cmeCopyOwnerExportNames(sqlite3 *inventory, const char *root, size_t expected)
+{
+    DIR *directory=opendir(root);
+    struct dirent *entry;
+    sqlite3_stmt *stmt=NULL;
+    size_t count=0;
+    int result=1;
+    if (!directory || sqlite3_prepare_v2(inventory,
+        "SELECT 1 FROM parts WHERE name=?1 UNION ALL SELECT 1 WHERE ?1 IN ('ResourcesDB','RolesDB','LogsDB')",
+        -1,&stmt,NULL)!=SQLITE_OK) goto done;
+    for (;;)
+    {
+        errno=0; entry=readdir(directory);
+        if (!entry) { if (errno) goto done; break; }
+        if (!strcmp(entry->d_name,".") || !strcmp(entry->d_name,"..")) continue;
+        if (++count>expected || sqlite3_bind_text(stmt,1,entry->d_name,-1,SQLITE_TRANSIENT)!=SQLITE_OK ||
+            sqlite3_step(stmt)!=SQLITE_ROW || sqlite3_step(stmt)!=SQLITE_DONE || sqlite3_reset(stmt)!=SQLITE_OK) goto done;
+    }
+    if (count==expected) result=0;
+done:
+    sqlite3_finalize(stmt); if (directory) closedir(directory); return(result);
+}
+
+static int cmeCopyOwnerExport(sqlite3 *db, const cmeOwnerApproval *approval,
+    const cmeOfflineArtifact *resources, const char *key)
+{
+    static const int fields[]={5,7,8,9,6,14,11,12};
+    static const char *lookupNames[]={"documentId","storageId","orgResourceId"};
+    static const char *internal[]={"RolesDB","LogsDB"};
+    sqlite3 *inventory=NULL;
+    sqlite3_stmt *read=NULL,*insert=NULL,*check=NULL;
+    cmeOfflineArtifact *artifacts=NULL,current={.file=-1,.directory=-1};
+    char *plain[15]={0},*lookup=NULL,path[PATH_MAX];
+    struct stat directory;
+    size_t count=0,rows=0,i,j;
+    unsigned int budget=20000;
+    int result=1,step;
+    artifacts=calloc(cmeContextRegistryMaxEntries+2,sizeof(*artifacts));
+    if (!artifacts || sqlite3_open(":memory:",&inventory)!=SQLITE_OK) goto done;
+    sqlite3_limit(inventory,SQLITE_LIMIT_LENGTH,cmeContextRegistryMaxBytes);
+    sqlite3_progress_handler(inventory,1000,cmeOwnerBudget,&budget);
+    if (sqlite3_exec(inventory,"PRAGMA trusted_schema=OFF; PRAGMA temp_store=MEMORY;"
+        "CREATE TABLE parts(name TEXT PRIMARY KEY,doc TEXT,storage TEXT,org TEXT,type TEXT,col TEXT,total INTEGER,part INTEGER);"
+        "CREATE TABLE stores(storage TEXT,org TEXT,PRIMARY KEY(storage,org));",NULL,NULL,NULL)!=SQLITE_OK ||
+        sqlite3_prepare_v2(db,"SELECT * FROM documents ORDER BY id",-1,&read,NULL)!=SQLITE_OK ||
+        sqlite3_prepare_v2(inventory,"INSERT INTO parts VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",-1,&insert,NULL)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(read))==SQLITE_ROW)
+    {
+        if (++rows>cmeContextRegistryMaxEntries) goto done;
+        for (i=1;i<15;i++)
+            if (i!=3 && cmeOwnerRegisteredValue(read,(int)i,key,approval->values[18],&plain[i])) goto done;
+        plain[3]=cmeOwnerText(read,3,32);
+        if (!plain[3] || !*plain[5] || strlen(plain[5])>NAME_MAX || strchr(plain[5],'/') ||
+            !strcmp(plain[5],".") || !strcmp(plain[5],"..") || !strcmp(plain[5],"ResourcesDB") ||
+            !strcmp(plain[5],"RolesDB") || !strcmp(plain[5],"LogsDB")) goto done;
+        for (i=6;i<=9;i++) if (!*plain[i] || strlen(plain[i])>128) goto done;
+        if (!*plain[14] || strlen(plain[14])>128) goto done;
+        for (i=11;i<=12;i++)
+        {
+            char *end=NULL;
+            unsigned long value;
+            errno=0; value=strtoul(plain[i],&end,10);
+            if (!*plain[i] || strspn(plain[i],"0123456789")!=strlen(plain[i]) || errno || !end || *end ||
+                !value || value>cmeContextRegistryMaxEntries) goto done;
+        }
+        for (i=0;i<3;i++)
+        {
+            char *stored=cmeOwnerText(read,15+(int)i,64);
+            int bad=!stored || cmeGetProtectDBLookupValue(lookupNames[i],plain[7+i],key,&lookup) ||
+                !lookup || strlen(stored)!=64 || strlen(lookup)!=64 || CRYPTO_memcmp(stored,lookup,64);
+            free(stored); free(lookup); lookup=NULL;
+            if (bad) goto done;
+        }
+        for (i=0;i<8;i++)
+            if (sqlite3_bind_text(insert,(int)i+1,plain[fields[i]],-1,SQLITE_TRANSIENT)!=SQLITE_OK) goto done;
+        if (sqlite3_step(insert)!=SQLITE_DONE || sqlite3_reset(insert)!=SQLITE_OK ||
+            snprintf(path,sizeof(path),"%s/%s",approval->values[7],plain[5])>=(int)sizeof(path) ||
+            cmeOfflineOpenPayload(path,&current) || cmeOwnerRegisteredMAC(&current,plain[3],key,plain[10])) goto done;
+        /* Retain bounded metadata, not thousands of open descriptors. The final
+           pass rechecks every entry through the held export directory. */
+        artifacts[count++]=current; cmeOfflineClose(&current);
+        for (i=1;i<15;i++) if (plain[i]) { OPENSSL_cleanse(plain[i],strlen(plain[i])); free(plain[i]); plain[i]=NULL; }
+    }
+    if (step!=SQLITE_DONE || !rows) goto done;
+    sqlite3_finalize(read); read=NULL; sqlite3_finalize(insert); insert=NULL;
+    if (sqlite3_prepare_v2(db,"SELECT * FROM storage ORDER BY id",-1,&read,NULL)!=SQLITE_OK ||
+        sqlite3_prepare_v2(inventory,"INSERT INTO stores VALUES(?1,?2)",-1,&insert,NULL)!=SQLITE_OK) goto done;
+    rows=0;
+    while ((step=sqlite3_step(read))==SQLITE_ROW)
+    {
+        if (++rows>cmeContextRegistryMaxEntries) goto done;
+        for (i=6;i<=11;i++) if ((i<=8 || i==11) &&
+            cmeOwnerRegisteredValue(read,(int)i,key,approval->values[18],&plain[i])) goto done;
+        if (strcmp(plain[6],"local") || strcmp(plain[8],approval->values[21]) ||
+            !*plain[7] || strlen(plain[7])>128 || !*plain[11] || strlen(plain[11])>128 ||
+            sqlite3_bind_text(insert,1,plain[7],-1,SQLITE_TRANSIENT)!=SQLITE_OK ||
+            sqlite3_bind_text(insert,2,plain[11],-1,SQLITE_TRANSIENT)!=SQLITE_OK ||
+            sqlite3_step(insert)!=SQLITE_DONE || sqlite3_reset(insert)!=SQLITE_OK) goto done;
+        for (i=6;i<=11;i++) if (plain[i]) { OPENSSL_cleanse(plain[i],strlen(plain[i])); free(plain[i]); plain[i]=NULL; }
+    }
+    if (step!=SQLITE_DONE || sqlite3_prepare_v2(inventory,
+        "SELECT 1 FROM parts p WHERE part>total OR NOT EXISTS (SELECT 1 FROM stores s WHERE s.storage=p.storage AND s.org=p.org) "
+        "UNION ALL SELECT 1 FROM parts GROUP BY doc,storage,org,type,col "
+        "HAVING count(*)!=max(total) OR count(DISTINCT part)!=count(*) OR min(total)!=max(total)",
+        -1,&check,NULL)!=SQLITE_OK || sqlite3_step(check)!=SQLITE_DONE) goto done;
+    for (i=0;i<2;i++)
+    {
+        if (snprintf(path,sizeof(path),"%s/%s",approval->values[7],internal[i])>=(int)sizeof(path) ||
+            cmeOfflineOpen(path,1,&current)) goto done;
+        artifacts[count++]=current; cmeOfflineClose(&current);
+    }
+    if (cmeCopyOwnerExportNames(inventory,approval->values[7],count+1)) goto done;
+    for (i=0;i<count;i++)
+    {
+        artifacts[i].file=-1; artifacts[i].directory=resources->directory;
+        j=cmeOfflineVerify(&artifacts[i]); artifacts[i].directory=-1;
+        if (j) goto done;
+    }
+    if (cmeCopyOwnerExportNames(inventory,approval->values[7],count+1) ||
+        fstat(resources->directory,&directory) ||
+        directory.st_mtim.tv_sec!=resources->parent.st_mtim.tv_sec || directory.st_mtim.tv_nsec!=resources->parent.st_mtim.tv_nsec ||
+        directory.st_ctim.tv_sec!=resources->parent.st_ctim.tv_sec || directory.st_ctim.tv_nsec!=resources->parent.st_ctim.tv_nsec ||
+        lstat(approval->values[7],&directory) || directory.st_dev!=resources->parent.st_dev ||
+        directory.st_ino!=resources->parent.st_ino || directory.st_uid!=geteuid() || (directory.st_mode&07777)!=0700) goto done;
+    result=0;
+done:
+    for (i=0;i<15;i++) if (plain[i]) { OPENSSL_cleanse(plain[i],strlen(plain[i])); free(plain[i]); }
+    free(lookup); free(artifacts); cmeOfflineClose(&current);
+    sqlite3_finalize(read); sqlite3_finalize(insert); sqlite3_finalize(check); sqlite3_close(inventory); return(result);
 }
 
 static int cmeOwnerRegisteredVerify(const cmeOwnerApproval *approval, const char *key)

@@ -881,6 +881,7 @@ class CopyRegistrationTests(CopyCandidateTests):
                     for row in rows:
                         target.execute(f"insert into {table} ({','.join(columns)}) values ({','.join('?' for _ in columns)})",
                                        [row[field] for field in columns])
+        self.prepare_registration_inventory()
         self.registration_fixture('bundle')
         with closing(sqlite3.connect(self.resources)) as db:
             db.execute('pragma journal_mode=DELETE')
@@ -889,6 +890,9 @@ class CopyRegistrationTests(CopyCandidateTests):
         self.approval.update(schema=3, resources=str(self.resources), registration=[
             1, 'fixture-document', 'fixtureStorage', 'fixtureOrg', '1'], storageAccessPath='/offline-original/')
         self.pin_resources()
+
+    def prepare_registration_inventory(self):
+        pass
 
     def registration_fixture(self, action):
         result = subprocess.run([PAYLOAD, str(self.export), action], capture_output=True, timeout=30,
@@ -1046,6 +1050,200 @@ class CopyRegistrationTests(CopyCandidateTests):
 for _name in vars(CopyCandidateTests):
     if _name.startswith('test_'):
         setattr(CopyRegistrationTests, _name, None)
+
+
+class CopyExportTests(CopyRegistrationTests):
+    def prepare_registration_inventory(self):
+        with closing(sqlite3.connect(self.resources)) as db, db:
+            db.row_factory = sqlite3.Row
+            original = dict(db.execute('select * from documents').fetchone())
+            for part in (1, 2):
+                name = f'raw-{part}.bin'
+                if self._testMethodName.endswith('_path_traversal') and part == 1:
+                    name = '../outside.bin'
+                (self.export / name).write_bytes(b'private raw payload\x00' + bytes([part]))
+                values = dict(original, id=part + 1, columnFile=name, type='file.raw',
+                              documentId='raw-document', columnId='0', partId=str(part), totalParts='2')
+                if self._testMethodName.endswith('_missing_part'):
+                    values['totalParts'] = '3'
+                if self._testMethodName.endswith('_duplicate_part'):
+                    values['partId'] = '1'
+                if self._testMethodName.endswith('_inconsistent_total') and part == 2:
+                    values['totalParts'] = '3'
+                if self._testMethodName.endswith('_invalid_part') and part == 2:
+                    values['partId'] = '2x'
+                if self._testMethodName.endswith('_orphan_storage'):
+                    values['storageId'] = 'unregistered-storage'
+                columns = list(values)
+                db.execute(f"insert into documents ({','.join(columns)}) values ({','.join('?' for _ in columns)})",
+                           [values[field] for field in columns])
+            if self._testMethodName.endswith('_duplicate_name'):
+                values = dict(original, id=4, documentId='duplicate-document')
+                columns = list(values)
+                db.execute(f"insert into documents ({','.join(columns)}) values ({','.join('?' for _ in columns)})",
+                           [values[field] for field in columns])
+            if self._testMethodName.endswith('_unrelated_remote') or self._testMethodName.endswith('_unrelated_path'):
+                storage = dict(db.execute('select * from storage').fetchone())
+                storage.update(id=2, storageId='unused-storage')
+                if self._testMethodName.endswith('_unrelated_remote'):
+                    storage['type'] = 'remote'
+                else:
+                    storage['accessPath'] = '/different-root/'
+                columns = list(storage)
+                db.execute(f"insert into storage ({','.join(columns)}) values ({','.join('?' for _ in columns)})",
+                           [storage[field] for field in columns])
+
+    def setUp(self):
+        super().setUp()
+        for path in self.export.iterdir():
+            path.chmod(0o600)
+            if path.name in ('RolesDB', 'LogsDB'):
+                with closing(sqlite3.connect(path)) as db:
+                    db.execute('pragma journal_mode=DELETE')
+        self.approval['schema'] = 4
+        self.write_copy_approval()
+
+    def export_check(self, **options):
+        return self.copy_owner('--check-export', extra=('--org-key-file', str(self.org_key)), **options)
+
+    def verified_export(self):
+        result = self.export_check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+        self.assertEqual(data['state'], 'verified-legacy-export')
+        self.assertEqual(data['export-inventory'], 'complete-registered-payloads')
+        self.assertEqual(data['payload-authentication'], 'registered-file-macs')
+        self.assertEqual(data['publication'], 'disabled')
+        self.assertEqual(data['context-authentication'], 'absent')
+        for secret in ('raw-document', 'fixtureStorage', 'fixtureOrg', 'fixture-source-key', '/offline-original/'):
+            self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+
+    def test_export_complete_inventory_is_read_only(self):
+        paths = [*self.export.iterdir(), self.candidate_file, self.plan,
+                 self.authority / 'registry.sqlite', self.witness / 'witness.sqlite']
+        before = [path.read_bytes() for path in paths]
+        self.verified_export()
+        self.assertEqual([path.read_bytes() for path in paths], before)
+
+    def test_export_complete_inventory_cbc(self):
+        self.verified_export()
+
+    def test_export_committed_inventory_does_not_advance_witness(self):
+        self.commit_allocation()
+        before = self.copy_snapshot()
+        self.verified_export()
+        self.assertEqual(self.copy_snapshot(), before)
+
+    def test_export_missing_payload(self):
+        (self.export / 'raw-2.bin').unlink()
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_extra_file_and_directory(self):
+        extra = self.export / 'unregistered'
+        extra.write_text('extra')
+        self.assertEqual(self.export_check().returncode, 1)
+        extra.unlink()
+        extra.mkdir()
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_tampered_payload_despite_approved_resources(self):
+        path = self.export / 'raw-2.bin'
+        payload = bytearray(path.read_bytes())
+        payload[-1] ^= 1
+        path.write_bytes(payload)
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_unrelated_lookup_and_field_tampering(self):
+        original = self.resources.read_bytes()
+        for sql in ("update documents set storageIdLookup=printf('%064d',0) where id=2",
+                    "update documents set resourceInfo=resourceInfo||'x' where id=2"):
+            self.resources.write_bytes(original)
+            with closing(sqlite3.connect(self.resources)) as db, db:
+                db.execute(sql)
+            self.pin_resources()
+            self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_missing_part(self):
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_duplicate_part(self):
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_inconsistent_total(self):
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_invalid_part(self):
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_orphan_storage(self):
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_unrelated_remote(self):
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_unrelated_path(self):
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_duplicate_name(self):
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_path_traversal(self):
+        self.assertEqual(self.export_check().returncode, 1)
+
+    def test_export_unsafe_payload_modes_links_sidecars_and_fifo(self):
+        path = self.export / 'raw-2.bin'
+        content = path.read_bytes()
+        path.chmod(0o644)
+        self.assertEqual(self.export_check().returncode, 1)
+        path.chmod(0o600)
+        sidecar = Path(str(path) + '-wal')
+        sidecar.touch()
+        self.assertEqual(self.export_check().returncode, 1)
+        sidecar.unlink()
+        path.unlink()
+        path.symlink_to(self.export / 'raw-1.bin')
+        self.assertEqual(self.export_check().returncode, 1)
+        path.unlink()
+        os.link(self.export / 'raw-1.bin', path)
+        self.assertEqual(self.export_check().returncode, 1)
+        path.unlink()
+        os.mkfifo(path, 0o600)
+        self.assertEqual(self.export_check().returncode, 1)
+        path.unlink()
+        path.write_bytes(content)
+        path.chmod(0o600)
+        self.verified_export()
+
+    def test_export_requires_private_internal_databases(self):
+        for name in ('RolesDB', 'LogsDB'):
+            path = self.export / name
+            path.chmod(0o644)
+            self.assertEqual(self.export_check().returncode, 1)
+            path.chmod(0o600)
+            content = path.read_bytes()
+            path.unlink()
+            self.assertEqual(self.export_check().returncode, 1)
+            path.write_bytes(content)
+            path.chmod(0o600)
+
+    def test_export_schema_action_and_retained_approval_isolation(self):
+        before = self.copy_snapshot()
+        for action in ('--prepare', '--commit', '--status', '--advance-witness', '--check-candidate', '--check-registration'):
+            self.assertEqual(self.copy_owner(action, extra=('--org-key-file', str(self.org_key))).returncode, 1)
+        for schema in (1, 2, 3):
+            self.approval['schema'] = schema
+            self.write_copy_approval()
+            self.assertEqual(self.export_check().returncode, 1)
+        self.approval['schema'] = 4
+        self.write_copy_approval()
+        self.assertEqual(self.export_check(digest='00' * 32).returncode, 1)
+        self.assertEqual(self.export_check(token='00' * 40).returncode, 1)
+        self.assertEqual(self.copy_snapshot(), before)
+
+
+for _name in vars(CopyRegistrationTests):
+    if _name.startswith('test_'):
+        setattr(CopyExportTests, _name, None)
 
 
 if __name__ == '__main__':
