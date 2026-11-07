@@ -12,6 +12,7 @@ from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
+import time
 import unittest
 
 import test_context_manager as manager_tests
@@ -1487,6 +1488,275 @@ class CopyDestinationTests(CopyExportTests):
 for _name in vars(CopyExportTests):
     if _name.startswith('test_'):
         setattr(CopyDestinationTests, _name, None)
+
+
+class CopyPublicationTests(CopyDestinationTests):
+    def setUp(self):
+        super().setUp()
+        self.publication_plan = self.custody / 'publication.plan'
+        self.publication_digest = None
+        self.previous_retained = self.retained
+        if not self._testMethodName.endswith('_uncommitted'):
+            committed = self.commit_allocation()
+            if not self._testMethodName.endswith('_unadvanced'):
+                selected = self.approval
+                self.approval = self.allocation_approval
+                self.write_copy_approval()
+                data = self.copy_accepted('--advance-witness', extra=('--approved-registry', committed['registry']))
+                self.retained = data['witness-token']
+                self.approval = selected
+        self.approval.update(schema=6, publicationPlan=str(self.publication_plan), destinationMap='copied-inventory')
+        self.write_copy_approval()
+
+    def publication(self, action='--publication-status', *, retained_digest=None, omit_digest=False, **options):
+        extra = ['--org-key-file', str(self.org_key)]
+        if not omit_digest and action != '--prepare-publication' and (retained_digest or self.publication_digest):
+            extra.extend(['--publication-digest', retained_digest or self.publication_digest])
+        result = self.copy_owner(action, extra=extra, **options)
+        for secret in ('copy-document', 'copied-inventory', 'fixtureStorage', 'fixtureOrg', 'fixture-source-key',
+                       '/offline-original/', str(self.publication_plan)):
+            self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        return result
+
+    def publication_prepared(self):
+        result = self.publication('--prepare-publication')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+        self.publication_digest = data['publication-plan-digest']
+        self.assertEqual(data['state'], 'publication-prepared')
+        self.assertEqual(data['publication'], 'disabled')
+        self.assertEqual(data['context-authentication'], 'absent')
+        self.assertEqual(data['plan-digest'], self.digest)
+        self.assertEqual(self.publication_digest, hashlib.sha256(self.publication_plan.read_bytes()).hexdigest())
+        self.assertLessEqual(self.publication_plan.stat().st_size, 512)
+        self.assertEqual(self.publication_plan.stat().st_mode & 0o7777, 0o600)
+        return data
+
+    def test_publication_durable_handoff_and_read_only_status(self):
+        paths = [*self.export.iterdir(), self.destination_resources, self.candidate_file, self.plan,
+                 self.authority / 'registry.sqlite', self.witness / 'witness.sqlite']
+        before = [path.read_bytes() for path in paths]
+        self.publication_prepared()
+        result = self.publication()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(b'state=publication-current', result.stdout)
+        self.assertEqual([path.read_bytes() for path in paths], before)
+        self.assertNotEqual(self.map_bind(name='copied-inventory').returncode, 0)
+
+    def test_publication_handoff_cbc(self):
+        self.publication_prepared()
+        self.assertEqual(self.publication().returncode, 0)
+
+    def test_publication_requires_uncommitted(self):
+        self.assertEqual(self.publication('--prepare-publication').returncode, 2)
+        self.assertFalse(self.publication_plan.exists())
+
+    def test_publication_requires_unadvanced(self):
+        self.assertEqual(self.publication('--prepare-publication').returncode, 2)
+        self.assertFalse(self.publication_plan.exists())
+
+    def test_publication_requires_retained_current_witness(self):
+        self.assertEqual(self.publication('--prepare-publication', token=self.previous_retained).returncode, 2)
+        self.assertFalse(self.publication_plan.exists())
+
+    def test_publication_never_overwrites_or_regenerates_missing_evidence(self):
+        self.publication_prepared()
+        retained = self.publication_plan.read_bytes()
+        self.assertEqual(self.publication('--prepare-publication').returncode, 1)
+        self.assertEqual(self.publication_plan.read_bytes(), retained)
+        self.publication_plan.unlink()
+        self.assertEqual(self.publication().returncode, 1)
+        self.assertFalse(self.publication_plan.exists())
+
+    def test_publication_partial_write_is_retained_and_never_accepted(self):
+        def limit_file_size():
+            signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+            resource.setrlimit(resource.RLIMIT_FSIZE, (128, 128))
+        before = self.copy_snapshot(), self.map_current()
+        self.assertEqual(self.publication('--prepare-publication', preexec_fn=limit_file_size).returncode, 1)
+        self.assertEqual(self.publication_plan.stat().st_size, 128)
+        retained = self.publication_plan.read_bytes()
+        self.publication_digest = hashlib.sha256(retained).hexdigest()
+        self.assertEqual(self.publication().returncode, 1)
+        self.assertEqual(self.publication('--prepare-publication').returncode, 1)
+        self.assertEqual(self.publication_plan.read_bytes(), retained)
+        self.assertEqual((self.copy_snapshot(), self.map_current()), before)
+
+    def test_publication_process_kill_before_acknowledgement(self):
+        read_fd, write_fd = os.pipe()
+        process = None
+        try:
+            os.set_blocking(write_fd, False)
+            while True:
+                try:
+                    os.write(write_fd, b'x' * 4096)
+                except BlockingIOError:
+                    break
+            os.set_blocking(write_fd, True)
+            args = [ADMIN, 'context-copy-plan', '--approval', str(self.approval_file),
+                    '--confirmed-offline', str(self.approval_file), '--registry-key-file', str(self.key),
+                    '--witness-directory', str(self.witness), '--witness-key-file', str(self.witness_key),
+                    '--retained-witness-token', self.retained, '--prepare-publication',
+                    '--plan-digest', self.digest, '--org-key-file', str(self.org_key)]
+            before = self.copy_snapshot(), self.map_current()
+            process = subprocess.Popen(args, stdout=write_fd, stderr=subprocess.DEVNULL)
+            deadline = time.monotonic() + 30
+            while not self.publication_plan.exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(self.publication_plan.exists())
+            time.sleep(0.1)
+            self.assertIsNone(process.poll())  # Filled output pipe withholds the acknowledgement.
+            process.kill()
+            self.assertEqual(process.wait(timeout=5), -signal.SIGKILL)
+            self.assertEqual(self.publication('--prepare-publication').returncode, 1)
+            # Explicit independent owner review after the lost acknowledgement.
+            self.publication_digest = hashlib.sha256(self.publication_plan.read_bytes()).hexdigest()
+            self.assertEqual(self.publication().returncode, 0)
+            self.assertEqual((self.copy_snapshot(), self.map_current()), before)
+        finally:
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+            os.close(read_fd)
+            os.close(write_fd)
+
+    def test_publication_tampering_despite_reapproved_digest(self):
+        self.publication_prepared()
+        value = bytearray(self.publication_plan.read_bytes())
+        value[-1] ^= 1
+        self.publication_plan.write_bytes(value)
+        self.assertEqual(self.publication().returncode, 1)
+        self.publication_digest = hashlib.sha256(value).hexdigest()
+        self.assertEqual(self.publication().returncode, 1)
+
+    def test_publication_request_and_custody_substitution(self):
+        self.publication_prepared()
+        self.approval['destinationMap'] = 'another-unused-map'
+        self.write_copy_approval()
+        self.assertEqual(self.publication().returncode, 1)
+        self.approval['destinationMap'] = 'copied-inventory'
+        relocated = self.custody / 'relocated.plan'
+        shutil.copyfile(self.publication_plan, relocated)
+        relocated.chmod(0o600)
+        self.approval['publicationPlan'] = str(relocated)
+        self.write_copy_approval()
+        self.assertEqual(self.publication().returncode, 1)
+
+    def test_publication_semantic_json_spelling_preserves_request(self):
+        prepared = self.publication_prepared()
+        self.approval_file.write_text(json.dumps(dict(reversed(list(self.approval.items()))), indent=4))
+        result = self.publication()
+        self.assertEqual(result.returncode, 0)
+        self.assertIn(prepared['request-digest'].encode(), result.stdout)
+
+    def test_publication_reapproved_destination_bytes_require_new_intent(self):
+        self.publication_prepared()
+        original = self.destination_resources.read_bytes()
+        with closing(sqlite3.connect(self.destination_resources)) as db:
+            db.execute('vacuum')
+        self.assertNotEqual(self.destination_resources.read_bytes(), original)
+        self.pin_destination()
+        selected = self.approval
+        self.approval = {key: value for key, value in selected.items() if key not in ('publicationPlan', 'destinationMap')}
+        self.approval['schema'] = 5
+        self.write_copy_approval()
+        self.assertEqual(self.destination_check().returncode, 0)
+        self.approval = selected
+        self.write_copy_approval()
+        self.assertEqual(self.publication().returncode, 1)
+
+    def test_publication_requires_separate_digest_and_refuses_allocation_receipt(self):
+        self.publication_prepared()
+        for digest in ('00' * 32, self.digest):
+            self.assertEqual(self.publication(retained_digest=digest).returncode, 1)
+        self.assertEqual(self.publication(omit_digest=True).returncode, 1)
+        self.publication_plan.write_bytes(self.plan.read_bytes())
+        self.publication_digest = hashlib.sha256(self.publication_plan.read_bytes()).hexdigest()
+        self.assertEqual(self.publication().returncode, 1)
+
+    def test_publication_truncated_and_oversized_intents(self):
+        self.publication_prepared()
+        original = self.publication_plan.read_bytes()
+        for value in (b'', original[:40], original + b'x' * 512):
+            self.publication_plan.write_bytes(value)
+            self.publication_digest = hashlib.sha256(value).hexdigest()
+            self.assertEqual(self.publication().returncode, 1)
+
+    def test_publication_private_modes_links_and_fifo(self):
+        self.publication_prepared()
+        original = self.publication_plan.read_bytes()
+        self.publication_plan.chmod(0o644)
+        self.assertEqual(self.publication().returncode, 1)
+        self.publication_plan.chmod(0o600)
+        self.publication_plan.unlink()
+        self.publication_plan.symlink_to(self.plan)
+        self.assertEqual(self.publication().returncode, 1)
+        self.publication_plan.unlink()
+        os.link(self.plan, self.publication_plan)
+        self.assertEqual(self.publication().returncode, 1)
+        self.publication_plan.unlink()
+        os.mkfifo(self.publication_plan, 0o600)
+        self.assertEqual(self.publication().returncode, 1)
+        self.publication_plan.unlink()
+        self.publication_plan.write_bytes(original)
+        self.publication_plan.chmod(0o600)
+        self.assertEqual(self.publication().returncode, 0)
+
+    def test_publication_custody_must_match_allocation_directory(self):
+        for path in (self.plan, self.export / 'publication.plan', self.candidate_directory / 'publication.plan',
+                     self.root / 'publication.plan', self.authority / 'publication.plan'):
+            self.approval['publicationPlan'] = str(path)
+            self.write_copy_approval()
+            self.assertEqual(self.publication('--prepare-publication').returncode, 1)
+            if path != self.plan:
+                self.assertFalse(path.exists())
+
+    def test_publication_map_name_must_be_unused_and_valid(self):
+        for name in ('inventory', 'view', 'invalid name', 'x' * 129):
+            self.approval['destinationMap'] = name
+            self.write_copy_approval()
+            self.assertEqual(self.publication('--prepare-publication').returncode, 1)
+            self.assertFalse(self.publication_plan.exists())
+
+    def test_publication_stale_registry(self):
+        self.publication_prepared()
+        self.assertEqual(self.command('revoke', self.cells[0][0], self.current()).returncode, 0)
+        self.assertEqual(self.publication().returncode, 2)
+
+    def test_publication_stale_catalog(self):
+        self.publication_prepared()
+        self.assertEqual(self.map_store(self.cells, name='competing-source', resource=self.cells[0][0]).returncode, 0)
+        self.assertEqual(self.publication().returncode, 2)
+
+    def test_publication_allocation_and_candidate_must_remain_approved(self):
+        self.publication_prepared()
+        original = self.plan.read_bytes()
+        self.plan.write_bytes(b'invalid')
+        self.assertEqual(self.publication().returncode, 1)
+        self.plan.write_bytes(original)
+        (self.export / 'raw-2.bin').unlink()
+        self.assertEqual(self.publication().returncode, 1)
+
+    def test_publication_schema_and_options_cannot_publish(self):
+        before = self.copy_snapshot(), self.map_current()
+        for action in ('--prepare', '--commit', '--status', '--advance-witness', '--check-candidate',
+                       '--check-registration', '--check-export', '--check-destination'):
+            self.assertEqual(self.copy_owner(action, extra=('--org-key-file', str(self.org_key))).returncode, 1)
+        original = copy.deepcopy(self.approval)
+        for key, value in (('publicationPlan', ''), ('destinationMap', ''), ('unknown', 'value'), ('schema', 5)):
+            self.approval = dict(original, **{key: value})
+            self.write_copy_approval()
+            self.assertEqual(self.publication('--prepare-publication').returncode, 1)
+        self.approval = original
+        del self.approval['publicationPlan']
+        self.write_copy_approval()
+        self.assertEqual(self.publication('--prepare-publication').returncode, 1)
+        self.assertEqual((self.copy_snapshot(), self.map_current()), before)
+
+
+for _name in vars(CopyDestinationTests):
+    if _name.startswith('test_'):
+        setattr(CopyPublicationTests, _name, None)
 
 
 if __name__ == '__main__':

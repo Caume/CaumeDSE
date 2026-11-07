@@ -228,6 +228,28 @@ int cmeContextManagerCopyPlanMatch(cmeContextManager *manager, const unsigned ch
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, const char *sourceName, const char *const *lookups, size_t count);
 
+#define cmeContextCopyPublicationMaxBytes 512U
+/* Trusted OFFLINE durable-intent handoff, NOT an artifact/catalog publisher.
+   Require the exact committed allocation plan, unchanged original catalog and
+   an unused destination map name. requestDigest binds independently approved
+   artifact/registration/custody metadata; this core does not validate payloads.
+   Prepare returns deterministic owned signed bytes + SHA256, publishing nothing.
+   Privately persist/fsync them and independently retain their digest before any
+   future publication. Match authenticates exact bytes/request and rechecks the
+   same current pair/name/source blocking; it never refreshes pins. No receipt
+   table, manager upgrade, binding block, witness lease or acceptance token.
+   Return 0/2/1; outputs clear on failure. Inputs must stay stable/nonoverlapping. */
+int cmeContextManagerCopyPublicationPrepare(cmeContextManager *manager,
+    const unsigned char *allocation, size_t allocationLength, const unsigned char allocationDigest[32],
+    const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
+    const unsigned char requestDigest[32], const char *destinationName,
+    unsigned char **intent, size_t *intentLength, unsigned char intentDigest[32]);
+int cmeContextManagerCopyPublicationMatch(cmeContextManager *manager,
+    const unsigned char *allocation, size_t allocationLength, const unsigned char allocationDigest[32],
+    const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
+    const unsigned char requestDigest[32], const char *destinationName,
+    const unsigned char *intent, size_t intentLength, const unsigned char intentDigest[32]);
+
 typedef struct
 {
     unsigned char job[32], sourceDigest[32], targetDigest[32];
