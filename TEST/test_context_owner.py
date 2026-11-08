@@ -7,11 +7,13 @@ import hashlib
 import json
 import os
 import resource
+import select
 import signal
 from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
+import sys
 import time
 import unittest
 
@@ -1757,6 +1759,312 @@ class CopyPublicationTests(CopyDestinationTests):
 for _name in vars(CopyDestinationTests):
     if _name.startswith('test_'):
         setattr(CopyPublicationTests, _name, None)
+
+
+@unittest.skipUnless(sys.platform.startswith('linux'), 'copy installation requires Linux renameat2')
+class CopyInstallTests(CopyPublicationTests):
+    def prepare_copy(self):
+        # Explicit upgrades and witness approvals precede allocation-plan pins.
+        for action in ('shuffle-init', 'shuffle-pair-init', 'copy-install-init'):
+            result = self.command(action, self.current(), self.map_current())
+            self.assertEqual(result.returncode, 0, result.stderr)
+            advanced = self.command('witness-advance', self.current(), self.map_current(), self.retained,
+                                    directory=self.witness)
+            self.assertEqual(advanced.returncode, 0, advanced.stderr)
+            self.retained = advanced.stdout.decode().strip()
+        self.approval['catalog'] = self.map_current()
+        self.write_copy_approval()
+        return super().prepare_copy()
+
+    def setUp(self):
+        super().setUp()
+        self.intent = self.publication_prepared()
+        self.installed_column = self.export / self.candidate_file.name
+        self.initial_registry = self.current()
+        self.initial_catalog = self.map_current()
+        self.source_column_bytes = self.source_file.read_bytes()
+        self.source_resources_bytes = self.resources.read_bytes()
+        self.target_resources_bytes = self.destination_resources.read_bytes()
+
+    def install_prepare(self, env=None, **changes):
+        return self.command('copy-install-prepare', self.plan, changes.get('allocation_digest', self.digest),
+                            self.approval['registry'], changes.get('catalog', self.approval['catalog']),
+                            changes.get('request', self.intent['request-digest']), self.approval['destinationMap'],
+                            self.publication_plan, changes.get('intent_digest', self.publication_digest),
+                            changes.get('source', self.source_file), changes.get('staged', self.candidate_file),
+                            self.resources, changes.get('resources', self.destination_resources),
+                            self.approval['sourceDigest'], self.approval['resourcesDigest'],
+                            self.approval['destinationResourcesDigest'], env=env)
+
+    def install_prepared(self):
+        result = self.install_prepare()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.prepared_catalog = result.stdout.decode().strip()
+        self.assertEqual(self.prepared_catalog, self.map_current())
+        self.assertEqual(self.map_bind(name='inventory').returncode, 1)
+        return self.prepared_catalog
+
+    def install_read(self):
+        result = self.command('copy-install-read', self.approval['destinationMap'], self.current(), self.map_current())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def install_recover(self, complete=1, env=None, **changes):
+        return self.command('copy-install-recover', self.approval['destinationMap'],
+                            changes.get('job', self.publication_digest), complete,
+                            changes['registry'] if 'registry' in changes else self.current(),
+                            changes['catalog'] if 'catalog' in changes else self.map_current(), env=env)
+
+    def advance_install_witness(self):
+        result = self.command('witness-advance', self.current(), self.map_current(), self.retained, directory=self.witness)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.retained = result.stdout.decode().strip()
+
+    def assert_installed(self):
+        self.assertEqual(self.source_file.read_bytes(), self.source_column_bytes)
+        self.assertEqual(self.installed_column.read_bytes(), self.source_column_bytes)
+        self.assertEqual(self.resources.read_bytes(), self.target_resources_bytes)
+        self.assertEqual(self.current(), self.initial_registry)
+        self.assertFalse(self.candidate_file.exists())
+        self.assertFalse(self.destination_resources.exists())
+        self.assertEqual(self.map_bind(name='inventory').returncode, 0)
+        self.assertEqual(self.map_bind(name='copied-inventory').returncode, 0)
+        job = self.install_read()
+        self.assertEqual(job['state'], 2)
+        self.assertEqual(job['slots'], len(self.cells))
+        with closing(sqlite3.connect(self.resources)) as db:
+            self.assertEqual(db.execute('select count(*) from documents').fetchone()[0], 4)
+        result = subprocess.run([PAYLOAD, str(self.installed_column), 'registered-readback'],
+                                capture_output=True, timeout=30, env=dict(os.environ, CDSE_DEFAULT_ENC_ALG=self.profile))
+        self.assertEqual(result.returncode, 0, 'installed encrypted legacy readback failed')
+
+    def test_install_complete_preserves_source_and_requires_separate_witness_approval(self):
+        self.install_prepared()
+        self.assertEqual(self.command('witness-check', self.current(), self.map_current(), directory=self.witness).returncode, 2)
+        self.advance_install_witness()
+        self.assertEqual(self.install_read()['state'], 1)
+        self.assertFalse(self.installed_column.exists())
+        result = self.install_recover()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed()
+        self.assertEqual(self.command('witness-check', self.current(), self.map_current(), directory=self.witness).returncode, 2)
+        self.advance_install_witness()
+        before = self.map_current(), self.resources.read_bytes(), self.installed_column.read_bytes()
+        self.assertEqual(self.install_recover().returncode, 0)
+        self.assertEqual((self.map_current(), self.resources.read_bytes(), self.installed_column.read_bytes()), before)
+
+    def test_install_complete_cbc(self):
+        self.install_prepared()
+        self.assertEqual(self.install_recover().returncode, 0)
+        self.assert_installed()
+
+    def test_install_catalog_output_aliases(self):
+        result = self.install_prepare(env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.decode().strip(), self.map_current())
+        self.assertEqual(self.install_recover(env={'CDSE_CONTEXT_MANAGER_ALIAS': '1'}).returncode, 0)
+        self.assert_installed()
+
+    def test_install_abort_retains_artifacts_and_receipt(self):
+        self.install_prepared()
+        before = self.resources.read_bytes(), self.source_file.read_bytes(), self.candidate_file.read_bytes()
+        self.assertEqual(self.install_recover(complete=0).returncode, 0)
+        self.assertEqual(self.install_read()['state'], 3)
+        self.assertEqual((self.resources.read_bytes(), self.source_file.read_bytes(), self.candidate_file.read_bytes()), before)
+        self.assertFalse(self.installed_column.exists())
+        self.assertEqual(self.map_bind(name='inventory').returncode, 0)
+        self.assertEqual(self.install_recover(complete=0).returncode, 0)
+        self.assertEqual(self.install_recover().returncode, 1)
+
+    def test_install_blocks_all_stored_maps_and_writers(self):
+        self.install_prepared()
+        for name in ('inventory', 'view'):
+            self.assertEqual(self.map_bind(name=name).returncode, 1)
+        self.assertEqual(self.map_store(self.cells, name='other', resource=self.cells[0][0]).returncode, 1)
+        self.assertEqual(self.command('revoke', self.cells[0][0], self.current()).returncode, 1)
+        self.assertEqual(self.current(), self.initial_registry)
+        self.assertEqual(self.map_current(), self.prepared_catalog)
+
+    def test_install_does_not_overwrite_even_matching_existing_target(self):
+        self.installed_column.write_bytes(self.source_column_bytes)
+        self.installed_column.chmod(0o600)
+        self.assertEqual(self.install_prepare().returncode, 1)
+        self.assertEqual(self.installed_column.read_bytes(), self.source_column_bytes)
+        self.assertEqual(self.map_current(), self.initial_catalog)
+
+    def test_install_validates_both_candidates_before_first_move(self):
+        self.install_prepared()
+        with closing(sqlite3.connect(self.destination_resources)) as db, db:
+            db.execute('create table unapproved(value text)')
+        self.assertEqual(self.install_recover().returncode, 1)
+        self.assertFalse(self.installed_column.exists())
+        self.assertEqual(self.resources.read_bytes(), self.source_resources_bytes)
+        self.assertEqual(self.install_read()['state'], 1)
+
+    def test_install_wrong_intent_request_hashes_and_paths_do_not_prepare(self):
+        for changes in ({'intent_digest': '00' * 32}, {'allocation_digest': '00' * 32}, {'request': '00' * 32},
+                        {'staged': self.source_file}, {'resources': self.resources}):
+            self.assertNotEqual(self.install_prepare(**changes).returncode, 0)
+            self.assertEqual(self.map_current(), self.initial_catalog)
+            self.assertFalse(self.installed_column.exists())
+
+    def test_install_private_candidates_and_sidecars(self):
+        self.candidate_file.chmod(0o644)
+        self.assertEqual(self.install_prepare().returncode, 1)
+        self.candidate_file.chmod(0o600)
+        sidecar = Path(str(self.destination_resources) + '-wal')
+        sidecar.touch()
+        self.assertEqual(self.install_prepare().returncode, 1)
+        self.assertEqual(self.map_current(), self.initial_catalog)
+
+    def test_install_unknown_target_bytes_keep_block(self):
+        self.install_prepared()
+        self.installed_column.write_bytes(b'unapproved')
+        self.installed_column.chmod(0o600)
+        for complete in (0, 1):
+            self.assertEqual(self.install_recover(complete=complete).returncode, 1)
+        self.assertEqual(self.installed_column.read_bytes(), b'unapproved')
+        self.assertEqual(self.map_bind(name='inventory').returncode, 1)
+        self.assertEqual(self.map_current(), self.prepared_catalog)
+
+    def test_install_concurrent_target_creation_cannot_overwrite(self):
+        self.install_prepared()
+        ready_read, ready_write = os.pipe()
+        resume_read, resume_write = os.pipe()
+        process = None
+        try:
+            environment = dict(os.environ, CDSE_CONTEXT_MANAGER_PAUSE='after-begin',
+                               CDSE_CONTEXT_MANAGER_READY_FD=str(ready_write),
+                               CDSE_CONTEXT_MANAGER_RESUME_FD=str(resume_read))
+            args = self.args('copy-install-recover', self.approval['destinationMap'], self.publication_digest,
+                             1, self.current(), self.prepared_catalog)
+            process = subprocess.Popen(args, env=environment, pass_fds=(ready_write, resume_read),
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertTrue(select.select([ready_read], [], [], 30)[0])
+            self.assertEqual(os.read(ready_read, 1), b'1')
+            self.installed_column.write_bytes(b'concurrent-owner-file')
+            self.installed_column.chmod(0o600)
+            os.write(resume_write, b'1')
+            process.communicate(timeout=30)
+            self.assertEqual(process.returncode, 1)
+            self.assertEqual(self.installed_column.read_bytes(), b'concurrent-owner-file')
+            self.assertEqual(self.resources.read_bytes(), self.source_resources_bytes)
+            self.assertEqual(self.map_current(), self.prepared_catalog)
+        finally:
+            if process is not None:
+                if process.poll() is None:
+                    process.kill()
+                if not process.stdout.closed or not process.stderr.closed:
+                    process.communicate(timeout=5)
+            for descriptor in (ready_read, ready_write, resume_read, resume_write):
+                os.close(descriptor)
+
+    def test_install_missing_candidate_can_abort_without_deletion(self):
+        self.install_prepared()
+        self.candidate_file.unlink()
+        self.assertEqual(self.install_recover().returncode, 1)
+        self.assertEqual(self.install_recover(complete=0).returncode, 0)
+        self.assertTrue(self.destination_resources.exists())
+        self.assertEqual(self.resources.read_bytes(), self.source_resources_bytes)
+
+    def test_install_prepare_lost_acknowledgement_and_failure_atomicity(self):
+        for point, committed in (('after-write', False), ('after-commit', True)):
+            result = self.install_prepare(env={'CDSE_CONTEXT_MANAGER_CRASH': point})
+            self.assertEqual(result.returncode, 86)
+            if not committed:
+                self.assertEqual(self.map_current(), self.initial_catalog)
+            else:
+                self.assertEqual(self.install_read()['state'], 1)
+                self.assertEqual(self.install_prepare().returncode, 2)
+                self.assertEqual(self.install_recover().returncode, 0)
+                self.assert_installed()
+
+    def test_install_interrupted_file_and_catalog_boundaries_roll_forward(self):
+        self.install_prepared()
+        paths = [self.authority / 'registry.sqlite', self.source_file, self.candidate_file,
+                 self.resources, self.destination_resources]
+        saved = {path: path.read_bytes() for path in paths}
+        for variable, point in (('CDSE_CONTEXT_OFFLINE_CRASH', 'after-copy-create'),
+                                ('CDSE_CONTEXT_MANAGER_CRASH', 'after-copy-column-install'),
+                                ('CDSE_CONTEXT_MANAGER_CRASH', 'after-copy-resources-install'),
+                                ('CDSE_CONTEXT_MANAGER_CRASH', 'after-write'),
+                                ('CDSE_CONTEXT_MANAGER_CRASH', 'after-commit')):
+            if self.installed_column.exists():
+                self.installed_column.unlink()
+            for suffix in ('-journal', '-wal', '-shm'):
+                (Path(str(self.authority / 'registry.sqlite') + suffix)).unlink(missing_ok=True)
+            for path, value in saved.items():
+                path.write_bytes(value)
+                path.chmod(0o600)
+            result = self.install_recover(env={variable: point})
+            self.assertEqual(result.returncode, 86, point)
+            if point != 'after-commit':
+                self.assertEqual(self.map_current(), self.prepared_catalog)
+                self.assertEqual(self.map_bind(name='inventory').returncode, 1)
+                self.assertEqual(self.install_recover(complete=0).returncode, 1)
+            self.assertEqual(self.install_recover().returncode, 0)
+            self.assert_installed()
+
+    def test_install_finished_retry_rejects_changed_active_artifacts(self):
+        self.install_prepared()
+        self.assertEqual(self.install_recover().returncode, 0)
+        original_column = self.installed_column.read_bytes()
+        self.installed_column.write_bytes(b'wrong')
+        self.assertEqual(self.install_recover().returncode, 1)
+        self.installed_column.write_bytes(original_column)
+        self.resources.write_bytes(self.source_resources_bytes)
+        self.assertEqual(self.install_recover().returncode, 1)
+
+    def test_install_finished_receipt_expires_on_later_catalog(self):
+        self.install_prepared()
+        self.assertEqual(self.install_recover().returncode, 0)
+        self.assertEqual(self.map_store(self.cells, name='later', resource=self.cells[0][0]).returncode, 0)
+        self.assertEqual(self.install_recover().returncode, 2)
+
+    def test_install_wrong_job_and_stale_pins(self):
+        self.install_prepared()
+        self.assertEqual(self.install_recover(job='00' * 32).returncode, 1)
+        self.assertEqual(self.install_recover(catalog=self.initial_catalog).returncode, 2)
+        self.assertEqual(self.resources.read_bytes(), self.source_resources_bytes)
+        self.assertFalse(self.installed_column.exists())
+
+    def test_install_journal_and_version_tampering_fail_closed(self):
+        self.install_prepared()
+        database = self.authority / 'registry.sqlite'
+        original = database.read_bytes()
+        for sql in ("update context_copies set body=cast(body||x'00' as blob)",
+                    "create trigger sabotage after update of state on context_copies begin "
+                    "update context_copies set body=cast(body||x'00' as blob); end",
+                    "create view unexpected as select * from context_copies",
+                    "update context_copies set job=zeroblob(32)",
+                    "update context_copies set state=2,finished=x'0000000000000001'",
+                    "update context_copies set name='forged'", "drop table context_copies",
+                    "pragma ignore_check_constraints=ON; update context_copies set state=4294967297",
+                    "pragma ignore_check_constraints=ON; update registry_meta set copy_version=2"):
+            database.write_bytes(original)
+            with closing(sqlite3.connect(database)) as db, db:
+                db.executescript(sql)
+            self.assertEqual(self.command('map-anchor').returncode, 1)
+            self.assertEqual(self.install_recover(registry=self.initial_registry, catalog=self.prepared_catalog).returncode, 1)
+            self.assertEqual(self.resources.read_bytes(), self.source_resources_bytes)
+        database.write_bytes(original)
+
+    def test_install_init_is_explicit_and_never_repeated(self):
+        before = self.map_current()
+        self.assertEqual(self.command('copy-install-init', self.current(), before).returncode, 1)
+        self.assertEqual(self.map_current(), before)
+
+    def test_install_catalog_rejects_actual_v3_reader(self):
+        executable = os.environ.get('CDSE_COPY_INSTALL_OLD_READER')
+        if not executable:
+            self.skipTest('optional retained catalog-v3 reader binary unavailable')
+        result = subprocess.run([executable, *self.args('map-anchor')[1:]], capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 1)
+
+
+for _name in vars(CopyPublicationTests):
+    if _name.startswith('test_'):
+        setattr(CopyInstallTests, _name, None)
 
 
 if __name__ == '__main__':

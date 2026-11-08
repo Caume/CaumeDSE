@@ -2531,3 +2531,106 @@ alone does not enforce use by other trusted manager APIs. No files are copied or
 installed, no map/catalog/witness is published, and no durable acceptance token,
 live adapter or V2 write is enabled. V2/provider/migration/floor, rename/delete
 and production custody/independent monotonic deployment gates remain pending.
+
+### Manager copy publication and recovery (#147 phase 24)
+
+Trusted offline owners can now use `cmeContextManagerCopyInstallInit/Prepare/Read/Recover`
+to publish a same-storage legacy ColumnFile copy and its ResourcesDB registration,
+then atomically publish the destination map in the manager catalog. This is the
+manager core, not an installed publisher command or live storage adapter. It
+accepts an independently retained phase-23 allocation/publication intent and an
+owner-verified artifact assertion. It never validates organization-key crypto or
+advances a witness. Keep every reader/writer stopped and directory hierarchy fixed.
+
+Initialize catalog v2 (shuffle), then v3 (paired artifacts), then explicitly opt
+into v4 with `CopyInstallInit`, each against exact independently approved registry/
+catalog pins. Separately approve and advance the witness after EACH catalog write.
+Do this BEFORE preparing allocation and publication intents. Upgrading an existing
+intent's catalog expires that intent; never refresh its original pins blindly.
+Init requires no prepared shuffle and cannot repeat. The registry format and file
+crypto formats remain unchanged. The new `copy_version=1` marker, `context_copies`
+table and `CDSE-HKX-MAP-v4` authentication domain make older catalog readers fail
+closed. Legacy catalogs keep their existing formats until explicit opt-in.
+Catalog v4 also refuses triggers, views, virtual and shadow tables in the authority
+DB, preventing unauthenticated SQL schema from changing a job during signed writes.
+
+After ordinary copy allocation, explicit witness advancement and full phase-22/23
+preflight, pass the exact signed allocation/intent bytes, BOTH retained digests,
+ORIGINAL registry/catalog pins, canonical request digest, destination map name and
+`cmeContextCopyArtifacts` to `CopyInstallPrepare`. The artifacts specify source
+ColumnFile, staged byte-exact clone, active/staged ResourcesDB and their three
+independently approved SHA256 values. The owner must verify that the opaque
+request digest commits to THESE EXACT paths/hashes/selectors and enforce the
+organization-key registration/whole-export contract. The core trusts this issuer
+assertion, like the earlier paired-shuffle selection commitment; a holder of the
+manager key is not an adversarial caller.
+
+The new installed ColumnFile path is the source export directory plus the staged
+ColumnFile basename. It must be absent even if preexisting bytes happen to match.
+Source and staged basenames must differ; reserved ResourcesDB/RolesDB/LogsDB names
+are refused. ResourcesDB paths must be exact siblings of their ColumnFiles.
+Export, staging and authority directories must be canonical, disjoint, private
+uid-owned 0700 directories on the same filesystem. Files must be canonical,
+private uid-owned 0600 single-link regular rollback-journal SQLite files without
+links or sidecars. All four inputs have distinct identities. Size bounds remain
+256 MiB per artifact; target slots require positive physical row IDs.
+
+Prepare verifies the committed allocation pair and retained intent, active target
+bindings, source/candidate hashes, file identities, unused destination map and
+absence of other pending copies/shuffles. It signs a durable job under the full
+catalog-v4 HMAC before changing any artifact. The bounded job body records source/
+destination names, target resource/slots, five canonical paths, three hashes,
+allocation/intent/request digests, committed registry and original catalog. Job ID
+is the independently retained publication-intent digest. All map/job names, typed
+blob bytes, states and completion revisions are authenticated; at most one job is
+prepared globally. It simulates final-map signing inside a rolled-back savepoint
+to reserve catalog capacity before allowing irreversible file operations.
+
+The prepare catalog commit advances only catalog revision by one. It blocks ALL
+stored-map bindings and normal catalog/registry writers, since ResourcesDB is
+shared. Existing mapped operation bindings also fail their changed catalog pin.
+Metadata reads can expose `blocked`; low-level unmapped binding/issuer APIs are
+trusted primitives, not a live-reader enforcement boundary. Independently retain
+the job/published catalog pins, then separately approve/advance the witness before
+calling recovery. The core does not implement that witness guard for the caller.
+
+`CopyInstallRead` returns owned authenticated metadata; free it with
+`cmeContextCopyInstallFree`. On complete, `CopyInstallRecover` rechecks exact current
+registry/catalog and retained job ID, the original source ColumnFile, active file
+classification and ALL still-needed candidates before the first move. It creates
+the new ColumnFile with Linux `renameat2(RENAME_NOREPLACE)`, syncs both directories,
+replaces ResourcesDB only from the approved original bytes, syncs again, then
+commits the destination map and completed receipt together in one catalog update.
+The original source ColumnFile, source map and registry identities are preserved.
+Linux kernel no-replace support is required; unavailable primitives fail closed.
+There is no fallback to an overwriting rename for the new ColumnFile.
+
+An interruption before or after either move retains the signed prepared job and
+binding block. Recovery accepts only the approved old/new file classifications,
+can finish from already-installed bytes without the consumed staging file, and
+publishes the map exactly once. Unknown/missing active bytes retain the block.
+Abort requires the original source ColumnFile/ResourcesDB and absent new file;
+once the new ColumnFile exists, only forward completion is allowed. Abort changes
+no artifacts and retains candidates/evidence. Completed/aborted jobs remain as
+authenticated receipts; names are not reused by another copy job. An exact
+lost-ack retry at the finished registry/catalog pair verifies active artifacts and
+syncs directories without another revision change. Later authority changes expire
+the retry window. After either completion or abort, independently approve and
+advance the witness to the new catalog before subsequent owner operations.
+
+Tests exercise actual GCM/CBC encrypted readback, map publication and source
+preservation, global blocking, no-replace conflicts including a paused writer,
+typed authentication rules, original-only abort, missing/tampered files,
+retained-intent mismatches, catalog output aliasing, journal/schema tampering,
+real process-kill checkpoints before/after both file moves and SQL commit, and
+lost-ack retries. A retained actual catalog-v3 reader is an optional regression
+probe and rejects v4. No cross-file transaction, concurrent-reader lease, V2
+context authentication or physical power-loss certification is claimed.
+
+TODO #147 remains open. Next add an installed owner adapter that reuses full
+organization-key preflight and guards init/prepare/status/complete/abort with
+independently retained intents, current witness approvals and explicit advancement
+after every publication. V2 re-encryption/substitution rejection, provider/
+migration/floor acceptance, rename/delete and production custody/independent
+monotonic deployment remain pending. Installed schema-1 through schema-6 command
+contracts and live routes remain unchanged.

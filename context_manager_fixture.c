@@ -497,6 +497,74 @@ done:
     cmeContextWitnessClose(&witness); cmeContextWitnessClose(&witness); cmeContextWitnessClose(NULL); return(result);
 }
 
+static int cmeFixtureReadBytes(const char *path, unsigned char **bytes, size_t *length)
+{
+    FILE *file=fopen(path,"rb");
+    long size;
+    int result=1;
+    if (!file) return(1);
+    if (fseek(file,0,SEEK_END) || (size=ftell(file))<1 || size>cmeContextCopyPlanMaxBytes ||
+        fseek(file,0,SEEK_SET) || !(*bytes=malloc((size_t)size))) goto done;
+    if (fread(*bytes,1,(size_t)size,file)!=(size_t)size) goto done;
+    *length=(size_t)size; result=0;
+done:
+    fclose(file); return(result);
+}
+
+static int cmeFixtureCopyInstall(cmeContextManager *manager, int argc, char **argv)
+{
+    cmeContextAnchor registry={0};
+    cmeContextMapAnchor catalog={0},published={0},empty={0},*output=&published;
+    cmeContextCopyArtifacts artifacts={0};
+    cmeContextCopyInstall *job=NULL;
+    unsigned char digest[32],request[32],intentDigest[32],token[40],*allocation=NULL,*intent=NULL;
+    size_t allocationLength=0,intentLength=0,i;
+    int result=1,init=!strcmp(argv[2],"copy-install-init"),prepare=!strcmp(argv[2],"copy-install-prepare");
+    int read=!strcmp(argv[2],"copy-install-read");
+    if (argc!=(init ? 7 : (prepare ? 20 : (read ? 8 : 10))) ||
+        cmeFixtureRegistryToken(argv[init ? 5 : (prepare ? 7 : (read ? 6 : 8))],&registry) ||
+        cmeFixtureDecode(argv[init ? 6 : (prepare ? 8 : (read ? 7 : 9))],token,40)) goto done;
+    for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|token[i];
+    memcpy(catalog.digest,token+8,32);
+    memset(&published,0xff,sizeof(published));
+    if (getenv("CDSE_CONTEXT_MANAGER_ALIAS")) output=&catalog;
+    if (init) result=cmeContextManagerCopyInstallInit(manager,&registry,&catalog,output);
+    else if (prepare)
+    {
+        if (cmeFixtureReadBytes(argv[5],&allocation,&allocationLength) ||
+            cmeFixtureReadBytes(argv[11],&intent,&intentLength) || cmeFixtureDecode(argv[6],digest,32) ||
+            cmeFixtureDecode(argv[9],request,32) || cmeFixtureDecode(argv[12],intentDigest,32) ||
+            cmeFixtureDecode(argv[17],artifacts.columnDigest,32) || cmeFixtureDecode(argv[18],artifacts.resourcesDigest,32) ||
+            cmeFixtureDecode(argv[19],artifacts.stagedResourcesDigest,32)) goto done;
+        artifacts.sourcePath=argv[13]; artifacts.stagedPath=argv[14];
+        artifacts.resourcesPath=argv[15]; artifacts.stagedResourcesPath=argv[16];
+        result=cmeContextManagerCopyInstallPrepare(manager,allocation,allocationLength,digest,&registry,&catalog,
+            request,argv[10],intent,intentLength,intentDigest,&artifacts,output);
+    }
+    else if (read)
+    {
+        result=cmeContextManagerCopyInstallRead(manager,argv[5],&registry,&catalog,&job);
+        if (result) { if (job) result=3; goto done; }
+        printf("{\"state\":%d,\"finished\":%llu,\"slots\":%zu,\"job\":\"",job->state,
+            (unsigned long long)job->finishedRevision,job->target->count);
+        cmeFixturePrint(job->job,32); puts("\"}"); goto done;
+    }
+    else
+    {
+        if (cmeFixtureDecode(argv[6],digest,32)) goto done;
+        result=cmeContextManagerCopyInstallRecover(manager,argv[5],digest,atoi(argv[7]),&registry,&catalog,output);
+    }
+    if (result)
+    { if (memcmp(output,&empty,sizeof(empty))) result=3; }
+    else
+    {
+        for (i=0;i<8;i++) token[i]=(unsigned char)(output->revision>>(56-8*i));
+        cmeFixturePrint(token,8); cmeFixturePrint(output->digest,32); putchar('\n');
+    }
+done:
+    free(allocation); free(intent); cmeContextCopyInstallFree(&job); cmeContextCopyInstallFree(&job); return(result);
+}
+
 int main(int argc, char **argv)
 {
     cmeContextManager *manager=NULL,*second=NULL;
@@ -514,6 +582,7 @@ int main(int argc, char **argv)
     if (cmeFixtureDecode(argv[3],next.deployment,16) || cmeFixtureDecode(argv[4],next.organization,16)) return(2);
     if (cmeContextManagerOpen(argv[1],!strcmp(argv[2],"init"),key,next.deployment,next.organization,&manager)) goto done;
     if (!strcmp(argv[2],"init") && argc==5) { result=0; goto done; }
+    if (!strncmp(argv[2],"copy-install-",13)) { result=cmeFixtureCopyInstall(manager,argc,argv); goto done; }
     if (!strcmp(argv[2],"copy-provision") || !strcmp(argv[2],"copy-plan-prepare"))
     { result=cmeFixtureCopy(manager,argc,argv); goto done; }
     if (!strncmp(argv[2],"copy-plan-",10)) { result=cmeFixtureCopyPlan(manager,argc,argv); goto done; }

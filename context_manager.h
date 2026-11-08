@@ -321,4 +321,52 @@ int cmeContextManagerShufflePairRecover(cmeContextManager *manager, const char *
     const unsigned char job[32], int complete, const cmeContextAnchor *expected,
     const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published);
 
+/* Trusted OFFLINE copy publisher core. Init explicitly upgrades catalog v3 to
+   v4 before preparing allocation/publication plans; older readers fail closed.
+   The owner must separately approve/advance its witness between catalog writes.
+   These APIs do not validate organization-key payload/registration crypto or
+   guard a witness. Keep all authority/readers/writers stopped and trees fixed. */
+typedef struct
+{
+    const char *sourcePath,*stagedPath,*resourcesPath,*stagedResourcesPath;
+    unsigned char columnDigest[32],resourcesDigest[32],stagedResourcesDigest[32];
+} cmeContextCopyArtifacts;
+
+typedef struct
+{
+    char *sourceName,*destinationName,*paths[5]; /* source, staged, new, ResourcesDB, staged ResourcesDB */
+    unsigned char job[32],requestDigest[32],allocationDigest[32],digests[3][32];
+    cmeContextAnchor registry;
+    cmeContextMapAnchor originalCatalog;
+    int state; /* 1 prepared, 2 completed, 3 aborted */
+    uint64_t finishedRevision;
+    cmeContextMap *target;
+} cmeContextCopyInstall;
+
+int cmeContextManagerCopyInstallInit(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, cmeContextMapAnchor *published);
+/* Match the retained signed intent/request and committed allocation. Require
+   an unused target basename beside source and private same-FS SQLite artifacts.
+   Persist/authenticate a job, reserve its map name, and block ALL stored maps
+   plus normal catalog/registry writers. No files installed at prepare. */
+int cmeContextManagerCopyInstallPrepare(cmeContextManager *manager,
+    const unsigned char *allocation, size_t allocationLength, const unsigned char allocationDigest[32],
+    const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
+    const unsigned char requestDigest[32], const char *destinationName,
+    const unsigned char *intent, size_t intentLength, const unsigned char intentDigest[32],
+    const cmeContextCopyArtifacts *artifacts, cmeContextMapAnchor *published);
+int cmeContextManagerCopyInstallRead(cmeContextManager *manager, const char *destinationName,
+    const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog, cmeContextCopyInstall **job);
+void cmeContextCopyInstallFree(cmeContextCopyInstall **job);
+/* Complete: atomic no-replace ColumnFile move (Linux renameat2), ResourcesDB
+   replacement, then destination-map publication. Abort only with original files
+   and absent new ColumnFile. Partial installs roll forward only. Unknown bytes
+   retain the durable block. Exact finished-pair retries verify both active files.
+   Source map/ColumnFile and registry identities are preserved. Return 0/2/1;
+   outputs clear, catalog/published may alias; other inputs stable/nonoverlapping.
+   No live lease, V2 authentication, power-loss certification or installed CLI. */
+int cmeContextManagerCopyInstallRecover(cmeContextManager *manager, const char *destinationName,
+    const unsigned char job[32], int complete, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, cmeContextMapAnchor *published);
+
 #endif

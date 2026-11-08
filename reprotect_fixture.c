@@ -268,12 +268,29 @@ done:
     return(result);
 }
 
+static int cmeFixtureRegisteredReadback(const char *path)
+{
+    sqlite3 *db=NULL;
+    sqlite3_stmt *stmt=NULL;
+    int result=1;
+    if (sqlite3_open(":memory:",&db)!=SQLITE_OK || cmeMemDBLoadOrSave(db,path,0) ||
+        cmeMemSecureDBUnprotect(db,cmeFixtureKey()) || sqlite3_prepare_v2(db,
+        "SELECT value FROM data ORDER BY id",-1,&stmt,NULL)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
+        !sqlite3_column_text(stmt,0) || strcmp((const char *)sqlite3_column_text(stmt,0),"fixture-alpha") ||
+        sqlite3_step(stmt)!=SQLITE_ROW || !sqlite3_column_text(stmt,0) ||
+        strcmp((const char *)sqlite3_column_text(stmt,0),"fixture-beta") || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    result=0;
+done:
+    sqlite3_finalize(stmt); sqlite3_close(db); return(result);
+}
+
 int main(int argc, char **argv)
 {
     sqlite3 *db=NULL;
     int result;
     if (argc!=3) return(2);
     cmeInitDefaultEncAlg();
+    if (!strcmp(argv[2],"registered-readback")) return(cmeFixtureRegisteredReadback(argv[1]));
     if (!strcmp(argv[2],"ownership")) return(cmeFixtureOwnership(argv[1]));
     if (!strcmp(argv[2],"nla1-provider"))
     {
