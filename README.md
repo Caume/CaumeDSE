@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.24.0
+# Caume Data Security Engine (CaumeDSE) version 2.25.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2951,6 +2951,13 @@ rows and schema while adding exactly one independently approved copy registratio
 with a fresh document ID, unchanged storage/column association and a valid file
 MAC for the candidate. This point-in-time check does not install files, publish a
 destination map or provide a durable acceptance receipt.
+The optional [schema-6 publication-intent handoff](HERRADURAKEX_AT_REST_PLAN.md#durable-publication-intent-147-phase-23)
+requires a committed copy allocation and explicitly advanced witness. It creates
+and syncs a private signed intent binding the reviewed artifacts/registration,
+allocation digest, manager pins and unused destination map name. Independently
+retain its digest; status authenticates the exact request and rechecks preflight.
+Partial or uncertain files remain in custody for review. Artifact installation
+and catalog publication remain pending under TODO #147.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider

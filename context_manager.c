@@ -1687,6 +1687,80 @@ int cmeContextManagerCopyPlanCommit(cmeContextManager *manager, const unsigned c
     return(cmeCopyPlanAction(manager,plan,length,digest,expected,catalog,&state,copy,published,1));
 }
 
+int cmeContextManagerCopyPublicationPrepare(cmeContextManager *manager,
+    const unsigned char *allocation, size_t allocationLength, const unsigned char allocationDigest[32],
+    const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
+    const unsigned char requestDigest[32], const char *destinationName,
+    unsigned char **intent, size_t *intentLength, unsigned char intentDigest[32])
+{
+    static const unsigned char domain[]="CDSE-HKX-COPY-PUBLISH-v1";
+    cmeManagerState state={0};
+    cmeContextAnchor next={0};
+    cmeContextMapAnchor current={0};
+    cmeContextMap *copy=NULL;
+    cmeMapEncoding encoding={0};
+    sqlite3_stmt *stmt=NULL;
+    char *source=NULL;
+    const unsigned char *snapshot=NULL;
+    unsigned char snapshotTag[32],anchor[73],tag[32];
+    size_t snapshotLength=0;
+    unsigned int written;
+    int result=1,pending=0;
+    if (intent) *intent=NULL;
+    if (intentLength) *intentLength=0;
+    if (intentDigest) memset(intentDigest,0,32);
+    if (!intent || !intentLength || !intentDigest || !requestDigest ||
+        cmeManagerName(destinationName,1) || cmeCopyDecode(manager,allocation,allocationLength,
+        allocationDigest,original,catalog,&copy,&next,&source,&snapshot,&snapshotLength,snapshotTag)) goto before;
+    if (!strcmp(source,destinationName) || cmeManagerAnchorPack(&next,anchor)) goto before;
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state) || cmeMapLoad(manager,&current)) goto done;
+    result=cmeManagerCurrentMatch(&state,&next); if (result) goto done;
+    result=cmeMapMatch(&current,catalog); if (result) goto done;
+    result=1;
+    if (cmeShufflePending(manager,source,&pending) || pending || sqlite3_prepare_v2(manager->db,
+        "SELECT 1 FROM context_maps WHERE name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,destinationName,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    encoding.bytes=malloc(cmeContextRegistryMaxBytes);
+    if (!encoding.bytes || cmeMapAppend(&encoding,domain,sizeof(domain)) ||
+        cmeMapAppend(&encoding,allocationDigest,32) || cmeMapAppend(&encoding,requestDigest,32) ||
+        cmeMapAppend(&encoding,anchor,73) || cmeMapNumber(&encoding,catalog->revision,8) ||
+        cmeMapAppend(&encoding,catalog->digest,32) || cmeCopyText(&encoding,destinationName) ||
+        !HMAC(EVP_sha256(),manager->key,32,encoding.bytes,encoding.length,tag,&written) || written!=32 ||
+        cmeMapAppend(&encoding,tag,32) || encoding.length>cmeContextCopyPublicationMaxBytes ||
+        !EVP_Digest(encoding.bytes,encoding.length,intentDigest,&written,EVP_sha256(),NULL) || written!=32 ||
+        sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    *intent=encoding.bytes; encoding.bytes=NULL; *intentLength=encoding.length; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
+before:
+    if (result && intentDigest) memset(intentDigest,0,32);
+    free(source); free(encoding.bytes); cmeContextMapFree(&copy); return(result);
+}
+
+int cmeContextManagerCopyPublicationMatch(cmeContextManager *manager,
+    const unsigned char *allocation, size_t allocationLength, const unsigned char allocationDigest[32],
+    const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
+    const unsigned char requestDigest[32], const char *destinationName,
+    const unsigned char *intent, size_t intentLength, const unsigned char intentDigest[32])
+{
+    unsigned char actual[32],expectedDigest[32],*expected=NULL;
+    unsigned int written;
+    size_t expectedLength=0;
+    int result=1;
+    if (!intent || !intentLength || intentLength>cmeContextCopyPublicationMaxBytes || !intentDigest ||
+        !EVP_Digest(intent,intentLength,actual,&written,EVP_sha256(),NULL) || written!=32 ||
+        CRYPTO_memcmp(actual,intentDigest,32)) return(1);
+    result=cmeContextManagerCopyPublicationPrepare(manager,allocation,allocationLength,allocationDigest,
+        original,catalog,requestDigest,destinationName,&expected,&expectedLength,expectedDigest);
+    if (!result && (intentLength!=expectedLength || CRYPTO_memcmp(actual,expectedDigest,32) ||
+        CRYPTO_memcmp(intent,expected,intentLength))) result=1;
+    free(expected); return(result);
+}
+
 int cmeContextManagerShuffleInit(cmeContextManager *manager, const cmeContextAnchor *expected,
                                  const cmeContextMapAnchor *mapExpected, cmeContextMapAnchor *published)
 {

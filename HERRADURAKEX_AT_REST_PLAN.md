@@ -2429,3 +2429,105 @@ re-encryption/substitution rejection, provider/migration/floor acceptance,
 rename/delete adapters and production custody/independent monotonic deployment
 remain pending. No file copying, map/catalog publication, witness advancement,
 V2 write, live storage integration or physical power-loss guarantee is added.
+
+### Durable publication intent (#147 phase 23)
+
+`context-copy-plan --prepare-publication` creates the durable owner evidence
+needed before a future copy publisher may install artifacts or publish a map.
+`--publication-status` authenticates that evidence and rechecks its approvals.
+These schema-6 actions preserve all phase-22 candidate/source-export/destination
+registration checks. Schemas 1 through 5 retain their existing actions.
+
+Use exactly the twenty-four phase-22 approval keys, set `schema` to 6, and add:
+
+```json
+{
+  "publicationPlan": "/private/custody/publication.plan",
+  "destinationMap": "independently-approved-copy-map"
+}
+```
+
+This fragment is not a complete manifest. Retain ORIGINAL allocation pins and the
+independently retained allocation-plan SHA256. First commit the allocation through
+schema 1 and explicitly advance the witness to the exact committed registry with
+unchanged catalog. Independently retain that CURRENT witness token; the old token
+from the last transition is refused here even when allocation recovery could
+reconcile it. Neither action commits identities or advances the witness for you.
+
+Use the common approval/confirmation/manager/witness options with:
+
+```sh
+--prepare-publication --plan-digest "$RETAINED_ALLOCATION_DIGEST" \
+  --org-key-file /private/organization.key
+```
+
+Prepare performs complete legacy preflight and requires the exact committed
+allocation registry, original catalog, current witness token and an unused valid
+destination map name, distinct from the source map. The trusted manager produces
+deterministic signed binary bytes binding the full allocation digest, a canonical
+typed request SHA256, committed 73-byte registry anchor, 40-byte catalog anchor
+and length-prefixed destination map name. The domain is
+`CDSE-HKX-COPY-PUBLISH-v1` followed by NUL; HMAC-SHA256 under the manager key covers
+all preceding bytes, and a separate SHA256 covers the entire signed intent.
+The bounded format is at most 512 bytes. Manager APIs treat requestDigest as a
+trusted issuer assertion; the installed owner supplies the artifact verification
+and witness checks. A holder of the manager key remains a trusted issuer.
+
+The request fingerprint uses domain `CDSE-HKX-COPY-REQUEST-v1` plus NUL and schema
+byte 6. It covers every parsed approval string in fixed internal field order
+(including custody and destination map), with eight-byte big-endian lengths;
+unused internal fields are empty. Raw JSON arrays are replaced by their typed
+contents: eight-byte lookup count, ordered length-prefixed lookup strings, then
+source and destination eight-byte row IDs and their four length-prefixed selector
+strings each. JSON key order, whitespace and equivalent string escaping are not
+identity. Paths, profile, digests, selector values and lookup order remain exact
+approved evidence. Reapproving even a logically equivalent ResourcesDB with
+different physical bytes invalidates the retained intent. No pins are refreshed.
+
+`publicationPlan` must be a different canonical basename in the SAME private
+custody directory as the allocation plan, disjoint from approval/key controls,
+source export, staging and manager/witness authority. Prepare exclusively creates
+an owned 0600 single-link regular file, writes the exact signed bytes, fsyncs the
+file and custody directory, and rechecks authority/witness approval before
+reporting success. Existing, partial and uncertain names are never overwritten
+or deleted. Other source/artifact/authority files remain unchanged. There is no
+manager receipt table, catalog schema upgrade or binding block in this phase.
+
+Independently review and retain `publication-plan-digest` before any future
+publication, in addition to the allocation digest and witness evidence. If prepare
+loses its acknowledgement, retain the file and independently review/approve its
+digest; never regenerate blindly. Status requires:
+
+```sh
+--publication-status --plan-digest "$RETAINED_ALLOCATION_DIGEST" \
+  --publication-digest "$INDEPENDENTLY_RETAINED_PUBLICATION_DIGEST" \
+  --org-key-file /private/organization.key
+```
+
+Status requires the exact same semantic schema-6 request and both retained
+digests. It reads and syncs the private bounded file, authenticates its complete
+bytes/request, repeats preflight and checks the exact current manager/witness
+pair plus unused map name. Missing, truncated, oversized, linked, public,
+tampered or substituted evidence fails closed; no file is recreated or repaired.
+Later registry/catalog changes expire this preparation window. Files must still
+be staged and unchanged; status is not a recovery command after installation.
+
+Success reports `state=publication-prepared` or `publication-current`, allocation
+`plan-digest`, `publication-plan-digest`, `request-digest`, `publication=disabled`
+and `context-authentication=absent`. No plaintext paths/IDs/map names or keys are
+printed. Hashes remain owner-sensitive. Stop all readers/writers and hold the
+directory hierarchy fixed; these checks provide no concurrent-reader lease.
+
+Tests cover normal GCM/CBC handoff, unchanged authority/artifacts, unavailable or
+unadvanced allocation/witness, no overwrite, bounded partial writes, real SIGKILL
+with acknowledgement withheld, tampering despite a reapproved file hash, wrong
+requests/custody, canonical JSON, freshly reapproved physical DB bytes, stale
+authority, unsafe evidence and strict schema/action isolation. Neither process
+interruption testing nor fsync certifies physical power-loss recovery.
+
+TODO #147 remains open. Next connect this retained intent to a guarded durable
+artifact/catalog publisher with blocking and crash reconciliation; the intent
+alone does not enforce use by other trusted manager APIs. No files are copied or
+installed, no map/catalog/witness is published, and no durable acceptance token,
+live adapter or V2 write is enabled. V2/provider/migration/floor, rename/delete
+and production custody/independent monotonic deployment gates remain pending.
