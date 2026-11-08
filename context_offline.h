@@ -21,6 +21,9 @@ int cmeOfflineOpenPayload(const char *path, cmeOfflineArtifact *artifact);
 void cmeOfflineClose(cmeOfflineArtifact *artifact);
 int cmeOfflineSync(cmeOfflineArtifact *active, cmeOfflineArtifact *staged);
 int cmeOfflineInstall(cmeOfflineArtifact *active, cmeOfflineArtifact *staged);
+/* Linux atomic no-replace install into an approved absent sibling name. */
+int cmeOfflineCreate(cmeOfflineArtifact *active, cmeOfflineArtifact *staged);
+int cmeOfflineAbsent(const cmeOfflineArtifact *artifact);
 int cmeOfflineVerify(const cmeOfflineArtifact *artifact);
 
 #endif

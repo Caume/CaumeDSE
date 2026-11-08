@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.25.0
+# Caume Data Security Engine (CaumeDSE) version 2.26.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2958,6 +2958,13 @@ allocation digest, manager pins and unused destination map name. Independently
 retain its digest; status authenticates the exact request and rechecks preflight.
 Partial or uncertain files remain in custody for review. Artifact installation
 and catalog publication remain pending under TODO #147.
+The [opt-in manager copy publisher](HERRADURAKEX_AT_REST_PLAN.md#manager-copy-publication-and-recovery-147-phase-24)
+provides durable job preparation, stored-map blocking and recoverable ColumnFile/
+ResourcesDB installation followed by destination-map publication. It requires
+an explicit catalog-v4 upgrade before creating allocation plans, a trusted offline
+owner and Linux atomic no-replace installation. Organization-key preflight and
+explicit witness approval remain caller responsibilities. The installed CLI
+continues to provide intent handoff only; its guarded publisher adapter is pending.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider

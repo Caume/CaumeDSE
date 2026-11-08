@@ -1,5 +1,8 @@
 #include "common.h"
 #include "context_offline.h"
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
 
 static int cmeOfflineSame(const struct stat *a, const struct stat *b)
 {
@@ -120,4 +123,25 @@ int cmeOfflineInstall(cmeOfflineArtifact *active, cmeOfflineArtifact *staged)
           !strcmp(active->name,"ResourcesDB")))) _exit(86);
 #endif
     return(cmeOfflineSync(active,staged));
+}
+
+int cmeOfflineAbsent(const cmeOfflineArtifact *artifact)
+{
+    struct stat status;
+    if (!fstatat(artifact->directory,artifact->name,&status,AT_SYMLINK_NOFOLLOW) || errno!=ENOENT) return(1);
+    return(cmeOfflineSidecars(artifact));
+}
+
+int cmeOfflineCreate(cmeOfflineArtifact *active, cmeOfflineArtifact *staged)
+{
+#if defined(__linux__) && defined(SYS_renameat2)
+    if (active->parent.st_dev!=staged->status.st_dev || cmeOfflineAbsent(active) || cmeOfflineVerify(staged) ||
+        syscall(SYS_renameat2,staged->directory,staged->name,active->directory,active->name,1U)) return(1);
+#ifdef CDSE_CONTEXT_MANAGER_TESTING
+    if (getenv("CDSE_CONTEXT_OFFLINE_CRASH") && !strcmp(getenv("CDSE_CONTEXT_OFFLINE_CRASH"),"after-copy-create")) _exit(86);
+#endif
+    return(cmeOfflineSync(active,staged));
+#else
+    (void)active; (void)staged; return(1);
+#endif
 }
