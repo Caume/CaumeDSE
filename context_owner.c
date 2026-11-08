@@ -475,6 +475,81 @@ static int cmeCopyOwnerPublicationPaths(const cmeOwnerApproval *approval, const 
     return(0);
 }
 
+/* Recovery authenticates retained evidence against the signed job, rather than
+   rerunning preflight on staging files that a prior installation consumed. */
+static int cmeCopyOwnerInstall(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *retained, const cmeOwnerApproval *approval,
+    const char *action, const char *registryText, const char *catalogText,
+    const unsigned char allocationDigest[32], const unsigned char intentDigest[32],
+    const unsigned char *allocation, size_t allocationLength,
+    const unsigned char *intent, size_t intentLength, const char *const *lookups)
+{
+    cmeContextAnchor registry={0};
+    cmeContextMapAnchor catalog={0},published={0};
+    cmeContextWitnessAnchor current={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    cmeContextCopyInstall *job=NULL;
+    unsigned char bytes[73],actual[32],request[32];
+    unsigned int written;
+    size_t i;
+    int result=1,advance=!strcmp(action,"--advance-install-witness");
+    int status=!strcmp(action,"--install-status");
+    if (cmeOwnerHex(registryText,bytes,73)) goto done;
+    memcpy(registry.deployment,bytes,16); memcpy(registry.organization,bytes+16,16);
+    for (i=0;i<8;i++) registry.generation=(registry.generation<<8)|bytes[32+i];
+    registry.minimumFormat=bytes[40]; memcpy(registry.digest,bytes+41,32);
+    if (cmeOwnerHex(catalogText,bytes,40)) goto done;
+    for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
+    memcpy(catalog.digest,bytes+8,32);
+    if (cmeContextManagerCopyPlanMatch(manager,allocation,allocationLength,allocationDigest,
+        &approval->registry,&approval->catalog,approval->values[4],lookups,approval->count) ||
+        !EVP_Digest(intent,intentLength,actual,&written,EVP_sha256(),NULL) || written!=32 ||
+        CRYPTO_memcmp(actual,intentDigest,32) || cmeCopyOwnerRequestDigest(approval,request)) goto done;
+    result=cmeContextManagerCopyInstallRead(manager,approval->values[27],&registry,&catalog,&job);
+    if (result) goto done;
+    result=1;
+    if (CRYPTO_memcmp(job->job,intentDigest,32) || CRYPTO_memcmp(job->allocationDigest,allocationDigest,32) ||
+        CRYPTO_memcmp(job->requestDigest,request,32) || job->originalCatalog.revision!=approval->catalog.revision ||
+        CRYPTO_memcmp(job->originalCatalog.digest,approval->catalog.digest,32) ||
+        catalog.revision!=(job->state==1 ? job->originalCatalog.revision+1 : job->finishedRevision)) goto done;
+    result=cmeContextWitnessReconcile(witness,retained,&registry,&catalog,&recovery,&current);
+    if (result) goto done;
+    if (advance)
+    {
+        result=cmeContextManagerCheckAnchors(manager,&registry,&catalog); if (result) goto done;
+        if (recovery!=cmeWitnessRecoveryCurrent)
+        { result=cmeContextWitnessAdvance(witness,retained,&registry,&catalog,&current); if (result) goto done; }
+        recovery=cmeWitnessRecoveryCurrent;
+    }
+    else if (!status)
+    {
+        /* A pending job requires an advanced, independently retained witness.
+           Finished retries can reconcile their exact lost acknowledgement. */
+        if (job->state==1 && recovery!=cmeWitnessRecoveryCurrent) { result=2; goto done; }
+        result=cmeContextManagerCopyInstallRecover(manager,approval->values[27],intentDigest,
+            !strcmp(action,"--complete-install"),&registry,&catalog,&published);
+        if (result) goto done;
+        catalog=published;
+        job->state=!strcmp(action,"--complete-install") ? 2 : 3;
+        result=cmeContextWitnessReconcile(witness,retained,&registry,&catalog,&recovery,&current);
+        if (result) goto done;
+    }
+    printf("state=%s\ncontext-authentication=absent\ncatalog=",advance ? "witness-advanced" :
+        (job->state==1 ? "install-prepared" : (job->state==2 ? "install-completed" : "install-aborted")));
+    for (i=0;i<8;i++) bytes[i]=(unsigned char)(catalog.revision>>(56-8*i));
+    memcpy(bytes+8,catalog.digest,32); cmeOwnerPrint(bytes,40);
+    printf("\nwitness-state=%s\n",recovery==cmeWitnessRecoveryAdvanceRequired ? "advance-required" :
+        (recovery==cmeWitnessRecoveryAlreadyAdvanced ? "already-advanced" : "current"));
+    if (advance)
+    {
+        for (i=0;i<8;i++) bytes[i]=(unsigned char)(current.revision>>(56-8*i));
+        memcpy(bytes+8,current.digest,32); printf("witness-token="); cmeOwnerPrint(bytes,40); putchar('\n');
+    }
+    result=0;
+done:
+    cmeContextCopyInstallFree(&job); return(result);
+}
+
 static int cmeCopyOwnerMain(int argc, char **argv)
 {
     cmeOwnerApproval approval={0};
@@ -490,14 +565,15 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     cmeOfflineArtifact intentParent={.file=-1,.directory=-1};
     const char *manifest=NULL,*keyFile=NULL,*witnessFile=NULL,*witnessDirectory=NULL,*confirmation=NULL;
     const char *token=NULL,*digestText=NULL,*approvedRegistry=NULL,*action=NULL;
-    const char *orgFile=NULL,*publicationDigestText=NULL;
+    const char *orgFile=NULL,*publicationDigestText=NULL,*currentRegistryText=NULL,*currentCatalogText=NULL;
     const char **lookups=NULL;
     char *body=NULL,*keyText=NULL,*witnessText=NULL,*planText=NULL,*orgText=NULL,*intentText=NULL;
     FILE *output=NULL,*diagnostics=NULL;
     unsigned char key[32]={0},witnessKey[32]={0},digest[32],bytes[73],approved[73],*prepared=NULL;
     unsigned char publicationDigest[32],requestDigest[32],*intent=NULL;
     size_t length=0,i,intentLength=0;
-    int result=1,state=0,prepare=0,advance=0,check=0,registered=0,export=0,destination=0,publication=0,publicationPrepare=0;
+    int result=1,state=0,prepare=0,advance=0,check=0,registered=0,export=0,destination=0;
+    int publication=0,publicationPrepare=0,installPrepare=0,installInit=0,installRecovery=0;
     if (argc==3 && !strcmp(argv[2],"--help"))
     {
         puts("Usage: caumedse-admin context-copy-plan --approval FILE --confirmed-offline APPROVAL_REALPATH\n"
@@ -511,6 +587,10 @@ static int cmeCopyOwnerMain(int argc, char **argv)
              "  Schema 5 only: --check-destination --plan-digest SHA256 --org-key-file FILE\n"
              "  Schema 6 only: --prepare-publication or --publication-status, plus --plan-digest SHA256 --org-key-file FILE\n"
              "  Publication status also requires --publication-digest SHA256\n"
+             "  Schema 1: --init-install (catalog v3 required, before preparing plans)\n"
+             "  Schema 6: --prepare-install --plan-digest SHA256 --publication-digest SHA256 --org-key-file FILE\n"
+             "  Schema 6: --install-status | --complete-install | --abort-install | --advance-install-witness\n"
+             "    --plan-digest SHA256 --publication-digest SHA256 --current-registry TOKEN --current-catalog TOKEN\n"
              "Private schema-1 approval, original pins, independently retained digest/token.\n"
              "Prepare exclusively creates and syncs the plan, never overwrites or allocates IDs.\n"
              "Stop all readers/writers. Retain uncertain files; never reset/blindly regenerate.\n"
@@ -520,7 +600,8 @@ static int cmeCopyOwnerMain(int argc, char **argv)
              "Destination check also verifies an independently approved add-only copy registration.\n"
              "Checks do not publish files or authenticate V2 contexts.\n"
              "Publication preparation exclusively persists a signed intent; status rechecks it and all approvals.\n"
-             "Witness advancement is separate. No physical copy, catalog publication or V2 writes.");
+             "Install actions require stopped readers/writers and explicit witness advancement after every catalog write.\n"
+             "Legacy byte-preserving copy only; no V2 writes or context authentication.");
         return(0);
     }
     for (i=2;i<(size_t)argc;i++)
@@ -529,7 +610,10 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         if (!strcmp(argv[i],"--prepare") || !strcmp(argv[i],"--status") ||
             !strcmp(argv[i],"--commit") || !strcmp(argv[i],"--advance-witness") || !strcmp(argv[i],"--check-candidate") ||
             !strcmp(argv[i],"--check-registration") || !strcmp(argv[i],"--check-export") ||
-            !strcmp(argv[i],"--check-destination") || !strcmp(argv[i],"--prepare-publication") || !strcmp(argv[i],"--publication-status"))
+            !strcmp(argv[i],"--check-destination") || !strcmp(argv[i],"--prepare-publication") || !strcmp(argv[i],"--publication-status") ||
+            !strcmp(argv[i],"--init-install") || !strcmp(argv[i],"--prepare-install") ||
+            !strcmp(argv[i],"--install-status") || !strcmp(argv[i],"--complete-install") ||
+            !strcmp(argv[i],"--abort-install") || !strcmp(argv[i],"--advance-install-witness"))
         { if (action) goto done; action=argv[i]; continue; }
         if (!strcmp(argv[i],"--approval")) option=&manifest;
         else if (!strcmp(argv[i],"--registry-key-file")) option=&keyFile;
@@ -541,6 +625,8 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         else if (!strcmp(argv[i],"--approved-registry")) option=&approvedRegistry;
         else if (!strcmp(argv[i],"--org-key-file")) option=&orgFile;
         else if (!strcmp(argv[i],"--publication-digest")) option=&publicationDigestText;
+        else if (!strcmp(argv[i],"--current-registry")) option=&currentRegistryText;
+        else if (!strcmp(argv[i],"--current-catalog")) option=&currentCatalogText;
         if (!option || *option || ++i>=(size_t)argc || !*argv[i]) goto done;
         *option=argv[i];
     }
@@ -549,17 +635,22 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         cmeCopyOwnerParse(body,&approval) || strcmp(witnessDirectory,approval.values[12]) ||
         cmeCopyOwnerPaths(&approval,manifest,keyFile,witnessFile,&parent) ||
         cmeOwnerFile(keyFile,65,&keyText) || cmeOwnerFile(witnessFile,65,&witnessText)) goto done;
+    installInit=!strcmp(action,"--init-install"); installPrepare=!strcmp(action,"--prepare-install");
+    installRecovery=!strcmp(action,"--install-status") || !strcmp(action,"--complete-install") ||
+        !strcmp(action,"--abort-install") || !strcmp(action,"--advance-install-witness");
+    if (installRecovery ? (!currentRegistryText || !currentCatalogText || orgFile || approval.schema!=6) :
+        (currentRegistryText || currentCatalogText)) goto done;
     prepare=!strcmp(action,"--prepare"); advance=!strcmp(action,"--advance-witness");
     publicationPrepare=!strcmp(action,"--prepare-publication");
-    publication=publicationPrepare || !strcmp(action,"--publication-status");
+    publication=publicationPrepare || installPrepare || !strcmp(action,"--publication-status");
     destination=publication || !strcmp(action,"--check-destination"); export=destination || !strcmp(action,"--check-export");
     registered=export || !strcmp(action,"--check-registration"); check=registered || !strcmp(action,"--check-candidate");
-    if (check ? (approval.schema!=(publication ? 6 : (destination ? 5 : (export ? 4 : (registered ? 3 : 2)))) || !orgFile) :
-        (approval.schema!=1 || orgFile)) goto done;
-    if (publication && !publicationPrepare)
+    if (!installRecovery && (check ? (approval.schema!=(publication ? 6 : (destination ? 5 : (export ? 4 : (registered ? 3 : 2)))) || !orgFile) :
+        (approval.schema!=1 || orgFile))) goto done;
+    if ((publication && !publicationPrepare) || installRecovery)
     { if (!publicationDigestText || cmeOwnerHex(publicationDigestText,publicationDigest,32)) goto done; }
     else if (publicationDigestText) goto done;
-    if ((prepare ? digestText!=NULL : (!digestText || cmeOwnerHex(digestText,digest,32))) ||
+    if (((prepare || installInit) ? digestText!=NULL : (!digestText || cmeOwnerHex(digestText,digest,32))) ||
         (advance ? (!approvedRegistry || cmeOwnerHex(approvedRegistry,approved,73)) : approvedRegistry!=NULL)) goto done;
     if (strlen(keyText)==65 && keyText[64]=='\n') keyText[64]=0;
     if (strlen(witnessText)==65 && witnessText[64]=='\n') witnessText[64]=0;
@@ -573,6 +664,30 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     lookups=calloc(approval.count,sizeof(*lookups));
     if (!lookups) goto done;
     for (i=0;i<approval.count;i++) lookups[i]=approval.slots[i].lookup;
+    if (installInit)
+    {
+        cmeContextMapAnchor published={0};
+        if (cmeOfflineAbsent(&parent)) goto done;
+        result=cmeContextWitnessReconcile(witness,&retained,&approval.registry,&approval.catalog,&recovery,&current);
+        if (result) goto done;
+        if (recovery!=cmeWitnessRecoveryCurrent) { result=2; goto done; }
+        result=cmeContextManagerCopyInstallInit(manager,&approval.registry,&approval.catalog,&published);
+        if (result) goto done;
+        printf("state=install-initialized\ncatalog=");
+        for (i=0;i<8;i++) bytes[i]=(unsigned char)(published.revision>>(56-8*i));
+        memcpy(bytes+8,published.digest,32); cmeOwnerPrint(bytes,40);
+        printf("\nwitness-state=advance-required\n");
+        goto done;
+    }
+    if (installRecovery)
+    {
+        if (cmeCopyOwnerPublicationPaths(&approval,&parent,manifest,keyFile,witnessFile,manifest,&intentParent) ||
+            cmeOwnerRead(approval.values[8],cmeContextCopyPlanMaxBytes,&planText,&length,1) ||
+            cmeOwnerRead(approval.values[26],cmeContextCopyPublicationMaxBytes,&intentText,&intentLength,1)) goto done;
+        result=cmeCopyOwnerInstall(manager,witness,&retained,&approval,action,currentRegistryText,currentCatalogText,
+            digest,publicationDigest,(unsigned char *)planText,length,(unsigned char *)intentText,intentLength,lookups);
+        goto done;
+    }
     if (prepare)
     {
         result=cmeContextManagerCheckAnchors(manager,&approval.registry,&approval.catalog); if (result) goto done;
@@ -654,6 +769,25 @@ static int cmeCopyOwnerMain(int argc, char **argv)
                 (unsigned char *)intentText,intentLength,publicationDigest);
             if (result) goto done;
             result=cmeContextWitnessCheck(witness,&next,&approval.catalog); if (result) goto done;
+            if (installPrepare)
+            {
+                cmeContextMapAnchor published={0};
+                cmeContextCopyArtifacts artifacts={0};
+                artifacts.sourcePath=approval.values[13]; artifacts.stagedPath=approval.values[14];
+                artifacts.resourcesPath=approval.values[19]; artifacts.stagedResourcesPath=approval.values[22];
+                memcpy(artifacts.columnDigest,approval.source,32);
+                memcpy(artifacts.resourcesDigest,approval.resourcesSource,32);
+                memcpy(artifacts.stagedResourcesDigest,approval.resourcesTarget,32);
+                result=cmeContextManagerCopyInstallPrepare(manager,(unsigned char *)planText,length,digest,
+                    &approval.registry,&approval.catalog,requestDigest,approval.values[27],
+                    (unsigned char *)intentText,intentLength,publicationDigest,&artifacts,&published);
+                if (result) goto done;
+                fprintf(output,"state=install-prepared\ncontext-authentication=absent\ncatalog=");
+                for (i=0;i<8;i++) bytes[i]=(unsigned char)(published.revision>>(56-8*i));
+                memcpy(bytes+8,published.digest,32); cmeOwnerWriteHex(output,bytes,40);
+                fprintf(output,"\nwitness-state=advance-required\n");
+                goto done;
+            }
             fprintf(output,"state=%s\npublication=disabled\ncontext-authentication=absent\nplan-digest=",
                 publicationPrepare ? "publication-prepared" : "publication-current");
             cmeOwnerWriteHex(output,digest,32); fprintf(output,"\npublication-plan-digest=");

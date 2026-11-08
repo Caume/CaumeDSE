@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.26.0
+# Caume Data Security Engine (CaumeDSE) version 2.27.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2921,16 +2921,16 @@ catalog publication. Status is authenticated metadata, not a payload certificate
 The trusted manager's
 [copy-identity preparation API](HERRADURAKEX_AT_REST_PLAN.md#copy-identity-preparation-147-phase-16)
 allocates a fresh resource and grouped record UUIDs in one registry publication.
-It returns an allocation descriptor only: no file copy, map publication,
-registered-copy command or V2 re-encryption is enabled.
+That API returns an allocation descriptor only; file/map publication uses the
+separate guarded publisher below. V2 re-encryption remains disabled.
 The optional [retained allocation plan](HERRADURAKEX_AT_REST_PLAN.md#retained-copy-allocation-plans-147-phase-17)
 fixes candidate UUIDs before publication and supports exact lost-acknowledgement
 reconciliation. Its witness guard never advances the witness automatically;
 the owner must durably retain the reviewed plan before committing it.
 The installed [context-copy-plan command](HERRADURAKEX_AT_REST_PLAN.md#installed-copy-plan-handoff-147-phase-18)
 provides exclusive private plan creation, authenticated status/commit recovery
-and separately approved witness advancement. It allocates registry identities
-only, not backing files or destination maps.
+and separately approved witness advancement. Those allocation actions publish
+registry identities only; install actions below publish backing files and maps.
 Its optional [schema-2 candidate check](HERRADURAKEX_AT_REST_PLAN.md#legacy-copy-candidate-preflight-147-phase-19)
 verifies complete selected ColumnFile cell coverage and a distinct byte-exact
 legacy candidate under current plan/witness approval. It publishes nothing and
@@ -2957,20 +2957,28 @@ and syncs a private signed intent binding the reviewed artifacts/registration,
 allocation digest, manager pins and unused destination map name. Independently
 retain its digest; status authenticates the exact request and rechecks preflight.
 Partial or uncertain files remain in custody for review. Artifact installation
-and catalog publication remain pending under TODO #147.
+and catalog publication use the separately guarded actions below.
 The [opt-in manager copy publisher](HERRADURAKEX_AT_REST_PLAN.md#manager-copy-publication-and-recovery-147-phase-24)
 provides durable job preparation, stored-map blocking and recoverable ColumnFile/
 ResourcesDB installation followed by destination-map publication. It requires
 an explicit catalog-v4 upgrade before creating allocation plans, a trusted offline
 owner and Linux atomic no-replace installation. Organization-key preflight and
-explicit witness approval remain caller responsibilities. The installed CLI
-continues to provide intent handoff only; its guarded publisher adapter is pending.
+explicit witness approval remain caller responsibilities in the core APIs.
+The installed CLI adds guarded publisher actions as described below.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
 no V2 writes enabled; live storage integration and end-to-end provider
 validation are still pending under TODO #147. See
 [`HERRADURAKEX_AT_REST_PLAN.md`](HERRADURAKEX_AT_REST_PLAN.md) for lifecycle,
 capacity and rollback limits.
+
+The [installed copy publisher](HERRADURAKEX_AT_REST_PLAN.md#installed-copy-publication-147-phase-25)
+adds explicit catalog initialization and witness-guarded prepare/status/complete/
+abort actions to `context-copy-plan`. Preparation repeats full legacy payload,
+registration and export preflight; recovery requires both independently retained
+plans and freshly approved current registry/catalog pins. Advance the independent
+witness explicitly after each catalog publication. This offline, byte-preserving
+legacy workflow requires all readers/writers stopped; V2 remains disabled.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

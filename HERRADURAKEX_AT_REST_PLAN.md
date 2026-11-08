@@ -1807,7 +1807,8 @@ new owner-selected map name. The allocation advances the registry only: review
 and explicitly advance/retain the independent witness BEFORE a later catalog
 publication, then advance it again afterward. Advancing both counters at once or
 skipping either checkpoint remains forbidden. These core APIs do not enforce
-witness authorization themselves; a guarded installed copy adapter is pending.
+witness authorization themselves; the installed guards are described in phases
+18 and 25 below.
 
 No output survives a failed call; expected/published registry anchors may alias.
 Return codes remain 0 success, 2 stale pins, 1 invalid/unavailable. Before commit,
@@ -2627,10 +2628,100 @@ lost-ack retries. A retained actual catalog-v3 reader is an optional regression
 probe and rejects v4. No cross-file transaction, concurrent-reader lease, V2
 context authentication or physical power-loss certification is claimed.
 
-TODO #147 remains open. Next add an installed owner adapter that reuses full
-organization-key preflight and guards init/prepare/status/complete/abort with
-independently retained intents, current witness approvals and explicit advancement
-after every publication. V2 re-encryption/substitution rejection, provider/
+Phase 24 leaves the installed witness-guarded owner adapter to phase 25 below.
+TODO #147 remains open for the remaining V2 and deployment acceptance work. V2 re-encryption/substitution rejection, provider/
 migration/floor acceptance, rename/delete and production custody/independent
 monotonic deployment remain pending. Installed schema-1 through schema-6 command
 contracts and live routes remain unchanged.
+
+
+## Installed copy publication (#147 phase 25)
+
+`caumedse-admin context-copy-plan` now exposes the phase-24 publisher through
+explicit owner and witness guards. This is an offline, Linux-only, byte-preserving
+legacy copy. Stop all readers/writers and keep authority, custody, export and
+staging directories fixed throughout; no live-reader lease is acquired.
+
+Before creating allocation or publication plans, explicitly upgrade the catalog
+through the existing shuffle/pair initialization steps and advance the independent
+witness after each. Then use the phase-18 **schema-1** allocation approval with
+`--init-install`, the registry/witness keys, exact offline confirmation and the
+independently retained current witness token. This upgrades v3 to v4 and prints the
+new catalog pin plus `witness-state=advance-required`. It creates no allocation or
+job and cannot be repeated. Independently review that catalog publication and use
+the existing **schema-2** `context-witness --advance PREVIOUS_TOKEN` contract to
+advance the witness; retain its new token. Reapprove the new catalog in the
+allocation manifest before generating/committing an allocation plan. Do not reset
+an uncertain initialization; review current manager pins and reconcile the witness.
+
+Retain and review the allocation digest, commit it, advance the witness, and
+prepare/retain the phase-23 schema-6 publication intent and its digest as before.
+The original schema-6 manifest remains unchanged for every install/recovery action.
+All commands use the original private approval file and canonical offline
+confirmation, registry key, witness directory/key and retained witness token.
+
+```sh
+# Repeat complete payload/registration/export/destination crypto checks, verify
+# both retained plans, then persist the authenticated block without moving files.
+caumedse-admin context-copy-plan --approval "$APPROVAL" \
+  --confirmed-offline "$APPROVAL" --registry-key-file "$REGISTRY_KEY" \
+  --witness-directory "$WITNESS" --witness-key-file "$WITNESS_KEY" \
+  --retained-witness-token "$RETAINED_TOKEN" --prepare-install \
+  --plan-digest "$ALLOCATION_DIGEST" --publication-digest "$PUBLICATION_DIGEST" \
+  --org-key-file "$ORG_KEY"
+
+# After independent review, explicitly approve the CURRENT manager pair.
+# Use this common argument set for --install-status, --complete-install,
+# --abort-install and --advance-install-witness. No organization key is needed
+# after prepare: the authenticated journal binds its completed preflight.
+caumedse-admin context-copy-plan --approval "$APPROVAL" \
+  --confirmed-offline "$APPROVAL" --registry-key-file "$REGISTRY_KEY" \
+  --witness-directory "$WITNESS" --witness-key-file "$WITNESS_KEY" \
+  --retained-witness-token "$RETAINED_TOKEN" --install-status \
+  --plan-digest "$ALLOCATION_DIGEST" --publication-digest "$PUBLICATION_DIGEST" \
+  --current-registry "$APPROVED_CURRENT_REGISTRY" \
+  --current-catalog "$APPROVED_CURRENT_CATALOG"
+```
+
+Prepare returns the published catalog pin and leaves the witness unchanged.
+`--install-status` verifies the current authenticated job, original request,
+original allocation signature and both retained file digests. It reports job state
+and witness reconciliation without installing anything. The original request
+includes all canonical phase-23 artifact, registration, pin and custody fields;
+changing/reapproving the original manifest cannot substitute another request.
+Current pins must be separately reviewed; they are never adopted from a candidate
+or automatically fetched by the command. Status is journal state, not renewed
+artifact/preflight acceptance. Missing/tampered retained evidence fails closed.
+
+Run `--advance-install-witness` with the independently approved prepared pair and
+retain the returned witness token before completing or aborting. A pending job
+requires an exact current retained token; the previous token after a lost witness
+acknowledgement is accepted only for an explicit witness-advance retry. Use
+`--complete-install` to install forward, or `--abort-install` only while the source
+files are original and the new target absent. Neither action advances the witness.
+Review the resulting catalog, explicitly advance again, and retain the new token.
+The complete/abort operation retains all phase-24 no-overwrite, blocking, hash,
+path, typed journal, durable receipt and exact finished-pair retry protections.
+
+After interruption, retain both plans and the original manifest, independently
+review the current manager pins, then inspect status/reconcile the witness.
+Recovery authenticates the journal's request/allocation/intent digests and original
+catalog instead of rerunning checks on staging files that may have been consumed.
+Unknown active bytes retain the block; once a move happened recovery is forward
+only. An exact completed retry checks installed bytes and syncs directories without
+another catalog write. Abort and completed receipts expire for this adapter after
+a later catalog change. Explicit witness advancement supports exact lost-ack and
+already-current retries without another witness revision.
+
+Schema-1 through schema-6 allocation/check/publication-intent actions retain their
+existing behavior. Install-only arguments on those actions, mixed actions, wrong
+schemas and organization-key arguments on recovery are refused. Output is bounded
+to states/pins/digests and generic diagnostics; preflight's legacy crypto logging
+is suppressed as with the existing publication checks.
+
+TODO #147 remains open. Next implement context-aware V2 copy re-encryption and
+substitution-rejection acceptance before connecting this workflow to V2 runtime
+writes. Provider/migration/floor acceptance, rename/delete and production custody/
+independent monotonic deployment also remain pending. No V2 context authentication,
+provider acceptance, cross-file transaction or physical power-loss certification
+is claimed.
