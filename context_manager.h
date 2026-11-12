@@ -364,7 +364,8 @@ void cmeContextCopyInstallFree(cmeContextCopyInstall **job);
    retain the durable block. Exact finished-pair retries verify both active files.
    Source map/ColumnFile and registry identities are preserved. Return 0/2/1;
    outputs clear, catalog/published may alias; other inputs stable/nonoverlapping.
-   No live lease, V2 authentication, power-loss certification or installed CLI. */
+   No live lease, V2 authentication or power-loss certification; witness guards
+   belong to the installed owner adapter, not these core APIs. */
 int cmeContextManagerCopyInstallRecover(cmeContextManager *manager, const char *destinationName,
     const unsigned char job[32], int complete, const cmeContextAnchor *registry,
     const cmeContextMapAnchor *catalog, cmeContextMapAnchor *published);

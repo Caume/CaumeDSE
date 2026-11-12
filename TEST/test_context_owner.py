@@ -609,7 +609,8 @@ class CopyOwnerTests(manager_tests.CopyProvisionTests):
     def test_copy_help_names_offline_boundaries(self):
         result = subprocess.run([ADMIN, 'context-copy-plan', '--help'], capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0)
-        self.assertIn(b'No physical copy', result.stdout)
+        self.assertIn(b'no V2 writes', result.stdout)
+        self.assertIn(b'--prepare-install', result.stdout)
 
     def check_installed_copy_crash_recovery(self, point):
         self.prepare_copy()
@@ -2065,6 +2066,228 @@ class CopyInstallTests(CopyPublicationTests):
 for _name in vars(CopyPublicationTests):
     if _name.startswith('test_'):
         setattr(CopyInstallTests, _name, None)
+
+
+class CopyInstalledOwnerTests(CopyInstallTests):
+    def prepare_copy(self):
+        for action in ('shuffle-init', 'shuffle-pair-init'):
+            self.assertEqual(self.command(action, self.current(), self.map_current()).returncode, 0)
+            result = self.command('witness-advance', self.current(), self.map_current(), self.retained,
+                                  directory=self.witness)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.retained = result.stdout.decode().strip()
+        self.approval['catalog'] = self.map_current()
+        self.write_copy_approval()
+        before = self.map_current()
+        self.plan.write_bytes(b'uncertain prior allocation')
+        self.plan.chmod(0o600)
+        self.assertEqual(self.copy_owner('--init-install').returncode, 1)
+        self.assertEqual(self.map_current(), before)
+        self.plan.unlink()  # Remove only this test-created non-plan sentinel.
+        self.assertEqual(self.copy_owner('--init-install', token='00'*40).returncode, 1)
+        result = self.copy_owner('--init-install')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.copy_owner('--init-install').returncode, 2)
+        self.assertEqual(self.copy_owner('--prepare').returncode, 2)
+        result = self.command('witness-advance', self.current(), self.map_current(), self.retained,
+                              directory=self.witness)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.retained = result.stdout.decode().strip()
+        self.approval['catalog'] = self.map_current()
+        self.write_copy_approval()
+        return CopyOwnerTests.prepare_copy(self)
+
+    def install_prepare(self, **options):
+        return self.publication('--prepare-install', **options)
+
+    def install_prepared(self):
+        result = self.install_prepare()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+        self.prepared_catalog = data['catalog']
+        self.assertEqual(self.prepared_catalog, self.map_current())
+        self.assertEqual(self.map_bind(name='inventory').returncode, 1)
+        return self.prepared_catalog
+
+    def owner_install(self, action='--install-status', *, registry=None, catalog=None,
+                      digest=None, intent_digest=None, token=None, extra=(), env=None, include_current=True):
+        args = [ADMIN, 'context-copy-plan', '--approval', str(self.approval_file),
+                '--confirmed-offline', str(self.approval_file), '--registry-key-file', str(self.key),
+                '--witness-directory', str(self.witness), '--witness-key-file', str(self.witness_key),
+                '--retained-witness-token', token or self.retained, action,
+                '--plan-digest', digest or self.digest, '--publication-digest', intent_digest or self.publication_digest]
+        if include_current:
+            args.extend(['--current-registry', registry or self.current(), '--current-catalog', catalog or self.map_current()])
+        result = subprocess.run([*args, *extra], capture_output=True, timeout=30,
+                                env=dict(os.environ, **(env or {})))
+        for secret in ('fixture-source-key', str(self.authority), str(self.plan), str(self.export),
+                       str(self.approval_file), str(self.org_key), 'copied-inventory'):
+            self.assertNotIn(secret.encode(), result.stdout + result.stderr)
+        if result.returncode:
+            self.assertEqual(result.stdout, b'')
+        return result
+
+    def owner_accepted(self, action='--install-status', **options):
+        result = self.owner_install(action, **options)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+
+    def owner_advance(self):
+        data = self.owner_accepted('--advance-install-witness')
+        self.retained = data['witness-token']
+        return data
+
+    def test_installed_owner_complete_and_explicit_advancement(self):
+        witness = (self.witness / 'witness.sqlite').read_bytes()
+        self.install_prepared()
+        self.assertEqual((self.witness / 'witness.sqlite').read_bytes(), witness)
+        paths = [self.authority / 'registry.sqlite', self.witness / 'witness.sqlite', self.plan,
+                 self.publication_plan, self.source_file, self.candidate_file, self.resources, self.destination_resources]
+        before = [path.read_bytes() for path in paths]
+        self.assertEqual(self.owner_accepted()['witness-state'], 'advance-required')
+        self.assertEqual([path.read_bytes() for path in paths], before)
+        self.assertEqual(self.owner_install('--complete-install').returncode, 2)
+        old = self.retained
+        self.owner_advance()
+        self.assertEqual(self.owner_install('--complete-install', token=old).returncode, 2)
+        self.assertEqual(self.owner_accepted('--complete-install')['witness-state'], 'advance-required')
+        self.assert_installed()
+        finished = self.map_current()
+        self.owner_accepted('--complete-install')  # Lost catalogue acknowledgement.
+        self.assertEqual(self.map_current(), finished)
+        self.owner_advance()
+        self.assertEqual(self.owner_accepted()['witness-state'], 'current')
+        self.owner_accepted('--complete-install')
+        self.owner_advance()  # Exact current token is also idempotent.
+
+    def test_installed_owner_complete_cbc(self):
+        self.install_prepared()
+        self.owner_advance()
+        self.owner_accepted('--complete-install')
+        self.assert_installed()
+
+    def test_installed_owner_abort_keeps_candidates(self):
+        self.install_prepared()
+        self.assertEqual(self.owner_install('--abort-install').returncode, 2)
+        self.owner_advance()
+        self.assertEqual(self.owner_accepted('--abort-install')['state'], 'install-aborted')
+        self.assertEqual(self.resources.read_bytes(), self.source_resources_bytes)
+        self.assertTrue(self.candidate_file.exists())
+        self.owner_accepted('--abort-install')
+        self.assertEqual(self.owner_install('--complete-install').returncode, 1)
+        self.owner_advance()
+
+    def test_installed_owner_full_preflight_before_block(self):
+        self.org_key.write_text('wrong-fixture-key')
+        before = self.map_current()
+        self.assertEqual(self.install_prepare().returncode, 1)
+        self.assertEqual(self.map_current(), before)
+        self.assertEqual(self.map_bind(name='inventory').returncode, 0)
+
+    def test_installed_owner_preflight_rejects_reapproved_candidate(self):
+        with closing(sqlite3.connect(self.destination_resources)) as db:
+            db.execute("update documents set documentId='tampered' where id=4")
+            db.commit()
+        self.approval['destinationResourcesDigest'] = hashlib.sha256(self.destination_resources.read_bytes()).hexdigest()
+        self.write_copy_approval()
+        self.assertNotEqual(self.install_prepare().returncode, 0)
+        self.assertEqual(self.map_current(), self.initial_catalog)
+
+    def test_installed_owner_retained_evidence_required_after_consumption(self):
+        self.install_prepared()
+        self.owner_advance()
+        self.owner_accepted('--complete-install')
+        for path in (self.plan, self.publication_plan):
+            original = path.read_bytes()
+            path.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+            for action in ('--install-status', '--complete-install', '--advance-install-witness'):
+                self.assertEqual(self.owner_install(action).returncode, 1)
+            path.write_bytes(original)
+        self.owner_advance()
+
+    def test_installed_owner_request_substitution_and_digest_guards(self):
+        self.install_prepared()
+        for changes in ({'digest': '00'*32}, {'intent_digest': '00'*32}, {'token': '00'*40},
+                        {'registry': self.approval['registry']}, {'catalog': self.initial_catalog}):
+            self.assertNotEqual(self.owner_install(**changes).returncode, 0)
+        self.approval['destinationRegistration'][1] = 'another-document'
+        self.write_copy_approval()
+        self.assertEqual(self.owner_install().returncode, 1)
+
+    def test_installed_owner_lost_witness_ack(self):
+        self.install_prepared()
+        previous = self.retained
+        advanced = self.owner_advance()
+        self.assertEqual(self.owner_accepted('--advance-install-witness', token=previous)['witness-token'],
+                         advanced['witness-token'])
+        self.owner_accepted('--complete-install')
+        previous = self.retained
+        advanced = self.owner_advance()
+        self.assertEqual(self.owner_accepted('--advance-install-witness', token=previous)['witness-token'],
+                         advanced['witness-token'])
+
+    def test_installed_owner_interrupted_install_forward_only(self):
+        for point in ('after-copy-create', 'after-copy-resources-install', 'after-commit'):
+            with self.subTest(point=point):
+                # Each checkpoint can resume the same job; a finished retry is safe.
+                if point == 'after-copy-create':
+                    self.install_prepared()
+                    self.owner_advance()
+                result = self.install_recover(env={('CDSE_CONTEXT_OFFLINE_CRASH' if point == 'after-copy-create'
+                                                                     else 'CDSE_CONTEXT_MANAGER_CRASH'): point})
+                self.assertEqual(result.returncode, 86, result.stderr)
+                if point != 'after-commit':
+                    self.assertEqual(self.owner_install('--abort-install').returncode, 1)
+                self.owner_accepted()
+        self.owner_accepted('--complete-install')
+        self.assert_installed()
+        self.owner_advance()
+
+    def test_installed_owner_partial_prepare_ack(self):
+        # Fault injection stays in the fixture; the production owner resumes it.
+        result = CopyInstallTests.install_prepare(self, env={'CDSE_CONTEXT_MANAGER_CRASH': 'after-commit'})
+        self.assertEqual(result.returncode, 86, result.stderr)
+        self.assertEqual(self.install_prepare().returncode, 2)
+        self.assertEqual(self.owner_accepted()['state'], 'install-prepared')
+        self.owner_advance()
+        self.owner_accepted('--complete-install')
+        self.assert_installed()
+
+    def test_installed_owner_unknown_artifact_retains_block(self):
+        self.install_prepared()
+        self.owner_advance()
+        self.installed_column.write_bytes(b'unrecognized')
+        self.installed_column.chmod(0o600)
+        self.assertEqual(self.owner_install('--complete-install').returncode, 1)
+        self.assertEqual(self.owner_install('--abort-install').returncode, 1)
+        self.assertEqual(self.map_bind(name='inventory').returncode, 1)
+
+    def test_installed_owner_current_pins_are_explicit_and_action_isolated(self):
+        self.install_prepared()
+        self.assertEqual(self.owner_install(include_current=False).returncode, 1)
+        self.assertEqual(self.owner_install(registry='invalid').returncode, 1)
+        self.assertEqual(self.owner_install(catalog='invalid').returncode, 1)
+        for extra in (('--org-key-file', str(self.org_key)), ('--current-catalog', self.map_current()),
+                      ('--status',), ('--approved-registry', self.current())):
+            self.assertEqual(self.owner_install(extra=extra).returncode, 1)
+        for schema in (1, 2, 3, 4, 5):
+            self.approval['schema'] = schema
+            self.write_copy_approval()
+            self.assertEqual(self.owner_install().returncode, 1)
+
+    def test_installed_owner_receipt_expires_after_later_catalog(self):
+        self.install_prepared()
+        self.owner_advance()
+        self.owner_accepted('--complete-install')
+        self.owner_advance()
+        self.assertEqual(self.map_store(self.cells, name='other-view', resource=self.cells[0][0]).returncode, 0)
+        self.assertEqual(self.owner_install().returncode, 1)
+        self.assertEqual(self.owner_install('--advance-install-witness').returncode, 1)
+
+
+for _name in vars(CopyInstallTests):
+    if _name.startswith('test_'):
+        setattr(CopyInstalledOwnerTests, _name, None)
 
 
 if __name__ == '__main__':
