@@ -2725,3 +2725,82 @@ writes. Provider/migration/floor acceptance, rename/delete and production custod
 independent monotonic deployment also remain pending. No V2 context authentication,
 provider acceptance, cross-file transaction or physical power-loss certification
 is claimed.
+
+
+## Draft V2 provider acceptance (#147 phase 26)
+
+The next prerequisite for V2 copy integration is now executable: a **test-only**
+C codec and copy harness, `context-frame-fixture`, built by `make check` and
+excluded from every installed binary. The draft remains subject to review.
+Production `crypto.c`, storage schemas, installed owner actions and HTTP routes
+are unchanged. `CDSEHKX2` is still rejected by contextless production readers;
+the ownership fixture now exercises a complete, independently generated valid
+empty V2 frame as well as unknown/truncated frame rejection.
+
+The harness implements the proposed 80-byte frame, canonical context encoding,
+AAD domain and frozen KDF id 1 literally. It uses the optional existing
+HSKE-NL-A1 provider, PBKDF2-HMAC-SHA256 with 10000 iterations and 16-byte decoded
+salt. No duplex/NLA2/V3 profile or configurable compiled KDF default is accepted.
+Parsing checks exact frame lengths, supported header fields, complete nonzero
+identifiers, internal-role storage sentinels and bounded canonical ASCII names.
+RawPart requires `payload`/`bytes`. A 16384-byte fixture input/output cap is an
+additional test resource bound, not a revision to the draft wire limit.
+
+`aad` checks serialization even without a provider. `available` reports whether
+the provider was configured; absent-provider builds refuse cipher operations
+and explicitly skip the two provider-dependent test classes. `seal`, `open` and
+`copy` consume hex-encoded **synthetic test** inputs. Nonces are deterministic,
+provided by tests for reproducibility. This is not a safe secret-handling CLI,
+a random nonce allocator or a deployable crypto API; never supply real keys or
+use its deterministic examples as storage code. Secret buffers and unsuccessful
+plaintext outputs are cleansed. Failed opens emit no plaintext; the harness also
+checks the provider's promised untouched output buffer on authentication failure.
+
+The fixture's V2-only reader accepts approved floors 1 or 2 but rejects every
+legacy/unknown frame, without fallback. It does not implement future mixed-format
+compatibility dispatch or migration closeout. Tests compose the existing C HMAC
+registry reader with the codec: independently pinned signed source/target contexts
+and floor 2 feed a copy; a bad registry tag is refused. This is an explicit test
+composition, not an operation-scoped manager/storage adapter or revocation lease.
+
+The copy probe decrypts/authenticates the source, then seals equal plaintext under
+a different resource and record with fresh salt and nonce. It restricts the test
+operation to same-deployment/organization/storage ColumnFile contexts and unchanged
+table/field names. It rejects identity reuse, changed scope/field, reused salt or
+nonce and invalid source authentication. Persisted temporary source/target frames
+prove the source is preserved, destination bytes differ, destination plaintext
+matches, and each frame is rejected under the other context. Nothing is installed,
+registered, mapped or published; no ColumnFile SQL cells, field/file MACs, export
+inventories, witness checkpoints or durable copy jobs are changed by this probe.
+
+The four committed known-answer frames (0/1/33/97 plaintext bytes) were generated
+using the **upstream Python implementation**, independently of the C harness,
+from the same pinned revision used by current-provider CI:
+`ad42138af14a40eb3b47127872f39509723c789f`. The JSON records the Python source
+SHA-256. Regeneration refuses another source hash and needs no installed Python
+provider package:
+
+```sh
+git -C /path/to/HerraduraKEx show \
+  'ad42138af14a40eb3b47127872f39509723c789f:Herradura cryptographic suite.py' \
+  > /tmp/cdse-hkx-reference.py
+python3 TEST/generate_context_frame_vectors.py /tmp/cdse-hkx-reference.py \
+  > /tmp/cdse-context-vectors.json
+cmp TEST/testfiles/herradurakex-context-v2-vectors.json /tmp/cdse-context-vectors.json
+```
+
+Both immutable CI headers must match these cross-language answers. This checks
+interoperability and actual tag rejection, not independent cryptanalysis, algorithm
+approval or a production context-authentication claim. Existing primitive vectors
+and legacy storage compatibility tests remain separate. Mutation checks cover each
+context ID, valid alternative role/table/field, name delimiters, salt/key, every
+nonce/tag/ciphertext byte, header parameters/lengths and unsupported floors/versions.
+Boundary tests include empty and 16304-byte plaintext and all five roles.
+
+TODO #147 remains open. Next implement a reviewed, explicitly opt-in context-aware
+runtime codec using authenticated operation-scoped bindings, then integrate V2
+ColumnFile cell re-encryption, regenerated integrity/registration metadata and
+full persisted readback into the owner staging/publication workflow. Mixed-format
+and floor closeout, provider/migration acceptance, rename/delete and independent
+production custody/monotonic deployment remain pending. The installed phase-25
+publisher continues to accept only its existing byte-preserving legacy workflow.

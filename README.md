@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.27.0
+# Caume Data Security Engine (CaumeDSE) version 2.27.1
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2979,6 +2979,12 @@ registration and export preflight; recovery requires both independently retained
 plans and freshly approved current registry/catalog pins. Advance the independent
 witness explicitly after each catalog publication. This offline, byte-preserving
 legacy workflow requires all readers/writers stopped; V2 remains disabled.
+
+The [draft V2 acceptance harness](HERRADURAKEX_AT_REST_PLAN.md#draft-v2-provider-acceptance-147-phase-26)
+checks actual provider authentication, cross-context rejection and persisted copy
+re-encryption against independently generated Python-port vectors. It is a
+`make check` fixture only, excluded from installed binaries. It does not enable
+V2 in the installed copy publisher or live storage paths.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit
