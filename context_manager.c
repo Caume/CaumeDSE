@@ -760,6 +760,12 @@ int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *
     return(cmeManagerBindingCurrent(manager,binding));
 }
 
+int cmeContextBindingCheckMapped(cmeContextManager *manager, const cmeContextBinding *binding)
+{
+    if (!binding || !binding->mapped) return(1);
+    return(cmeContextBindingCheck(manager,binding));
+}
+
 typedef struct
 {
     unsigned char *bytes;

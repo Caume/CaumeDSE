@@ -2804,3 +2804,82 @@ full persisted readback into the owner staging/publication workflow. Mixed-forma
 and floor closeout, provider/migration acceptance, rename/delete and independent
 production custody/monotonic deployment remain pending. The installed phase-25
 publisher continues to accept only its existing byte-preserving legacy workflow.
+
+
+## Binding-aware V2 memory codec (#147 phase 27)
+
+`context_crypto.h/.c` now supplies explicitly named, opt-in in-process V2 APIs:
+`cmeContextV2Seal`, `cmeContextV2Open` and `cmeContextV2BufferFree`. They are linked
+with the existing runtime, but no installed command, storage reader/writer or
+HTTP route calls them. Contextless `crypto.c` dispatch remains unchanged and
+rejects V2. This adds a memory codec boundary; the draft's wider integration and
+rollout gates are still open.
+
+The caller supplies a live manager, an owner-approved **stored-map binding** from
+`cmeContextManagerMapBind`, canonical table/field selectors and an operation-local
+physical row. `cmeContextBindingCheckMapped` rejects raw registry-only bindings
+and checks both the registry and catalog anchors. Context UUIDs and the minimum
+format floor come only from that authenticated binding. Candidate frames provide
+neither authority nor context. A row move under a freshly approved map preserves
+cryptographic identity: the physical row is a lookup selector, not part of AAD.
+Scope, role, table/field and all immutable IDs remain authenticated.
+
+Both calls validate bounds, check the mapped binding, resolve the slot, perform
+crypto work in private owned buffers, then check the binding again before
+releasing any output. Revocation, floor/registry updates or catalog changes
+invalidate the old binding; a post-crypto mismatch destroys tentative plaintext
+or ciphertext. No secrets, candidate bytes or paths are logged by the codec.
+These are point-in-time checks, not a revocation lease, concurrent-reader lock,
+atomic storage transaction or independent rollback defense. The trusted caller
+must retain/reconcile independent pins/witnesses, keep authority namespaces fixed,
+and coordinate publication after return. A manager/witness backup replay is not
+solved by adding AAD or by trusting a pin read from the replayed manager itself.
+
+The frame/AAD encoding matches the phase-26 cross-language vectors exactly:
+`CDSEHKX2`, profile 1 (existing optional NLA1), flags 0, KDF 1, context schema 1,
+80-byte header, decoded binary 16-byte salt and canonical structured context.
+KDF 1 freezes PBKDF2-HMAC-SHA256 at 10000 iterations and a 32-byte key; this is
+compatibility with the draft, not a new password-policy recommendation. Unknown
+header fields, inconsistent/trailing lengths, invalid selectors and all legacy/
+unknown frames fail closed. Floors 1 and 2 are read from the binding; the V2-only
+reader never falls back to V1/AES, even at floor 1. A future reviewed compatibility
+dispatch must not treat an authentication failure as permission to retry legacy.
+
+Seal generates a fresh 16-byte salt and 32-byte nonce using checked OpenSSL
+`RAND_bytes` calls. There is no runtime nonce override or deterministic test mode.
+Password inputs are 1..256 counted bytes (embedded zero bytes are significant);
+plaintext is binary and may be empty. The API has an explicit 16 MiB plaintext
+resource cap, independent of the draft wire limit and the smaller phase-26 fixture
+cap. Frame bounds are checked before allocation. There is no implicit Base64,
+external salt-column encoding, SQL field MAC, file MAC or registration update.
+
+Outputs are caller-owned `cmeContextV2Buffer` tuples with an additional trailing
+zero outside the counted data, plus Seal's separate 16-byte salt. Inputs and
+output regions must be stable/nonoverlapping during a call. Output structures
+must own no allocation on entry, and the returned pointer/length must be preserved
+until `cmeContextV2BufferFree`, which cleanses the whole allocation and resets the
+tuple. It is safe on NULL or already-cleared tuples. Every failure clears outputs;
+Seal also clears its salt output. Return codes are 0 success, 1 invalid/auth/RNG/
+allocation failure, 2 stale authority and 3 optional provider unavailable. The
+provider-disabled build has the same API and refuses cipher work explicitly.
+
+The check-only `context-crypto-fixture` tests the actual runtime implementation.
+Its build alone enables pause/RNG-failure hooks; production objects contain none
+of their environment keys. Tests exercise source/target slots, all five roles,
+independent Python known answers at both floors, phase-26 codec interoperability,
+empty/binary plaintext and counted passwords, fresh random salt/nonces, salt/nonce
+RNG failures, malformed frames and substitutions, raw-binding refusal and cleared
+outputs. Real two-process handshakes change registry or catalog authority before
+the precheck, between the precheck and crypto, or after crypto. Tests verify stale
+results are withheld; a poisoned test RNG also proves precheck refusal happens
+before generating output. Memory buffers are not file-installation receipts.
+
+TODO #147 remains open. Next define an authenticated target-staging binding tied
+to the independently retained copy allocation/publication intent, then integrate
+V2 ColumnFile cell re-encryption and regenerated integrity/registration metadata
+with full persisted readback and guarded owner publication. A raw allocation
+map descriptor cannot bypass this codec's stored-map requirement, and a target
+map must not be prematurely published merely to obtain a binding. Mixed-format
+migration/floor closeout, provider acceptance, rename/delete and production
+custody/independent monotonic deployment also remain pending. Installed copy
+publication still supports its existing byte-preserving legacy workflow only.

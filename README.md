@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.27.1
+# Caume Data Security Engine (CaumeDSE) version 2.28.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2967,7 +2967,7 @@ explicit witness approval remain caller responsibilities in the core APIs.
 The installed CLI adds guarded publisher actions as described below.
 These APIs are not wired to live storage routes and do not implement resource
 deletion. `CDSEHKX2` remains a draft with
-no V2 writes enabled; live storage integration and end-to-end provider
+no V2 storage writes enabled; live storage integration and end-to-end provider
 validation are still pending under TODO #147. See
 [`HERRADURAKEX_AT_REST_PLAN.md`](HERRADURAKEX_AT_REST_PLAN.md) for lifecycle,
 capacity and rollback limits.
@@ -2985,6 +2985,13 @@ checks actual provider authentication, cross-context rejection and persisted cop
 re-encryption against independently generated Python-port vectors. It is a
 `make check` fixture only, excluded from installed binaries. It does not enable
 V2 in the installed copy publisher or live storage paths.
+
+The [explicit V2 memory codec](HERRADURAKEX_AT_REST_PLAN.md#binding-aware-v2-memory-codec-147-phase-27)
+adds `cmeContextV2Seal`/`cmeContextV2Open` for trusted in-process callers with current,
+authenticated stored-map bindings. It generates fresh salt/nonces, freezes the
+draft parameters, and checks authority before and after crypto work.
+Legacy readers, installed copy commands and live storage routes retain their
+existing behavior; V2 SQL/integrity transformation and publication remain pending.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit
