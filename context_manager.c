@@ -629,7 +629,7 @@ struct cmeContextBinding
 {
     cmeContextAnchor anchor;
     cmeContextMapAnchor mapAnchor;
-    int mapped;
+    int mapped; /* 0 raw, 1 stored map, 2 retained committed allocation target */
     size_t count;
     cmeBoundSlot *slots;
 };
@@ -762,7 +762,13 @@ int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *
 
 int cmeContextBindingCheckMapped(cmeContextManager *manager, const cmeContextBinding *binding)
 {
-    if (!binding || !binding->mapped) return(1);
+    if (!binding || binding->mapped!=1) return(1);
+    return(cmeContextBindingCheck(manager,binding));
+}
+
+int cmeContextBindingCheckCopyTarget(cmeContextManager *manager, const cmeContextBinding *binding)
+{
+    if (!binding || binding->mapped!=2) return(1);
     return(cmeContextBindingCheck(manager,binding));
 }
 
@@ -1782,6 +1788,36 @@ int cmeContextManagerCopyPlanCommit(cmeContextManager *manager, const unsigned c
 {
     int state=0;
     return(cmeCopyPlanAction(manager,plan,length,digest,expected,catalog,&state,copy,published,1));
+}
+
+int cmeContextManagerCopyPlanBind(cmeContextManager *manager,
+    const unsigned char *plan, size_t length, const unsigned char digest[32],
+    const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
+    const char *sourceName, const char *const *lookups, size_t count,
+    cmeContextBinding **binding, cmeContextAnchor *committed)
+{
+    cmeContextAnchor saved,next={0};
+    cmeContextMap *copy=NULL;
+    cmeContextBinding *candidate=NULL;
+    size_t i;
+    int result=1,state=0;
+    if (original) { saved=*original; original=&saved; }
+    if (binding) *binding=NULL;
+    if (committed) memset(committed,0,sizeof(*committed));
+    if (!binding || !committed || !catalog || cmeContextManagerCopyPlanMatch(manager,plan,length,digest,
+        original,catalog,sourceName,lookups,count)) goto done;
+    result=cmeContextManagerCopyPlanStatus(manager,plan,length,digest,original,catalog,&state,&copy,&next);
+    if (result) goto done;
+    if (state!=2) { result=2; goto done; }
+    result=1;
+    for (i=0;i<copy->count;i++) if (copy->slots[i].row<1) goto done;
+    result=cmeContextManagerBind(manager,copy->resource,copy->role,copy->slots,copy->count,&next,&candidate);
+    if (result) goto done;
+    candidate->mapped=2; candidate->mapAnchor=*catalog;
+    result=cmeContextBindingCheckCopyTarget(manager,candidate); if (result) goto done;
+    *binding=candidate; candidate=NULL; *committed=next;
+done:
+    cmeContextBindingFree(&candidate); cmeContextMapFree(&copy); return(result);
 }
 
 int cmeContextManagerCopyPublicationPrepare(cmeContextManager *manager,
