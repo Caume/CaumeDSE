@@ -135,6 +135,9 @@ int cmeContextBindingLookup(const cmeContextBinding *binding, const char *table,
 /* 0 still current, 2 changed anchor, 1 invalid/unavailable authority. This is
    a point-in-time recheck, not a lock/lease or atomic commit with storage writes. */
 int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *binding);
+/* Codec boundary: require a stored-map binding, then authenticate both pins.
+   Raw registry-only bindings fail with 1; other return rules match Check. */
+int cmeContextBindingCheckMapped(cmeContextManager *manager, const cmeContextBinding *binding);
 void cmeContextBindingFree(cmeContextBinding **binding);
 
 /* Opt-in trusted-owner catalog in the private manager DB. Init is explicit and
