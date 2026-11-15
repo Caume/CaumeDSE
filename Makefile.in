@@ -116,13 +116,13 @@ am__installdirs = "$(DESTDIR)$(ipathbindir)" \
 	"$(DESTDIR)$(ipathdatadir)"
 PROGRAMS = $(ipathbin_PROGRAMS)
 am__objects_1 = config.$(OBJEXT) crypto.$(OBJEXT) \
-	context_crypto.$(OBJEXT) context_registry.$(OBJEXT) \
-	context_manager.$(OBJEXT) context_offline.$(OBJEXT) \
-	db.$(OBJEXT) engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
-	filehandling.$(OBJEXT) function_tests.$(OBJEXT) \
-	perl_interpreter.$(OBJEXT) runtime.$(OBJEXT) \
-	strhandling.$(OBJEXT) webservice_interface.$(OBJEXT) \
-	xs_init.$(OBJEXT)
+	context_crypto.$(OBJEXT) context_witness.$(OBJEXT) \
+	context_registry.$(OBJEXT) context_manager.$(OBJEXT) \
+	context_offline.$(OBJEXT) db.$(OBJEXT) engine_admin.$(OBJEXT) \
+	engine_interface.$(OBJEXT) filehandling.$(OBJEXT) \
+	function_tests.$(OBJEXT) perl_interpreter.$(OBJEXT) \
+	runtime.$(OBJEXT) strhandling.$(OBJEXT) \
+	webservice_interface.$(OBJEXT) xs_init.$(OBJEXT)
 am_CaumeDSE_OBJECTS = main.$(OBJEXT) $(am__objects_1)
 CaumeDSE_OBJECTS = $(am_CaumeDSE_OBJECTS)
 CaumeDSE_LDADD = $(LDADD)
@@ -132,12 +132,13 @@ CaumeDSE_debug_tests_OBJECTS = $(am_CaumeDSE_debug_tests_OBJECTS)
 CaumeDSE_debug_tests_LDADD = $(LDADD)
 am_caumedse_admin_OBJECTS = admin.$(OBJEXT) \
 	storage_migration.$(OBJEXT) context_owner.$(OBJEXT) \
-	context_witness.$(OBJEXT) $(am__objects_1)
+	$(am__objects_1)
 caumedse_admin_OBJECTS = $(am_caumedse_admin_OBJECTS)
 caumedse_admin_LDADD = $(LDADD)
 am_context_crypto_fixture_OBJECTS =  \
 	context_crypto_fixture-context_crypto_fixture.$(OBJEXT) \
 	context_crypto_fixture-context_crypto.$(OBJEXT) \
+	context_crypto_fixture-context_witness.$(OBJEXT) \
 	context_crypto_fixture-context_manager.$(OBJEXT) \
 	context_crypto_fixture-context_registry.$(OBJEXT) \
 	context_crypto_fixture-context_offline.$(OBJEXT)
@@ -186,6 +187,7 @@ am__depfiles_remade = ./$(DEPDIR)/admin.Po ./$(DEPDIR)/config.Po \
 	./$(DEPDIR)/context_crypto_fixture-context_manager.Po \
 	./$(DEPDIR)/context_crypto_fixture-context_offline.Po \
 	./$(DEPDIR)/context_crypto_fixture-context_registry.Po \
+	./$(DEPDIR)/context_crypto_fixture-context_witness.Po \
 	./$(DEPDIR)/context_frame_fixture.Po \
 	./$(DEPDIR)/context_manager.Po \
 	./$(DEPDIR)/context_manager_fixture-context_manager.Po \
@@ -666,18 +668,18 @@ tpath = @TESTFILES@
 ipath = @PREFIX@
 ipathbindir = @BINDIR@
 ipathdatadir = @DATADIR@
-caume_common_sources = common.h config.c crypto.c crypto.h context_crypto.c context_crypto.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+caume_common_sources = common.h config.c crypto.c crypto.h context_crypto.c context_crypto.h context_witness.c context_witness.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 CaumeDSE_SOURCES = main.c $(caume_common_sources)
 CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
-caumedse_admin_SOURCES = admin.c admin.h storage_migration.c context_owner.c context_witness.c context_witness.h $(caume_common_sources)
+caumedse_admin_SOURCES = admin.c admin.h storage_migration.c context_owner.c $(caume_common_sources)
 context_manager_fixture_SOURCES = context_manager_fixture.c context_manager.c context_manager.h context_registry.c context_registry.h context_offline.c context_offline.h context_witness.c context_witness.h
 context_manager_fixture_CPPFLAGS = $(AM_CPPFLAGS) -DCDSE_CONTEXT_MANAGER_TESTING
-context_crypto_fixture_SOURCES = context_crypto_fixture.c context_crypto.c context_crypto.h context_manager.c context_manager.h context_registry.c context_registry.h context_offline.c context_offline.h
+context_crypto_fixture_SOURCES = context_crypto_fixture.c context_crypto.c context_crypto.h context_witness.c context_witness.h context_manager.c context_manager.h context_registry.c context_registry.h context_offline.c context_offline.h
 context_crypto_fixture_CPPFLAGS = $(AM_CPPFLAGS) -DCDSE_CONTEXT_CRYPTO_TESTING
 context_frame_fixture_SOURCES = context_frame_fixture.c herradura_compat.h
 context_registry_fixture_SOURCES = context_registry_fixture.c context_registry.c context_registry.h
 reprotect_fixture_SOURCES = reprotect_fixture.c $(caume_common_sources)
-TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh test_context_witness.sh test_context_registered.sh test_context_frame.sh test_context_crypto.sh
+TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh test_context_witness.sh test_context_registered.sh test_context_frame.sh test_context_crypto.sh test_context_target.sh
 TESTS_ENVIRONMENT = srcdir='$(srcdir)'
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = $(TESTS) TEST samples favicon.ico CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md HERRADURAKEX_AT_REST_PLAN.md openapi.yaml herradura_compat.h
@@ -826,6 +828,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_crypto_fixture-context_manager.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_crypto_fixture-context_offline.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_crypto_fixture-context_registry.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_crypto_fixture-context_witness.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_frame_fixture.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_manager_fixture-context_manager.Po@am__quote@ # am--include-marker
@@ -903,6 +906,20 @@ context_crypto_fixture-context_crypto.obj: context_crypto.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_crypto.c' object='context_crypto_fixture-context_crypto.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_crypto_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_crypto_fixture-context_crypto.obj `if test -f 'context_crypto.c'; then $(CYGPATH_W) 'context_crypto.c'; else $(CYGPATH_W) '$(srcdir)/context_crypto.c'; fi`
+
+context_crypto_fixture-context_witness.o: context_witness.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_crypto_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_crypto_fixture-context_witness.o -MD -MP -MF $(DEPDIR)/context_crypto_fixture-context_witness.Tpo -c -o context_crypto_fixture-context_witness.o `test -f 'context_witness.c' || echo '$(srcdir)/'`context_witness.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_crypto_fixture-context_witness.Tpo $(DEPDIR)/context_crypto_fixture-context_witness.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_witness.c' object='context_crypto_fixture-context_witness.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_crypto_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_crypto_fixture-context_witness.o `test -f 'context_witness.c' || echo '$(srcdir)/'`context_witness.c
+
+context_crypto_fixture-context_witness.obj: context_witness.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_crypto_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_crypto_fixture-context_witness.obj -MD -MP -MF $(DEPDIR)/context_crypto_fixture-context_witness.Tpo -c -o context_crypto_fixture-context_witness.obj `if test -f 'context_witness.c'; then $(CYGPATH_W) 'context_witness.c'; else $(CYGPATH_W) '$(srcdir)/context_witness.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_crypto_fixture-context_witness.Tpo $(DEPDIR)/context_crypto_fixture-context_witness.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_witness.c' object='context_crypto_fixture-context_witness.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_crypto_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_crypto_fixture-context_witness.obj `if test -f 'context_witness.c'; then $(CYGPATH_W) 'context_witness.c'; else $(CYGPATH_W) '$(srcdir)/context_witness.c'; fi`
 
 context_crypto_fixture-context_manager.o: context_manager.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_crypto_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_crypto_fixture-context_manager.o -MD -MP -MF $(DEPDIR)/context_crypto_fixture-context_manager.Tpo -c -o context_crypto_fixture-context_manager.o `test -f 'context_manager.c' || echo '$(srcdir)/'`context_manager.c
@@ -1379,6 +1396,13 @@ test_context_crypto.sh.log: test_context_crypto.sh
 	--log-file $$b.log --trs-file $$b.trs \
 	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
 	"$$tst" $(AM_TESTS_FD_REDIRECT)
+test_context_target.sh.log: test_context_target.sh
+	@p='test_context_target.sh'; \
+	b='test_context_target.sh'; \
+	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
+	--log-file $$b.log --trs-file $$b.trs \
+	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
+	"$$tst" $(AM_TESTS_FD_REDIRECT)
 .test.log:
 	@p='$<'; \
 	$(am__set_b); \
@@ -1654,6 +1678,7 @@ distclean: distclean-recursive
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_manager.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_offline.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_registry.Po
+	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_witness.Po
 	-rm -f ./$(DEPDIR)/context_frame_fixture.Po
 	-rm -f ./$(DEPDIR)/context_manager.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_manager.Po
@@ -1737,6 +1762,7 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_manager.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_offline.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_registry.Po
+	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_witness.Po
 	-rm -f ./$(DEPDIR)/context_frame_fixture.Po
 	-rm -f ./$(DEPDIR)/context_manager.Po
 	-rm -f ./$(DEPDIR)/context_manager_fixture-context_manager.Po

@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.28.0
+# Caume Data Security Engine (CaumeDSE) version 2.29.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2992,6 +2992,13 @@ authenticated stored-map bindings. It generates fresh salt/nonces, freezes the
 draft parameters, and checks authority before and after crypto work.
 Legacy readers, installed copy commands and live storage routes retain their
 existing behavior; V2 SQL/integrity transformation and publication remain pending.
+
+The [unpublished copy-target capability](HERRADURAKEX_AT_REST_PLAN.md#authenticated-copy-target-staging-147-phase-28)
+uses the independently retained, committed allocation plan and an explicitly
+advanced witness to authorize V2 memory operations before a destination map exists.
+Separate target APIs preserve the existing stored-map-only boundary. This grants
+identity-scoped staging crypto, not SQL transformation or file-publication approval;
+current allocation version 1 remains restricted to format floor 1.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

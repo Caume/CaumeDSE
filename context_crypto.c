@@ -104,8 +104,8 @@ static int cmeContextV2Parse(const unsigned char *frame, size_t length)
 }
 
 static int cmeContextV2Cipher(cmeContextManager *manager, const cmeContextBinding *binding,
-    const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
-    const unsigned char *input, size_t length, const unsigned char *inputSalt,
+    const cmeContextCopyTarget *target, const char *table, int64_t row, const char *field,
+    const unsigned char *password, size_t passwordLength, const unsigned char *input, size_t length, const unsigned char *inputSalt,
     int encrypt, cmeContextV2Buffer *output, unsigned char *outputSalt)
 {
     cmeStorageContext context={0};
@@ -123,13 +123,15 @@ static int cmeContextV2Cipher(cmeContextManager *manager, const cmeContextBindin
 #endif
     if (output) memset(output,0,sizeof(*output));
     if (outputSalt) memset(outputSalt,0,16);
-    if (!output || !manager || !binding || !password || !passwordLength || passwordLength>256 ||
+    if (!output || !manager || (!binding && !target) || (binding && target) || !password || !passwordLength || passwordLength>256 ||
         (encrypt ? (!outputSalt || length>cmeContextV2MaxPlaintext || (!input && length)) :
         (!inputSalt || cmeContextV2Parse(input,length)))) goto done;
     cmeContextV2Checkpoint("before-check");
-    result=cmeContextBindingCheckMapped(manager,binding); if (result) goto done;
+    result=target ? cmeContextCopyTargetCheck(manager,target) : cmeContextBindingCheckMapped(manager,binding);
+    if (result) goto done;
     result=1;
-    if (cmeContextBindingLookup(binding,table,row,field,&context,&floor) || (floor!=1 && floor!=2)) goto done;
+    if ((target ? cmeContextCopyTargetLookup(target,table,row,field,&context,&floor) :
+        cmeContextBindingLookup(binding,table,row,field,&context,&floor)) || (floor!=1 && floor!=2)) goto done;
     cmeContextV2Checkpoint("before-crypto");
 #if CDSE_ENABLE_HERRADURAKEX && HAVE_HERRADURA_H
     candidate.length=encrypt ? length+80 : length-80;
@@ -151,7 +153,8 @@ static int cmeContextV2Cipher(cmeContextManager *manager, const cmeContextBindin
         hske_nl_aead_encrypt(&key,&nonce,aad,aadLength,input ? input : &empty,length,candidate.bytes+80,candidate.bytes+48);
     else if (!hske_nl_aead_decrypt(&key,&nonce,aad,aadLength,input+80,candidate.length,input+48,candidate.bytes)) goto done;
     cmeContextV2Checkpoint("after-crypto");
-    result=cmeContextBindingCheckMapped(manager,binding); if (result) goto done;
+    result=target ? cmeContextCopyTargetCheck(manager,target) : cmeContextBindingCheckMapped(manager,binding);
+    if (result) goto done;
     *output=candidate; memset(&candidate,0,sizeof(candidate));
     if (encrypt) memcpy(outputSalt,salt,16);
     result=0;
@@ -171,7 +174,7 @@ int cmeContextV2Seal(cmeContextManager *manager, const cmeContextBinding *bindin
     const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
     const unsigned char *plaintext, size_t length, cmeContextV2Buffer *frame, unsigned char salt[16])
 {
-    return(cmeContextV2Cipher(manager,binding,table,row,field,password,passwordLength,
+    return(cmeContextV2Cipher(manager,binding,NULL,table,row,field,password,passwordLength,
         plaintext,length,NULL,1,frame,salt));
 }
 
@@ -179,6 +182,22 @@ int cmeContextV2Open(cmeContextManager *manager, const cmeContextBinding *bindin
     const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
     const unsigned char salt[16], const unsigned char *frame, size_t length, cmeContextV2Buffer *plaintext)
 {
-    return(cmeContextV2Cipher(manager,binding,table,row,field,password,passwordLength,
+    return(cmeContextV2Cipher(manager,binding,NULL,table,row,field,password,passwordLength,
+        frame,length,salt,0,plaintext,NULL));
+}
+
+int cmeContextV2SealCopyTarget(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
+    const unsigned char *plaintext, size_t length, cmeContextV2Buffer *frame, unsigned char salt[16])
+{
+    return(cmeContextV2Cipher(manager,NULL,target,table,row,field,password,passwordLength,
+        plaintext,length,NULL,1,frame,salt));
+}
+
+int cmeContextV2OpenCopyTarget(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
+    const unsigned char salt[16], const unsigned char *frame, size_t length, cmeContextV2Buffer *plaintext)
+{
+    return(cmeContextV2Cipher(manager,NULL,target,table,row,field,password,passwordLength,
         frame,length,salt,0,plaintext,NULL));
 }

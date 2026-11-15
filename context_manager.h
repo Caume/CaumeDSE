@@ -138,6 +138,9 @@ int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *
 /* Codec boundary: require a stored-map binding, then authenticate both pins.
    Raw registry-only bindings fail with 1; other return rules match Check. */
 int cmeContextBindingCheckMapped(cmeContextManager *manager, const cmeContextBinding *binding);
+/* Retained-allocation target only; refuses stored-map and raw bindings.
+   This core check has no witness guard and cannot authorize V2 target crypto. */
+int cmeContextBindingCheckCopyTarget(cmeContextManager *manager, const cmeContextBinding *binding);
 void cmeContextBindingFree(cmeContextBinding **binding);
 
 /* Opt-in trusted-owner catalog in the private manager DB. Init is explicit and
@@ -230,6 +233,20 @@ int cmeContextManagerCopyPlanCommit(cmeContextManager *manager, const unsigned c
 int cmeContextManagerCopyPlanMatch(cmeContextManager *manager, const unsigned char *plan,
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, const char *sourceName, const char *const *lookups, size_t count);
+
+/* Read-only trusted-core target descriptor binding. Match the retained signed
+   plan/digest, original pins and separately approved source/lookups. Require a
+   committed version-1/floor-1 allocation, unchanged catalog, active unblocked
+   source and positive ColumnFile slots. Authenticate allocated contexts against the current registry.
+   No target map, file, job or witness publication. A raw descriptor is insufficient.
+   Both outputs clear on error; committed may alias original, other inputs/outputs
+   are stable/nonoverlapping. Returns 0/2/1 as CopyPlanStatus. This binding is NOT
+   accepted by stored-map crypto; use the witness-guarded target capability. */
+int cmeContextManagerCopyPlanBind(cmeContextManager *manager,
+    const unsigned char *plan, size_t length, const unsigned char digest[32],
+    const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
+    const char *sourceName, const char *const *lookups, size_t count,
+    cmeContextBinding **binding, cmeContextAnchor *committed);
 
 #define cmeContextCopyPublicationMaxBytes 512U
 /* Trusted OFFLINE durable-intent handoff, NOT an artifact/catalog publisher.

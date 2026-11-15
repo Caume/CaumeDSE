@@ -70,4 +70,27 @@ int cmeContextWitnessCopyCommit(cmeContextManager *manager, cmeContextWitness *w
     const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
     cmeContextMap **copy, cmeContextAnchor *published);
 
+typedef struct cmeContextCopyTarget cmeContextCopyTarget;
+/* OFFLINE target capability derived from the retained committed allocation.
+   Source/lookups and original plan pins are independently approved inputs.
+   The witness must acknowledge the committed pair with the exact retained token;
+   AdvanceRequired/AlreadyAdvanced are refused. No automatic advancement or reset.
+   Deep-copies binding/context data; plan buffers may be freed after construction.
+   Borrows witness until TargetFree: finish all calls before closing handles.
+   Output clears on failure. Inputs stable/nonoverlapping; return 0/2/1.
+   Version-1 copy allocations require floor 1; any later floor change expires
+   the capability. Does not verify payloads, org keys, complete SQL inventory or
+   future publication intent. Quiesce readers/writers and keep authority namespaces fixed. */
+int cmeContextWitnessCopyTargetBind(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *retained, const unsigned char *plan, size_t length,
+    const unsigned char digest[32], const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
+    const char *sourceName, const char *const *lookups, size_t count, cmeContextCopyTarget **target);
+/* Current registry/catalog and exact retained witness token/pair, rechecked around
+   witness reconciliation. No joint transaction, lease or backup-replay defense.
+   Lookup clears context/floor on failure; it alone is not a current-state check. */
+int cmeContextCopyTargetCheck(cmeContextManager *manager, const cmeContextCopyTarget *target);
+int cmeContextCopyTargetLookup(const cmeContextCopyTarget *target, const char *table,
+    int64_t row, const char *field, cmeStorageContext *context, unsigned int *floor);
+void cmeContextCopyTargetFree(cmeContextCopyTarget **target);
+
 #endif

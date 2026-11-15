@@ -1,7 +1,7 @@
 #ifndef CME_CONTEXT_CRYPTO_H
 #define CME_CONTEXT_CRYPTO_H
 
-#include "context_manager.h"
+#include "context_witness.h"
 
 #define cmeContextV2HeaderBytes 80U
 #define cmeContextV2SaltBytes 16U
@@ -40,6 +40,23 @@ int cmeContextV2Open(cmeContextManager *manager, const cmeContextBinding *bindin
     const unsigned char *password, size_t passwordLength,
     const unsigned char salt[cmeContextV2SaltBytes], const unsigned char *frame, size_t length,
     cmeContextV2Buffer *plaintext);
+/* Explicit unpublished-copy-target variants. Accept ONLY a witness-guarded
+   cmeContextCopyTarget, never a raw descriptor or ordinary stored-map binding.
+   Recheck registry/catalog plus the retained witness before/after crypto. Same
+   buffer, bound, return and entropy contracts as Seal/Open. No map/file/job or
+   witness writes; this is staging crypto, not artifact acceptance/publication.
+   Current copy-allocation version 1 is floor-1-only; no floor closeout approval. */
+int cmeContextV2SealCopyTarget(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const char *table, int64_t row, const char *field,
+    const unsigned char *password, size_t passwordLength,
+    const unsigned char *plaintext, size_t length, cmeContextV2Buffer *frame,
+    unsigned char salt[cmeContextV2SaltBytes]);
+int cmeContextV2OpenCopyTarget(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const char *table, int64_t row, const char *field,
+    const unsigned char *password, size_t passwordLength,
+    const unsigned char salt[cmeContextV2SaltBytes], const unsigned char *frame, size_t length,
+    cmeContextV2Buffer *plaintext);
+
 /* Cleanses the owned bytes (including the allocation's trailing zero), frees,
    and clears the structure. NULL and already-cleared buffers are safe. */
 void cmeContextV2BufferFree(cmeContextV2Buffer *buffer);

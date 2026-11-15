@@ -355,3 +355,59 @@ int cmeContextWitnessCopyCommit(cmeContextManager *manager, cmeContextWitness *w
     }
     return(cmeContextManagerCopyPlanCommit(manager,plan,length,digest,expected,catalog,copy,published));
 }
+
+struct cmeContextCopyTarget
+{
+    cmeContextBinding *binding;
+    cmeContextWitness *witness; /* Borrowed; must outlive the capability. */
+    cmeContextWitnessAnchor retained;
+    cmeContextAnchor registry;
+    cmeContextMapAnchor catalog;
+};
+
+void cmeContextCopyTargetFree(cmeContextCopyTarget **target)
+{
+    if (!target || !*target) return;
+    cmeContextBindingFree(&(*target)->binding);
+    free(*target); *target=NULL;
+}
+
+int cmeContextCopyTargetCheck(cmeContextManager *manager, const cmeContextCopyTarget *target)
+{
+    cmeContextWitnessAnchor current={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    int result;
+    if (!target) return(1);
+    result=cmeContextBindingCheckCopyTarget(manager,target->binding); if (result) return(result);
+    result=cmeContextWitnessReconcile(target->witness,&target->retained,&target->registry,
+        &target->catalog,&recovery,&current);
+    if (result) return(result);
+    if (recovery!=cmeWitnessRecoveryCurrent) return(2);
+    return(cmeContextBindingCheckCopyTarget(manager,target->binding));
+}
+
+int cmeContextCopyTargetLookup(const cmeContextCopyTarget *target, const char *table,
+    int64_t row, const char *field, cmeStorageContext *context, unsigned int *floor)
+{
+    return(cmeContextBindingLookup(target ? target->binding : NULL,table,row,field,context,floor));
+}
+
+int cmeContextWitnessCopyTargetBind(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *retained, const unsigned char *plan, size_t length,
+    const unsigned char digest[32], const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
+    const char *sourceName, const char *const *lookups, size_t count, cmeContextCopyTarget **target)
+{
+    cmeContextCopyTarget *candidate=NULL;
+    int result=1;
+    if (target) *target=NULL;
+    if (!target || !witness || !retained || !catalog) return(1);
+    candidate=calloc(1,sizeof(*candidate)); if (!candidate) goto done;
+    result=cmeContextManagerCopyPlanBind(manager,plan,length,digest,original,catalog,sourceName,lookups,count,
+        &candidate->binding,&candidate->registry);
+    if (result) goto done;
+    candidate->witness=witness; candidate->retained=*retained; candidate->catalog=*catalog;
+    result=cmeContextCopyTargetCheck(manager,candidate); if (result) goto done;
+    *target=candidate; candidate=NULL;
+done:
+    cmeContextCopyTargetFree(&candidate); return(result);
+}

@@ -2883,3 +2883,94 @@ map must not be prematurely published merely to obtain a binding. Mixed-format
 migration/floor closeout, provider acceptance, rename/delete and production
 custody/independent monotonic deployment also remain pending. Installed copy
 publication still supports its existing byte-preserving legacy workflow only.
+
+
+## Authenticated copy-target staging (#147 phase 28)
+
+The missing unpublished-target boundary is now explicit. A read-only constructor
+can derive an operation-local `cmeContextCopyTarget` from the independently retained
+signed copy-allocation plan/digest, original registry/catalog pins, and separately
+approved source-map name and target lookup vector. It requires the exact committed
+allocation and an independently advanced witness with the exact current retained
+token. It creates no destination map, SQLite row, artifact, copy job or witness
+revision. Source maps and registrations stay unchanged.
+
+The core `cmeContextManagerCopyPlanBind` authenticates the plan/request, classifies
+the allocation as committed, requires the original catalog to remain current and
+the source to be active/unblocked, validates positive ColumnFile slots, and binds
+the allocated target contexts against the current authenticated registry. Its
+opaque binding has a separate target kind and copied catalog anchor. It returns
+the committed registry anchor and clears both outputs on failure; the committed
+anchor may alias the original input. It does not prove allocation provenance
+against a trusted issuer holding the registry key, verify payloads or guard a
+witness. A raw descriptor alone cannot become a target binding.
+
+The public `cmeContextWitnessCopyTargetBind` wraps this core with a separate opaque
+capability. It copies the binding/context data and approved pins/token and borrows
+the existing witness handle. The caller may release the original plan buffers
+after construction, but must retain/review the original durable evidence and keep
+manager/witness handles and namespaces fixed until all calls finish. Free the
+capability with `cmeContextCopyTargetFree` before closing the borrowed witness.
+NULL and already-freed capability pointers are safe. The constructor never
+advances, repairs or adopts authority. Ready allocations, stale pins, changed
+source/lookups, substituted or rehashed-but-unauthenticated plans, missing evidence
+and previous witness tokens fail closed. Even an exact lost-ack token classified
+as `AlreadyAdvanced` must be explicitly reconciled/retained before construction.
+
+Typical trusted offline sequence:
+
+1. Prepare and independently retain/review the signed allocation plan, digest,
+   original pins, source map and desired lookup vector.
+2. Commit that allocation through the existing witness guard. This publishes
+   identities only; retain and review the resulting registry anchor.
+3. Explicitly advance the witness and independently retain its new token.
+4. Construct `cmeContextWitnessCopyTargetBind` from the original plan/request pins
+   plus the exact current retained witness token.
+5. Use `cmeContextV2SealCopyTarget`/`cmeContextV2OpenCopyTarget` on approved slots.
+   Release buffers and the capability when finished; coordinate further staging
+   and publication through a separately reviewed owner workflow.
+
+The target variants use the same strict V2 frame/AAD/KDF, checked random salt/nonce,
+16 MiB limit, counted binary credentials, cleansing buffers and error codes as the
+stored-map APIs. Context/floor come only from the authenticated capability.
+`cmeContextCopyTargetCheck` rechecks registry/catalog state around strict witness
+reconciliation; crypto checks it before and after provider work. A registry or
+catalog change, lost witness currency or witness replay detected against the
+retained token withholds and destroys tentative output. These are point-in-time
+checks, not a joint transaction, lease, power-loss guarantee or independent
+hardware/backup freshness mechanism. Lookup alone is not a current-state check.
+Keep all authority readers/writers quiesced and apply the established independent
+retention/custody policy; selecting an old manager, witness and old retained token
+together defeats this software checkpoint by definition.
+
+Ordinary `cmeContextV2Seal`/`Open` continue to require stored-map bindings;
+`cmeContextBindingCheckMapped` now tests that exact kind rather than truthiness.
+Raw and core-only target bindings cannot bypass it. Only the separately typed,
+witness-guarded capability can enter target crypto. No target map is prematurely
+published to obtain this authorization. Catalog/registry generation changes
+invalidate the capability even if its particular registrations remain active.
+
+**Current version-1 allocation plans are floor-1-only.** Raising the trusted floor
+expires the capability; the existing allocator refuses new floor-2 plans. This
+phase preserves that compatibility gate. Stored-map V2 reads at floors 1 and 2
+remain unchanged. Copying after floor closeout needs a separately reviewed plan/
+migration contract; no decoder or allocation policy is silently broadened here.
+
+Tests persist source/target synthetic frames, prove equal decrypted plaintext,
+preserve the source and both authority databases, and reject cross-resource/
+record/field substitution. Other cases cover exact retained evidence/request pins,
+ready/unacknowledged/forked plans, witness rollback, positive slot bounds, token
+strictness, raw/stored/target kind separation, all allocated slots, RNG failures,
+capability expiry and no map/witness publication. Real two-process pauses replay a
+witness or change registry/catalog state before checks, between checks and crypto,
+and after crypto; all detected changes withhold results.
+
+TODO #147 remains open. This capability authenticates **identity allocation**, not
+organization-key preflight, complete SQL inventory, transformation intent, file
+hashes, field/file MACs or registration integrity. Next add reviewed V2 ColumnFile
+staging with complete source/destination verification and regenerated integrity/
+registration metadata, then design the corresponding V2 acceptance/publication
+contract. Existing legacy publication intents and installed byte-preserving owner
+commands are unchanged and must not be reused as V2 artifact-acceptance receipts.
+Mixed-format migration/floor closeout, full provider acceptance, rename/delete and
+production custody/independent monotonic deployment also remain pending.
