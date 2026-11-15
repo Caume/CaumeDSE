@@ -363,6 +363,7 @@ struct cmeContextCopyTarget
     cmeContextWitnessAnchor retained;
     cmeContextAnchor registry;
     cmeContextMapAnchor catalog;
+    char sourceName[129];
 };
 
 void cmeContextCopyTargetFree(cmeContextCopyTarget **target)
@@ -392,6 +393,21 @@ int cmeContextCopyTargetLookup(const cmeContextCopyTarget *target, const char *t
     return(cmeContextBindingLookup(target ? target->binding : NULL,table,row,field,context,floor));
 }
 
+int cmeContextCopyTargetSource(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    cmeContextMap **map, cmeContextBinding **binding)
+{
+    int result=1;
+    if (map) *map=NULL;
+    if (binding) *binding=NULL;
+    if (!map || !binding) return(1);
+    result=cmeContextCopyTargetCheck(manager,target); if (result) return(result);
+    result=cmeContextManagerMapRead(manager,target->sourceName,&target->registry,&target->catalog,map);
+    if (!result) result=cmeContextManagerMapBind(manager,target->sourceName,&target->registry,&target->catalog,binding);
+    if (!result) result=cmeContextCopyTargetCheck(manager,target);
+    if (result) { cmeContextMapFree(map); cmeContextBindingFree(binding); }
+    return(result);
+}
+
 int cmeContextWitnessCopyTargetBind(cmeContextManager *manager, cmeContextWitness *witness,
     const cmeContextWitnessAnchor *retained, const unsigned char *plan, size_t length,
     const unsigned char digest[32], const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
@@ -406,6 +422,7 @@ int cmeContextWitnessCopyTargetBind(cmeContextManager *manager, cmeContextWitnes
         &candidate->binding,&candidate->registry);
     if (result) goto done;
     candidate->witness=witness; candidate->retained=*retained; candidate->catalog=*catalog;
+    strcpy(candidate->sourceName,sourceName); /* CopyPlanBind validated the 128-byte name bound. */
     result=cmeContextCopyTargetCheck(manager,candidate); if (result) goto done;
     *target=candidate; candidate=NULL;
 done:

@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.29.0
+# Caume Data Security Engine (CaumeDSE) version 2.30.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2999,6 +2999,13 @@ advanced witness to authorize V2 memory operations before a destination map exis
 Separate target APIs preserve the existing stored-map-only boundary. This grants
 identity-scoped staging crypto, not SQL transformation or file-publication approval;
 current allocation version 1 remains restricted to format floor 1.
+
+The [complete-source staging API](HERRADURAKEX_AT_REST_PLAN.md#complete-source-columnfile-staging-147-phase-29)
+verifies an independently pinned homogeneous AES-GCM/CBC ColumnFile snapshot and
+its complete approved identity inventory before generating private V2 candidate
+cells. Every cell receives fresh entropy and passes target-context readback.
+The candidate is held in memory; V2 SQL serialization, regenerated file/registration
+integrity, acceptance and publication remain pending.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

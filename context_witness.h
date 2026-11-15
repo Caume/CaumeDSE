@@ -92,5 +92,10 @@ int cmeContextCopyTargetCheck(cmeContextManager *manager, const cmeContextCopyTa
 int cmeContextCopyTargetLookup(const cmeContextCopyTarget *target, const char *table,
     int64_t row, const char *field, cmeStorageContext *context, unsigned int *floor);
 void cmeContextCopyTargetFree(cmeContextCopyTarget **target);
+/* Owned source map and stored-map binding from this capability's approved plan,
+   not a caller-selected substitute. Recheck the capability around construction.
+   Outputs clear on failure; release with MapFree/BindingFree. Returns 0/2/1. */
+int cmeContextCopyTargetSource(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    cmeContextMap **map, cmeContextBinding **binding);
 
 #endif

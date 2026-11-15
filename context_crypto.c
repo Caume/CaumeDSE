@@ -39,8 +39,13 @@ static void cmeContextV2Checkpoint(const char *stage)
     const char *pause=getenv("CDSE_CONTEXT_CRYPTO_PAUSE");
     if (pause && !strcmp(pause,stage))
     {
+        const char *selected=getenv("CDSE_CONTEXT_CRYPTO_PAUSE_HIT");
+        static unsigned int hits=0;
         const char *ready=getenv("CDSE_CONTEXT_CRYPTO_READY_FD"),*resume=getenv("CDSE_CONTEXT_CRYPTO_RESUME_FD");
         char byte;
+        if (selected && (!*selected || strspn(selected,"0123456789")!=strlen(selected) ||
+            strlen(selected)>4 || !atoi(selected))) _exit(87);
+        if (selected && ++hits!=(unsigned int)atoi(selected)) return;
         if (!ready || !resume || atoi(ready)<3 || atoi(resume)<3 ||
             write(atoi(ready),"1",1)!=1 || read(atoi(resume),&byte,1)!=1) _exit(87);
     }
