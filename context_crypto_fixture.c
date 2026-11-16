@@ -6,6 +6,11 @@
 #include <string.h>
 #include <errno.h>
 #include <openssl/crypto.h>
+#ifdef CDSE_CONTEXT_COLUMN_TESTING
+#include "context_column.h"
+#include <unistd.h>
+#include <fcntl.h>
+#endif
 
 static int cmeFixtureHex(const char *text, unsigned char *bytes, size_t length)
 {
@@ -85,6 +90,75 @@ done:
     return(result);
 #undef CME_BAD_CALL
 }
+
+#ifdef CDSE_CONTEXT_COLUMN_TESTING
+static int cmeFixtureColumn(cmeContextManager *manager, cmeContextCopyTarget *target, int argc, char **argv)
+{
+    FILE *file=NULL;
+    cmeContextColumnStage *stage=NULL;
+    unsigned char *image=NULL,password[256],digest[32];
+    size_t length=0,passwordLength=0,i;
+    long size;
+    int result=1,saved=-1,sink=-1;
+    if (argc!=5 || cmeFixtureHex(argv[1],digest,32) || strlen(argv[4])%2 || strlen(argv[4])>512) goto done;
+    passwordLength=strlen(argv[4])/2;
+    if (cmeFixtureHex(argv[4],password,passwordLength)) goto done;
+    file=fopen(argv[0],"rb");
+    if (!file || fseek(file,0,SEEK_END) || (size=ftell(file))<1 || (unsigned long)size>cmeContextColumnMaxBytes ||
+        fseek(file,0,SEEK_SET) || !(image=malloc(size))) goto done;
+    length=size; if (fread(image,1,length,file)!=length) goto done;
+    fclose(file); file=NULL;
+    /* Legacy DEBUG helpers log to stdout. Retain only the final synthetic cells. */
+    fflush(stdout); saved=dup(STDOUT_FILENO); sink=open("/dev/null",O_WRONLY);
+    if (saved<0 || sink<0 || dup2(sink,STDOUT_FILENO)<0) goto done;
+    if (getenv("CDSE_CONTEXT_COLUMN_CONTRACT"))
+    {
+        cmeContextMap *sourceMap=(cmeContextMap *)1;
+        cmeContextBinding *sourceBinding=(cmeContextBinding *)1;
+#define CME_COLUMN_BAD(m,t,s,n,d,k,p,w,wn) do { \
+        stage=(cmeContextColumnStage *)1; \
+        if (cmeContextColumnStageCreate(m,t,s,n,d,k,p,w,wn,&stage)!=1 || stage) { stage=NULL; result=99; goto done; } \
+    } while (0)
+        CME_COLUMN_BAD(NULL,target,image,length,digest,argv[2],argv[3],password,passwordLength);
+        CME_COLUMN_BAD(manager,NULL,image,length,digest,argv[2],argv[3],password,passwordLength);
+        CME_COLUMN_BAD(manager,target,NULL,length,digest,argv[2],argv[3],password,passwordLength);
+        CME_COLUMN_BAD(manager,target,image,99,digest,argv[2],argv[3],password,passwordLength);
+        CME_COLUMN_BAD(manager,target,image,cmeContextColumnMaxBytes+1,digest,argv[2],argv[3],password,passwordLength);
+        CME_COLUMN_BAD(manager,target,image,length,NULL,argv[2],argv[3],password,passwordLength);
+        CME_COLUMN_BAD(manager,target,image,length,digest,NULL,argv[3],password,passwordLength);
+        CME_COLUMN_BAD(manager,target,image,length,digest,argv[2],NULL,password,passwordLength);
+        CME_COLUMN_BAD(manager,target,image,length,digest,argv[2],argv[3],NULL,passwordLength);
+        CME_COLUMN_BAD(manager,target,image,length,digest,argv[2],argv[3],password,257);
+#undef CME_COLUMN_BAD
+        if (cmeContextColumnStageCreate(manager,target,image,length,digest,argv[2],argv[3],password,passwordLength,NULL)!=1 ||
+            cmeContextCopyTargetSource(manager,NULL,&sourceMap,&sourceBinding)!=1 || sourceMap || sourceBinding)
+        { result=99; goto done; }
+        cmeContextColumnStageFree(&stage); cmeContextColumnStageFree(&stage);
+    }
+    stage=(cmeContextColumnStage *)1;
+    result=cmeContextColumnStageCreate(manager,target,image,length,digest,argv[2],argv[3],password,passwordLength,&stage);
+    fflush(stdout); if (dup2(saved,STDOUT_FILENO)<0) _exit(89);
+    close(saved); saved=-1; close(sink); sink=-1;
+    if (result) { if (stage) { stage=NULL; result=99; } goto done; }
+    free(image); image=NULL; /* Result owns its frames, not the source image. */
+    if (!cmeContextColumnStageCount(stage) || cmeContextColumnStageCount(NULL) ||
+        cmeContextColumnStageCell(NULL,0) || cmeContextColumnStageCell(stage,cmeContextColumnStageCount(stage)))
+    { result=99; goto done; }
+    for (i=0;i<cmeContextColumnStageCount(stage);i++)
+    {
+        const cmeContextColumnCell *cell=cmeContextColumnStageCell(stage,i);
+        printf("%s %lld %s ",cell->table,(long long)cell->row,cell->field);
+        cmeFixturePrint(cell->salt,16); putchar(' '); cmeFixturePrint(cell->frame.bytes,cell->frame.length); putchar('\n');
+    }
+done:
+    if (file) fclose(file);
+    if (saved>=0) { fflush(stdout); if (dup2(saved,STDOUT_FILENO)<0) _exit(89); close(saved); }
+    if (sink>=0) close(sink);
+    if (stage!=(cmeContextColumnStage *)1) cmeContextColumnStageFree(&stage);
+    cmeContextColumnStageFree(NULL); cmeContextColumnStageFree(&stage);
+    free(image); OPENSSL_cleanse(password,sizeof(password)); return(result);
+}
+#endif
 
 static int cmeFixtureTarget(int argc, char **argv)
 {
@@ -168,6 +242,10 @@ static int cmeFixtureTarget(int argc, char **argv)
         cmeContextCopyTargetFree(&target); cmeContextCopyTargetFree(&target);
         puts("contract"); result=0; goto done;
     }
+#ifdef CDSE_CONTEXT_COLUMN_TESTING
+    if (!strcmp(argv[2],"target-column"))
+    { result=cmeFixtureColumn(manager,target,argc-offset,argv+offset); goto done; }
+#endif
     seal=!strcmp(argv[2],"target-seal");
     if (seal ? (size_t)argc!=offset+5 : (strcmp(argv[2],"target-open") || (size_t)argc!=offset+6)) goto done;
     errno=0; row=strtoll(argv[offset+1],&end,10); if (errno || *end || !*argv[offset+1]) goto done;

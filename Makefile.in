@@ -96,7 +96,8 @@ ipathbin_PROGRAMS = CaumeDSE$(EXEEXT) CaumeDSE-debug-tests$(EXEEXT) \
 check_PROGRAMS = reprotect-fixture$(EXEEXT) \
 	context-registry-fixture$(EXEEXT) \
 	context-manager-fixture$(EXEEXT) \
-	context-frame-fixture$(EXEEXT) context-crypto-fixture$(EXEEXT)
+	context-frame-fixture$(EXEEXT) context-crypto-fixture$(EXEEXT) \
+	context-column-fixture$(EXEEXT)
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ax_check_compile_flag.m4 \
@@ -116,13 +117,14 @@ am__installdirs = "$(DESTDIR)$(ipathbindir)" \
 	"$(DESTDIR)$(ipathdatadir)"
 PROGRAMS = $(ipathbin_PROGRAMS)
 am__objects_1 = config.$(OBJEXT) crypto.$(OBJEXT) \
-	context_crypto.$(OBJEXT) context_witness.$(OBJEXT) \
-	context_registry.$(OBJEXT) context_manager.$(OBJEXT) \
-	context_offline.$(OBJEXT) db.$(OBJEXT) engine_admin.$(OBJEXT) \
-	engine_interface.$(OBJEXT) filehandling.$(OBJEXT) \
-	function_tests.$(OBJEXT) perl_interpreter.$(OBJEXT) \
-	runtime.$(OBJEXT) strhandling.$(OBJEXT) \
-	webservice_interface.$(OBJEXT) xs_init.$(OBJEXT)
+	context_crypto.$(OBJEXT) context_column.$(OBJEXT) \
+	context_witness.$(OBJEXT) context_registry.$(OBJEXT) \
+	context_manager.$(OBJEXT) context_offline.$(OBJEXT) \
+	db.$(OBJEXT) engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
+	filehandling.$(OBJEXT) function_tests.$(OBJEXT) \
+	perl_interpreter.$(OBJEXT) runtime.$(OBJEXT) \
+	strhandling.$(OBJEXT) webservice_interface.$(OBJEXT) \
+	xs_init.$(OBJEXT)
 am_CaumeDSE_OBJECTS = main.$(OBJEXT) $(am__objects_1)
 CaumeDSE_OBJECTS = $(am_CaumeDSE_OBJECTS)
 CaumeDSE_LDADD = $(LDADD)
@@ -135,6 +137,29 @@ am_caumedse_admin_OBJECTS = admin.$(OBJEXT) \
 	$(am__objects_1)
 caumedse_admin_OBJECTS = $(am_caumedse_admin_OBJECTS)
 caumedse_admin_LDADD = $(LDADD)
+am__objects_2 = context_column_fixture-config.$(OBJEXT) \
+	context_column_fixture-crypto.$(OBJEXT) \
+	context_column_fixture-context_crypto.$(OBJEXT) \
+	context_column_fixture-context_column.$(OBJEXT) \
+	context_column_fixture-context_witness.$(OBJEXT) \
+	context_column_fixture-context_registry.$(OBJEXT) \
+	context_column_fixture-context_manager.$(OBJEXT) \
+	context_column_fixture-context_offline.$(OBJEXT) \
+	context_column_fixture-db.$(OBJEXT) \
+	context_column_fixture-engine_admin.$(OBJEXT) \
+	context_column_fixture-engine_interface.$(OBJEXT) \
+	context_column_fixture-filehandling.$(OBJEXT) \
+	context_column_fixture-function_tests.$(OBJEXT) \
+	context_column_fixture-perl_interpreter.$(OBJEXT) \
+	context_column_fixture-runtime.$(OBJEXT) \
+	context_column_fixture-strhandling.$(OBJEXT) \
+	context_column_fixture-webservice_interface.$(OBJEXT) \
+	context_column_fixture-xs_init.$(OBJEXT)
+am_context_column_fixture_OBJECTS =  \
+	context_column_fixture-context_crypto_fixture.$(OBJEXT) \
+	$(am__objects_2)
+context_column_fixture_OBJECTS = $(am_context_column_fixture_OBJECTS)
+context_column_fixture_LDADD = $(LDADD)
 am_context_crypto_fixture_OBJECTS =  \
 	context_crypto_fixture-context_crypto_fixture.$(OBJEXT) \
 	context_crypto_fixture-context_crypto.$(OBJEXT) \
@@ -181,6 +206,26 @@ DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
 am__depfiles_remade = ./$(DEPDIR)/admin.Po ./$(DEPDIR)/config.Po \
+	./$(DEPDIR)/context_column.Po \
+	./$(DEPDIR)/context_column_fixture-config.Po \
+	./$(DEPDIR)/context_column_fixture-context_column.Po \
+	./$(DEPDIR)/context_column_fixture-context_crypto.Po \
+	./$(DEPDIR)/context_column_fixture-context_crypto_fixture.Po \
+	./$(DEPDIR)/context_column_fixture-context_manager.Po \
+	./$(DEPDIR)/context_column_fixture-context_offline.Po \
+	./$(DEPDIR)/context_column_fixture-context_registry.Po \
+	./$(DEPDIR)/context_column_fixture-context_witness.Po \
+	./$(DEPDIR)/context_column_fixture-crypto.Po \
+	./$(DEPDIR)/context_column_fixture-db.Po \
+	./$(DEPDIR)/context_column_fixture-engine_admin.Po \
+	./$(DEPDIR)/context_column_fixture-engine_interface.Po \
+	./$(DEPDIR)/context_column_fixture-filehandling.Po \
+	./$(DEPDIR)/context_column_fixture-function_tests.Po \
+	./$(DEPDIR)/context_column_fixture-perl_interpreter.Po \
+	./$(DEPDIR)/context_column_fixture-runtime.Po \
+	./$(DEPDIR)/context_column_fixture-strhandling.Po \
+	./$(DEPDIR)/context_column_fixture-webservice_interface.Po \
+	./$(DEPDIR)/context_column_fixture-xs_init.Po \
 	./$(DEPDIR)/context_crypto.Po \
 	./$(DEPDIR)/context_crypto_fixture-context_crypto.Po \
 	./$(DEPDIR)/context_crypto_fixture-context_crypto_fixture.Po \
@@ -224,13 +269,15 @@ am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 =
 SOURCES = $(CaumeDSE_SOURCES) $(CaumeDSE_debug_tests_SOURCES) \
-	$(caumedse_admin_SOURCES) $(context_crypto_fixture_SOURCES) \
+	$(caumedse_admin_SOURCES) $(context_column_fixture_SOURCES) \
+	$(context_crypto_fixture_SOURCES) \
 	$(context_frame_fixture_SOURCES) \
 	$(context_manager_fixture_SOURCES) \
 	$(context_registry_fixture_SOURCES) \
 	$(reprotect_fixture_SOURCES)
 DIST_SOURCES = $(CaumeDSE_SOURCES) $(CaumeDSE_debug_tests_SOURCES) \
-	$(caumedse_admin_SOURCES) $(context_crypto_fixture_SOURCES) \
+	$(caumedse_admin_SOURCES) $(context_column_fixture_SOURCES) \
+	$(context_crypto_fixture_SOURCES) \
 	$(context_frame_fixture_SOURCES) \
 	$(context_manager_fixture_SOURCES) \
 	$(context_registry_fixture_SOURCES) \
@@ -668,10 +715,12 @@ tpath = @TESTFILES@
 ipath = @PREFIX@
 ipathbindir = @BINDIR@
 ipathdatadir = @DATADIR@
-caume_common_sources = common.h config.c crypto.c crypto.h context_crypto.c context_crypto.h context_witness.c context_witness.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+caume_common_sources = common.h config.c crypto.c crypto.h context_crypto.c context_crypto.h context_column.c context_column.h context_witness.c context_witness.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 CaumeDSE_SOURCES = main.c $(caume_common_sources)
 CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
 caumedse_admin_SOURCES = admin.c admin.h storage_migration.c context_owner.c $(caume_common_sources)
+context_column_fixture_SOURCES = context_crypto_fixture.c $(caume_common_sources)
+context_column_fixture_CPPFLAGS = $(AM_CPPFLAGS) -DCDSE_CONTEXT_CRYPTO_TESTING -DCDSE_CONTEXT_COLUMN_TESTING
 context_manager_fixture_SOURCES = context_manager_fixture.c context_manager.c context_manager.h context_registry.c context_registry.h context_offline.c context_offline.h context_witness.c context_witness.h
 context_manager_fixture_CPPFLAGS = $(AM_CPPFLAGS) -DCDSE_CONTEXT_MANAGER_TESTING
 context_crypto_fixture_SOURCES = context_crypto_fixture.c context_crypto.c context_crypto.h context_witness.c context_witness.h context_manager.c context_manager.h context_registry.c context_registry.h context_offline.c context_offline.h
@@ -679,7 +728,7 @@ context_crypto_fixture_CPPFLAGS = $(AM_CPPFLAGS) -DCDSE_CONTEXT_CRYPTO_TESTING
 context_frame_fixture_SOURCES = context_frame_fixture.c herradura_compat.h
 context_registry_fixture_SOURCES = context_registry_fixture.c context_registry.c context_registry.h
 reprotect_fixture_SOURCES = reprotect_fixture.c $(caume_common_sources)
-TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh test_context_witness.sh test_context_registered.sh test_context_frame.sh test_context_crypto.sh test_context_target.sh
+TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh test_context_witness.sh test_context_registered.sh test_context_frame.sh test_context_crypto.sh test_context_target.sh test_context_column.sh
 TESTS_ENVIRONMENT = srcdir='$(srcdir)'
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = $(TESTS) TEST samples favicon.ico CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md HERRADURAKEX_AT_REST_PLAN.md openapi.yaml herradura_compat.h
@@ -794,6 +843,10 @@ caumedse-admin$(EXEEXT): $(caumedse_admin_OBJECTS) $(caumedse_admin_DEPENDENCIES
 	@rm -f caumedse-admin$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(caumedse_admin_OBJECTS) $(caumedse_admin_LDADD) $(LIBS)
 
+context-column-fixture$(EXEEXT): $(context_column_fixture_OBJECTS) $(context_column_fixture_DEPENDENCIES) $(EXTRA_context_column_fixture_DEPENDENCIES)
+	@rm -f context-column-fixture$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(context_column_fixture_OBJECTS) $(context_column_fixture_LDADD) $(LIBS)
+
 context-crypto-fixture$(EXEEXT): $(context_crypto_fixture_OBJECTS) $(context_crypto_fixture_DEPENDENCIES) $(EXTRA_context_crypto_fixture_DEPENDENCIES)
 	@rm -f context-crypto-fixture$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(context_crypto_fixture_OBJECTS) $(context_crypto_fixture_LDADD) $(LIBS)
@@ -822,6 +875,26 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/admin.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/config.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-config.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_column.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_crypto.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_crypto_fixture.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_manager.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_offline.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_registry.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_witness.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-crypto.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-db.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-engine_admin.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-engine_interface.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-filehandling.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-function_tests.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-perl_interpreter.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-runtime.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-strhandling.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-webservice_interface.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-xs_init.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_crypto.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_crypto_fixture-context_crypto.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_crypto_fixture-context_crypto_fixture.Po@am__quote@ # am--include-marker
@@ -878,6 +951,272 @@ am--depfiles: $(am__depfiles_remade)
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(COMPILE) -c -o $@ `$(CYGPATH_W) '$<'`
+
+context_column_fixture-context_crypto_fixture.o: context_crypto_fixture.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_crypto_fixture.o -MD -MP -MF $(DEPDIR)/context_column_fixture-context_crypto_fixture.Tpo -c -o context_column_fixture-context_crypto_fixture.o `test -f 'context_crypto_fixture.c' || echo '$(srcdir)/'`context_crypto_fixture.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_crypto_fixture.Tpo $(DEPDIR)/context_column_fixture-context_crypto_fixture.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_crypto_fixture.c' object='context_column_fixture-context_crypto_fixture.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_crypto_fixture.o `test -f 'context_crypto_fixture.c' || echo '$(srcdir)/'`context_crypto_fixture.c
+
+context_column_fixture-context_crypto_fixture.obj: context_crypto_fixture.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_crypto_fixture.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-context_crypto_fixture.Tpo -c -o context_column_fixture-context_crypto_fixture.obj `if test -f 'context_crypto_fixture.c'; then $(CYGPATH_W) 'context_crypto_fixture.c'; else $(CYGPATH_W) '$(srcdir)/context_crypto_fixture.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_crypto_fixture.Tpo $(DEPDIR)/context_column_fixture-context_crypto_fixture.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_crypto_fixture.c' object='context_column_fixture-context_crypto_fixture.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_crypto_fixture.obj `if test -f 'context_crypto_fixture.c'; then $(CYGPATH_W) 'context_crypto_fixture.c'; else $(CYGPATH_W) '$(srcdir)/context_crypto_fixture.c'; fi`
+
+context_column_fixture-config.o: config.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-config.o -MD -MP -MF $(DEPDIR)/context_column_fixture-config.Tpo -c -o context_column_fixture-config.o `test -f 'config.c' || echo '$(srcdir)/'`config.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-config.Tpo $(DEPDIR)/context_column_fixture-config.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='config.c' object='context_column_fixture-config.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-config.o `test -f 'config.c' || echo '$(srcdir)/'`config.c
+
+context_column_fixture-config.obj: config.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-config.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-config.Tpo -c -o context_column_fixture-config.obj `if test -f 'config.c'; then $(CYGPATH_W) 'config.c'; else $(CYGPATH_W) '$(srcdir)/config.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-config.Tpo $(DEPDIR)/context_column_fixture-config.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='config.c' object='context_column_fixture-config.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-config.obj `if test -f 'config.c'; then $(CYGPATH_W) 'config.c'; else $(CYGPATH_W) '$(srcdir)/config.c'; fi`
+
+context_column_fixture-crypto.o: crypto.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-crypto.o -MD -MP -MF $(DEPDIR)/context_column_fixture-crypto.Tpo -c -o context_column_fixture-crypto.o `test -f 'crypto.c' || echo '$(srcdir)/'`crypto.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-crypto.Tpo $(DEPDIR)/context_column_fixture-crypto.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='crypto.c' object='context_column_fixture-crypto.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-crypto.o `test -f 'crypto.c' || echo '$(srcdir)/'`crypto.c
+
+context_column_fixture-crypto.obj: crypto.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-crypto.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-crypto.Tpo -c -o context_column_fixture-crypto.obj `if test -f 'crypto.c'; then $(CYGPATH_W) 'crypto.c'; else $(CYGPATH_W) '$(srcdir)/crypto.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-crypto.Tpo $(DEPDIR)/context_column_fixture-crypto.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='crypto.c' object='context_column_fixture-crypto.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-crypto.obj `if test -f 'crypto.c'; then $(CYGPATH_W) 'crypto.c'; else $(CYGPATH_W) '$(srcdir)/crypto.c'; fi`
+
+context_column_fixture-context_crypto.o: context_crypto.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_crypto.o -MD -MP -MF $(DEPDIR)/context_column_fixture-context_crypto.Tpo -c -o context_column_fixture-context_crypto.o `test -f 'context_crypto.c' || echo '$(srcdir)/'`context_crypto.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_crypto.Tpo $(DEPDIR)/context_column_fixture-context_crypto.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_crypto.c' object='context_column_fixture-context_crypto.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_crypto.o `test -f 'context_crypto.c' || echo '$(srcdir)/'`context_crypto.c
+
+context_column_fixture-context_crypto.obj: context_crypto.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_crypto.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-context_crypto.Tpo -c -o context_column_fixture-context_crypto.obj `if test -f 'context_crypto.c'; then $(CYGPATH_W) 'context_crypto.c'; else $(CYGPATH_W) '$(srcdir)/context_crypto.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_crypto.Tpo $(DEPDIR)/context_column_fixture-context_crypto.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_crypto.c' object='context_column_fixture-context_crypto.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_crypto.obj `if test -f 'context_crypto.c'; then $(CYGPATH_W) 'context_crypto.c'; else $(CYGPATH_W) '$(srcdir)/context_crypto.c'; fi`
+
+context_column_fixture-context_column.o: context_column.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_column.o -MD -MP -MF $(DEPDIR)/context_column_fixture-context_column.Tpo -c -o context_column_fixture-context_column.o `test -f 'context_column.c' || echo '$(srcdir)/'`context_column.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_column.Tpo $(DEPDIR)/context_column_fixture-context_column.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_column.c' object='context_column_fixture-context_column.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_column.o `test -f 'context_column.c' || echo '$(srcdir)/'`context_column.c
+
+context_column_fixture-context_column.obj: context_column.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_column.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-context_column.Tpo -c -o context_column_fixture-context_column.obj `if test -f 'context_column.c'; then $(CYGPATH_W) 'context_column.c'; else $(CYGPATH_W) '$(srcdir)/context_column.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_column.Tpo $(DEPDIR)/context_column_fixture-context_column.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_column.c' object='context_column_fixture-context_column.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_column.obj `if test -f 'context_column.c'; then $(CYGPATH_W) 'context_column.c'; else $(CYGPATH_W) '$(srcdir)/context_column.c'; fi`
+
+context_column_fixture-context_witness.o: context_witness.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_witness.o -MD -MP -MF $(DEPDIR)/context_column_fixture-context_witness.Tpo -c -o context_column_fixture-context_witness.o `test -f 'context_witness.c' || echo '$(srcdir)/'`context_witness.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_witness.Tpo $(DEPDIR)/context_column_fixture-context_witness.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_witness.c' object='context_column_fixture-context_witness.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_witness.o `test -f 'context_witness.c' || echo '$(srcdir)/'`context_witness.c
+
+context_column_fixture-context_witness.obj: context_witness.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_witness.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-context_witness.Tpo -c -o context_column_fixture-context_witness.obj `if test -f 'context_witness.c'; then $(CYGPATH_W) 'context_witness.c'; else $(CYGPATH_W) '$(srcdir)/context_witness.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_witness.Tpo $(DEPDIR)/context_column_fixture-context_witness.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_witness.c' object='context_column_fixture-context_witness.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_witness.obj `if test -f 'context_witness.c'; then $(CYGPATH_W) 'context_witness.c'; else $(CYGPATH_W) '$(srcdir)/context_witness.c'; fi`
+
+context_column_fixture-context_registry.o: context_registry.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_registry.o -MD -MP -MF $(DEPDIR)/context_column_fixture-context_registry.Tpo -c -o context_column_fixture-context_registry.o `test -f 'context_registry.c' || echo '$(srcdir)/'`context_registry.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_registry.Tpo $(DEPDIR)/context_column_fixture-context_registry.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_registry.c' object='context_column_fixture-context_registry.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_registry.o `test -f 'context_registry.c' || echo '$(srcdir)/'`context_registry.c
+
+context_column_fixture-context_registry.obj: context_registry.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_registry.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-context_registry.Tpo -c -o context_column_fixture-context_registry.obj `if test -f 'context_registry.c'; then $(CYGPATH_W) 'context_registry.c'; else $(CYGPATH_W) '$(srcdir)/context_registry.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_registry.Tpo $(DEPDIR)/context_column_fixture-context_registry.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_registry.c' object='context_column_fixture-context_registry.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_registry.obj `if test -f 'context_registry.c'; then $(CYGPATH_W) 'context_registry.c'; else $(CYGPATH_W) '$(srcdir)/context_registry.c'; fi`
+
+context_column_fixture-context_manager.o: context_manager.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_manager.o -MD -MP -MF $(DEPDIR)/context_column_fixture-context_manager.Tpo -c -o context_column_fixture-context_manager.o `test -f 'context_manager.c' || echo '$(srcdir)/'`context_manager.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_manager.Tpo $(DEPDIR)/context_column_fixture-context_manager.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_manager.c' object='context_column_fixture-context_manager.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_manager.o `test -f 'context_manager.c' || echo '$(srcdir)/'`context_manager.c
+
+context_column_fixture-context_manager.obj: context_manager.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_manager.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-context_manager.Tpo -c -o context_column_fixture-context_manager.obj `if test -f 'context_manager.c'; then $(CYGPATH_W) 'context_manager.c'; else $(CYGPATH_W) '$(srcdir)/context_manager.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_manager.Tpo $(DEPDIR)/context_column_fixture-context_manager.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_manager.c' object='context_column_fixture-context_manager.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_manager.obj `if test -f 'context_manager.c'; then $(CYGPATH_W) 'context_manager.c'; else $(CYGPATH_W) '$(srcdir)/context_manager.c'; fi`
+
+context_column_fixture-context_offline.o: context_offline.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_offline.o -MD -MP -MF $(DEPDIR)/context_column_fixture-context_offline.Tpo -c -o context_column_fixture-context_offline.o `test -f 'context_offline.c' || echo '$(srcdir)/'`context_offline.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_offline.Tpo $(DEPDIR)/context_column_fixture-context_offline.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_offline.c' object='context_column_fixture-context_offline.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_offline.o `test -f 'context_offline.c' || echo '$(srcdir)/'`context_offline.c
+
+context_column_fixture-context_offline.obj: context_offline.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_offline.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-context_offline.Tpo -c -o context_column_fixture-context_offline.obj `if test -f 'context_offline.c'; then $(CYGPATH_W) 'context_offline.c'; else $(CYGPATH_W) '$(srcdir)/context_offline.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_offline.Tpo $(DEPDIR)/context_column_fixture-context_offline.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_offline.c' object='context_column_fixture-context_offline.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_offline.obj `if test -f 'context_offline.c'; then $(CYGPATH_W) 'context_offline.c'; else $(CYGPATH_W) '$(srcdir)/context_offline.c'; fi`
+
+context_column_fixture-db.o: db.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-db.o -MD -MP -MF $(DEPDIR)/context_column_fixture-db.Tpo -c -o context_column_fixture-db.o `test -f 'db.c' || echo '$(srcdir)/'`db.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-db.Tpo $(DEPDIR)/context_column_fixture-db.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='db.c' object='context_column_fixture-db.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-db.o `test -f 'db.c' || echo '$(srcdir)/'`db.c
+
+context_column_fixture-db.obj: db.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-db.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-db.Tpo -c -o context_column_fixture-db.obj `if test -f 'db.c'; then $(CYGPATH_W) 'db.c'; else $(CYGPATH_W) '$(srcdir)/db.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-db.Tpo $(DEPDIR)/context_column_fixture-db.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='db.c' object='context_column_fixture-db.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-db.obj `if test -f 'db.c'; then $(CYGPATH_W) 'db.c'; else $(CYGPATH_W) '$(srcdir)/db.c'; fi`
+
+context_column_fixture-engine_admin.o: engine_admin.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-engine_admin.o -MD -MP -MF $(DEPDIR)/context_column_fixture-engine_admin.Tpo -c -o context_column_fixture-engine_admin.o `test -f 'engine_admin.c' || echo '$(srcdir)/'`engine_admin.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-engine_admin.Tpo $(DEPDIR)/context_column_fixture-engine_admin.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='engine_admin.c' object='context_column_fixture-engine_admin.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-engine_admin.o `test -f 'engine_admin.c' || echo '$(srcdir)/'`engine_admin.c
+
+context_column_fixture-engine_admin.obj: engine_admin.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-engine_admin.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-engine_admin.Tpo -c -o context_column_fixture-engine_admin.obj `if test -f 'engine_admin.c'; then $(CYGPATH_W) 'engine_admin.c'; else $(CYGPATH_W) '$(srcdir)/engine_admin.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-engine_admin.Tpo $(DEPDIR)/context_column_fixture-engine_admin.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='engine_admin.c' object='context_column_fixture-engine_admin.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-engine_admin.obj `if test -f 'engine_admin.c'; then $(CYGPATH_W) 'engine_admin.c'; else $(CYGPATH_W) '$(srcdir)/engine_admin.c'; fi`
+
+context_column_fixture-engine_interface.o: engine_interface.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-engine_interface.o -MD -MP -MF $(DEPDIR)/context_column_fixture-engine_interface.Tpo -c -o context_column_fixture-engine_interface.o `test -f 'engine_interface.c' || echo '$(srcdir)/'`engine_interface.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-engine_interface.Tpo $(DEPDIR)/context_column_fixture-engine_interface.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='engine_interface.c' object='context_column_fixture-engine_interface.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-engine_interface.o `test -f 'engine_interface.c' || echo '$(srcdir)/'`engine_interface.c
+
+context_column_fixture-engine_interface.obj: engine_interface.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-engine_interface.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-engine_interface.Tpo -c -o context_column_fixture-engine_interface.obj `if test -f 'engine_interface.c'; then $(CYGPATH_W) 'engine_interface.c'; else $(CYGPATH_W) '$(srcdir)/engine_interface.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-engine_interface.Tpo $(DEPDIR)/context_column_fixture-engine_interface.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='engine_interface.c' object='context_column_fixture-engine_interface.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-engine_interface.obj `if test -f 'engine_interface.c'; then $(CYGPATH_W) 'engine_interface.c'; else $(CYGPATH_W) '$(srcdir)/engine_interface.c'; fi`
+
+context_column_fixture-filehandling.o: filehandling.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-filehandling.o -MD -MP -MF $(DEPDIR)/context_column_fixture-filehandling.Tpo -c -o context_column_fixture-filehandling.o `test -f 'filehandling.c' || echo '$(srcdir)/'`filehandling.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-filehandling.Tpo $(DEPDIR)/context_column_fixture-filehandling.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='filehandling.c' object='context_column_fixture-filehandling.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-filehandling.o `test -f 'filehandling.c' || echo '$(srcdir)/'`filehandling.c
+
+context_column_fixture-filehandling.obj: filehandling.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-filehandling.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-filehandling.Tpo -c -o context_column_fixture-filehandling.obj `if test -f 'filehandling.c'; then $(CYGPATH_W) 'filehandling.c'; else $(CYGPATH_W) '$(srcdir)/filehandling.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-filehandling.Tpo $(DEPDIR)/context_column_fixture-filehandling.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='filehandling.c' object='context_column_fixture-filehandling.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-filehandling.obj `if test -f 'filehandling.c'; then $(CYGPATH_W) 'filehandling.c'; else $(CYGPATH_W) '$(srcdir)/filehandling.c'; fi`
+
+context_column_fixture-function_tests.o: function_tests.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-function_tests.o -MD -MP -MF $(DEPDIR)/context_column_fixture-function_tests.Tpo -c -o context_column_fixture-function_tests.o `test -f 'function_tests.c' || echo '$(srcdir)/'`function_tests.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-function_tests.Tpo $(DEPDIR)/context_column_fixture-function_tests.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='function_tests.c' object='context_column_fixture-function_tests.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-function_tests.o `test -f 'function_tests.c' || echo '$(srcdir)/'`function_tests.c
+
+context_column_fixture-function_tests.obj: function_tests.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-function_tests.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-function_tests.Tpo -c -o context_column_fixture-function_tests.obj `if test -f 'function_tests.c'; then $(CYGPATH_W) 'function_tests.c'; else $(CYGPATH_W) '$(srcdir)/function_tests.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-function_tests.Tpo $(DEPDIR)/context_column_fixture-function_tests.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='function_tests.c' object='context_column_fixture-function_tests.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-function_tests.obj `if test -f 'function_tests.c'; then $(CYGPATH_W) 'function_tests.c'; else $(CYGPATH_W) '$(srcdir)/function_tests.c'; fi`
+
+context_column_fixture-perl_interpreter.o: perl_interpreter.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-perl_interpreter.o -MD -MP -MF $(DEPDIR)/context_column_fixture-perl_interpreter.Tpo -c -o context_column_fixture-perl_interpreter.o `test -f 'perl_interpreter.c' || echo '$(srcdir)/'`perl_interpreter.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-perl_interpreter.Tpo $(DEPDIR)/context_column_fixture-perl_interpreter.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='perl_interpreter.c' object='context_column_fixture-perl_interpreter.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-perl_interpreter.o `test -f 'perl_interpreter.c' || echo '$(srcdir)/'`perl_interpreter.c
+
+context_column_fixture-perl_interpreter.obj: perl_interpreter.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-perl_interpreter.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-perl_interpreter.Tpo -c -o context_column_fixture-perl_interpreter.obj `if test -f 'perl_interpreter.c'; then $(CYGPATH_W) 'perl_interpreter.c'; else $(CYGPATH_W) '$(srcdir)/perl_interpreter.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-perl_interpreter.Tpo $(DEPDIR)/context_column_fixture-perl_interpreter.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='perl_interpreter.c' object='context_column_fixture-perl_interpreter.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-perl_interpreter.obj `if test -f 'perl_interpreter.c'; then $(CYGPATH_W) 'perl_interpreter.c'; else $(CYGPATH_W) '$(srcdir)/perl_interpreter.c'; fi`
+
+context_column_fixture-runtime.o: runtime.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-runtime.o -MD -MP -MF $(DEPDIR)/context_column_fixture-runtime.Tpo -c -o context_column_fixture-runtime.o `test -f 'runtime.c' || echo '$(srcdir)/'`runtime.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-runtime.Tpo $(DEPDIR)/context_column_fixture-runtime.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='runtime.c' object='context_column_fixture-runtime.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-runtime.o `test -f 'runtime.c' || echo '$(srcdir)/'`runtime.c
+
+context_column_fixture-runtime.obj: runtime.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-runtime.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-runtime.Tpo -c -o context_column_fixture-runtime.obj `if test -f 'runtime.c'; then $(CYGPATH_W) 'runtime.c'; else $(CYGPATH_W) '$(srcdir)/runtime.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-runtime.Tpo $(DEPDIR)/context_column_fixture-runtime.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='runtime.c' object='context_column_fixture-runtime.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-runtime.obj `if test -f 'runtime.c'; then $(CYGPATH_W) 'runtime.c'; else $(CYGPATH_W) '$(srcdir)/runtime.c'; fi`
+
+context_column_fixture-strhandling.o: strhandling.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-strhandling.o -MD -MP -MF $(DEPDIR)/context_column_fixture-strhandling.Tpo -c -o context_column_fixture-strhandling.o `test -f 'strhandling.c' || echo '$(srcdir)/'`strhandling.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-strhandling.Tpo $(DEPDIR)/context_column_fixture-strhandling.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='strhandling.c' object='context_column_fixture-strhandling.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-strhandling.o `test -f 'strhandling.c' || echo '$(srcdir)/'`strhandling.c
+
+context_column_fixture-strhandling.obj: strhandling.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-strhandling.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-strhandling.Tpo -c -o context_column_fixture-strhandling.obj `if test -f 'strhandling.c'; then $(CYGPATH_W) 'strhandling.c'; else $(CYGPATH_W) '$(srcdir)/strhandling.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-strhandling.Tpo $(DEPDIR)/context_column_fixture-strhandling.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='strhandling.c' object='context_column_fixture-strhandling.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-strhandling.obj `if test -f 'strhandling.c'; then $(CYGPATH_W) 'strhandling.c'; else $(CYGPATH_W) '$(srcdir)/strhandling.c'; fi`
+
+context_column_fixture-webservice_interface.o: webservice_interface.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-webservice_interface.o -MD -MP -MF $(DEPDIR)/context_column_fixture-webservice_interface.Tpo -c -o context_column_fixture-webservice_interface.o `test -f 'webservice_interface.c' || echo '$(srcdir)/'`webservice_interface.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-webservice_interface.Tpo $(DEPDIR)/context_column_fixture-webservice_interface.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='webservice_interface.c' object='context_column_fixture-webservice_interface.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-webservice_interface.o `test -f 'webservice_interface.c' || echo '$(srcdir)/'`webservice_interface.c
+
+context_column_fixture-webservice_interface.obj: webservice_interface.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-webservice_interface.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-webservice_interface.Tpo -c -o context_column_fixture-webservice_interface.obj `if test -f 'webservice_interface.c'; then $(CYGPATH_W) 'webservice_interface.c'; else $(CYGPATH_W) '$(srcdir)/webservice_interface.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-webservice_interface.Tpo $(DEPDIR)/context_column_fixture-webservice_interface.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='webservice_interface.c' object='context_column_fixture-webservice_interface.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-webservice_interface.obj `if test -f 'webservice_interface.c'; then $(CYGPATH_W) 'webservice_interface.c'; else $(CYGPATH_W) '$(srcdir)/webservice_interface.c'; fi`
+
+context_column_fixture-xs_init.o: xs_init.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-xs_init.o -MD -MP -MF $(DEPDIR)/context_column_fixture-xs_init.Tpo -c -o context_column_fixture-xs_init.o `test -f 'xs_init.c' || echo '$(srcdir)/'`xs_init.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-xs_init.Tpo $(DEPDIR)/context_column_fixture-xs_init.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='xs_init.c' object='context_column_fixture-xs_init.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-xs_init.o `test -f 'xs_init.c' || echo '$(srcdir)/'`xs_init.c
+
+context_column_fixture-xs_init.obj: xs_init.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-xs_init.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-xs_init.Tpo -c -o context_column_fixture-xs_init.obj `if test -f 'xs_init.c'; then $(CYGPATH_W) 'xs_init.c'; else $(CYGPATH_W) '$(srcdir)/xs_init.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-xs_init.Tpo $(DEPDIR)/context_column_fixture-xs_init.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='xs_init.c' object='context_column_fixture-xs_init.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-xs_init.obj `if test -f 'xs_init.c'; then $(CYGPATH_W) 'xs_init.c'; else $(CYGPATH_W) '$(srcdir)/xs_init.c'; fi`
 
 context_crypto_fixture-context_crypto_fixture.o: context_crypto_fixture.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_crypto_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_crypto_fixture-context_crypto_fixture.o -MD -MP -MF $(DEPDIR)/context_crypto_fixture-context_crypto_fixture.Tpo -c -o context_crypto_fixture-context_crypto_fixture.o `test -f 'context_crypto_fixture.c' || echo '$(srcdir)/'`context_crypto_fixture.c
@@ -1403,6 +1742,13 @@ test_context_target.sh.log: test_context_target.sh
 	--log-file $$b.log --trs-file $$b.trs \
 	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
 	"$$tst" $(AM_TESTS_FD_REDIRECT)
+test_context_column.sh.log: test_context_column.sh
+	@p='test_context_column.sh'; \
+	b='test_context_column.sh'; \
+	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
+	--log-file $$b.log --trs-file $$b.trs \
+	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
+	"$$tst" $(AM_TESTS_FD_REDIRECT)
 .test.log:
 	@p='$<'; \
 	$(am__set_b); \
@@ -1672,6 +2018,26 @@ distclean: distclean-recursive
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -f ./$(DEPDIR)/admin.Po
 	-rm -f ./$(DEPDIR)/config.Po
+	-rm -f ./$(DEPDIR)/context_column.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-config.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_column.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_crypto.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_crypto_fixture.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_manager.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_offline.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_registry.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_witness.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-crypto.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-db.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-engine_admin.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-engine_interface.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-filehandling.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-function_tests.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-perl_interpreter.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-runtime.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-strhandling.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-webservice_interface.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-xs_init.Po
 	-rm -f ./$(DEPDIR)/context_crypto.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_crypto.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_crypto_fixture.Po
@@ -1756,6 +2122,26 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -rf $(top_srcdir)/autom4te.cache
 	-rm -f ./$(DEPDIR)/admin.Po
 	-rm -f ./$(DEPDIR)/config.Po
+	-rm -f ./$(DEPDIR)/context_column.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-config.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_column.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_crypto.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_crypto_fixture.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_manager.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_offline.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_registry.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_witness.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-crypto.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-db.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-engine_admin.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-engine_interface.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-filehandling.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-function_tests.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-perl_interpreter.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-runtime.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-strhandling.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-webservice_interface.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-xs_init.Po
 	-rm -f ./$(DEPDIR)/context_crypto.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_crypto.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_crypto_fixture.Po

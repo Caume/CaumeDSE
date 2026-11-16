@@ -2974,3 +2974,85 @@ contract. Existing legacy publication intents and installed byte-preserving owne
 commands are unchanged and must not be reused as V2 artifact-acceptance receipts.
 Mixed-format migration/floor closeout, full provider acceptance, rename/delete and
 production custody/independent monotonic deployment also remain pending.
+
+
+## Complete-source ColumnFile staging (#147 phase 29)
+
+`cmeContextColumnStageCreate` is an opt-in trusted offline **memory-only**
+legacy-to-V2 candidate builder. It takes the independently retained and approved
+SHA-256 digest of a complete closed SQLite image, the image bytes, a legacy
+organization key and profile, counted target credentials and the phase-28 target
+capability. No file path or caller SQLite connection is opened or modified. The
+source digest is an external approval pin; it does not authenticate ResourcesDB
+registration, establish source provenance by itself or make legacy CBC cells
+context-bound. Protect the digest/evidence outside the export.
+
+The capability now retains its approved source-map name. The read-only
+`cmeContextCopyTargetSource` obtains an owned map and stored-map binding using
+that capability's committed registry and original catalog pins, with exact
+witness checks around construction. The staging API cannot select another map
+or trust labels supplied by a candidate artifact. Callers free these results with
+MapFree/BindingFree. Existing target lifetime and quiescence rules still apply.
+
+The builder copies and hashes the source before parsing an immutable private
+SQLite image. It accepts only rollback-format headers, data/meta tables with the
+known INTEGER-primary-key/TEXT schema, no additional objects or generated/hidden
+columns, positive bounded row IDs, no OTP helpers, valid text types and SQLite
+integrity. WAL images, alternate schemas, triggers and auxiliary tables refuse.
+SQLite defensive/query-only/trusted-schema settings, length/column/SQL limits
+and a progress budget bound parsing. Builds without SQLite deserialize return
+unavailable (3), without introducing an unconditional dependency on that symbol.
+
+For each data row, the authenticated source map must contain exactly value,
+userId, orgId and rowOrder; each meta row requires attribute, attributeData,
+userId and orgId. No missing, duplicate, extra or unsupported slots are accepted.
+The snapshot and map must cover the same complete row inventory. Sources are
+restricted to homogeneous `aes-256-gcm` or `aes-256-cbc` data and metadata under
+the supplied key, at the existing version-1 allocation floor 1. Canonical Base64
+content (allowing legacy newline wrapping), 16-byte hexadecimal row salts,
+salted-value prefixes, successful explicit-profile decryption, known unique
+metadata declarations, required name/protect metadata and complete row-order
+permutations are checked. All enabled MAC/sign/MACProtected/signProtected tags
+are verified with the existing SHA-256 HMAC semantics; disabled tags and OTP
+helpers must be empty. These legacy sign fields remain HMAC compatibility fields,
+not digital-signature claims. No global encryption profile is changed.
+
+**All source preflight completes before any target entropy/provider operation.**
+The builder then stages every approved cell with fresh V2 salt/nonce using the
+phase-28 target-specific codec and opens it under the same allocated target
+identity to compare plaintext before returning. Protect/shuffle attributeData
+values are rewritten to the explicit draft candidate profile
+`herradura-hske-nl-v2-profile1`; other identity-bearing metadata is preserved.
+Integer physical row IDs and logical rowOrder semantics are retained. The staged
+object contains only slot coordinates, per-cell salts and encrypted frames;
+it never carries plaintext or copied legacy integrity/helper columns.
+
+`cmeContextColumnStageCount` and `cmeContextColumnStageCell` return a borrowed
+immutable view until `cmeContextColumnStageFree`. NULL/out-of-range accessors
+return zero/NULL; free is NULL-safe and idempotent. The output starts empty and
+stays empty on every error; tentative frames and plaintext are cleansed on
+failure. Free all owned buffers, including allocation trailing zeros, using the
+provided functions. Successful construction owns its ciphertext independently of
+the input image. Bounds are 16 MiB per source image, 256 KiB per SQL cell, 4096
+registry slots and 32 MiB total candidate storage. Source keys are bounded C
+strings; target passwords remain counted binary credentials. Provider absence
+returns 3 after valid source preflight; there is no alternate-provider fallback.
+
+The stored source binding and target capability are checked after preflight and
+before releasing the complete candidate. Each cell also uses the codec's existing
+pre/post registry/catalog/witness checks. Detected revocation, catalog changes or
+witness replay destroy and withhold the entire partial candidate. These checks
+are point-in-time, without a lease or joint database/witness transaction. Keep
+writers and authority namespaces quiesced through subsequent owner decisions.
+A returned candidate may later expire; accessors alone do not authorize use or
+publication. Retain original evidence and revalidate authority in future flows.
+
+This is **not a persisted V2 ColumnFile format or an acceptance receipt**. It does
+not regenerate legacy row tags, file MACs, ResourcesDB records, target map entries
+or owner publication intents. Its AEAD tags authenticate candidate cells only.
+Next define serialized V2 field/salt and integrity representation, regenerate and
+verify complete destination registration/integrity metadata, and design a retained
+transformation/acceptance contract before adding physical publication. Existing
+legacy byte-preserving commands and intents must not consume this candidate.
+Mixed-profile/provider sources, floor-2 allocation/migration closeout, production
+custody and independent monotonic deployment remain open under TODO #147.
