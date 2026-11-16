@@ -1,12 +1,7 @@
 /* Private, bounded candidate cells; no installed storage-format dispatch. */
 #include "common.h"
 #include "context_column.h"
-
-struct cmeContextColumnStage
-{
-    size_t count;
-    cmeContextColumnCell *cells;
-};
+#include "context_column_internal.h"
 
 size_t cmeContextColumnStageCount(const cmeContextColumnStage *stage)
 {

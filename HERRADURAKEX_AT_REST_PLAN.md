@@ -3050,9 +3050,108 @@ publication. Retain original evidence and revalidate authority in future flows.
 This is **not a persisted V2 ColumnFile format or an acceptance receipt**. It does
 not regenerate legacy row tags, file MACs, ResourcesDB records, target map entries
 or owner publication intents. Its AEAD tags authenticate candidate cells only.
-Next define serialized V2 field/salt and integrity representation, regenerate and
-verify complete destination registration/integrity metadata, and design a retained
+Phase 30 below defines the serialized V2 field/salt and container-integrity
+representation. Still regenerate/verify complete destination registration integrity and design a retained
 transformation/acceptance contract before adding physical publication. Existing
 legacy byte-preserving commands and intents must not consume this candidate.
 Mixed-profile/provider sources, floor-2 allocation/migration closeout, production
 custody and independent monotonic deployment remain open under TODO #147.
+
+
+## Serialized V2 ColumnFile container (#147 phase 30)
+
+`cmeContextColumnStageSerialize` and `cmeContextColumnStageDeserialize` add an
+explicit **offline, unpublished** container codec around the phase-29 candidate.
+They return owned bytes or encrypted cells in memory. They open no file paths,
+change no registration or authority state and enable no live/legacy dispatch.
+This format is separate from the legacy data/meta ColumnFile schema. It must not
+be handed to installed legacy publication intents as an accepted artifact.
+
+Container schema version 1 uses a rollback-format SQLite image with 4096-byte
+pages, UTF-8 database encoding, application_id `0x43445332` (1128551218, CDS2),
+user_version 1, an exact page-count/byte-length match and no freelist pages. WAL,
+trailing bytes, other page sizes and unsupported header values refuse. SQLite
+integrity_check must pass. The two sqlite_master table definitions must match
+these exact strings, with no extra objects, indexes, triggers or schema variants:
+
+```sql
+CREATE TABLE cdse_column_v2(version INTEGER NOT NULL,profile TEXT NOT NULL,integrity TEXT NOT NULL,cellCount INTEGER NOT NULL)
+CREATE TABLE cdse_column_v2_cells(ordinal INTEGER PRIMARY KEY,salt BLOB NOT NULL,frame BLOB NOT NULL)
+```
+
+The header table has exactly one row at rowid 1: integer version 1, text profile
+`herradura-hske-nl-v2-profile1`, text integrity
+`aead-context+inventory+sha256-pin`, and integer cellCount equal to the complete
+capability source-map inventory. Unknown versions/profiles/integrity declarations,
+types and duplicate/missing header rows refuse. Schema definitions are deliberately
+strict; this is not a generic importer of semantically similar SQLite schemas.
+The overall SQLite byte encoding is not promised canonical across SQLite versions;
+independently retain the hash of the actual image produced and approved.
+
+Cell ordinals are consecutive INTEGER primary keys 1..cellCount in the approved
+map's canonical ASCII table, numeric physical row, ASCII field order. Every data
+row has exactly orgId, rowOrder, userId, value, and every meta row has exactly
+attribute, attributeData, orgId, userId in that order. At least one row of each
+table is required. No missing/duplicate/extra/unsupported map slots or cell rows
+are accepted. The container stores **no lookup, UUID, resource name or coordinate
+labels**. Its ordinal is resolved only through the authenticated map retained by
+the target plan; file-supplied labels cannot become identities.
+
+Each salt is exactly 16 BLOB bytes. Each frame is a BLOB containing the existing
+strict CDSEHKX2/profile1/KDF1/AAD-schema1 header, nonce, AEAD tag and ciphertext;
+there is no Base64 or legacy-frame fallback. No plaintext is stored in SQLite.
+The writer builds a fresh in-memory database and never deletes/updates plaintext
+rows, avoiding historical plaintext in free pages. The reader copies the image
+before hashing/parsing it, uses read-only deserialize plus defensive/query-only/
+trusted-schema settings, length/column/SQL limits and a VM progress budget. It
+validates the entire structural inventory before the first cell crypto call.
+
+Container integrity is the conjunction of:
+
+- Successful V2 AEAD verification of every cell under its allocated target context.
+- Exact coverage/ordinal resolution through the independently approved complete
+  source map and current registry/catalog/witness capability.
+- An **independently retained and approved SHA-256 pin of every image byte**,
+  checked before SQLite parsing. A hash merely attached to an untrusted file is
+  not authentication, registration validation or source-provenance approval.
+
+The serializer requires target credentials and always runs the authenticated
+reader on its private serialized image before releasing either bytes or digest.
+Serialization/readback generates no new crypto entropy: it preserves the staged
+salts/frames exactly. Entropy was generated and checked during phase-29 staging.
+The reader opens every frame, rejects embedded-NUL plaintext, verifies unique
+known metadata declarations, required name/protect entries, the exact V2 protect/
+shuffle profile, SHA-256 provenance algorithm declarations, and a complete logical
+rowOrder permutation. Empty data values and counted binary passwords are supported.
+Plaintext is bounded and cleansed; only an owned encrypted candidate is returned.
+The original image can be freed after successful readback.
+
+Legacy MAC/sign/MACProtected/signProtected **algorithm declarations** are retained
+as source provenance because their cells belong to the approved inventory. They
+do not activate legacy helper columns in this format. Those columns do not exist;
+container integrity is exclusively the fixed scheme above. This adds no new MAC
+primitive and makes no digital-signature claim. Whole-file registration integrity
+and ResourcesDB partMAC/profile representation need a separate reviewed contract.
+
+Both APIs clear all outputs on error and return 0/1/2/3 as the V2 codec; SQLite
+serialize/deserialize absence also returns unavailable (3). Use V2BufferFree for
+the image and StageFree for readback cells. Inputs/outputs must be stable and
+nonoverlapping, with no output allocation owned on entry. Limits are 32 MiB per
+container, the existing 4096 slots/32 MiB candidate bound, 256 KiB plaintext per
+cell and 16 MiB total transient plaintext. Source staging remains floor-1-only.
+
+Registry/catalog and exact witness currency are checked around construction,
+each crypto operation and final output release. Detected changes destroy the
+entire image/candidate, including earlier decrypted cells. These are point-in-time
+checks, not a lease or joint authority/file transaction. A digest and returned
+candidate are **not** transformation/acceptance receipts. Keep namespaces and
+writers quiesced, retain original evidence independently, and revalidate authority
+in any later owner flow. Coherent replay of old authorities and old retained
+pins still requires the existing independent rollback/custody defenses.
+
+TODO #147 remains open. Next bind the original source approval, allocation plan,
+serialized candidate digest and complete destination registration/integrity into
+a separately retained transformation/acceptance contract. Only then add guarded
+physical publication and published-map reads. Full mixed-profile/provider source
+acceptance, floor-2 migration/allocation closeout, rename/delete and production
+custody/independent monotonic deployment also remain pending.
