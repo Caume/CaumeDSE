@@ -3149,9 +3149,100 @@ writers quiesced, retain original evidence independently, and revalidate authori
 in any later owner flow. Coherent replay of old authorities and old retained
 pins still requires the existing independent rollback/custody defenses.
 
-TODO #147 remains open. Next bind the original source approval, allocation plan,
-serialized candidate digest and complete destination registration/integrity into
-a separately retained transformation/acceptance contract. Only then add guarded
+TODO #147 remains open. Phase 31 below binds the source, allocation and candidate
+to retained transformation evidence plus an external registration-approval pin.
+Complete registration/integrity validation and acceptance remain required before guarded
 physical publication and published-map reads. Full mixed-profile/provider source
 acceptance, floor-2 migration/allocation closeout, rename/delete and production
 custody/independent monotonic deployment also remain pending.
+
+
+## Retained ColumnFile transformation receipts (#147 phase 31)
+
+`cmeContextColumnTransformPrepare` and `cmeContextColumnTransformVerify` add a
+separately retained **transformation receipt**, not a complete artifact-acceptance
+or publication receipt. Both require the independently approved source/candidate
+image hashes, homogeneous AES-GCM/CBC source profile, absent destination-map name
+and nonzero SHA-256 digest of an independently protected registration approval
+document. Keep the original images, allocation plan/request, pins and approval
+document independently; do not adopt values supplied by an untrusted artifact.
+
+**The registrationEvidenceDigest is an opaque external approval pin.** These APIs
+do not parse ResourcesDB, verify its selected rows, regenerate partMAC, prove
+physical source provenance or verify complete destination registration integrity.
+A caller-supplied hash is not a registration check. That remaining acceptance
+boundary must be implemented before any consumer can publish an artifact. The
+new receipt is intentionally incompatible with legacy copy-publication intents.
+
+Preparation and verification both authenticate and inventory the entire pinned
+legacy source using the phase-29 schema/key/salt/metadata/order/HMAC rules. They
+read back the pinned V2 image using phase 30, then compare every approved cell's
+plaintext byte-for-byte under the target binding. Only the already defined
+protect/shuffle attributeData rewrite to `herradura-hske-nl-v2-profile1` is allowed.
+All other values, user/org fields, metadata and logical rowOrder must match.
+A valid AEAD image containing an unauthorized changed value is insufficient;
+even a syntactically correct manager-signed receipt cannot bypass this comparison.
+Plaintext stays private, bounded and cleansed, with no output plaintext exposed.
+
+The target capability now retains the exact allocation-plan digest.
+`cmeContextCopyTargetEvidence` returns its copied allocation digest, committed
+registry anchor, original catalog pin and exact acknowledged witness token,
+checking current authority before and after copying. Outputs clear on failure.
+The underlying plan still authenticates the original source-map/request approval;
+no candidate-supplied labels or pins become authority. Existing target/witness
+lifetime, fixed-namespace, floor-1 allocation and quiescence rules still apply.
+
+Receipt v1 canonical body is the following concatenation (integers big-endian):
+
+1. `CDSE-HKX-COLUMN-TRANSFORM-v1` including its trailing NUL byte.
+2. Retained allocation-plan SHA-256 digest (32 bytes).
+3. Committed registry anchor (73 bytes): deployment UUID, organization UUID,
+   uint64 generation, uint8 floor, SHA-256 registry digest.
+4. Original catalog pin: uint64 revision and 32-byte digest.
+5. Exact retained witness token: uint64 revision and 32-byte digest.
+6. Source-profile byte: 1 for aes-256-gcm, 2 for aes-256-cbc.
+7. Source-image digest, candidate-image digest and registration-evidence digest,
+   each 32 bytes.
+8. Destination map: uint8 byte length and 1..128 ASCII bytes using the existing
+   manager lookup alphabet (letters, digits, underscore, slash, colon, hyphen).
+
+Compute requestDigest = SHA-256(body). The final 32-byte tag is HMAC-SHA-256
+under the separate manager registry key over:
+
+`CDSE-HKX-COLUMN-TRANSFORM-SEAL-v1` including NUL, followed by the 73-byte registry
+anchor, 40-byte catalog pin, length-prefixed destination name and requestDigest.
+The receipt is body || tag, at most 512 bytes. The returned receiptDigest is
+SHA-256 of all receipt bytes including the tag. Neither organization keys nor
+passwords/fingerprints/plaintext are serialized. There is no timestamp, entropy
+or one-time-consumption promise; equal evidence produces equal receipts.
+
+`cmeContextManagerColumnTransformSign` is a **trusted-core signature primitive**.
+It checks manager/catalog pins and absence of the destination name in a read-only
+manager transaction. It does not inspect payloads, witness state or registration
+approval and must never be used alone as an acceptance verifier. The high-level
+APIs surround it with exact target/witness checks and complete artifact comparison.
+Verify first checks the independently retained receipt hash, exact canonical
+request/evidence body and tag, then reruns source/candidate verification. Checking
+only the signature/hash is deliberately not an exposed high-level success path.
+
+Source and candidate validation are read-only and entropy-free; they do not
+regenerate fresh staging frames. No global profile, authority, witness, copy job,
+map, ResourcesDB row or physical file changes. An existing destination name,
+including the source name, refuses. A later registry/catalog/witness change
+expires the operation/receipt; no automatic adoption, witness advancement, reset
+or intent conversion occurs. Final checks withhold the entire receipt or Verify
+success when a change is detected after comparison/signing. These are still
+point-in-time checks, not a joint transaction or lease; independent custody and
+rollback defenses remain necessary against coherent replay of old state/pins.
+
+Prepare returns an owned V2Buffer receipt plus digest; free with V2BufferFree.
+Both outputs clear on failure. Verify returns only status. All inputs/outputs
+must remain stable and nonoverlapping; output buffers own no allocation on entry.
+Return codes remain 0 success, 1 invalid/auth/comparison/unavailable-state failure,
+2 stale authority conflict, 3 unavailable codec/SQLite feature. Existing 16 MiB
+source, 32 MiB container and cell/inventory/plaintext bounds remain in force.
+
+TODO #147 remains open for actual ResourcesDB/destination registration-integrity
+verification and a complete retained acceptance contract consuming this evidence,
+then guarded physical publication, published-map reads and the prior mixed-profile/
+provider/floor-2 migration, lifecycle and production-custody closeout gates.

@@ -92,6 +92,94 @@ done:
 }
 
 #ifdef CDSE_CONTEXT_COLUMN_TESTING
+static int cmeFixtureReadBounded(const char *path, size_t maximum, unsigned char **bytes, size_t *length)
+{
+    FILE *file=fopen(path,"rb");
+    unsigned char *candidate=NULL;
+    long size;
+    int result=1;
+    *bytes=NULL; *length=0;
+    if (!file || fseek(file,0,SEEK_END) || (size=ftell(file))<1 || (unsigned long)size>maximum ||
+        fseek(file,0,SEEK_SET) || !(candidate=malloc(size+1)) || fread(candidate,1,size,file)!=(size_t)size) goto done;
+    candidate[size]=0; *bytes=candidate; candidate=NULL; *length=size; result=0;
+done:
+    if (file) fclose(file);
+    free(candidate); return(result);
+}
+
+static int cmeFixtureTransform(cmeContextManager *manager, cmeContextCopyTarget *target,
+    const char *action, int argc, char **argv)
+{
+    cmeContextColumnTransformApproval approval={0};
+    cmeContextV2Buffer output={0};
+    cmeContextCopyEvidence evidence={0},zeroEvidence={0};
+    unsigned char *source=NULL,*image=NULL,*receipt=NULL,password[256],digest[32],zero[32]={0};
+    size_t sourceLength=0,imageLength=0,receiptLength=0,passwordLength;
+    int verify=!strcmp(action,"target-transform-verify"),saved=-1,sink=-1,result=1;
+    if (argc!=(verify ? 11 : 9) || cmeFixtureHex(argv[1],approval.sourceDigest,32) ||
+        cmeFixtureHex(argv[5],approval.candidateDigest,32) || cmeFixtureHex(argv[6],approval.registrationEvidenceDigest,32) ||
+        strlen(argv[8])%2 || strlen(argv[8])>512) goto done;
+    approval.sourceProfile=argv[3]; approval.destinationMap=argv[7]; passwordLength=strlen(argv[8])/2;
+    if (cmeFixtureHex(argv[8],password,passwordLength) ||
+        cmeFixtureReadBounded(argv[0],cmeContextColumnMaxBytes,&source,&sourceLength) ||
+        cmeFixtureReadBounded(argv[4],cmeContextColumnMaxImageBytes,&image,&imageLength)) goto done;
+    if (verify && (cmeFixtureReadBounded(argv[9],cmeContextColumnTransformMaxBytes,&receipt,&receiptLength) ||
+        cmeFixtureHex(argv[10],digest,32))) goto done;
+    fflush(stdout); saved=dup(STDOUT_FILENO); sink=open("/dev/null",O_WRONLY);
+    if (saved<0 || sink<0 || dup2(sink,STDOUT_FILENO)<0) goto done;
+    if (getenv("CDSE_CONTEXT_TRANSFORM_CONTRACT"))
+    {
+        memset(&evidence,0xa5,sizeof(evidence));
+        if (cmeContextCopyTargetEvidence(manager,NULL,&evidence)!=1 || memcmp(&evidence,&zeroEvidence,sizeof(evidence)) ||
+            cmeContextCopyTargetEvidence(manager,target,NULL)!=1 || cmeContextCopyTargetEvidence(manager,target,&evidence)) goto done;
+#define CME_TRANSFORM_BAD(call) do { \
+        output.bytes=(unsigned char *)1; output.length=99; memset(digest,0xa5,32); \
+        if ((call)!=1 || output.bytes || output.length || memcmp(digest,zero,32)) { result=99; goto done; } \
+} while (0)
+        CME_TRANSFORM_BAD(cmeContextColumnTransformPrepare(NULL,target,&approval,source,sourceLength,argv[2],image,imageLength,password,passwordLength,&output,digest));
+        CME_TRANSFORM_BAD(cmeContextColumnTransformPrepare(manager,NULL,&approval,source,sourceLength,argv[2],image,imageLength,password,passwordLength,&output,digest));
+        CME_TRANSFORM_BAD(cmeContextColumnTransformPrepare(manager,target,NULL,source,sourceLength,argv[2],image,imageLength,password,passwordLength,&output,digest));
+        CME_TRANSFORM_BAD(cmeContextColumnTransformPrepare(manager,target,&approval,NULL,sourceLength,argv[2],image,imageLength,password,passwordLength,&output,digest));
+        CME_TRANSFORM_BAD(cmeContextColumnTransformPrepare(manager,target,&approval,source,cmeContextColumnMaxBytes+1,argv[2],image,imageLength,password,passwordLength,&output,digest));
+        CME_TRANSFORM_BAD(cmeContextColumnTransformPrepare(manager,target,&approval,source,sourceLength,argv[2],image,cmeContextColumnMaxImageBytes+1,password,passwordLength,&output,digest));
+        CME_TRANSFORM_BAD(cmeContextColumnTransformPrepare(manager,target,&approval,source,sourceLength,argv[2],image,imageLength,NULL,passwordLength,&output,digest));
+        CME_TRANSFORM_BAD(cmeContextColumnTransformPrepare(manager,target,&approval,source,sourceLength,argv[2],image,imageLength,password,257,&output,digest));
+#undef CME_TRANSFORM_BAD
+        memset(digest,0xa5,32);
+        if (cmeContextColumnTransformPrepare(manager,target,&approval,source,sourceLength,argv[2],image,imageLength,password,passwordLength,NULL,digest)!=1 || memcmp(digest,zero,32)) goto done;
+        output.bytes=(unsigned char *)1; output.length=99;
+        if (cmeContextColumnTransformPrepare(manager,target,&approval,source,sourceLength,argv[2],image,imageLength,password,passwordLength,&output,NULL)!=1 || output.bytes || output.length) goto done;
+        memset(digest,0xa5,32);
+        if (cmeContextManagerColumnTransformSign(NULL,&evidence.registry,&evidence.catalog,approval.destinationMap,approval.sourceDigest,digest)!=1 ||
+            memcmp(digest,zero,32) || cmeContextColumnTransformVerify(manager,target,&approval,source,sourceLength,argv[2],image,imageLength,
+            password,passwordLength,NULL,32,zero)!=1 || cmeContextColumnTransformVerify(manager,target,&approval,source,sourceLength,argv[2],image,imageLength,
+            password,passwordLength,zero,cmeContextColumnTransformMaxBytes+1,zero)!=1) goto done;
+    }
+    if (verify) result=cmeContextColumnTransformVerify(manager,target,&approval,source,sourceLength,argv[2],image,imageLength,
+        password,passwordLength,receipt,receiptLength,digest);
+    else
+    {
+        output.bytes=(unsigned char *)1; output.length=99; memset(digest,0xa5,32);
+        result=cmeContextColumnTransformPrepare(manager,target,&approval,source,sourceLength,argv[2],image,imageLength,
+            password,passwordLength,&output,digest);
+        if (result && (output.bytes || output.length || memcmp(digest,zero,32))) result=99;
+    }
+    fflush(stdout); if (dup2(saved,STDOUT_FILENO)<0) _exit(89);
+    close(saved); saved=-1; close(sink); sink=-1;
+    if (!result)
+    {
+        if (verify) puts("verified");
+        else { cmeFixturePrint(digest,32); putchar(' '); cmeFixturePrint(output.bytes,output.length); putchar('\n'); }
+    }
+done:
+    if (saved>=0) { fflush(stdout); if (dup2(saved,STDOUT_FILENO)<0) _exit(89); close(saved); }
+    if (sink>=0) close(sink);
+    if (output.bytes!=(unsigned char *)1) cmeContextV2BufferFree(&output);
+    if (source) OPENSSL_cleanse(source,sourceLength);
+    if (image) OPENSSL_cleanse(image,imageLength);
+    free(source); free(image); free(receipt); OPENSSL_cleanse(password,sizeof(password)); return(result);
+}
+
 static int cmeFixtureImageContracts(cmeContextManager *manager, cmeContextCopyTarget *target,
     cmeContextColumnStage *stage, const unsigned char *image, size_t length, const unsigned char digest[32],
     const unsigned char *password, size_t passwordLength)
@@ -304,6 +392,8 @@ static int cmeFixtureTarget(int argc, char **argv)
         puts("contract"); result=0; goto done;
     }
 #ifdef CDSE_CONTEXT_COLUMN_TESTING
+    if (!strcmp(argv[2],"target-transform-prepare") || !strcmp(argv[2],"target-transform-verify"))
+    { result=cmeFixtureTransform(manager,target,argv[2],argc-offset,argv+offset); goto done; }
     if (!strcmp(argv[2],"target-column") || !strcmp(argv[2],"target-column-export") || !strcmp(argv[2],"target-column-import"))
     { result=cmeFixtureColumn(manager,target,argv[2],argc-offset,argv+offset); goto done; }
 #endif

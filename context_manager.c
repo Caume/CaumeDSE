@@ -1820,6 +1820,43 @@ done:
     cmeContextBindingFree(&candidate); cmeContextMapFree(&copy); return(result);
 }
 
+int cmeContextManagerColumnTransformSign(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, const char *destinationName,
+    const unsigned char requestDigest[32], unsigned char signature[32])
+{
+    static const unsigned char domain[]="CDSE-HKX-COLUMN-TRANSFORM-SEAL-v1";
+    cmeManagerState state={0};
+    cmeContextMapAnchor current={0};
+    cmeMapEncoding encoding={0};
+    sqlite3_stmt *stmt=NULL;
+    unsigned char bytes[512],anchor[73],tag[32];
+    unsigned int written=0;
+    int result=1;
+    if (signature) memset(signature,0,32);
+    if (!manager || !registry || !catalog || !requestDigest || !signature ||
+        cmeManagerName(destinationName,1) || cmeManagerAnchorPack(registry,anchor)) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state) || cmeMapLoad(manager,&current)) goto done;
+    result=cmeManagerCurrentMatch(&state,registry); if (result) goto done;
+    result=cmeMapMatch(&current,catalog); if (result) goto done;
+    result=1;
+    if (sqlite3_prepare_v2(manager->db,"SELECT 1 FROM context_maps WHERE name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,destinationName,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    encoding.bytes=bytes;
+    if (cmeMapAppend(&encoding,domain,sizeof(domain)) || cmeMapAppend(&encoding,anchor,73) ||
+        cmeMapNumber(&encoding,catalog->revision,8) || cmeMapAppend(&encoding,catalog->digest,32) ||
+        cmeCopyText(&encoding,destinationName) || cmeMapAppend(&encoding,requestDigest,32) ||
+        !HMAC(EVP_sha256(),manager->key,32,encoding.bytes,encoding.length,tag,&written) || written!=32 ||
+        sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    memcpy(signature,tag,32); result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
+    OPENSSL_cleanse(bytes,sizeof(bytes)); OPENSSL_cleanse(tag,sizeof(tag)); return(result);
+}
+
 int cmeContextManagerCopyPublicationPrepare(cmeContextManager *manager,
     const unsigned char *allocation, size_t allocationLength, const unsigned char allocationDigest[32],
     const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
