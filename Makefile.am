@@ -13,7 +13,7 @@ ipathbindir = @BINDIR@
 ipathdatadir = @DATADIR@
 
 ipathbin_PROGRAMS = CaumeDSE CaumeDSE-debug-tests caumedse-admin
-caume_common_sources = common.h config.c crypto.c crypto.h context_crypto.c context_crypto.h context_column.c context_column.h context_witness.c context_witness.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+caume_common_sources = common.h config.c crypto.c crypto.h context_crypto.c context_crypto.h context_column.c context_column.h context_column_image.c context_column_internal.h context_witness.c context_witness.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 CaumeDSE_SOURCES = main.c $(caume_common_sources)
 CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
 caumedse_admin_SOURCES = admin.c admin.h storage_migration.c context_owner.c $(caume_common_sources)
@@ -27,7 +27,7 @@ context_crypto_fixture_CPPFLAGS = $(AM_CPPFLAGS) -DCDSE_CONTEXT_CRYPTO_TESTING
 context_frame_fixture_SOURCES = context_frame_fixture.c herradura_compat.h
 context_registry_fixture_SOURCES = context_registry_fixture.c context_registry.c context_registry.h
 reprotect_fixture_SOURCES = reprotect_fixture.c $(caume_common_sources)
-TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh test_context_witness.sh test_context_registered.sh test_context_frame.sh test_context_crypto.sh test_context_target.sh test_context_column.sh
+TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh test_context_witness.sh test_context_registered.sh test_context_frame.sh test_context_crypto.sh test_context_target.sh test_context_column.sh test_context_column_image.sh
 TESTS_ENVIRONMENT = srcdir='$(srcdir)'
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = $(TESTS) TEST samples favicon.ico CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md HERRADURAKEX_AT_REST_PLAN.md openapi.yaml herradura_compat.h

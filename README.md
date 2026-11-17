@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.30.0
+# Caume Data Security Engine (CaumeDSE) version 2.31.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2991,7 +2991,7 @@ adds `cmeContextV2Seal`/`cmeContextV2Open` for trusted in-process callers with c
 authenticated stored-map bindings. It generates fresh salt/nonces, freezes the
 draft parameters, and checks authority before and after crypto work.
 Legacy readers, installed copy commands and live storage routes retain their
-existing behavior; V2 SQL/integrity transformation and publication remain pending.
+existing behavior; V2 container integration with registration and publication remains pending.
 
 The [unpublished copy-target capability](HERRADURAKEX_AT_REST_PLAN.md#authenticated-copy-target-staging-147-phase-28)
 uses the independently retained, committed allocation plan and an explicitly
@@ -3004,8 +3004,15 @@ The [complete-source staging API](HERRADURAKEX_AT_REST_PLAN.md#complete-source-c
 verifies an independently pinned homogeneous AES-GCM/CBC ColumnFile snapshot and
 its complete approved identity inventory before generating private V2 candidate
 cells. Every cell receives fresh entropy and passes target-context readback.
-The candidate is held in memory; V2 SQL serialization, regenerated file/registration
-integrity, acceptance and publication remain pending.
+The candidate is held in memory; the container codec below provides serialization.
+ResourcesDB registration integrity, acceptance and publication remain pending.
+
+The [offline V2 container codec](HERRADURAKEX_AT_REST_PLAN.md#serialized-v2-columnfile-container-147-phase-30)
+serializes those cells into a separate SQLite format and authenticates complete
+readback against the retained target capability and an independently pinned image
+hash. Cell identities come from the approved map, never serialized labels.
+Container integrity combines cell AEAD, exact inventory and the external SHA-256
+pin. ResourcesDB registration, acceptance and physical publication remain pending.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

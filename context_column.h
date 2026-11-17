@@ -33,8 +33,8 @@ typedef struct
    Output clears on ALL failures. No caller SQLite
    handle, file, map, job, witness, global profile or registration is changed.
    The owned result is an ephemeral candidate, NOT a serialized ColumnFile,
-   integrity/registration receipt or permission to publish. Define those formats
-   separately. Rechecks are point-in-time; quiesce authority/namespace writers.
+   integrity/registration receipt or permission to publish. Use the explicit
+   container APIs below for serialization. Rechecks are point-in-time; quiesce writers.
    There is no legacy/provider fallback or floor-2 migration approval. */
 int cmeContextColumnStageCreate(cmeContextManager *manager, const cmeContextCopyTarget *target,
     const unsigned char *source, size_t length, const unsigned char sourceDigest[32],
@@ -48,4 +48,32 @@ const cmeContextColumnCell *cmeContextColumnStageCell(const cmeContextColumnStag
 void cmeContextColumnStageFree(cmeContextColumnStage **stage);
 
 #define cmeContextColumnStageProfile "herradura-hske-nl-v2-profile1"
+
+#define cmeContextColumnMaxImageBytes (32U*1024U*1024U)
+#define cmeContextColumnImageIntegrity "aead-context+inventory+sha256-pin"
+/* Offline container v1 for V2 frames. Serializer emits a fresh, plaintext-free
+   SQLite image with fixed schema/application ID/profile/integrity declarations.
+   Ordinals follow the capability's canonical (table,row,field) source inventory;
+   file labels never supply crypto identities. Complete four-field groups only.
+   Readback authenticates every cell and checks metadata/order semantics. The
+   serializer always performs this readback before releasing image and digest.
+
+   Independently retain/approve the SHA-256 digest of ALL image bytes. Reader
+   requires that external pin; a digest bundled with an untrusted file is not
+   authentication. Cell AEAD + exact inventory + the trusted image pin define
+   container integrity; no legacy row/helper MAC columns are copied or implied.
+   Legacy MAC/sign algorithm declarations remain provenance metadata only.
+
+   Returns 0/1/2/3 as the codec; 3 also if SQLite serialize/deserialize unavailable.
+   All outputs clear on failure; use V2BufferFree for image, StageFree for stage.
+   Outputs must own no allocation on entry; all inputs/outputs are stable and
+   nonoverlapping. No file/path/registration/map/job/witness writes, live reader
+   dispatch, stored-map publication or acceptance receipt. Floor-1 allocation
+   and target/witness lifetime/quiescence requirements still apply. */
+int cmeContextColumnStageSerialize(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnStage *stage, const unsigned char *password, size_t passwordLength,
+    cmeContextV2Buffer *image, unsigned char digest[32]);
+int cmeContextColumnStageDeserialize(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const unsigned char *image, size_t length, const unsigned char digest[32],
+    const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage);
 #endif

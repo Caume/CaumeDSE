@@ -92,26 +92,70 @@ done:
 }
 
 #ifdef CDSE_CONTEXT_COLUMN_TESTING
-static int cmeFixtureColumn(cmeContextManager *manager, cmeContextCopyTarget *target, int argc, char **argv)
+static int cmeFixtureImageContracts(cmeContextManager *manager, cmeContextCopyTarget *target,
+    cmeContextColumnStage *stage, const unsigned char *image, size_t length, const unsigned char digest[32],
+    const unsigned char *password, size_t passwordLength)
+{
+    cmeContextV2Buffer output={0};
+    cmeContextColumnStage *decoded=NULL;
+    unsigned char tag[32],zero[32]={0};
+#define CME_IMAGE_BAD_SEAL(call) do { \
+    output.bytes=(unsigned char *)1; output.length=99; memset(tag,0xa5,32); \
+    if ((call)!=1 || output.bytes || output.length || memcmp(tag,zero,32)) return(99); \
+} while (0)
+    CME_IMAGE_BAD_SEAL(cmeContextColumnStageSerialize(NULL,target,stage,password,passwordLength,&output,tag));
+    CME_IMAGE_BAD_SEAL(cmeContextColumnStageSerialize(manager,NULL,stage,password,passwordLength,&output,tag));
+    CME_IMAGE_BAD_SEAL(cmeContextColumnStageSerialize(manager,target,NULL,password,passwordLength,&output,tag));
+    CME_IMAGE_BAD_SEAL(cmeContextColumnStageSerialize(manager,target,stage,NULL,passwordLength,&output,tag));
+    CME_IMAGE_BAD_SEAL(cmeContextColumnStageSerialize(manager,target,stage,password,0,&output,tag));
+    CME_IMAGE_BAD_SEAL(cmeContextColumnStageSerialize(manager,target,stage,password,257,&output,tag));
+    memset(tag,0xa5,32);
+    if (cmeContextColumnStageSerialize(manager,target,stage,password,passwordLength,NULL,tag)!=1 || memcmp(tag,zero,32)) return(99);
+    output.bytes=(unsigned char *)1; output.length=99;
+    if (cmeContextColumnStageSerialize(manager,target,stage,password,passwordLength,&output,NULL)!=1 || output.bytes || output.length) return(99);
+#undef CME_IMAGE_BAD_SEAL
+#define CME_IMAGE_BAD_OPEN(call) do { \
+    decoded=(cmeContextColumnStage *)1; \
+    if ((call)!=1 || decoded) return(99); \
+} while (0)
+    CME_IMAGE_BAD_OPEN(cmeContextColumnStageDeserialize(NULL,target,image,length,digest,password,passwordLength,&decoded));
+    CME_IMAGE_BAD_OPEN(cmeContextColumnStageDeserialize(manager,NULL,image,length,digest,password,passwordLength,&decoded));
+    CME_IMAGE_BAD_OPEN(cmeContextColumnStageDeserialize(manager,target,NULL,length,digest,password,passwordLength,&decoded));
+    CME_IMAGE_BAD_OPEN(cmeContextColumnStageDeserialize(manager,target,image,4095,digest,password,passwordLength,&decoded));
+    CME_IMAGE_BAD_OPEN(cmeContextColumnStageDeserialize(manager,target,image,cmeContextColumnMaxImageBytes+1,digest,password,passwordLength,&decoded));
+    CME_IMAGE_BAD_OPEN(cmeContextColumnStageDeserialize(manager,target,image,length,NULL,password,passwordLength,&decoded));
+    CME_IMAGE_BAD_OPEN(cmeContextColumnStageDeserialize(manager,target,image,length,digest,NULL,passwordLength,&decoded));
+    CME_IMAGE_BAD_OPEN(cmeContextColumnStageDeserialize(manager,target,image,length,digest,password,0,&decoded));
+    CME_IMAGE_BAD_OPEN(cmeContextColumnStageDeserialize(manager,target,image,length,digest,password,257,&decoded));
+    if (cmeContextColumnStageDeserialize(manager,target,image,length,digest,password,passwordLength,NULL)!=1) return(99);
+#undef CME_IMAGE_BAD_OPEN
+    return(0);
+}
+
+static int cmeFixtureColumn(cmeContextManager *manager, cmeContextCopyTarget *target, const char *action, int argc, char **argv)
 {
     FILE *file=NULL;
     cmeContextColumnStage *stage=NULL;
+    cmeContextV2Buffer container={0};
     unsigned char *image=NULL,password[256],digest[32];
     size_t length=0,passwordLength=0,i;
     long size;
-    int result=1,saved=-1,sink=-1;
-    if (argc!=5 || cmeFixtureHex(argv[1],digest,32) || strlen(argv[4])%2 || strlen(argv[4])>512) goto done;
-    passwordLength=strlen(argv[4])/2;
-    if (cmeFixtureHex(argv[4],password,passwordLength)) goto done;
+    int result=1,saved=-1,sink=-1,import=!strcmp(action,"target-column-import"),export=!strcmp(action,"target-column-export");
+    int passwordIndex=import ? 2 : 4;
+    if (argc!=(import ? 3 : 5) || cmeFixtureHex(argv[1],digest,32) || strlen(argv[passwordIndex])%2 ||
+        strlen(argv[passwordIndex])>512) goto done;
+    passwordLength=strlen(argv[passwordIndex])/2;
+    if (cmeFixtureHex(argv[passwordIndex],password,passwordLength)) goto done;
     file=fopen(argv[0],"rb");
-    if (!file || fseek(file,0,SEEK_END) || (size=ftell(file))<1 || (unsigned long)size>cmeContextColumnMaxBytes ||
+    if (!file || fseek(file,0,SEEK_END) || (size=ftell(file))<1 ||
+        (unsigned long)size>(import ? cmeContextColumnMaxImageBytes : cmeContextColumnMaxBytes) ||
         fseek(file,0,SEEK_SET) || !(image=malloc(size))) goto done;
     length=size; if (fread(image,1,length,file)!=length) goto done;
     fclose(file); file=NULL;
     /* Legacy DEBUG helpers log to stdout. Retain only the final synthetic cells. */
     fflush(stdout); saved=dup(STDOUT_FILENO); sink=open("/dev/null",O_WRONLY);
     if (saved<0 || sink<0 || dup2(sink,STDOUT_FILENO)<0) goto done;
-    if (getenv("CDSE_CONTEXT_COLUMN_CONTRACT"))
+    if (!import && getenv("CDSE_CONTEXT_COLUMN_CONTRACT"))
     {
         cmeContextMap *sourceMap=(cmeContextMap *)1;
         cmeContextBinding *sourceBinding=(cmeContextBinding *)1;
@@ -136,11 +180,27 @@ static int cmeFixtureColumn(cmeContextManager *manager, cmeContextCopyTarget *ta
         cmeContextColumnStageFree(&stage); cmeContextColumnStageFree(&stage);
     }
     stage=(cmeContextColumnStage *)1;
-    result=cmeContextColumnStageCreate(manager,target,image,length,digest,argv[2],argv[3],password,passwordLength,&stage);
+    if (import) result=cmeContextColumnStageDeserialize(manager,target,image,length,digest,password,passwordLength,&stage);
+    else result=cmeContextColumnStageCreate(manager,target,image,length,digest,argv[2],argv[3],password,passwordLength,&stage);
+    if (!result && export && getenv("CDSE_CONTEXT_COLUMN_IMAGE_CONTRACT"))
+        result=cmeFixtureImageContracts(manager,target,stage,image,length,digest,password,passwordLength);
+    if (!result && export)
+    {
+        if (getenv("CDSE_CONTEXT_COLUMN_SERIALIZE_NO_RNG")) setenv("CDSE_CONTEXT_CRYPTO_RNG_FAIL","all",1);
+        memset(digest,0xa5,32); container.bytes=(unsigned char *)1; container.length=99;
+        result=cmeContextColumnStageSerialize(manager,target,stage,password,passwordLength,&container,digest);
+        if (result && (container.bytes || container.length || memcmp(digest,(unsigned char[32]){0},32))) result=99;
+    }
     fflush(stdout); if (dup2(saved,STDOUT_FILENO)<0) _exit(89);
     close(saved); saved=-1; close(sink); sink=-1;
-    if (result) { if (stage) { stage=NULL; result=99; } goto done; }
+    if (result) { if (stage==(cmeContextColumnStage *)1 || (!export && stage)) { stage=NULL; result=99; } goto done; }
     free(image); image=NULL; /* Result owns its frames, not the source image. */
+    if (export)
+    {
+        cmeContextColumnStageFree(&stage);
+        cmeFixturePrint(digest,32); putchar(' '); cmeFixturePrint(container.bytes,container.length); putchar('\n');
+        goto done;
+    }
     if (!cmeContextColumnStageCount(stage) || cmeContextColumnStageCount(NULL) ||
         cmeContextColumnStageCell(NULL,0) || cmeContextColumnStageCell(stage,cmeContextColumnStageCount(stage)))
     { result=99; goto done; }
@@ -156,6 +216,7 @@ done:
     if (sink>=0) close(sink);
     if (stage!=(cmeContextColumnStage *)1) cmeContextColumnStageFree(&stage);
     cmeContextColumnStageFree(NULL); cmeContextColumnStageFree(&stage);
+    if (container.bytes!=(unsigned char *)1) cmeContextV2BufferFree(&container);
     free(image); OPENSSL_cleanse(password,sizeof(password)); return(result);
 }
 #endif
@@ -243,8 +304,8 @@ static int cmeFixtureTarget(int argc, char **argv)
         puts("contract"); result=0; goto done;
     }
 #ifdef CDSE_CONTEXT_COLUMN_TESTING
-    if (!strcmp(argv[2],"target-column"))
-    { result=cmeFixtureColumn(manager,target,argc-offset,argv+offset); goto done; }
+    if (!strcmp(argv[2],"target-column") || !strcmp(argv[2],"target-column-export") || !strcmp(argv[2],"target-column-import"))
+    { result=cmeFixtureColumn(manager,target,argv[2],argc-offset,argv+offset); goto done; }
 #endif
     seal=!strcmp(argv[2],"target-seal");
     if (seal ? (size_t)argc!=offset+5 : (strcmp(argv[2],"target-open") || (size_t)argc!=offset+6)) goto done;
