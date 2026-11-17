@@ -267,7 +267,76 @@ done:
     if (image) OPENSSL_cleanse(image,length);
     sqlite3_free(image); OPENSSL_cleanse(digest,sizeof(digest)); return(result);
 }
+int cmeContextColumnTransformCheck(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const unsigned char *source, size_t sourceLength, const unsigned char sourceDigest[32],
+    const char *sourceKey, const char *sourceProfile,
+    const unsigned char *image, size_t imageLength, const unsigned char imageDigest[32],
+    const unsigned char *password, size_t passwordLength)
+{
+    sqlite3 *db=NULL;
+    unsigned char *copy=NULL,digest[32];
+    unsigned int written=0,budget=20000;
+    cmeContextMap *map=NULL;
+    cmeContextBinding *binding=NULL;
+    cmeContextColumnStage *candidate=NULL;
+    cmeContextV2Buffer plain={0};
+    char **expected=NULL;
+    size_t i;
+    int result=1;
+    if (!manager || !target || !source || sourceLength<100 || sourceLength>cmeContextColumnMaxBytes || !sourceDigest ||
+        !sourceKey || !*sourceKey || strnlen(sourceKey,257)>256 || !sourceProfile ||
+        (strcmp(sourceProfile,"aes-256-gcm") && strcmp(sourceProfile,"aes-256-cbc")) ||
+        !image || imageLength<4096 || imageLength>cmeContextColumnMaxImageBytes || !imageDigest ||
+        !password || !passwordLength || passwordLength>256) goto done;
+    result=cmeContextCopyTargetSource(manager,target,&map,&binding); if (result) goto done;
+    result=1;
+    if (!map->count || map->count>cmeContextRegistryMaxEntries || !(copy=sqlite3_malloc64(sourceLength))) goto done;
+    memcpy(copy,source,sourceLength);
+    if (!EVP_Digest(copy,sourceLength,digest,&written,EVP_sha256(),NULL) || written!=32 || CRYPTO_memcmp(digest,sourceDigest,32) ||
+        memcmp(copy,"SQLite format 3",16) || copy[18]!=1 || copy[19]!=1 || sqlite3_open(":memory:",&db)!=SQLITE_OK ||
+        sqlite3_deserialize(db,"main",copy,sourceLength,sourceLength,SQLITE_DESERIALIZE_READONLY)!=SQLITE_OK) goto done;
+    sqlite3_limit(db,SQLITE_LIMIT_LENGTH,cmeContextColumnMaxCellBytes); sqlite3_limit(db,SQLITE_LIMIT_SQL_LENGTH,65536);
+    sqlite3_limit(db,SQLITE_LIMIT_COLUMN,16); sqlite3_progress_handler(db,1000,cmeColumnBudget,&budget);
+    if (sqlite3_db_config(db,SQLITE_DBCONFIG_DEFENSIVE,1,NULL)!=SQLITE_OK ||
+        sqlite3_exec(db,"PRAGMA trusted_schema=OFF; PRAGMA query_only=ON",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeColumnSchema(db) || !(expected=calloc(map->count,sizeof(*expected))) ||
+        cmeColumnRead(db,map,sourceKey,sourceProfile,expected)) goto done;
+    result=cmeContextColumnStageDeserialize(manager,target,image,imageLength,imageDigest,password,passwordLength,&candidate);
+    if (result) goto done;
+    result=1;
+    if (candidate->count!=map->count) goto done;
+    for (i=0;i<map->count;i++)
+    {
+        const cmeContextSlot *slot=&map->slots[i];
+        const cmeContextColumnCell *cell=&candidate->cells[i];
+        if (strcmp(cell->table,slot->table) || cell->row!=slot->row || strcmp(cell->field,slot->field)) goto done;
+        result=cmeContextV2OpenCopyTarget(manager,target,slot->table,slot->row,slot->field,password,passwordLength,
+            cell->salt,cell->frame.bytes,cell->frame.length,&plain);
+        if (result) goto done;
+        result=1;
+        if (plain.length!=strlen(expected[i]) || CRYPTO_memcmp(plain.bytes,expected[i],plain.length)) goto done;
+        cmeContextV2BufferFree(&plain);
+    }
+    result=cmeContextBindingCheckMapped(manager,binding); if (result) goto done;
+    result=cmeContextCopyTargetCheck(manager,target);
+done:
+    cmeContextV2BufferFree(&plain); cmeContextColumnStageFree(&candidate);
+    if (expected) for (i=0;i<map->count;i++) if (expected[i]) { OPENSSL_cleanse(expected[i],strlen(expected[i])); free(expected[i]); }
+    free(expected); cmeContextBindingFree(&binding); cmeContextMapFree(&map); sqlite3_close(db);
+    if (copy) OPENSSL_cleanse(copy,sourceLength);
+    sqlite3_free(copy); OPENSSL_cleanse(digest,sizeof(digest)); return(result);
+}
 #else
+int cmeContextColumnTransformCheck(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const unsigned char *source, size_t sourceLength, const unsigned char sourceDigest[32],
+    const char *sourceKey, const char *sourceProfile,
+    const unsigned char *image, size_t imageLength, const unsigned char imageDigest[32],
+    const unsigned char *password, size_t passwordLength)
+{
+    (void)manager; (void)target; (void)source; (void)sourceLength; (void)sourceDigest; (void)sourceKey;
+    (void)sourceProfile; (void)image; (void)imageLength; (void)imageDigest; (void)password; (void)passwordLength;
+    return(3);
+}
 int cmeContextColumnStageCreate(cmeContextManager *manager, const cmeContextCopyTarget *target,
     const unsigned char *source, size_t length, const unsigned char sourceDigest[32],
     const char *sourceKey, const char *sourceProfile,

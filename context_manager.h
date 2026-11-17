@@ -249,6 +249,13 @@ int cmeContextManagerCopyPlanBind(cmeContextManager *manager,
     cmeContextBinding **binding, cmeContextAnchor *committed);
 
 #define cmeContextCopyPublicationMaxBytes 512U
+/* Trusted-core domain-separated signature only, NOT payload/registration
+   acceptance. Authenticate current pins and require an absent destination map.
+   Call the high-level ColumnTransform API to verify source/candidate evidence.
+   Read-only; signature clears on error. Returns 0/2/1. Stable separate inputs. */
+int cmeContextManagerColumnTransformSign(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, const char *destinationName,
+    const unsigned char requestDigest[32], unsigned char signature[32]);
 /* Trusted OFFLINE durable-intent handoff, NOT an artifact/catalog publisher.
    Require the exact committed allocation plan, unchanged original catalog and
    an unused destination map name. requestDigest binds independently approved

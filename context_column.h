@@ -76,4 +76,37 @@ int cmeContextColumnStageSerialize(cmeContextManager *manager, const cmeContextC
 int cmeContextColumnStageDeserialize(cmeContextManager *manager, const cmeContextCopyTarget *target,
     const unsigned char *image, size_t length, const unsigned char digest[32],
     const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage);
+
+typedef struct
+{
+    const char *sourceProfile,*destinationMap;
+    unsigned char sourceDigest[32],candidateDigest[32],registrationEvidenceDigest[32];
+} cmeContextColumnTransformApproval;
+#define cmeContextColumnTransformMaxBytes 512U
+/* Retained OFFLINE transformation receipt, NOT full registration acceptance.
+   Independently approve/retain all approval fields and both artifacts. The
+   nonzero registrationEvidenceDigest pins an EXTERNAL owner approval document;
+   this API does not parse/verify ResourcesDB, partMAC or its registration fields.
+   A caller-supplied digest alone is not a verified registration or provenance.
+
+   Prepare and Verify BOTH reverify the complete legacy source, strict V2 image,
+   all plaintext equality (including the defined protect/shuffle rewrites), the
+   retained allocation/current registry/catalog/witness and absent destination.
+   A domain-separated manager HMAC binds canonical evidence/approval bytes. Verify
+   also requires an independently retained hash of the receipt; signature-only
+   verification never replaces artifact comparison. No secrets in the receipt.
+   No entropy, authority/file writes, publication or legacy-intent compatibility.
+   Binding/custody/quiescence/floor/source bounds remain as above. All inputs and
+   outputs stable/nonoverlapping; receipt owns no allocation on entry. Outputs
+   clear on error; V2BufferFree releases receipt. Return 0/1/2/3 as the codec. */
+int cmeContextColumnTransformPrepare(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *approval,
+    const unsigned char *source, size_t sourceLength, const char *sourceKey,
+    const unsigned char *image, size_t imageLength, const unsigned char *password, size_t passwordLength,
+    cmeContextV2Buffer *receipt, unsigned char receiptDigest[32]);
+int cmeContextColumnTransformVerify(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *approval,
+    const unsigned char *source, size_t sourceLength, const char *sourceKey,
+    const unsigned char *image, size_t imageLength, const unsigned char *password, size_t passwordLength,
+    const unsigned char *receipt, size_t receiptLength, const unsigned char receiptDigest[32]);
 #endif

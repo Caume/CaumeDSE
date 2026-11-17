@@ -98,4 +98,16 @@ void cmeContextCopyTargetFree(cmeContextCopyTarget **target);
 int cmeContextCopyTargetSource(cmeContextManager *manager, const cmeContextCopyTarget *target,
     cmeContextMap **map, cmeContextBinding **binding);
 
+typedef struct
+{
+    unsigned char allocationDigest[32];
+    cmeContextAnchor registry;
+    cmeContextMapAnchor catalog;
+    cmeContextWitnessAnchor witness;
+} cmeContextCopyEvidence;
+/* Read-only retained evidence, checked against the current capability before
+   and after copying. Output clears on failure; no adoption/advancement. */
+int cmeContextCopyTargetEvidence(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    cmeContextCopyEvidence *evidence);
+
 #endif

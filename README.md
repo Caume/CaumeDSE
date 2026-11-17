@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.31.0
+# Caume Data Security Engine (CaumeDSE) version 2.32.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3013,6 +3013,13 @@ readback against the retained target capability and an independently pinned imag
 hash. Cell identities come from the approved map, never serialized labels.
 Container integrity combines cell AEAD, exact inventory and the external SHA-256
 pin. ResourcesDB registration, acceptance and physical publication remain pending.
+
+The [retained transformation receipt](HERRADURAKEX_AT_REST_PLAN.md#retained-columnfile-transformation-receipts-147-phase-31)
+rechecks exact source-to-candidate plaintext equality and binds the allocation,
+current registry/catalog/witness pins, destination map and an independently
+approved registration-evidence hash. Verification always repeats the artifact
+checks; a signature alone cannot approve altered content. The registration hash
+is an external approval pin, not ResourcesDB verification or publication permission.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

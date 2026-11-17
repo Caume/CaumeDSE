@@ -364,6 +364,7 @@ struct cmeContextCopyTarget
     cmeContextAnchor registry;
     cmeContextMapAnchor catalog;
     char sourceName[129];
+    unsigned char allocationDigest[32];
 };
 
 void cmeContextCopyTargetFree(cmeContextCopyTarget **target)
@@ -408,6 +409,20 @@ int cmeContextCopyTargetSource(cmeContextManager *manager, const cmeContextCopyT
     return(result);
 }
 
+int cmeContextCopyTargetEvidence(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    cmeContextCopyEvidence *evidence)
+{
+    int result;
+    if (!evidence) return(1);
+    memset(evidence,0,sizeof(*evidence));
+    result=cmeContextCopyTargetCheck(manager,target); if (result) return(result);
+    memcpy(evidence->allocationDigest,target->allocationDigest,32);
+    evidence->registry=target->registry; evidence->catalog=target->catalog; evidence->witness=target->retained;
+    result=cmeContextCopyTargetCheck(manager,target);
+    if (result) memset(evidence,0,sizeof(*evidence));
+    return(result);
+}
+
 int cmeContextWitnessCopyTargetBind(cmeContextManager *manager, cmeContextWitness *witness,
     const cmeContextWitnessAnchor *retained, const unsigned char *plan, size_t length,
     const unsigned char digest[32], const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,
@@ -423,6 +438,7 @@ int cmeContextWitnessCopyTargetBind(cmeContextManager *manager, cmeContextWitnes
     if (result) goto done;
     candidate->witness=witness; candidate->retained=*retained; candidate->catalog=*catalog;
     strcpy(candidate->sourceName,sourceName); /* CopyPlanBind validated the 128-byte name bound. */
+    memcpy(candidate->allocationDigest,digest,32);
     result=cmeContextCopyTargetCheck(manager,candidate); if (result) goto done;
     *target=candidate; candidate=NULL;
 done:
