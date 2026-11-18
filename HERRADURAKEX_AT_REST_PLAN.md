@@ -3242,7 +3242,112 @@ Return codes remain 0 success, 1 invalid/auth/comparison/unavailable-state failu
 2 stale authority conflict, 3 unavailable codec/SQLite feature. Existing 16 MiB
 source, 32 MiB container and cell/inventory/plaintext bounds remain in force.
 
-TODO #147 remains open for actual ResourcesDB/destination registration-integrity
-verification and a complete retained acceptance contract consuming this evidence,
+Phase 32 below adds selected ResourcesDB registration-integrity verification.
+TODO #147 remains open for a complete export/acceptance contract consuming this evidence,
 then guarded physical publication, published-map reads and the prior mixed-profile/
 provider/floor-2 migration, lifecycle and production-custody closeout gates.
+
+
+## Verified V2 copy registrations (#147 phase 32)
+
+`cmeContextColumnRegisteredPrepare` and `cmeContextColumnRegisteredVerify` layer
+actual selected-registration checks over the phase-31 transformation receipt.
+They take independently pinned source/candidate ResourcesDB images, a typed
+registration approval and explicit credentials/payload buffers. They never open
+artifact paths, rewrite metadata, publish files/maps, advance a witness or enable
+live readers. Callers must separately prepare and approve the candidate snapshots.
+
+Scope is one single-part local ColumnFile copy. The candidate ResourcesDB must
+preserve every existing logical cell and sqlite_master definition byte-exact,
+including the original source registration, and add exactly the independently
+approved destination documents row. Raw SQLite layout may differ only under its
+separately approved whole-image hash; no unrelated row/field/schema change is
+allowed. Require current ResourcesDB schema metadata, the known seven-table
+layout and column counts, proper primary keys, no hidden/generated columns,
+virtual/shadow tables, triggers or unknown objects. Supported indexes remain
+identical to the source. Integrity checks, read-only deserialize, defensive/
+query-only/trusted-schema settings, SQL/cell/column limits and a VM budget bound
+parsing. WAL snapshots are refused. The API changes no global encryption profile.
+
+Metadata remains homogeneous legacy AES-GCM or AES-CBC in BOTH ResourcesDB
+images under the same registration key. This profile/key is explicit and separate
+from source-payload profile/key and counted binary V2 credentials. No metadata
+key/profile rotation is implied. Every protected field of the two selected rows
+must authenticate its existing HMAC prefix and strict salted-value encoding.
+Selector lookup fields must equal the existing deterministic, field-separated
+keyed lookup of documentId/storageId/orgResourceId. Metadata decoder reuse is
+private; it does not add a contextless V2 or legacy fallback.
+
+The selected source row must match approved row ID, basename, document ID,
+storage ID, orgResourceId and column ID, type file.csv, and totalParts/partId 1.
+The added destination row must match its independently approved new row ID,
+new basename and new document ID, retain the same storage/org/column selectors,
+and use type **file.csv.cdse-v2** with totalParts/partId 1. That new type is an
+explicit OFFLINE V2 container marker; installed legacy routes/commands are not
+extended to consume it. No extra ResourcesDB column or schema version is added.
+The protected source/destination userId, orgId, resourceInfo, storage/org/column,
+part counters and lastModified plaintext must remain equal. New row salt,
+ciphertexts and lookup for the new document ID may differ as required.
+
+For each selected row, decrypt partMAC and verify the existing SHA-256 HMAC over
+the **exact entire corresponding payload image**, using that documents row's salt
+and the registration key. This is registration integrity in addition to the V2
+container's per-cell AEAD/inventory/hash checks; it does not replace them. Source
+and candidate payload hashes must also match the independent transformation
+approval. Altering the candidate but regenerating a valid registration MAC cannot
+bypass the source plaintext-equivalence comparison.
+
+Enumerate document associations in both snapshots. Reject duplicate source
+selectors/basenames, any existing destination basename or document ID, and any
+extra destination association. Other columns of an existing source document can
+remain as distinct approved registrations. Authenticate selectors/lookups used
+for these uniqueness decisions; other pre-existing logical metadata stays exact
+under the pinned source snapshot. Require exactly one matching local storage
+registration and exact approved protected accessPath. Never follow that historical
+path or fetch a remote provider. Multipart, remote, cross-storage, document-ID
+reuse and broader metadata/export transformations remain unsupported here.
+
+`cmeContextColumnRegistrationDigest` is a **canonical approval hash helper**, not
+an artifact verifier. Independently review/retain all typed fields and both
+snapshot hashes, then explicitly supply its result as the transformation approval's
+registrationEvidenceDigest. The registered APIs recompute and compare this digest;
+they never adopt a value from an artifact or overwrite an opaque approval pin.
+The canonical v1 hash input, without a separate signature, is:
+
+1. `CDSE-HKX-COLUMN-REGISTRATION-v1` including trailing NUL.
+2. Metadata-profile byte and source-payload-profile byte (1 GCM, 2 CBC).
+3. Source ResourcesDB, candidate ResourcesDB, source payload and candidate image
+   SHA-256 digests, each 32 bytes, in that order.
+4. Source and destination documents row IDs as uint64 big-endian.
+5. Nine strings, each uint16 big-endian byte length followed by the exact bytes:
+   source basename, destination basename, source document ID, destination document
+   ID, storage ID, orgResourceId, column ID, approved absolute storagePath and
+   destination-map name.
+
+Row IDs are positive, different and <= INT_MAX. Basenames are different ASCII
+leaf names up to 255 bytes using letters/digits/underscore/hyphen/dot, without a
+leading dot or internal DB reserved name. Document IDs are different; selectors
+are bounded non-control C strings up to 128 bytes. storagePath is an approved
+literal absolute string up to 1024 bytes, not a filesystem-resolution claim.
+Destination map must also satisfy the existing transformation API's lookup rules.
+
+After registration verification, invoke the full TransformPrepare/Verify pipeline,
+including source/candidate hashes, payload crypto/plaintext equivalence, allocation
+and current registry/catalog/exact witness checks, absent destination and manager
+HMAC. Recheck authority before releasing a result. Temporary decrypted metadata
+and private image copies are cleansed. Operations generate no entropy and write
+no authority/file state. Limits include 16 MiB per ResourcesDB image, 256 KiB SQL
+cells and the existing 4096-row inventory budget. Existing payload/credential/
+receipt bounds and 0/1/2/3 statuses remain unchanged. Outputs clear on failure.
+
+The receipt wire format stays phase-31 v1. **The signature does not encode which
+verifier was used.** A generic TransformVerify success is not registration
+verification; consumers needing this guarantee MUST use RegisteredVerify with the
+actual snapshots and independently approved typed fields. A valid generic receipt
+whose referenced ResourcesDB has a wrong type, lookup or MAC still refuses.
+
+This verifies supplied metadata snapshots and selected payload association, not
+physical file/inode custody, completeness of all sibling payloads/RolesDB/LogsDB,
+backup freshness or a one-time publication transaction. A complete retained
+export/acceptance contract, guarded physical publication, published-map/live
+reads and prior migration/provider/lifecycle/custody gates remain under TODO #147.

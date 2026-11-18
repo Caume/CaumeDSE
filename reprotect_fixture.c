@@ -1,5 +1,55 @@
 /* Synthetic keys/data only; invoked by the command contract tests. */
 #include "common.h"
+#include "context_column.h"
+
+static int cmeFixtureV2Registration(const char *root)
+{
+    static const char *fields[]={"id","userId","orgId","salt","resourceInfo","columnFile","type","documentId",
+        "storageId","orgResourceId","partMAC","totalParts","partId","lastModified","columnId"};
+    static const char *lookups[]={"documentId","storageId","orgResourceId"};
+    sqlite3 *db=NULL; sqlite3_stmt *read=NULL,*insert=NULL;
+    char path[PATH_MAX],*plain[15]={0},*salt=NULL,*bytes=NULL,*mac=NULL,*cipher=NULL,*tag=NULL,*combined=NULL,*lookup=NULL;
+    int i,written=0,length=0,result=1;
+    const char *changed=getenv("CDSE_FIXTURE_V2_FIELD"),*value=getenv("CDSE_FIXTURE_V2_VALUE");
+    if (snprintf(path,sizeof(path),"%s/CandidateResourcesDB",root)>=(int)sizeof(path) || sqlite3_open(path,&db)!=SQLITE_OK ||
+        sqlite3_prepare_v2(db,"SELECT * FROM documents WHERE id=1",-1,&read,NULL)!=SQLITE_OK || sqlite3_step(read)!=SQLITE_ROW) goto done;
+    salt=strdup((const char *)sqlite3_column_text(read,3)); if (!salt) goto done;
+    for (i=1;i<15;i++) if (i!=3)
+    {
+        const char *stored=(const char *)sqlite3_column_text(read,i);
+        if (!stored || strlen(stored)<=64 || cmeUnprotectDBSaltedValue(stored+64,&plain[i],cmeDefaultEncAlg,&salt,"fixture-source-key",&written)) goto done;
+    }
+    sqlite3_finalize(read); read=NULL; free(salt); salt=NULL;
+    free(plain[5]); plain[5]=strdup("candidate.sqlite"); free(plain[6]); plain[6]=strdup(cmeContextColumnRegistrationType);
+    free(plain[7]); plain[7]=strdup("fixture-copy");
+    if (cmeGetRndSaltAnySize(&salt,16) || !salt || snprintf(path,sizeof(path),"%s/candidate.sqlite",root)>=(int)sizeof(path) ||
+        cmeLoadStrFromFile(&bytes,path,&length) || cmeHMACByteString((const unsigned char *)bytes,(unsigned char **)&mac,
+        length,&written,"sha256",&salt,"fixture-source-key")) goto done;
+    free(plain[10]); plain[10]=mac; mac=NULL;
+    if (changed && value)
+        for (i=1;i<15;i++) if (i!=3 && !strcmp(changed,fields[i])) { free(plain[i]); plain[i]=strdup(value); }
+    if (sqlite3_prepare_v2(db,"INSERT OR REPLACE INTO documents VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",-1,&insert,NULL)!=SQLITE_OK ||
+        sqlite3_bind_int(insert,1,2)!=SQLITE_OK || sqlite3_bind_text(insert,4,salt,-1,SQLITE_TRANSIENT)!=SQLITE_OK) goto done;
+    for (i=1;i<15;i++) if (i!=3)
+    {
+        if (!plain[i] || cmeProtectDBSaltedValue(plain[i],&cipher,cmeDefaultEncAlg,&salt,"fixture-source-key",&written) ||
+            cmeHMACByteString((const unsigned char *)cipher,(unsigned char **)&tag,strlen(cipher),&written,"sha256",&salt,"fixture-source-key") ||
+            cmeStrConstrAppend(&combined,"%s%s",tag,cipher) || sqlite3_bind_text(insert,i+1,combined,-1,SQLITE_TRANSIENT)!=SQLITE_OK) goto done;
+        cmeFree(cipher); cmeFree(tag); cmeFree(combined);
+    }
+    for (i=0;i<3;i++)
+    {
+        if (cmeGetProtectDBLookupValue(lookups[i],plain[7+i],"fixture-source-key",&lookup) ||
+            sqlite3_bind_text(insert,16+i,lookup,-1,SQLITE_TRANSIENT)!=SQLITE_OK) goto done;
+        cmeFree(lookup);
+    }
+    if (sqlite3_step(insert)==SQLITE_DONE) result=0;
+done:
+    sqlite3_finalize(read); sqlite3_finalize(insert); sqlite3_close(db);
+    for (i=0;i<15;i++) if (plain[i]) { OPENSSL_cleanse(plain[i],strlen(plain[i])); free(plain[i]); }
+    cmeFree(salt); cmeFree(bytes); cmeFree(mac); cmeFree(cipher); cmeFree(tag); cmeFree(combined); cmeFree(lookup);
+    return(result);
+}
 
 static const char *cmeFixtureKey(void)
 {
@@ -297,6 +347,7 @@ int main(int argc, char **argv)
     int result;
     if (argc!=3) return(2);
     cmeInitDefaultEncAlg();
+    if (!strcmp(argv[2],"v2-registration")) return(cmeFixtureV2Registration(argv[1]));
     if (!strcmp(argv[2],"registered-readback")) return(cmeFixtureRegisteredReadback(argv[1]));
     if (!strcmp(argv[2],"ownership")) return(cmeFixtureOwnership(argv[1]));
     if (!strcmp(argv[2],"nla1-provider"))

@@ -72,7 +72,7 @@ done:
     sqlite3_finalize(stmt); return(result);
 }
 
-static int cmeColumnDecode(const char *value, const char *saltText, const char *key,
+int cmeContextColumnLegacyDecode(const char *value, const char *saltText, const char *key,
     const char *profile, char **plain)
 {
     char *salt=NULL,*decoded=NULL,*compact=NULL,*canonical=NULL;
@@ -152,7 +152,7 @@ static int cmeColumnRead(sqlite3 *db, const cmeContextMap *map, const char *key,
                 if (matches!=1 || !text || plain[index] || ++cells>map->count) goto done;
                 indices[field]=index;
                 if (table && field==3 && !seen[2]) plain[index]=strdup(text);
-                else if (cmeColumnDecode(text,salt,key,profile,&plain[index])) goto done;
+                else if (cmeContextColumnLegacyDecode(text,salt,key,profile,&plain[index])) goto done;
                 if (!plain[index] || (total+=strlen(plain[index])+1)>cmeContextColumnMaxBytes) goto done;
             }
             if (!table)

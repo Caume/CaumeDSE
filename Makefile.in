@@ -119,13 +119,15 @@ PROGRAMS = $(ipathbin_PROGRAMS)
 am__objects_1 = config.$(OBJEXT) crypto.$(OBJEXT) \
 	context_crypto.$(OBJEXT) context_column.$(OBJEXT) \
 	context_column_image.$(OBJEXT) \
-	context_column_transform.$(OBJEXT) context_witness.$(OBJEXT) \
-	context_registry.$(OBJEXT) context_manager.$(OBJEXT) \
-	context_offline.$(OBJEXT) db.$(OBJEXT) engine_admin.$(OBJEXT) \
-	engine_interface.$(OBJEXT) filehandling.$(OBJEXT) \
-	function_tests.$(OBJEXT) perl_interpreter.$(OBJEXT) \
-	runtime.$(OBJEXT) strhandling.$(OBJEXT) \
-	webservice_interface.$(OBJEXT) xs_init.$(OBJEXT)
+	context_column_transform.$(OBJEXT) \
+	context_column_registration.$(OBJEXT) \
+	context_witness.$(OBJEXT) context_registry.$(OBJEXT) \
+	context_manager.$(OBJEXT) context_offline.$(OBJEXT) \
+	db.$(OBJEXT) engine_admin.$(OBJEXT) engine_interface.$(OBJEXT) \
+	filehandling.$(OBJEXT) function_tests.$(OBJEXT) \
+	perl_interpreter.$(OBJEXT) runtime.$(OBJEXT) \
+	strhandling.$(OBJEXT) webservice_interface.$(OBJEXT) \
+	xs_init.$(OBJEXT)
 am_CaumeDSE_OBJECTS = main.$(OBJEXT) $(am__objects_1)
 CaumeDSE_OBJECTS = $(am_CaumeDSE_OBJECTS)
 CaumeDSE_LDADD = $(LDADD)
@@ -144,6 +146,7 @@ am__objects_2 = context_column_fixture-config.$(OBJEXT) \
 	context_column_fixture-context_column.$(OBJEXT) \
 	context_column_fixture-context_column_image.$(OBJEXT) \
 	context_column_fixture-context_column_transform.$(OBJEXT) \
+	context_column_fixture-context_column_registration.$(OBJEXT) \
 	context_column_fixture-context_witness.$(OBJEXT) \
 	context_column_fixture-context_registry.$(OBJEXT) \
 	context_column_fixture-context_manager.$(OBJEXT) \
@@ -213,6 +216,7 @@ am__depfiles_remade = ./$(DEPDIR)/admin.Po ./$(DEPDIR)/config.Po \
 	./$(DEPDIR)/context_column_fixture-config.Po \
 	./$(DEPDIR)/context_column_fixture-context_column.Po \
 	./$(DEPDIR)/context_column_fixture-context_column_image.Po \
+	./$(DEPDIR)/context_column_fixture-context_column_registration.Po \
 	./$(DEPDIR)/context_column_fixture-context_column_transform.Po \
 	./$(DEPDIR)/context_column_fixture-context_crypto.Po \
 	./$(DEPDIR)/context_column_fixture-context_crypto_fixture.Po \
@@ -232,6 +236,7 @@ am__depfiles_remade = ./$(DEPDIR)/admin.Po ./$(DEPDIR)/config.Po \
 	./$(DEPDIR)/context_column_fixture-webservice_interface.Po \
 	./$(DEPDIR)/context_column_fixture-xs_init.Po \
 	./$(DEPDIR)/context_column_image.Po \
+	./$(DEPDIR)/context_column_registration.Po \
 	./$(DEPDIR)/context_column_transform.Po \
 	./$(DEPDIR)/context_crypto.Po \
 	./$(DEPDIR)/context_crypto_fixture-context_crypto.Po \
@@ -722,7 +727,7 @@ tpath = @TESTFILES@
 ipath = @PREFIX@
 ipathbindir = @BINDIR@
 ipathdatadir = @DATADIR@
-caume_common_sources = common.h config.c crypto.c crypto.h context_crypto.c context_crypto.h context_column.c context_column.h context_column_image.c context_column_transform.c context_column_internal.h context_witness.c context_witness.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
+caume_common_sources = common.h config.c crypto.c crypto.h context_crypto.c context_crypto.h context_column.c context_column.h context_column_image.c context_column_transform.c context_column_registration.c context_column_internal.h context_witness.c context_witness.h context_registry.c context_registry.h context_manager.c context_manager.h context_offline.c context_offline.h db.c db.h engine_admin.c engine_admin.h engine_interface.c engine_interface.h filehandling.c filehandling.h function_tests.c function_tests.h perl_interpreter.c perl_interpreter.h runtime.c runtime.h strhandling.c strhandling.h webservice_interface.c webservice_interface.h xs_init.c
 CaumeDSE_SOURCES = main.c $(caume_common_sources)
 CaumeDSE_debug_tests_SOURCES = debug_tests.c $(caume_common_sources)
 caumedse_admin_SOURCES = admin.c admin.h storage_migration.c context_owner.c $(caume_common_sources)
@@ -735,7 +740,7 @@ context_crypto_fixture_CPPFLAGS = $(AM_CPPFLAGS) -DCDSE_CONTEXT_CRYPTO_TESTING
 context_frame_fixture_SOURCES = context_frame_fixture.c herradura_compat.h
 context_registry_fixture_SOURCES = context_registry_fixture.c context_registry.c context_registry.h
 reprotect_fixture_SOURCES = reprotect_fixture.c $(caume_common_sources)
-TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh test_context_witness.sh test_context_registered.sh test_context_frame.sh test_context_crypto.sh test_context_target.sh test_context_column.sh test_context_column_image.sh test_context_column_transform.sh
+TESTS = test_reprotect_cli.sh test_storage_migration.sh test_sample_test_manager.sh test_context_registry.sh test_context_manager.sh test_context_owner.sh test_context_witness.sh test_context_registered.sh test_context_frame.sh test_context_crypto.sh test_context_target.sh test_context_column.sh test_context_column_image.sh test_context_column_transform.sh test_context_column_registration.sh
 TESTS_ENVIRONMENT = srcdir='$(srcdir)'
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = $(TESTS) TEST samples favicon.ico CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md HERRADURAKEX_AT_REST_PLAN.md openapi.yaml herradura_compat.h
@@ -886,6 +891,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-config.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_column.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_column_image.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_column_registration.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_column_transform.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_crypto.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-context_crypto_fixture.Po@am__quote@ # am--include-marker
@@ -905,6 +911,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-webservice_interface.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_fixture-xs_init.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_image.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_registration.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_column_transform.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_crypto.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/context_crypto_fixture-context_crypto.Po@am__quote@ # am--include-marker
@@ -1060,6 +1067,20 @@ context_column_fixture-context_column_transform.obj: context_column_transform.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_column_transform.c' object='context_column_fixture-context_column_transform.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_column_transform.obj `if test -f 'context_column_transform.c'; then $(CYGPATH_W) 'context_column_transform.c'; else $(CYGPATH_W) '$(srcdir)/context_column_transform.c'; fi`
+
+context_column_fixture-context_column_registration.o: context_column_registration.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_column_registration.o -MD -MP -MF $(DEPDIR)/context_column_fixture-context_column_registration.Tpo -c -o context_column_fixture-context_column_registration.o `test -f 'context_column_registration.c' || echo '$(srcdir)/'`context_column_registration.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_column_registration.Tpo $(DEPDIR)/context_column_fixture-context_column_registration.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_column_registration.c' object='context_column_fixture-context_column_registration.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_column_registration.o `test -f 'context_column_registration.c' || echo '$(srcdir)/'`context_column_registration.c
+
+context_column_fixture-context_column_registration.obj: context_column_registration.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_column_registration.obj -MD -MP -MF $(DEPDIR)/context_column_fixture-context_column_registration.Tpo -c -o context_column_fixture-context_column_registration.obj `if test -f 'context_column_registration.c'; then $(CYGPATH_W) 'context_column_registration.c'; else $(CYGPATH_W) '$(srcdir)/context_column_registration.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/context_column_fixture-context_column_registration.Tpo $(DEPDIR)/context_column_fixture-context_column_registration.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='context_column_registration.c' object='context_column_fixture-context_column_registration.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o context_column_fixture-context_column_registration.obj `if test -f 'context_column_registration.c'; then $(CYGPATH_W) 'context_column_registration.c'; else $(CYGPATH_W) '$(srcdir)/context_column_registration.c'; fi`
 
 context_column_fixture-context_witness.o: context_witness.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(context_column_fixture_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT context_column_fixture-context_witness.o -MD -MP -MF $(DEPDIR)/context_column_fixture-context_witness.Tpo -c -o context_column_fixture-context_witness.o `test -f 'context_witness.c' || echo '$(srcdir)/'`context_witness.c
@@ -1802,6 +1823,13 @@ test_context_column_transform.sh.log: test_context_column_transform.sh
 	--log-file $$b.log --trs-file $$b.trs \
 	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
 	"$$tst" $(AM_TESTS_FD_REDIRECT)
+test_context_column_registration.sh.log: test_context_column_registration.sh
+	@p='test_context_column_registration.sh'; \
+	b='test_context_column_registration.sh'; \
+	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
+	--log-file $$b.log --trs-file $$b.trs \
+	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
+	"$$tst" $(AM_TESTS_FD_REDIRECT)
 .test.log:
 	@p='$<'; \
 	$(am__set_b); \
@@ -2075,6 +2103,7 @@ distclean: distclean-recursive
 	-rm -f ./$(DEPDIR)/context_column_fixture-config.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_column.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_column_image.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_column_registration.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_column_transform.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_crypto.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_crypto_fixture.Po
@@ -2094,6 +2123,7 @@ distclean: distclean-recursive
 	-rm -f ./$(DEPDIR)/context_column_fixture-webservice_interface.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-xs_init.Po
 	-rm -f ./$(DEPDIR)/context_column_image.Po
+	-rm -f ./$(DEPDIR)/context_column_registration.Po
 	-rm -f ./$(DEPDIR)/context_column_transform.Po
 	-rm -f ./$(DEPDIR)/context_crypto.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_crypto.Po
@@ -2183,6 +2213,7 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f ./$(DEPDIR)/context_column_fixture-config.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_column.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_column_image.Po
+	-rm -f ./$(DEPDIR)/context_column_fixture-context_column_registration.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_column_transform.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_crypto.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-context_crypto_fixture.Po
@@ -2202,6 +2233,7 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f ./$(DEPDIR)/context_column_fixture-webservice_interface.Po
 	-rm -f ./$(DEPDIR)/context_column_fixture-xs_init.Po
 	-rm -f ./$(DEPDIR)/context_column_image.Po
+	-rm -f ./$(DEPDIR)/context_column_registration.Po
 	-rm -f ./$(DEPDIR)/context_column_transform.Po
 	-rm -f ./$(DEPDIR)/context_crypto.Po
 	-rm -f ./$(DEPDIR)/context_crypto_fixture-context_crypto.Po
