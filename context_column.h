@@ -109,4 +109,50 @@ int cmeContextColumnTransformVerify(cmeContextManager *manager, const cmeContext
     const unsigned char *source, size_t sourceLength, const char *sourceKey,
     const unsigned char *image, size_t imageLength, const unsigned char *password, size_t passwordLength,
     const unsigned char *receipt, size_t receiptLength, const unsigned char receiptDigest[32]);
+
+#define cmeContextColumnRegistrationType "file.csv.cdse-v2"
+typedef struct
+{
+    const char *metadataProfile,*sourceFile,*destinationFile,*sourceDocument,*destinationDocument;
+    const char *storageId,*organizationResource,*columnId,*storagePath;
+    int64_t sourceRow,destinationRow;
+    unsigned char sourceResourcesDigest[32],candidateResourcesDigest[32];
+} cmeContextColumnRegistrationApproval;
+typedef struct
+{
+    const unsigned char *source,*candidate,*sourceResources,*candidateResources,*password;
+    size_t sourceLength,candidateLength,sourceResourcesLength,candidateResourcesLength,passwordLength;
+    const char *sourceKey,*registrationKey;
+} cmeContextColumnRegistrationInputs;
+/* Canonical approval hash only: no artifact authentication. Independently review
+   and retain all inputs and this hash before assigning registrationEvidenceDigest.
+   Binds both ResourcesDB pins, payload pins, selectors, leaf names, local storage
+   path and destination map. Output clears on error, returns 0/1. */
+int cmeContextColumnRegistrationDigest(const cmeContextColumnTransformApproval *transform,
+    const cmeContextColumnRegistrationApproval *approval, unsigned char digest[32]);
+/* Read-only selected single-part local ColumnFile copy registration verification.
+   Require pinned current-schema ResourcesDB snapshots. Preserve ALL original
+   logical rows/cells/schema byte-exact and add ONLY the approved destination row.
+   Authenticate selected protected fields/lookups, unique source/destination
+   associations and local storage path; verify source/candidate partMAC over the
+   exact payload bytes. Destination type is file.csv.cdse-v2; metadata remains
+   homogeneous legacy AES under the same bounded C-string registration key.
+   Other selected metadata stays equal, including user/org/resourceInfo/timestamp.
+   No metadata key rotation, multipart, remote storage, file/path opens or writes.
+
+   Require transform.registrationEvidenceDigest to match RegistrationDigest;
+   never adopt a digest from an artifact. Then invoke full TransformPrepare/Verify
+   and recheck authority before output. Same receipt wire format/ownership/status
+   as Transform APIs; a plain TransformVerify is NOT registration verification.
+   All pointers stable/nonoverlapping. Bounds: 16 MiB each ResourcesDB, 4096 total
+   existing rows, 256 KiB SQL cells, selectors <=128 bytes, leaf names <=255,
+   approved absolute storagePath <=1024. No publication/complete export acceptance
+   or physical file provenance claim; those require the separate owner workflow. */
+int cmeContextColumnRegisteredPrepare(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *approval,
+    const cmeContextColumnRegistrationInputs *inputs, cmeContextV2Buffer *receipt, unsigned char receiptDigest[32]);
+int cmeContextColumnRegisteredVerify(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *approval,
+    const cmeContextColumnRegistrationInputs *inputs,
+    const unsigned char *receipt, size_t receiptLength, const unsigned char receiptDigest[32]);
 #endif

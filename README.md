@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.32.0
+# Caume Data Security Engine (CaumeDSE) version 2.33.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3020,6 +3020,13 @@ current registry/catalog/witness pins, destination map and an independently
 approved registration-evidence hash. Verification always repeats the artifact
 checks; a signature alone cannot approve altered content. The registration hash
 is an external approval pin, not ResourcesDB verification or publication permission.
+
+The [registered-copy verifier](HERRADURAKEX_AT_REST_PLAN.md#verified-v2-copy-registrations-147-phase-32)
+checks pinned ResourcesDB snapshots, requires an exact clone plus one approved
+V2 destination row, authenticates selectors/lookups and payload partMACs, and
+then runs the full transformation checks. Its structured approval hash replaces
+the opaque pin for this stronger API. It remains read-only; complete export
+acceptance, physical publication and live V2 dispatch are still pending.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit
