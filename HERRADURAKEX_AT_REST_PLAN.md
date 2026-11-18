@@ -3242,10 +3242,11 @@ Return codes remain 0 success, 1 invalid/auth/comparison/unavailable-state failu
 2 stale authority conflict, 3 unavailable codec/SQLite feature. Existing 16 MiB
 source, 32 MiB container and cell/inventory/plaintext bounds remain in force.
 
-Phase 32 below adds selected ResourcesDB registration-integrity verification.
-TODO #147 remains open for a complete export/acceptance contract consuming this evidence,
-then guarded physical publication, published-map reads and the prior mixed-profile/
-provider/floor-2 migration, lifecycle and production-custody closeout gates.
+Phase 32 below adds selected ResourcesDB registration-integrity verification;
+phase 33 consumes that evidence for complete supplied CSV-export acceptance.
+TODO #147 remains open for physical custody, guarded publication, published-map
+reads and the prior mixed-profile/provider/floor-2 migration, lifecycle and
+production-custody closeout gates.
 
 
 ## Verified V2 copy registrations (#147 phase 32)
@@ -3348,6 +3349,106 @@ whose referenced ResourcesDB has a wrong type, lookup or MAC still refuses.
 
 This verifies supplied metadata snapshots and selected payload association, not
 physical file/inode custody, completeness of all sibling payloads/RolesDB/LogsDB,
-backup freshness or a one-time publication transaction. A complete retained
-export/acceptance contract, guarded physical publication, published-map/live
-reads and prior migration/provider/lifecycle/custody gates remain under TODO #147.
+backup freshness or a one-time publication transaction. Phase 33 below adds a
+complete retained acceptance contract for supplied single-part local CSV exports.
+Physical custody/publication, published-map/live reads and prior migration/
+provider/lifecycle/custody gates remain under TODO #147.
+
+
+## Complete supplied-export acceptance (#147 phase 33)
+
+`cmeContextColumnExportPrepare/Verify` consume a retained phase-32 registration
+receipt and all of its independently approved inputs. They add a complete
+**supplied memory inventory** contract and a distinct manager-authenticated
+acceptance receipt. They never open artifact paths or enumerate export directories,
+write artifacts, publish maps, advance authority, or grant publication permission.
+Existing manager/target APIs still read their trusted authority state.
+
+The supported profile is a complete local export whose source documents are all
+single-part `file.csv` registrations under the explicit homogeneous legacy AES
+metadata key/profile. The selected destination alone becomes `file.csv.cdse-v2`.
+Non-CSV siblings, multipart, remote storage, and metadata key/profile rotation
+are refused. The phase-32 logical/schema clone-plus-one rule still applies.
+
+Supply companions sorted by ASCII leaf name: exactly every source documents
+payload plus `RolesDB` and `LogsDB`. ResourcesDB and the one new V2 payload are
+already separate RegistrationInputs. Each companion has a name, length, an
+independently approved SHA-256 pin, and actual source/candidate buffers of that
+length. Both buffers must match the same pin, so every original payload and
+internal companion is retained byte-exact. The source and candidate ResourcesDB
+and selected payload pins are additionally checked by RegisteredVerify. Missing,
+extra, duplicate, unsorted, reserved/unsafe payload names refuse. Names use the
+phase-32 ASCII leaf rules; internal companion names are the two explicit exceptions.
+The accepted candidate inventory is therefore the complete source inventory,
+with its ResourcesDB replaced by the verified clone-plus-one snapshot and exactly
+one new approved V2 payload. This does not enumerate or certify a physical directory.
+
+Authenticate every source documents protected field and selector lookup, require
+single part 1/1 and type file.csv, verify its whole-payload SHA-256 HMAC, and reject
+duplicate names or document/storage/org/column associations. All storage entries
+must authenticate as unique local storage/org pairs at the independently approved
+literal storagePath; every document must resolve to a registered pair. Source
+sibling payloads are authenticated as unchanged legacy bytes; this API does not
+decrypt or transform their cell contents. Selected V2 plaintext equivalence still
+runs in full through RegisteredVerify. A valid selected-registration or manager
+signature cannot bypass missing sibling artifacts or a bad sibling MAC.
+
+RolesDB and LogsDB must be closed rollback-format SQLite images with current
+class/schema metadata and required columns, integrity checks, no views/triggers
+or virtual/shadow objects, and bounded defensive/query-only/trusted-schema-off
+parsing. Their independent pins authenticate unchanged bytes, not semantic
+validation of every historical protected role/log field. Extra non-executable
+schema objects accepted by the existing internal schema checker are not removed
+or normalized. Snapshots, keys and authority must be quiesced by the owner.
+
+Bounds: 4098 companions (4096 documents plus two internal DBs), 32 MiB per
+payload, 16 MiB per internal DB, 64 MiB aggregate companion bytes per export.
+Private ResourcesDB/internal DB parsing copies are cleansed. SQLite cell/SQL/VM
+limits and existing selected-artifact/credential bounds remain in force. API
+inputs must remain stable and nonoverlapping; no entropy is generated.
+
+Independently review/retain the companion names, lengths and pins before using
+`cmeContextColumnExportDigest`. It hashes canonical bytes only and never adopts
+artifact hashes. Canonical export approval SHA-256 input:
+
+1. `CDSE-HKX-COLUMN-EXPORT-v1` including trailing NUL.
+2. The 32-byte canonical phase-32 RegistrationDigest (which binds all selected
+   selectors and ResourcesDB/payload pins).
+3. Companion count as uint64 big-endian.
+4. Each sorted companion: uint16 big-endian name length, name bytes, uint64
+   big-endian artifact length, and the 32-byte independently approved digest.
+
+Explicitly retain this result as ExportInputs.approvalDigest, separately from
+any untrusted export. Retain the registration receipt hash independently too.
+Prepare and Verify recompute these approvals, authenticate the phase-32 receipt,
+and repeat all registration, transformation, full-inventory and current-authority
+checks. Neither trusts a signature as a replacement for artifact verification.
+
+Acceptance receipt v1 bytes are `CDSE-HKX-COLUMN-ACCEPTANCE-v1` including NUL,
+32-byte export approval digest, uint16 big-endian registration-receipt length,
+exact retained registration receipt bytes, then a 32-byte manager HMAC tag.
+The tag is HMAC-SHA256 under the separate manager registry key over
+`CDSE-HKX-COLUMN-ACCEPTANCE-SEAL-v1` including NUL, the 73-byte registry anchor,
+40-byte catalog pin, uint8 length-prefixed destination-map name, and SHA-256 of
+all acceptance receipt bytes preceding the tag. The nested receipt binds exact
+allocation/witness/registry/catalog and selected-artifact evidence. This distinct
+wire format cannot be used as a transformation receipt or legacy publication
+intent. `cmeContextManagerColumnAcceptanceSign` is a trusted-core signature
+primitive only; it does not verify artifacts. Its shared implementation preserves
+the old transformation signature domain and bytes.
+
+Prepare returns an owned V2Buffer plus SHA-256 over the entire acceptance receipt;
+free with V2BufferFree. Outputs clear on every error. Verify requires that
+independently retained whole-receipt pin, exact framing/body/tag, and actual
+artifact revalidation. Maximum receipt 640 bytes; statuses 0/1/2/3 remain as before.
+No passwords, registration keys, plaintext or paths are serialized in the receipt.
+Recheck authority before returning either receipt or success, including after
+signing and validation. Checks remain point-in-time and receipts replayable while
+pins remain current: there is no joint transaction, lease, one-time consumption
+or independent backup-freshness proof.
+
+This completes retained acceptance for the bounded supplied CSV-only export
+profile. TODO #147 remains open for physical file/inode custody and complete
+on-disk enumeration, guarded publication and crash recovery, published-map/live
+V2 reads, wider/mixed-profile migrations and prior provider/lifecycle/custody
+closeout gates. Do not feed this receipt to legacy publication workflows.

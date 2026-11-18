@@ -155,4 +155,53 @@ int cmeContextColumnRegisteredVerify(cmeContextManager *manager, const cmeContex
     const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *approval,
     const cmeContextColumnRegistrationInputs *inputs,
     const unsigned char *receipt, size_t receiptLength, const unsigned char receiptDigest[32]);
+/* Complete memory-supplied single-part local CSV export, without filesystem
+   custody/publication. Companions are ALL source documents plus RolesDB/LogsDB,
+   sorted by ASCII leaf name. Both exports retain identical companion bytes;
+   ResourcesDB and the new V2 payload are supplied by RegistrationInputs.
+   Independently approve names, lengths and SHA256 pins before calling Digest;
+   this helper does not inspect bytes. Never adopt pins from untrusted exports.
+   Every source registration/lookup/whole-payload MAC is authenticated. All stores
+   must be unique local registrations at the approved literal storagePath.
+   RolesDB/LogsDB require current bounded SQLite schemas/integrity; their retained
+   pins authenticate unchanged bytes, not individual historical field semantics.
+   No multipart/remote/non-CSV sibling profiles. At most 4098 companions, 32 MiB
+   each, 64 MiB aggregate per export; internal DBs at most 16 MiB. */
+typedef struct
+{
+    const char *name;
+    const unsigned char *source,*candidate;
+    size_t length;
+    unsigned char digest[32];
+} cmeContextColumnExportArtifact;
+typedef struct
+{
+    const cmeContextColumnExportArtifact *companions;
+    size_t count;
+    unsigned char approvalDigest[32];
+    const unsigned char *registrationReceipt;
+    size_t registrationReceiptLength;
+    unsigned char registrationReceiptDigest[32];
+} cmeContextColumnExportInputs;
+#define cmeContextColumnExportMaxBytes (64U*1024U*1024U)
+#define cmeContextColumnAcceptanceMaxBytes 640U
+int cmeContextColumnExportDigest(const cmeContextColumnTransformApproval *transform,
+    const cmeContextColumnRegistrationApproval *registration,
+    const cmeContextColumnExportArtifact *companions, size_t count, unsigned char digest[32]);
+/* New domain-separated retained acceptance receipt, distinct from transformation
+   receipts and legacy publication intents. Both calls reverify the retained
+   registration receipt, full transformation, complete supplied inventories and
+   current authority. Verify also requires an independently retained receipt hash.
+   Read-only/entropy-free, point-in-time and replayable while authority is current;
+   no one-time consumption, path/inode provenance, freshness or publish permission.
+   Stable/nonoverlapping inputs, empty owned outputs, V2BufferFree and 0/1/2/3
+   statuses as above. All outputs clear on failure. */
+int cmeContextColumnExportPrepare(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *registration,
+    const cmeContextColumnRegistrationInputs *inputs, const cmeContextColumnExportInputs *export,
+    cmeContextV2Buffer *receipt, unsigned char receiptDigest[32]);
+int cmeContextColumnExportVerify(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *registration,
+    const cmeContextColumnRegistrationInputs *inputs, const cmeContextColumnExportInputs *export,
+    const unsigned char *receipt, size_t receiptLength, const unsigned char receiptDigest[32]);
 #endif

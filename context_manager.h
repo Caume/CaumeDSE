@@ -256,6 +256,11 @@ int cmeContextManagerCopyPlanBind(cmeContextManager *manager,
 int cmeContextManagerColumnTransformSign(cmeContextManager *manager, const cmeContextAnchor *registry,
     const cmeContextMapAnchor *catalog, const char *destinationName,
     const unsigned char requestDigest[32], unsigned char signature[32]);
+/* Same trusted-core constraints; separate acceptance HMAC domain. This does not
+   inspect export artifacts. Use ColumnExportPrepare/Verify for acceptance. */
+int cmeContextManagerColumnAcceptanceSign(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, const char *destinationName,
+    const unsigned char requestDigest[32], unsigned char signature[32]);
 /* Trusted OFFLINE durable-intent handoff, NOT an artifact/catalog publisher.
    Require the exact committed allocation plan, unchanged original catalog and
    an unused destination map name. requestDigest binds independently approved
