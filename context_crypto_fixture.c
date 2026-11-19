@@ -107,9 +107,73 @@ done:
     free(candidate); return(result);
 }
 
+static void cmeFixtureCustodyPause(const char *stage)
+{
+    const char *pause=getenv("CDSE_CONTEXT_CUSTODY_FIXTURE_PAUSE");
+    if (pause && !strcmp(pause,stage))
+    {
+        const char *ready=getenv("CDSE_CONTEXT_CUSTODY_READY_FD"),*resume=getenv("CDSE_CONTEXT_CUSTODY_RESUME_FD");
+        char byte;
+        if (!ready || !resume || atoi(ready)<3 || atoi(resume)<3 ||
+            write(atoi(ready),"1",1)!=1 || read(atoi(resume),&byte,1)!=1) _exit(87);
+    }
+}
+
+static int cmeFixtureCustody(cmeContextManager *manager, cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *approval,
+    const cmeContextColumnRegistrationInputs *inputs, const cmeContextColumnExportInputs *export,
+    const unsigned char *acceptance, size_t length, const unsigned char digest[32], char **paths)
+{
+    cmeContextColumnCustodyRoot roots[2]={{.parent=-1},{.parent=-1}};
+    cmeContextColumnCustody *handle=NULL;
+    cmeContextColumnRegistrationInputs credentials=*inputs;
+    cmeContextColumnExportInputs physical=*export;
+    cmeContextColumnExportArtifact entries[16];
+    char *names[2]={NULL,NULL};
+    size_t i;
+    int result=1;
+    memcpy(entries,export->companions,export->count*sizeof(*entries)); physical.companions=entries;
+    for (i=0;i<export->count;i++) entries[i].source=entries[i].candidate=NULL;
+    credentials.source=credentials.candidate=credentials.sourceResources=credentials.candidateResources=NULL;
+    credentials.sourceLength=credentials.candidateLength=credentials.sourceResourcesLength=credentials.candidateResourcesLength=SIZE_MAX;
+    for (i=0;i<2;i++)
+    {
+        char *slash;
+        names[i]=strdup(paths[i]); if (!names[i] || !(slash=strrchr(names[i],'/')) || slash==names[i]) goto done;
+        *slash=0; roots[i].name=slash+1;
+        roots[i].parent=open(names[i],O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+        if (roots[i].parent<0) goto done;
+    }
+    if (getenv("CDSE_CONTEXT_CUSTODY_CONTRACT"))
+    {
+        handle=(cmeContextColumnCustody *)1;
+        if (cmeContextColumnCustodyOpen(NULL,target,transform,approval,&credentials,&physical,&roots[0],&roots[1],acceptance,length,digest,&handle)!=1 || handle ||
+            cmeContextColumnCustodyOpen(manager,target,transform,approval,&credentials,&physical,NULL,&roots[1],acceptance,length,digest,&handle)!=1 || handle ||
+            cmeContextColumnCustodyOpen(manager,target,transform,approval,&credentials,&physical,&roots[0],&roots[1],acceptance,length,digest,NULL)!=1 ||
+            cmeContextColumnCustodyCheck(NULL)!=1) { result=99; goto done; }
+        cmeContextColumnCustodyFree(NULL); cmeContextColumnCustodyFree(&handle);
+    }
+    handle=(cmeContextColumnCustody *)1;
+    result=cmeContextColumnCustodyOpen(manager,target,transform,approval,&credentials,&physical,&roots[0],&roots[1],acceptance,length,digest,&handle);
+    if (result) { if (handle) result=99; goto done; }
+    for (i=0;i<2;i++) { close(roots[i].parent); roots[i].parent=-1; free(names[i]); names[i]=NULL; }
+    cmeFixtureCustodyPause("between-checks");
+    result=cmeContextColumnCustodyCheck(handle);
+    if (result && getenv("CDSE_CONTEXT_CUSTODY_POISON_CHECK"))
+    {
+        cmeFixtureCustodyPause("between-checks");
+        if (cmeContextColumnCustodyCheck(handle)!=result) result=99;
+    }
+    if (!result) for (i=0;i<32;i++) if ((result=cmeContextColumnCustodyCheck(handle))) break;
+ done:
+    for (i=0;i<2;i++) { if (roots[i].parent>=0) close(roots[i].parent); free(names[i]); }
+    if (handle!=(cmeContextColumnCustody *)1) { cmeContextColumnCustodyFree(&handle); cmeContextColumnCustodyFree(&handle); }
+    return(result);
+}
+
 static int cmeFixtureExport(cmeContextManager *manager, cmeContextCopyTarget *target,
     const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *approval,
-    const cmeContextColumnRegistrationInputs *inputs, int verify, int argc, char **argv,
+    const cmeContextColumnRegistrationInputs *inputs, int verify, int custody, int argc, char **argv,
     cmeContextV2Buffer *output, unsigned char digest[32])
 {
     cmeContextColumnExportArtifact entries[16]={0};
@@ -120,7 +184,7 @@ static int cmeFixtureExport(cmeContextManager *manager, cmeContextCopyTarget *ta
     int result=1;
     if (argc<4) goto done;
     n=strtoul(argv[3],&end,10);
-    if (!*argv[3] || *end || n>16 || argc!=(int)(4+4*n+(verify ? 2 : 0))) goto done;
+    if (!*argv[3] || *end || n>16 || argc!=(int)(4+4*n+(custody ? 4 : (verify ? 2 : 0)))) goto done;
     export.companions=entries; export.count=n;
     if (cmeFixtureReadBounded(argv[0],cmeContextColumnTransformMaxBytes,&registration,&export.registrationReceiptLength) ||
         cmeFixtureHex(argv[1],export.registrationReceiptDigest,32) || cmeFixtureHex(argv[2],export.approvalDigest,32)) goto done;
@@ -158,7 +222,8 @@ static int cmeFixtureExport(cmeContextManager *manager, cmeContextCopyTarget *ta
     {
         if (cmeFixtureReadBounded(argv[4+4*n],cmeContextColumnAcceptanceMaxBytes,&acceptance,&acceptanceLength) ||
             cmeFixtureHex(argv[5+4*n],digest,32)) goto done;
-        result=cmeContextColumnExportVerify(manager,target,transform,approval,inputs,&export,acceptance,acceptanceLength,digest);
+        result=custody ? cmeFixtureCustody(manager,target,transform,approval,inputs,&export,acceptance,acceptanceLength,digest,argv+6+4*n) :
+            cmeContextColumnExportVerify(manager,target,transform,approval,inputs,&export,acceptance,acceptanceLength,digest);
     }
     else
     {
@@ -185,8 +250,9 @@ static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget
     unsigned char *source=NULL,*image=NULL,*before=NULL,*after=NULL,*receipt=NULL,password[256],digest[32],zero[32]={0};
     size_t receiptLength=0;
     char *end;
-    int result=1,saved=-1,sink=-1,accepting=!strncmp(action,"target-export-",14),
-        verify=!strcmp(action,"target-registered-verify") || !strcmp(action,"target-export-verify");
+    int result=1,saved=-1,sink=-1,custody=!strcmp(action,"target-custody"),
+        accepting=custody || !strncmp(action,"target-export-",14),
+        verify=custody || !strcmp(action,"target-registered-verify") || !strcmp(action,"target-export-verify");
     if ((accepting ? argc<29 : argc!=(verify ? 27 : 25)) || cmeFixtureHex(argv[1],transform.sourceDigest,32) ||
         cmeFixtureHex(argv[5],transform.candidateDigest,32) || cmeFixtureHex(argv[6],transform.registrationEvidenceDigest,32) ||
         cmeFixtureHex(argv[10],approval.sourceResourcesDigest,32) || cmeFixtureHex(argv[12],approval.candidateResourcesDigest,32) ||
@@ -230,7 +296,7 @@ static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget
         output.bytes=(unsigned char *)1; output.length=99;
         if (cmeContextColumnRegisteredPrepare(manager,target,&transform,&approval,&inputs,&output,NULL)!=1 || output.bytes || output.length) goto done;
     }
-    if (accepting) result=cmeFixtureExport(manager,target,&transform,&approval,&inputs,verify,argc-25,argv+25,&output,digest);
+    if (accepting) result=cmeFixtureExport(manager,target,&transform,&approval,&inputs,verify,custody,argc-25,argv+25,&output,digest);
     else if (verify) result=cmeContextColumnRegisteredVerify(manager,target,&transform,&approval,&inputs,receipt,receiptLength,digest);
     else
     {
@@ -242,7 +308,7 @@ static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget
     close(saved); saved=-1; close(sink); sink=-1;
     if (!result)
     {
-        if (verify) puts(accepting ? "export-verified" : "registered-verified");
+        if (verify) puts(custody ? "custody-verified" : (accepting ? "export-verified" : "registered-verified"));
         else { cmeFixturePrint(digest,32); putchar(' '); cmeFixturePrint(output.bytes,output.length); putchar('\n'); }
     }
 done:
@@ -542,7 +608,7 @@ static int cmeFixtureTarget(int argc, char **argv)
     }
 #ifdef CDSE_CONTEXT_COLUMN_TESTING
     if (!strcmp(argv[2],"target-registered-prepare") || !strcmp(argv[2],"target-registered-verify") ||
-        !strcmp(argv[2],"target-export-prepare") || !strcmp(argv[2],"target-export-verify"))
+        !strcmp(argv[2],"target-export-prepare") || !strcmp(argv[2],"target-export-verify") || !strcmp(argv[2],"target-custody"))
     { result=cmeFixtureRegistered(manager,target,argv[2],argc-offset,argv+offset); goto done; }
     if (!strcmp(argv[2],"target-transform-prepare") || !strcmp(argv[2],"target-transform-verify"))
     { result=cmeFixtureTransform(manager,target,argv[2],argc-offset,argv+offset); goto done; }

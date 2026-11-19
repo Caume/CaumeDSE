@@ -204,4 +204,48 @@ int cmeContextColumnExportVerify(cmeContextManager *manager, const cmeContextCop
     const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *registration,
     const cmeContextColumnRegistrationInputs *inputs, const cmeContextColumnExportInputs *export,
     const unsigned char *receipt, size_t receiptLength, const unsigned char receiptDigest[32]);
+
+typedef struct cmeContextColumnCustody cmeContextColumnCustody;
+typedef struct
+{
+    int parent;
+    const char *name;
+} cmeContextColumnCustodyRoot;
+/* Physical, read-only custody for the phase-33 complete CSV export profile.
+   Independently approve already-open parent directory objects and child leaf
+   names. Parents/roots must be owned by this euid with mode 0700. Root names
+   use ASCII leaf rules, roots must be distinct and not nested. Parents remain
+   caller-trusted namespace anchors, not proof of any absolute path ancestry.
+   Keep authority, keys, receipts and other controls outside BOTH export roots.
+
+   Open duplicates parents and opens children with NOFOLLOW/CLOEXEC. Exact root
+   enumeration permits only the approved companions, ResourcesDB and (candidate
+   only) new V2 file. Files must be regular, owned mode 0600, single-link, closed rollback-format SQLite images, without
+   sidecars (all -wal/-shm/-journal suffixes reserved). Read actual bounded files
+   through held roots, compare pins, then run full ExportVerify on those private
+   bytes. RegistrationInputs supplies C-string source/metadata keys and counted
+   target password ONLY: its artifact pointers/lengths are ignored. ExportInputs
+   supplies approved companion names/lengths/pins and retained registration
+   evidence ONLY: its companion byte pointers are ignored. Approval/receipt pins
+   must be independently retained, never adopted from disk. All inputs stable;
+   output handle is NULL on ALL failures. 0/1/2/3 statuses remain as above.
+
+   Returned handle owns four directory descriptors and bounded stat/hash metadata;
+   it retains NO credentials, payload bytes or receipt bytes. Manager and target
+   are borrowed and MUST outlive the handle; serialize Check/Free calls. Check
+   reopens/hashes every file and
+   compares inode/dev/owner/group/mode/link/size/mtime/ctime, directory identities,
+   named-root bindings, inventories and current target authority. Observed failure
+   permanently poisons the handle. No thousands-of-descriptors requirement.
+   Checks are point-in-time, NOT an exclusive lease or atomic storage/authority
+   transaction. Coordinate writers independently; no writes/fsync/rename, durable
+   custody receipt, crash recovery, publication or live V2 dispatch is provided. */
+int cmeContextColumnCustodyOpen(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *registration,
+    const cmeContextColumnRegistrationInputs *credentials, const cmeContextColumnExportInputs *export,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *candidate,
+    const unsigned char *acceptance, size_t acceptanceLength, const unsigned char acceptanceDigest[32],
+    cmeContextColumnCustody **custody);
+int cmeContextColumnCustodyCheck(cmeContextColumnCustody *custody);
+void cmeContextColumnCustodyFree(cmeContextColumnCustody **custody);
 #endif
