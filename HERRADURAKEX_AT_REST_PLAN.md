@@ -3448,7 +3448,92 @@ pins remain current: there is no joint transaction, lease, one-time consumption
 or independent backup-freshness proof.
 
 This completes retained acceptance for the bounded supplied CSV-only export
-profile. TODO #147 remains open for physical file/inode custody and complete
-on-disk enumeration, guarded publication and crash recovery, published-map/live
-V2 reads, wider/mixed-profile migrations and prior provider/lifecycle/custody
-closeout gates. Do not feed this receipt to legacy publication workflows.
+profile. Phase 34 below adds actual file/inode checks and exact directory
+inventory through independently approved parent descriptors. TODO #147 remains
+open for guarded publication/recovery, published-map/live V2 reads, wider/mixed
+migrations and prior provider/lifecycle/production-custody closeout gates.
+Do not feed this receipt to legacy publication workflows.
+
+
+## Physical export custody (#147 phase 34)
+
+`cmeContextColumnCustodyOpen` consumes the retained phase-33 acceptance receipt,
+its independent hash, the existing typed transformation/registration/export
+approvals, explicit credentials and two independently approved directory roots.
+It reads the **actual files** and invokes full ExportVerify on private copies;
+caller-supplied payload/ResourcesDB/companion byte buffers are ignored. The result
+is an opaque ephemeral custody handle, not a new signed receipt or permission
+to publish. Existing acceptance/registration receipt wire formats are unchanged.
+
+Each root approval is an already-open parent directory descriptor plus one ASCII
+child leaf name. The trusted caller approves the parent **object**, opens it
+securely, and keeps manager/catalog/witness/key/receipt controls outside both
+exports. This API does not resolve absolute artifact paths or certify any
+ancestor pathname above that parent object. It duplicates both parent descriptors
+with CLOEXEC and opens children relative to them using O_DIRECTORY/NOFOLLOW/
+CLOEXEC. Parents and roots require current-euid ownership, mode 0700 and nonzero
+links. Roots must be distinct and neither may be an ancestor of the other; an
+inaccessible or >256-level ancestry walk refuses. Parent path renames above the
+trusted namespace anchors are outside this contract. Closing the caller's parent
+descriptors after Open is safe.
+
+Enumerate each held root with an independent directory stream. The source permits
+exactly every approved companion and ResourcesDB; candidate permits the same
+companions, verified candidate ResourcesDB and exactly the approved new V2 file.
+No hidden/extra entries, subdirectories or SQLite sidecars are allowed. Root and
+artifact leaf names use ASCII letters/digits/underscore/hyphen/dot, no leading
+dot, length <= NAME_MAX. All -wal/-shm/-journal suffixes are reserved here, even
+if a memory-only approval would otherwise permit that name. Supplied inventory
+names/pins remain independently approved; filenames or on-disk metadata never
+supply crypto identities or replacement approval pins.
+
+Open each file through its held root with O_RDONLY/NOFOLLOW/NONBLOCK/CLOEXEC.
+Require current-euid-owned regular files with mode 0600, a single link, at least
+100 bytes and a closed rollback-format SQLite header. Symlinks, hardlinks, FIFO/
+socket/device entries and directory substitutes refuse without blocking. Exact
+approved companion lengths/pins must match both source/candidate files. ResourcesDB
+images are <=16 MiB and the new V2 image <=32 MiB, pinned by their existing
+independent approvals. The phase-33 companion count/per-file/64 MiB aggregate
+bounds remain in force. All copied artifact bytes are cleansed/freed before Open
+returns, including on failure. Only the explicit credentials fields of
+RegistrationInputs are read; only companion names/lengths/digests and retained
+registration evidence from ExportInputs are read.
+
+Hash each actual file with bounded pread; compare descriptor and named-entry
+metadata before/after the read. Run full acceptance, actual registration/MAC/
+lookup, plaintext-equivalence and current-authority verification over those file
+copies. Then reopen and rehash every file against the captured object metadata,
+re-enumerate both roots, and recheck every named-file stat and root binding plus
+current authority before returning. All file comparisons include device, inode,
+size, owner, group, mode, link count, nanosecond mtime and ctime; atime is excluded
+because read-only verification may update it. Root comparisons include the same
+identity/change metadata; parent checks retain object identity, group and private
+ownership/mode, not an unrelated parent-entry inventory.
+
+`cmeContextColumnCustodyCheck` repeats the physical hash/stat/inventory/root-binding
+and target-authority checks. The private handle owns four directory descriptors
+and bounded filename/stat/hash metadata, not one descriptor per payload. It keeps
+no passwords, registration keys, payload bytes or receipt bytes. Manager and target
+are borrowed and must outlive the handle. The target's exact retained allocation/
+registry/catalog/witness context remains mandatory; a stale authority returns 2.
+Any observed failure permanently poisons the handle, including after permissions
+or files are restored. `cmeContextColumnCustodyFree` closes owned descriptors,
+releases metadata and nulls the pointer; NULL/repeated frees are safe. Open clears
+its output on every failure, and 0/1/2/3 statuses remain as before.
+
+These are point-in-time checks across sequential files and authority reads, not
+a joint filesystem/database snapshot, exclusive lease or filesystem freeze. The
+owner must quiesce writers and protect the approved namespace anchors. Success
+cannot rule out a writer acting after the final check; no absolute-path ancestry,
+physical power-loss or privileged-filesystem-adversary guarantee is introduced.
+The source/candidate roots can be staging objects distinct from the protected
+historical storagePath; that literal registration field is still authenticated,
+not interpreted as proof of the actual root's absolute location.
+
+No artifact/authority writes, entropy, fsync, rename, one-time receipt consumption,
+intent publication, crash recovery or live V2 dispatch is added. Do not serialize
+or reconstruct this opaque handle, treat the phase-33 receipt alone as physical
+custody, or send it to legacy publication workflows. TODO #147 remains open for
+a guarded publication transaction and recovery protocol consuming fresh custody,
+published-map/live readers, wider migration/provider/floor-2/lifecycle gates and
+production ownership/rollback closeout.
