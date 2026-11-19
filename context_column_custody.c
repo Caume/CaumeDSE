@@ -1,30 +1,9 @@
 /* Descriptor-anchored export custody. No artifact or authority publication. */
 #include "common.h"
 #include "context_column.h"
+#include "context_column_internal.h"
 #include <dirent.h>
 
-typedef struct
-{
-    int parent,directory;
-    char name[NAME_MAX+1];
-    struct stat anchor,status;
-} cmeCustodyDirectory;
-typedef struct
-{
-    char name[NAME_MAX+1];
-    size_t length,maximum;
-    unsigned char digest[32];
-    struct stat status;
-} cmeCustodyFile;
-struct cmeContextColumnCustody
-{
-    cmeContextManager *manager;
-    const cmeContextCopyTarget *target;
-    cmeCustodyDirectory roots[2];
-    cmeCustodyFile *files[2];
-    size_t count[2];
-    int failed;
-};
 
 static void cmeCustodyCheckpoint(const char *stage)
 {
@@ -44,7 +23,7 @@ static void cmeCustodyCheckpoint(const char *stage)
 #endif
 }
 
-static int cmeCustodyLeaf(const char *name)
+int cmeCustodyLeaf(const char *name)
 {
     static const char *suffix[]={"-wal","-shm","-journal"};
     size_t i,n;
@@ -56,12 +35,12 @@ static int cmeCustodyLeaf(const char *name)
     return(0);
 }
 
-static int cmeCustodyIdentity(const struct stat *a, const struct stat *b)
+int cmeCustodyIdentity(const struct stat *a, const struct stat *b)
 {
     return(a->st_dev==b->st_dev && a->st_ino==b->st_ino);
 }
 
-static int cmeCustodySame(const struct stat *a, const struct stat *b)
+int cmeCustodySame(const struct stat *a, const struct stat *b)
 {
     return(cmeCustodyIdentity(a,b) && a->st_mode==b->st_mode && a->st_uid==b->st_uid && a->st_gid==b->st_gid &&
         a->st_nlink==b->st_nlink && a->st_size==b->st_size &&
@@ -69,7 +48,7 @@ static int cmeCustodySame(const struct stat *a, const struct stat *b)
         a->st_ctim.tv_sec==b->st_ctim.tv_sec && a->st_ctim.tv_nsec==b->st_ctim.tv_nsec);
 }
 
-static int cmeCustodyPrivate(const struct stat *status)
+int cmeCustodyPrivate(const struct stat *status)
 {
     return(!S_ISDIR(status->st_mode) || status->st_uid!=geteuid() || (status->st_mode&07777)!=0700 || !status->st_nlink);
 }
@@ -96,7 +75,7 @@ static int cmeCustodyRootCheck(const cmeCustodyDirectory *root)
 
 /* Fail closed on inaccessible or excessively deep ancestry. Namespace anchor
    pathnames remain the caller's responsibility; only object ancestry is tested. */
-static int cmeCustodyNested(int directory, const struct stat *other)
+int cmeCustodyNested(int directory, const struct stat *other)
 {
     int current=fcntl(directory,F_DUPFD_CLOEXEC,3),parent=-1,result=1;
     struct stat here,above;
@@ -325,6 +304,8 @@ int cmeContextColumnCustodyOpen(cmeContextManager *manager, const cmeContextCopy
     if (result) goto done;
     cmeCustodyCheckpoint("after-acceptance");
     result=cmeContextColumnCustodyCheck(next); if (result) goto done;
+    memcpy(next->acceptanceDigest,acceptanceDigest,32);
+    strcpy(next->destinationMap,transform->destinationMap);
     *custody=next; next=NULL;
 done:
     for (root=0;root<2;root++)

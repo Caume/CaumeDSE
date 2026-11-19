@@ -1872,6 +1872,14 @@ int cmeContextManagerColumnAcceptanceSign(cmeContextManager *manager, const cmeC
     return(cmeManagerColumnSign(manager,registry,catalog,destinationName,requestDigest,signature,domain,sizeof(domain)));
 }
 
+int cmeContextManagerColumnPublicationSign(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, const char *destinationName,
+    const unsigned char requestDigest[32], unsigned char signature[32])
+{
+    static const unsigned char domain[]="CDSE-HKX-COLUMN-PUBLICATION-SEAL-v1";
+    return(cmeManagerColumnSign(manager,registry,catalog,destinationName,requestDigest,signature,domain,sizeof(domain)));
+}
+
 int cmeContextManagerCopyPublicationPrepare(cmeContextManager *manager,
     const unsigned char *allocation, size_t allocationLength, const unsigned char allocationDigest[32],
     const cmeContextAnchor *original, const cmeContextMapAnchor *catalog,

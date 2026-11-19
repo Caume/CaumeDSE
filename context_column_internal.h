@@ -7,6 +7,36 @@ struct cmeContextColumnStage
     size_t count;
     cmeContextColumnCell *cells;
 };
+typedef struct
+{
+    int parent,directory;
+    char name[NAME_MAX+1];
+    struct stat anchor,status;
+} cmeCustodyDirectory;
+typedef struct
+{
+    char name[NAME_MAX+1];
+    size_t length,maximum;
+    unsigned char digest[32];
+    struct stat status;
+} cmeCustodyFile;
+struct cmeContextColumnCustody
+{
+    cmeContextManager *manager;
+    const cmeContextCopyTarget *target;
+    cmeCustodyDirectory roots[2];
+    cmeCustodyFile *files[2];
+    size_t count[2];
+    unsigned char acceptanceDigest[32];
+    char destinationMap[129];
+    int failed;
+};
+
+int cmeCustodyLeaf(const char *name);
+int cmeCustodyIdentity(const struct stat *a, const struct stat *b);
+int cmeCustodySame(const struct stat *a, const struct stat *b);
+int cmeCustodyPrivate(const struct stat *status);
+int cmeCustodyNested(int directory, const struct stat *other);
 /* Strict legacy AES salted-value decoder, after SQL length/type checks. */
 int cmeContextColumnLegacyDecode(const char *value, const char *salt, const char *key,
     const char *profile, char **plain);

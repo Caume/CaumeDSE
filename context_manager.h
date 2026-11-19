@@ -261,6 +261,11 @@ int cmeContextManagerColumnTransformSign(cmeContextManager *manager, const cmeCo
 int cmeContextManagerColumnAcceptanceSign(cmeContextManager *manager, const cmeContextAnchor *registry,
     const cmeContextMapAnchor *catalog, const char *destinationName,
     const unsigned char requestDigest[32], unsigned char signature[32]);
+/* Separate trusted-core signature domain for physical directory publication.
+   No artifact verification or publication; use ColumnPublication APIs. */
+int cmeContextManagerColumnPublicationSign(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, const char *destinationName,
+    const unsigned char requestDigest[32], unsigned char signature[32]);
 /* Trusted OFFLINE durable-intent handoff, NOT an artifact/catalog publisher.
    Require the exact committed allocation plan, unchanged original catalog and
    an unused destination map name. requestDigest binds independently approved
