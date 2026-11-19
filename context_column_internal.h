@@ -17,4 +17,7 @@ int cmeContextColumnTransformCheck(cmeContextManager *manager, const cmeContextC
     const char *sourceKey, const char *sourceProfile,
     const unsigned char *image, size_t imageLength, const unsigned char imageDigest[32],
     const unsigned char *password, size_t passwordLength);
+int cmeContextColumnExportCheck(const cmeContextColumnTransformApproval *transform,
+    const cmeContextColumnRegistrationApproval *registration,
+    const cmeContextColumnRegistrationInputs *inputs, const cmeContextColumnExportInputs *export);
 #endif

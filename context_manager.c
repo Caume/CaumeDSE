@@ -1820,11 +1820,10 @@ done:
     cmeContextBindingFree(&candidate); cmeContextMapFree(&copy); return(result);
 }
 
-int cmeContextManagerColumnTransformSign(cmeContextManager *manager, const cmeContextAnchor *registry,
+static int cmeManagerColumnSign(cmeContextManager *manager, const cmeContextAnchor *registry,
     const cmeContextMapAnchor *catalog, const char *destinationName,
-    const unsigned char requestDigest[32], unsigned char signature[32])
+    const unsigned char requestDigest[32], unsigned char signature[32], const unsigned char *domain, size_t domainLength)
 {
-    static const unsigned char domain[]="CDSE-HKX-COLUMN-TRANSFORM-SEAL-v1";
     cmeManagerState state={0};
     cmeContextMapAnchor current={0};
     cmeMapEncoding encoding={0};
@@ -1844,7 +1843,7 @@ int cmeContextManagerColumnTransformSign(cmeContextManager *manager, const cmeCo
     if (sqlite3_prepare_v2(manager->db,"SELECT 1 FROM context_maps WHERE name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
         sqlite3_bind_text(stmt,1,destinationName,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
     encoding.bytes=bytes;
-    if (cmeMapAppend(&encoding,domain,sizeof(domain)) || cmeMapAppend(&encoding,anchor,73) ||
+    if (cmeMapAppend(&encoding,domain,domainLength) || cmeMapAppend(&encoding,anchor,73) ||
         cmeMapNumber(&encoding,catalog->revision,8) || cmeMapAppend(&encoding,catalog->digest,32) ||
         cmeCopyText(&encoding,destinationName) || cmeMapAppend(&encoding,requestDigest,32) ||
         !HMAC(EVP_sha256(),manager->key,32,encoding.bytes,encoding.length,tag,&written) || written!=32 ||
@@ -1855,6 +1854,22 @@ done:
     if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
     OPENSSL_cleanse(bytes,sizeof(bytes)); OPENSSL_cleanse(tag,sizeof(tag)); return(result);
+}
+
+int cmeContextManagerColumnTransformSign(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, const char *destinationName,
+    const unsigned char requestDigest[32], unsigned char signature[32])
+{
+    static const unsigned char domain[]="CDSE-HKX-COLUMN-TRANSFORM-SEAL-v1";
+    return(cmeManagerColumnSign(manager,registry,catalog,destinationName,requestDigest,signature,domain,sizeof(domain)));
+}
+
+int cmeContextManagerColumnAcceptanceSign(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, const char *destinationName,
+    const unsigned char requestDigest[32], unsigned char signature[32])
+{
+    static const unsigned char domain[]="CDSE-HKX-COLUMN-ACCEPTANCE-SEAL-v1";
+    return(cmeManagerColumnSign(manager,registry,catalog,destinationName,requestDigest,signature,domain,sizeof(domain)));
 }
 
 int cmeContextManagerCopyPublicationPrepare(cmeContextManager *manager,

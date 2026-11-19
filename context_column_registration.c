@@ -360,3 +360,172 @@ int cmeContextColumnRegisteredVerify(cmeContextManager *manager, const cmeContex
     if (!result) result=cmeContextCopyTargetCheck(manager,target);
     return(result);
 }
+
+int cmeContextColumnExportDigest(const cmeContextColumnTransformApproval *transform,
+    const cmeContextColumnRegistrationApproval *registration,
+    const cmeContextColumnExportArtifact *companions, size_t count, unsigned char digest[32])
+{
+    static const unsigned char domain[]="CDSE-HKX-COLUMN-EXPORT-v1";
+    EVP_MD_CTX *hash=NULL;
+    unsigned char pin[32],number[8];
+    unsigned int written=0;
+    size_t i,j,n,total=0,roles=0,logs=0;
+    int result=1;
+    if (digest) memset(digest,0,32);
+    if (!digest || !companions || count<3 || count>cmeContextRegistryMaxEntries+2 ||
+        cmeContextColumnRegistrationDigest(transform,registration,pin)) goto done;
+    hash=EVP_MD_CTX_new();
+    if (!hash || !EVP_DigestInit_ex(hash,EVP_sha256(),NULL) || !EVP_DigestUpdate(hash,domain,sizeof(domain)) ||
+        !EVP_DigestUpdate(hash,pin,32)) goto done;
+    for (j=0;j<8;j++) number[j]=(unsigned char)((uint64_t)count>>(8*(7-j)));
+    if (!EVP_DigestUpdate(hash,number,8)) goto done;
+    for (i=0;i<count;i++)
+    {
+        const cmeContextColumnExportArtifact *entry=&companions[i];
+        int internal=entry->name && (!strcmp(entry->name,"RolesDB") || !strcmp(entry->name,"LogsDB"));
+        if (!entry->name || (!internal && cmeRegText(entry->name,255,1)) ||
+            (i && strcmp(companions[i-1].name,entry->name)>=0) ||
+            entry->length>cmeContextColumnMaxImageBytes || (internal && entry->length>cmeContextColumnMaxBytes) ||
+            entry->length>cmeContextColumnExportMaxBytes-total) goto done;
+        total+=entry->length; n=strlen(entry->name);
+        roles+=!strcmp(entry->name,"RolesDB"); logs+=!strcmp(entry->name,"LogsDB");
+        number[0]=(unsigned char)(n>>8); number[1]=(unsigned char)n;
+        if (!EVP_DigestUpdate(hash,number,2) || !EVP_DigestUpdate(hash,entry->name,n)) goto done;
+        for (j=0;j<8;j++) number[j]=(unsigned char)((uint64_t)entry->length>>(8*(7-j)));
+        if (!EVP_DigestUpdate(hash,number,8) || !EVP_DigestUpdate(hash,entry->digest,32)) goto done;
+    }
+    if (roles!=1 || logs!=1 || !EVP_DigestFinal_ex(hash,pin,&written) || written!=32) goto done;
+    memcpy(digest,pin,32); result=0;
+done:
+    EVP_MD_CTX_free(hash); OPENSSL_cleanse(pin,sizeof(pin)); return(result);
+}
+
+#if defined(HAVE_SQLITE3_DESERIALIZE)
+static const cmeContextColumnExportArtifact *cmeExportFind(const cmeContextColumnExportInputs *export, const char *name)
+{
+    size_t left=0,right=export->count;
+    while (left<right)
+    {
+        size_t middle=left+(right-left)/2;
+        int order=strcmp(export->companions[middle].name,name);
+        if (!order) return(&export->companions[middle]);
+        if (order<0) left=middle+1; else right=middle;
+    }
+    return(NULL);
+}
+
+static int cmeExportInternal(const cmeContextColumnExportArtifact *entry)
+{
+    sqlite3 *db=NULL;
+    sqlite3_stmt *stmt=NULL;
+    unsigned char *copy=NULL;
+    unsigned int budget=20000;
+    int result=1;
+    if (entry->length<100 || !entry->source || !(copy=sqlite3_malloc64(entry->length))) goto done;
+    memcpy(copy,entry->source,entry->length);
+    if (memcmp(copy,"SQLite format 3",16) || copy[18]!=1 || copy[19]!=1 || sqlite3_open(":memory:",&db)!=SQLITE_OK ||
+        sqlite3_deserialize(db,"main",copy,entry->length,entry->length,SQLITE_DESERIALIZE_READONLY)!=SQLITE_OK) goto done;
+    sqlite3_limit(db,SQLITE_LIMIT_LENGTH,cmeContextColumnMaxCellBytes); sqlite3_limit(db,SQLITE_LIMIT_COLUMN,32);
+    sqlite3_limit(db,SQLITE_LIMIT_SQL_LENGTH,65536); sqlite3_progress_handler(db,1000,cmeRegBudget,&budget);
+    if (sqlite3_db_config(db,SQLITE_DBCONFIG_DEFENSIVE,1,NULL)!=SQLITE_OK ||
+        sqlite3_exec(db,"PRAGMA trusted_schema=OFF; PRAGMA query_only=ON",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeCheckInternalDBSchema(db,entry->name,0) || sqlite3_prepare_v2(db,
+        "SELECT 1 FROM sqlite_master WHERE type NOT IN ('table','index') UNION ALL "
+        "SELECT 1 FROM pragma_table_list WHERE schema='main' AND type IN ('virtual','shadow')",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(db,"PRAGMA integrity_check",-1,&stmt,NULL)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
+        !sqlite3_column_text(stmt,0) || strcmp((const char *)sqlite3_column_text(stmt,0),"ok") || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    result=0;
+done:
+    sqlite3_finalize(stmt); sqlite3_close(db);
+    if (copy) OPENSSL_cleanse(copy,entry->length);
+    sqlite3_free(copy); return(result);
+}
+#endif
+
+int cmeContextColumnExportCheck(const cmeContextColumnTransformApproval *transform,
+    const cmeContextColumnRegistrationApproval *registration,
+    const cmeContextColumnRegistrationInputs *inputs, const cmeContextColumnExportInputs *export)
+{
+    unsigned char digest[32];
+    size_t i;
+    if (!inputs || !inputs->registrationKey || !*inputs->registrationKey || strnlen(inputs->registrationKey,257)>256 ||
+        !export || cmeContextColumnExportDigest(transform,registration,export->companions,export->count,digest) ||
+        CRYPTO_memcmp(digest,export->approvalDigest,32)) return(1);
+#if defined(HAVE_SQLITE3_DESERIALIZE)
+    {
+        sqlite3 *db=NULL,*inventory=NULL;
+        sqlite3_stmt *read=NULL,*insert=NULL,*check=NULL;
+        unsigned char *copy=NULL;
+        char *plain[18]={0},*salt=NULL,*tag=NULL;
+        unsigned int budget=20000,inventoryBudget=20000;
+        size_t rows=0;
+        int result=1,step,written=0;
+        for (i=0;i<export->count;i++)
+        {
+            const cmeContextColumnExportArtifact *entry=&export->companions[i];
+            if (!entry->source || !entry->candidate || cmeRegHash(entry->source,entry->length,entry->digest) ||
+                cmeRegHash(entry->candidate,entry->length,entry->digest) ||
+                ((!strcmp(entry->name,"RolesDB") || !strcmp(entry->name,"LogsDB")) && cmeExportInternal(entry))) goto done;
+        }
+        if (cmeRegOpen(inputs->sourceResources,inputs->sourceResourcesLength,registration->sourceResourcesDigest,&db,&copy,&budget) ||
+            sqlite3_open(":memory:",&inventory)!=SQLITE_OK) goto done;
+        sqlite3_limit(inventory,SQLITE_LIMIT_LENGTH,cmeContextColumnMaxCellBytes);
+        sqlite3_progress_handler(inventory,1000,cmeRegBudget,&inventoryBudget);
+        if (sqlite3_exec(inventory,"PRAGMA trusted_schema=OFF; PRAGMA temp_store=MEMORY;"
+            "CREATE TABLE parts(name TEXT PRIMARY KEY,doc TEXT,storage TEXT,org TEXT,col TEXT,UNIQUE(doc,storage,org,col));"
+            "CREATE TABLE stores(storage TEXT,org TEXT,PRIMARY KEY(storage,org));",NULL,NULL,NULL)!=SQLITE_OK ||
+            sqlite3_prepare_v2(db,"SELECT * FROM documents ORDER BY id",-1,&read,NULL)!=SQLITE_OK ||
+            sqlite3_prepare_v2(inventory,"INSERT INTO parts VALUES(?1,?2,?3,?4,?5)",-1,&insert,NULL)!=SQLITE_OK) goto done;
+        while ((step=sqlite3_step(read))==SQLITE_ROW)
+        {
+            static const int fields[]={5,7,8,9,14};
+            const cmeContextColumnExportArtifact *entry;
+            const char *saltText;
+            if (++rows>cmeContextRegistryMaxEntries) goto done;
+            for (i=1;i<15;i++) if (i!=3 && cmeRegDecode(read,(int)i,inputs->registrationKey,registration->metadataProfile,&plain[i])) goto done;
+            if (cmeRegText(plain[5],255,1) || strcmp(plain[6],"file.csv") || strcmp(plain[11],"1") || strcmp(plain[12],"1") ||
+                cmeRegLookup(read,inputs->registrationKey,plain) || !(entry=cmeExportFind(export,plain[5]))) goto done;
+            for (i=1;i<5;i++) if (cmeRegText(plain[fields[i]],128,0)) goto done;
+            saltText=cmeRegSQLText(read,3);
+            if (!saltText || !(salt=strdup(saltText)) || cmeHMACByteString(entry->source,(unsigned char **)&tag,entry->length,
+                &written,"sha256",&salt,inputs->registrationKey) || written!=64 || strlen(plain[10])!=64 ||
+                CRYPTO_memcmp(tag,plain[10],64)) goto done;
+            free(salt); salt=NULL; free(tag); tag=NULL;
+            for (i=0;i<5;i++) if (sqlite3_bind_text(insert,(int)i+1,plain[fields[i]],-1,SQLITE_TRANSIENT)!=SQLITE_OK) goto done;
+            if (sqlite3_step(insert)!=SQLITE_DONE || sqlite3_reset(insert)!=SQLITE_OK) goto done;
+            cmeRegPlainFree(plain);
+        }
+        if (step!=SQLITE_DONE || rows+2!=export->count) goto done;
+        sqlite3_finalize(read); read=NULL; sqlite3_finalize(insert); insert=NULL;
+        if (sqlite3_prepare_v2(db,"SELECT * FROM storage ORDER BY id",-1,&read,NULL)!=SQLITE_OK ||
+            sqlite3_prepare_v2(inventory,"INSERT INTO stores VALUES(?1,?2)",-1,&insert,NULL)!=SQLITE_OK) goto done;
+        rows=0;
+        while ((step=sqlite3_step(read))==SQLITE_ROW)
+        {
+            static const int fields[]={6,7,8,11};
+            if (++rows>cmeContextRegistryMaxEntries) goto done;
+            for (i=0;i<4;i++) if (cmeRegDecode(read,fields[i],inputs->registrationKey,registration->metadataProfile,&plain[fields[i]])) goto done;
+            if (strcmp(plain[6],"local") || strcmp(plain[8],registration->storagePath) ||
+                cmeRegText(plain[7],128,0) || cmeRegText(plain[11],128,0) ||
+                sqlite3_bind_text(insert,1,plain[7],-1,SQLITE_TRANSIENT)!=SQLITE_OK ||
+                sqlite3_bind_text(insert,2,plain[11],-1,SQLITE_TRANSIENT)!=SQLITE_OK ||
+                sqlite3_step(insert)!=SQLITE_DONE || sqlite3_reset(insert)!=SQLITE_OK) goto done;
+            cmeRegPlainFree(plain);
+        }
+        if (step!=SQLITE_DONE || sqlite3_prepare_v2(inventory,
+            "SELECT 1 FROM parts p WHERE NOT EXISTS (SELECT 1 FROM stores s WHERE s.storage=p.storage AND s.org=p.org)",
+            -1,&check,NULL)!=SQLITE_OK || sqlite3_step(check)!=SQLITE_DONE) goto done;
+        result=0;
+    done:
+        free(salt); free(tag); cmeRegPlainFree(plain);
+        sqlite3_finalize(read); sqlite3_finalize(insert); sqlite3_finalize(check);
+        sqlite3_close(inventory); sqlite3_close(db);
+        if (copy) OPENSSL_cleanse(copy,inputs->sourceResourcesLength);
+        sqlite3_free(copy); return(result);
+    }
+#else
+    (void)i; return(3);
+#endif
+}

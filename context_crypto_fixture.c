@@ -107,6 +107,74 @@ done:
     free(candidate); return(result);
 }
 
+static int cmeFixtureExport(cmeContextManager *manager, cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *approval,
+    const cmeContextColumnRegistrationInputs *inputs, int verify, int argc, char **argv,
+    cmeContextV2Buffer *output, unsigned char digest[32])
+{
+    cmeContextColumnExportArtifact entries[16]={0};
+    cmeContextColumnExportInputs export={0},bad;
+    unsigned char *registration=NULL,*acceptance=NULL,zero[32]={0},pin[32];
+    size_t i,n,actual=0,acceptanceLength=0;
+    char *end;
+    int result=1;
+    if (argc<4) goto done;
+    n=strtoul(argv[3],&end,10);
+    if (!*argv[3] || *end || n>16 || argc!=(int)(4+4*n+(verify ? 2 : 0))) goto done;
+    export.companions=entries; export.count=n;
+    if (cmeFixtureReadBounded(argv[0],cmeContextColumnTransformMaxBytes,&registration,&export.registrationReceiptLength) ||
+        cmeFixtureHex(argv[1],export.registrationReceiptDigest,32) || cmeFixtureHex(argv[2],export.approvalDigest,32)) goto done;
+    export.registrationReceipt=registration;
+    for (i=0;i<n;i++)
+    {
+        unsigned char *source=NULL,*candidate=NULL;
+        entries[i].name=argv[4+4*i];
+        if (cmeFixtureReadBounded(argv[5+4*i],cmeContextColumnMaxImageBytes,&source,&entries[i].length)) goto done;
+        entries[i].source=source;
+        if (cmeFixtureReadBounded(argv[6+4*i],cmeContextColumnMaxImageBytes,&candidate,&actual)) goto done;
+        entries[i].candidate=candidate;
+        if (actual!=entries[i].length || cmeFixtureHex(argv[7+4*i],entries[i].digest,32)) goto done;
+    }
+    if (getenv("CDSE_CONTEXT_EXPORT_CONTRACT"))
+    {
+        if (cmeContextColumnExportDigest(transform,approval,entries,n,pin) || memcmp(pin,export.approvalDigest,32)) goto done;
+        memset(pin,0xa5,32);
+        if (cmeContextColumnExportDigest(NULL,approval,entries,n,pin)!=1 || memcmp(pin,zero,32) ||
+            cmeContextColumnExportDigest(transform,NULL,entries,n,pin)!=1 || memcmp(pin,zero,32) ||
+            cmeContextColumnExportDigest(transform,approval,NULL,n,pin)!=1 || memcmp(pin,zero,32) ||
+            cmeContextColumnExportDigest(transform,approval,entries,4099,pin)!=1 || memcmp(pin,zero,32) ||
+            cmeContextColumnExportDigest(transform,approval,entries,n,NULL)!=1) goto done;
+        bad=export; bad.count=4099;
+        output->bytes=(unsigned char *)1; output->length=99; memset(digest,0xa5,32);
+        if (cmeContextColumnExportPrepare(manager,target,transform,approval,inputs,&bad,output,digest)!=1 ||
+            output->bytes || output->length || memcmp(digest,zero,32)) { result=99; goto done; }
+        output->bytes=(unsigned char *)1; output->length=99;
+        if (cmeContextColumnExportPrepare(manager,target,transform,approval,inputs,NULL,output,digest)!=1 ||
+            output->bytes || output->length || memcmp(digest,zero,32) ||
+            cmeContextColumnExportPrepare(manager,target,transform,approval,inputs,&export,NULL,digest)!=1 ||
+            memcmp(digest,zero,32)) goto done;
+    }
+    if (verify)
+    {
+        if (cmeFixtureReadBounded(argv[4+4*n],cmeContextColumnAcceptanceMaxBytes,&acceptance,&acceptanceLength) ||
+            cmeFixtureHex(argv[5+4*n],digest,32)) goto done;
+        result=cmeContextColumnExportVerify(manager,target,transform,approval,inputs,&export,acceptance,acceptanceLength,digest);
+    }
+    else
+    {
+        output->bytes=(unsigned char *)1; output->length=99; memset(digest,0xa5,32);
+        result=cmeContextColumnExportPrepare(manager,target,transform,approval,inputs,&export,output,digest);
+        if (result && (output->bytes || output->length || memcmp(digest,zero,32))) result=99;
+    }
+done:
+    for (i=0;i<16;i++)
+    {
+        if (entries[i].source) OPENSSL_cleanse((void *)entries[i].source,entries[i].length);
+        free((void *)entries[i].source); free((void *)entries[i].candidate);
+    }
+    free(registration); free(acceptance); return(result);
+}
+
 static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget *target,
     const char *action, int argc, char **argv)
 {
@@ -117,8 +185,9 @@ static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget
     unsigned char *source=NULL,*image=NULL,*before=NULL,*after=NULL,*receipt=NULL,password[256],digest[32],zero[32]={0};
     size_t receiptLength=0;
     char *end;
-    int result=1,saved=-1,sink=-1,verify=!strcmp(action,"target-registered-verify");
-    if (argc!=(verify ? 27 : 25) || cmeFixtureHex(argv[1],transform.sourceDigest,32) ||
+    int result=1,saved=-1,sink=-1,accepting=!strncmp(action,"target-export-",14),
+        verify=!strcmp(action,"target-registered-verify") || !strcmp(action,"target-export-verify");
+    if ((accepting ? argc<29 : argc!=(verify ? 27 : 25)) || cmeFixtureHex(argv[1],transform.sourceDigest,32) ||
         cmeFixtureHex(argv[5],transform.candidateDigest,32) || cmeFixtureHex(argv[6],transform.registrationEvidenceDigest,32) ||
         cmeFixtureHex(argv[10],approval.sourceResourcesDigest,32) || cmeFixtureHex(argv[12],approval.candidateResourcesDigest,32) ||
         strlen(argv[8])%2 || strlen(argv[8])>512) goto done;
@@ -135,7 +204,7 @@ static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget
         cmeFixtureReadBounded(argv[9],cmeContextColumnMaxBytes,&before,&inputs.sourceResourcesLength) ||
         cmeFixtureReadBounded(argv[11],cmeContextColumnMaxBytes,&after,&inputs.candidateResourcesLength)) goto done;
     inputs.source=source; inputs.candidate=image; inputs.sourceResources=before; inputs.candidateResources=after;
-    if (verify && (cmeFixtureReadBounded(argv[25],cmeContextColumnTransformMaxBytes,&receipt,&receiptLength) ||
+    if (verify && !accepting && (cmeFixtureReadBounded(argv[25],cmeContextColumnTransformMaxBytes,&receipt,&receiptLength) ||
         cmeFixtureHex(argv[26],digest,32))) goto done;
     fflush(stdout); saved=dup(STDOUT_FILENO); sink=open("/dev/null",O_WRONLY);
     if (saved<0 || sink<0 || dup2(sink,STDOUT_FILENO)<0) goto done;
@@ -161,7 +230,8 @@ static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget
         output.bytes=(unsigned char *)1; output.length=99;
         if (cmeContextColumnRegisteredPrepare(manager,target,&transform,&approval,&inputs,&output,NULL)!=1 || output.bytes || output.length) goto done;
     }
-    if (verify) result=cmeContextColumnRegisteredVerify(manager,target,&transform,&approval,&inputs,receipt,receiptLength,digest);
+    if (accepting) result=cmeFixtureExport(manager,target,&transform,&approval,&inputs,verify,argc-25,argv+25,&output,digest);
+    else if (verify) result=cmeContextColumnRegisteredVerify(manager,target,&transform,&approval,&inputs,receipt,receiptLength,digest);
     else
     {
         output.bytes=(unsigned char *)1; output.length=99; memset(digest,0xa5,32);
@@ -172,7 +242,7 @@ static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget
     close(saved); saved=-1; close(sink); sink=-1;
     if (!result)
     {
-        if (verify) puts("registered-verified");
+        if (verify) puts(accepting ? "export-verified" : "registered-verified");
         else { cmeFixturePrint(digest,32); putchar(' '); cmeFixturePrint(output.bytes,output.length); putchar('\n'); }
     }
 done:
@@ -471,7 +541,8 @@ static int cmeFixtureTarget(int argc, char **argv)
         puts("contract"); result=0; goto done;
     }
 #ifdef CDSE_CONTEXT_COLUMN_TESTING
-    if (!strcmp(argv[2],"target-registered-prepare") || !strcmp(argv[2],"target-registered-verify"))
+    if (!strcmp(argv[2],"target-registered-prepare") || !strcmp(argv[2],"target-registered-verify") ||
+        !strcmp(argv[2],"target-export-prepare") || !strcmp(argv[2],"target-export-verify"))
     { result=cmeFixtureRegistered(manager,target,argv[2],argc-offset,argv+offset); goto done; }
     if (!strcmp(argv[2],"target-transform-prepare") || !strcmp(argv[2],"target-transform-verify"))
     { result=cmeFixtureTransform(manager,target,argv[2],argc-offset,argv+offset); goto done; }

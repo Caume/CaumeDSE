@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.33.0
+# Caume Data Security Engine (CaumeDSE) version 2.34.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3025,8 +3025,11 @@ The [registered-copy verifier](HERRADURAKEX_AT_REST_PLAN.md#verified-v2-copy-reg
 checks pinned ResourcesDB snapshots, requires an exact clone plus one approved
 V2 destination row, authenticates selectors/lookups and payload partMACs, and
 then runs the full transformation checks. Its structured approval hash replaces
-the opaque pin for this stronger API. It remains read-only; complete export
-acceptance, physical publication and live V2 dispatch are still pending.
+the opaque pin for this stronger API. The [complete supplied-export acceptance
+API](HERRADURAKEX_AT_REST_PLAN.md#complete-supplied-export-acceptance-147-phase-33)
+also verifies every companion payload and retained internal DB and issues a
+distinct acceptance receipt. Both remain read-only; physical custody/publication
+and live V2 dispatch are still pending.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit
