@@ -32,6 +32,10 @@ struct cmeContextColumnCustody
     int failed;
 };
 
+int cmeCustodyRootOpen(const cmeContextColumnCustodyRoot *input, cmeCustodyDirectory *root);
+int cmeCustodyPhysicalCheck(cmeContextColumnCustody *custody);
+int cmeColumnPublicationCompleted(cmeContextColumnCustody *custody,
+    const cmeContextColumnPublication *publication, const char *staging, const unsigned char pin[32]);
 int cmeCustodyLeaf(const char *name);
 int cmeCustodyIdentity(const struct stat *a, const struct stat *b);
 int cmeCustodySame(const struct stat *a, const struct stat *b);

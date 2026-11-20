@@ -122,7 +122,7 @@ static void cmeFixtureCustodyPause(const char *stage)
 static int cmeFixtureCustody(cmeContextManager *manager, cmeContextCopyTarget *target,
     const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *approval,
     const cmeContextColumnRegistrationInputs *inputs, const cmeContextColumnExportInputs *export,
-    const unsigned char *acceptance, size_t length, unsigned char digest[32], char **paths, int mode)
+    const unsigned char *acceptance, size_t length, unsigned char digest[32], char **paths, int mode, cmeContextV2Buffer *output)
 {
     cmeContextColumnCustodyRoot roots[2]={{.parent=-1},{.parent=-1}};
     cmeContextColumnCustody *handle=NULL;
@@ -176,6 +176,18 @@ static int cmeFixtureCustody(cmeContextManager *manager, cmeContextCopyTarget *t
     handle=(cmeContextColumnCustody *)1;
     result=cmeContextColumnCustodyOpen(manager,target,transform,approval,&credentials,&physical,&roots[0],&roots[1],acceptance,length,digest,&handle);
     if (result) { if (handle) result=99; goto done; }
+    if (mode==5)
+    {
+        unsigned char *allocation=NULL,allocationDigest[32];
+        size_t allocationLength=0;
+        cmeContextAnchor original={0};
+        if (cmeFixtureReadBounded(paths[7],cmeContextCopyPlanMaxBytes,&allocation,&allocationLength) ||
+            cmeFixtureHex(paths[8],allocationDigest,32) || cmeFixtureAnchor(paths[9],&original))
+        { free(allocation); goto done; }
+        result=cmeContextColumnAdmissionPrepare(handle,&publication,paths[6],pin,allocation,allocationLength,
+            allocationDigest,&original,output,digest);
+        free(allocation); goto done;
+    }
     if (mode>1)
     {
         if (getenv("CDSE_CONTEXT_PUBLICATION_CONTRACT"))
@@ -231,7 +243,7 @@ static int cmeFixtureExport(cmeContextManager *manager, cmeContextCopyTarget *ta
     int result=1;
     if (argc<4) goto done;
     n=strtoul(argv[3],&end,10);
-    if (!*argv[3] || *end || n>16 || argc!=(int)(4+4*n+(custody>1 ? 8 : (custody ? 4 : (verify ? 2 : 0))))) goto done;
+    if (!*argv[3] || *end || n>16 || argc!=(int)(4+4*n+(custody==5 ? 12 : (custody>1 ? 8 : (custody ? 4 : (verify ? 2 : 0)))))) goto done;
     export.companions=entries; export.count=n;
     if (cmeFixtureReadBounded(argv[0],cmeContextColumnTransformMaxBytes,&registration,&export.registrationReceiptLength) ||
         cmeFixtureHex(argv[1],export.registrationReceiptDigest,32) || cmeFixtureHex(argv[2],export.approvalDigest,32)) goto done;
@@ -269,7 +281,7 @@ static int cmeFixtureExport(cmeContextManager *manager, cmeContextCopyTarget *ta
     {
         if (cmeFixtureReadBounded(argv[4+4*n],cmeContextColumnAcceptanceMaxBytes,&acceptance,&acceptanceLength) ||
             cmeFixtureHex(argv[5+4*n],digest,32)) goto done;
-        result=custody ? cmeFixtureCustody(manager,target,transform,approval,inputs,&export,acceptance,acceptanceLength,digest,argv+6+4*n,custody) :
+        result=custody ? cmeFixtureCustody(manager,target,transform,approval,inputs,&export,acceptance,acceptanceLength,digest,argv+6+4*n,custody,output) :
             cmeContextColumnExportVerify(manager,target,transform,approval,inputs,&export,acceptance,acceptanceLength,digest);
     }
     else
@@ -299,7 +311,7 @@ static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget
     char *end;
     int result=1,saved=-1,sink=-1,custody=!strcmp(action,"target-custody") ? 1 :
         (!strcmp(action,"target-publication-prepare") ? 2 : (!strcmp(action,"target-publication-publish") ? 3 :
-        (!strcmp(action,"target-publication-recover") ? 4 : 0))),
+        (!strcmp(action,"target-publication-recover") ? 4 : (!strcmp(action,"target-admission-prepare") ? 5 : 0)))),
         accepting=custody || !strncmp(action,"target-export-",14),
         verify=custody || !strcmp(action,"target-registered-verify") || !strcmp(action,"target-export-verify");
     if ((accepting ? argc<29 : argc!=(verify ? 27 : 25)) || cmeFixtureHex(argv[1],transform.sourceDigest,32) ||
@@ -357,7 +369,8 @@ static int cmeFixtureRegistered(cmeContextManager *manager, cmeContextCopyTarget
     close(saved); saved=-1; close(sink); sink=-1;
     if (!result)
     {
-        if (verify && custody==2) { cmeFixturePrint(digest,32); putchar('\n'); }
+        if (custody==5) { cmeFixturePrint(digest,32); putchar(' '); cmeFixturePrint(output.bytes,output.length); putchar('\n'); }
+        else if (verify && custody==2) { cmeFixturePrint(digest,32); putchar('\n'); }
         else if (verify) puts(custody>2 ? "publication-complete" : (custody ? "custody-verified" : (accepting ? "export-verified" : "registered-verified")));
         else { cmeFixturePrint(digest,32); putchar(' '); cmeFixturePrint(output.bytes,output.length); putchar('\n'); }
     }
@@ -658,7 +671,7 @@ static int cmeFixtureTarget(int argc, char **argv)
     }
 #ifdef CDSE_CONTEXT_COLUMN_TESTING
     if (!strcmp(argv[2],"target-registered-prepare") || !strcmp(argv[2],"target-registered-verify") ||
-        !strcmp(argv[2],"target-export-prepare") || !strcmp(argv[2],"target-export-verify") || !strcmp(argv[2],"target-custody") || !strncmp(argv[2],"target-publication-",19))
+        !strcmp(argv[2],"target-export-prepare") || !strcmp(argv[2],"target-export-verify") || !strcmp(argv[2],"target-custody") || !strncmp(argv[2],"target-publication-",19) || !strcmp(argv[2],"target-admission-prepare"))
     { result=cmeFixtureRegistered(manager,target,argv[2],argc-offset,argv+offset); goto done; }
     if (!strcmp(argv[2],"target-transform-prepare") || !strcmp(argv[2],"target-transform-verify"))
     { result=cmeFixtureTransform(manager,target,argv[2],argc-offset,argv+offset); goto done; }
@@ -707,8 +720,60 @@ done:
     return(result);
 }
 
+#ifdef CDSE_CONTEXT_COLUMN_TESTING
+static int cmeFixtureAdmissionRun(int argc, char **argv)
+{
+    cmeContextManager *manager=NULL;
+    cmeContextWitness *witness=NULL;
+    cmeContextColumnCustodyRoot roots[2]={{.parent=-1},{.parent=-1}};
+    cmeContextColumnAdmissionResult output={0},zero={0};
+    cmeContextAnchor registry={0};
+    cmeContextMapAnchor catalog={0};
+    unsigned char key[32],witnessKey[32],digest[32],*journal=NULL,bytes[8],deployment[16],organization[16];
+    size_t length=0,i;
+    char *names[2]={NULL,NULL};
+    int result=1;
+    if (argc!=10 || cmeFixtureHex(argv[3],deployment,16) || cmeFixtureHex(argv[4],organization,16) ||
+        cmeFixtureHex(argv[9],digest,32) || cmeFixtureReadBounded(argv[8],cmeContextColumnAdmissionMaxBytes,&journal,&length)) goto done;
+    memset(key,'k',32); memset(witnessKey,'w',32);
+    if (cmeContextManagerOpen(argv[1],0,key,deployment,organization,&manager) ||
+        cmeContextManagerFetch(manager,deployment,organization,&registry) ||
+        cmeContextManagerMapFetch(manager,&catalog) ||
+        cmeContextWitnessOpen(argv[5],0,witnessKey,registry.deployment,registry.organization,&registry,&catalog,&witness)) goto done;
+    for (i=0;i<2;i++)
+    {
+        char *slash;
+        names[i]=strdup(argv[6+i]);
+        if (!names[i] || !(slash=strrchr(names[i],'/')) || slash==names[i]) goto done;
+        *slash=0; roots[i].name=slash+1;
+        roots[i].parent=open(names[i],O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+        if (roots[i].parent<0) goto done;
+    }
+    if (getenv("CDSE_CONTEXT_ADMISSION_CONTRACT"))
+    {
+        memset(&output,0xa5,sizeof(output));
+        if (cmeContextColumnAdmissionRun(NULL,witness,&roots[0],&roots[1],journal,length,digest,&output)!=1 ||
+            memcmp(&output,&zero,sizeof(zero))) { result=99; goto done; }
+    }
+    memset(&output,0xa5,sizeof(output));
+    result=cmeContextColumnAdmissionRun(manager,witness,&roots[0],&roots[1],journal,length,digest,&output);
+    if (result) { if (memcmp(&output,&zero,sizeof(zero))) result=99; goto done; }
+    if (output.state!=2) { result=99; goto done; }
+    for (i=0;i<8;i++) bytes[i]=(unsigned char)(output.catalog.revision>>(56-8*i));
+    cmeFixturePrint(bytes,8); cmeFixturePrint(output.catalog.digest,32); putchar(' ');
+    for (i=0;i<8;i++) bytes[i]=(unsigned char)(output.witness.revision>>(56-8*i));
+    cmeFixturePrint(bytes,8); cmeFixturePrint(output.witness.digest,32); putchar('\n');
+done:
+    for (i=0;i<2;i++) { if (roots[i].parent>=0) close(roots[i].parent); free(names[i]); }
+    free(journal); cmeContextWitnessClose(&witness); cmeContextManagerClose(&manager); return(result);
+}
+#endif
+
 int main(int argc, char **argv)
 {
+#ifdef CDSE_CONTEXT_COLUMN_TESTING
+    if (argc>2 && !strcmp(argv[2],"column-admission-run")) return(cmeFixtureAdmissionRun(argc,argv));
+#endif
     if (argc>2 && !strncmp(argv[2],"target-",7)) return(cmeFixtureTarget(argc,argv));
     cmeContextManager *manager=NULL;
     cmeContextBinding *binding=NULL;

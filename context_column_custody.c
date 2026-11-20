@@ -53,7 +53,7 @@ int cmeCustodyPrivate(const struct stat *status)
     return(!S_ISDIR(status->st_mode) || status->st_uid!=geteuid() || (status->st_mode&07777)!=0700 || !status->st_nlink);
 }
 
-static int cmeCustodyRootOpen(const cmeContextColumnCustodyRoot *input, cmeCustodyDirectory *root)
+int cmeCustodyRootOpen(const cmeContextColumnCustodyRoot *input, cmeCustodyDirectory *root)
 {
     struct stat named;
     if (!input || input->parent<0 || cmeCustodyLeaf(input->name)) return(1);
@@ -186,14 +186,13 @@ void cmeContextColumnCustodyFree(cmeContextColumnCustody **custody)
     OPENSSL_cleanse(*custody,sizeof(**custody)); free(*custody); *custody=NULL;
 }
 
-int cmeContextColumnCustodyCheck(cmeContextColumnCustody *custody)
+int cmeCustodyPhysicalCheck(cmeContextColumnCustody *custody)
 {
     size_t root,i;
     struct stat status;
     int result=1;
     if (!custody) return(1);
     if (custody->failed) return(custody->failed);
-    result=cmeContextCopyTargetCheck(custody->manager,custody->target); if (result) goto done;
     result=1;
     for (root=0;root<2;root++)
     {
@@ -211,8 +210,20 @@ int cmeContextColumnCustodyCheck(cmeContextColumnCustody *custody)
         if (cmeCustodyEnumerate(&custody->roots[root],custody->files[root],custody->count[root]) ||
             cmeCustodyRootCheck(&custody->roots[root])) goto done;
     }
-    result=cmeContextCopyTargetCheck(custody->manager,custody->target);
+    result=0;
 done:
+    if (result) custody->failed=result;
+    return(result);
+}
+
+int cmeContextColumnCustodyCheck(cmeContextColumnCustody *custody)
+{
+    int result;
+    if (!custody) return(1);
+    if (custody->failed) return(custody->failed);
+    result=cmeContextCopyTargetCheck(custody->manager,custody->target);
+    if (!result) result=cmeCustodyPhysicalCheck(custody);
+    if (!result) result=cmeContextCopyTargetCheck(custody->manager,custody->target);
     if (result) custody->failed=result;
     return(result);
 }

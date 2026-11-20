@@ -294,4 +294,42 @@ int cmeContextColumnPublicationRecover(cmeContextManager *manager, const cmeCont
     const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *staging,
     const unsigned char *acceptance, size_t acceptanceLength, const unsigned char acceptanceDigest[32],
     const cmeContextColumnPublication *publication, const unsigned char intentDigest[32], int *state);
+/* Phase-37 OFFLINE physical-proof adapter. Prepare requires fresh custody of
+   source and PUBLISHED export plus completed phase-35 intent/marker and absent
+   original staging name. It binds exact file/root stat identities/inventories/
+   hashes and acceptance/publication/allocation pins into a signed admission
+   ticket. It returns owned journal bytes and SHA256 without authority commits.
+   Privately persist/fsync journal and independently retain its hash BEFORE Run.
+   Protect controls outside both exports; no automatic pin adoption or repair.
+
+   Run/recover needs only the retained journal/hash, independently approved source
+   and published parent descriptors/leaf names, and manager/witness handles. It
+   rechecks the original physical snapshot even AFTER the target capability has
+   expired, commits blocked catalog admission, and explicitly reconciles/advances
+   the original witness. Completed retries recheck files and both authorities.
+   On success state=2 means admitted AND witness acknowledged, STILL BLOCKED.
+   Retain the returned witness token independently. Failure clears outputs but
+   may have committed manager/witness: recover with the ORIGINAL journal/hash.
+   No release/abort/live dispatch, credentials retained, joint transaction, lease,
+   absolute-path ancestry, coherent-backup rollback or power-loss guarantee.
+   Quiesce all writers, protect authority namespaces; checks are point-in-time.
+   Publication controls are checked at Prepare; Run uses the signed retained
+   proof, not mutable intent/marker files. Stable/nonoverlapping inputs/outputs;
+   V2BufferFree releases journal. Return 0/1/2/3 as custody. */
+#define cmeContextColumnAdmissionMaxBytes (6U*1024U*1024U)
+typedef struct
+{
+    int state;
+    cmeContextAnchor registry;
+    cmeContextMapAnchor catalog;
+    cmeContextWitnessAnchor witness;
+} cmeContextColumnAdmissionResult;
+int cmeContextColumnAdmissionPrepare(cmeContextColumnCustody *custody,
+    const cmeContextColumnPublication *publication, const char *staging, const unsigned char publicationDigest[32],
+    const unsigned char *allocation, size_t allocationLength, const unsigned char allocationDigest[32],
+    const cmeContextAnchor *originalRegistry, cmeContextV2Buffer *journal, unsigned char journalDigest[32]);
+int cmeContextColumnAdmissionRun(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *journal, size_t length, const unsigned char journalDigest[32],
+    cmeContextColumnAdmissionResult *result);
 #endif
