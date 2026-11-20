@@ -411,7 +411,7 @@ int cmeContextManagerCopyInstallRecover(cmeContextManager *manager, const char *
 /* Trusted-core catalog-v4 admission. Preview returns a signed canonical ticket,
    its hash and the exact next catalog without committing. Evidence is an opaque
    owner-approved digest. These core APIs do NOT validate physical files, phase-35
-   publication, acceptance, or custody; that adapter remains unimplemented.
+   publication, acceptance, or custody; use the separate ColumnAdmission adapter.
    The allocation must be the exact committed signed copy plan at the approved
    registry/catalog. Persist and independently retain ticket/hash/next pins BEFORE
    commit. Quiesce all readers/writers and keep authority namespaces fixed.

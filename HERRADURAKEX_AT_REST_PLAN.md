@@ -3672,7 +3672,8 @@ lifecycle/production-custody closeout.
 
 This trusted offline foundation prepares the catalog side of published-map
 integration. It is not wired to phase-35 publication or to installed/live
-commands. The physical proof adapter and release protocol remain pending.
+commands. The physical proof adapter is supplied separately in phase 37 below;
+the release protocol remains pending.
 Keep authority readers/writers stopped and both exports fixed throughout use.
 Do not call these core APIs on unverified files or use catalog presence as proof
 of acceptance, publication, witness acknowledgement, or permission to read V2.
@@ -3748,9 +3749,115 @@ Invalid/unavailable returns 1, conflicting authority returns 2, success returns
 Free the owned ticket with `free`. Process-crash tests establish transactional
 behavior, not physical power-loss certification.
 
-TODO #147 remains open. Next integrate a durable, independently pinned physical
-snapshot from completed publication/fresh custody, verify it after the original
-target capability expires, and orchestrate these authority/witness operations.
-Then design an explicit witness-guarded release protocol and live V2 readers.
+Phase 37 below supplies the durable, independently pinned physical snapshot
+from completed publication/fresh custody and orchestrates these authority/witness
+operations after target expiry. TODO #147 remains open for an explicit
+witness-guarded release protocol and live V2 readers.
 Wider mixed-profile/floor-2 migration, provider acceptance, rename/delete
 lifecycle and production custody/monotonic deployment also remain pending.
+
+
+## Physical-proof admission and recovery (#147 phase 37)
+
+`cmeContextColumnAdmissionPrepare/Run` connect completed phase-35 publication to
+phase-36 blocked catalog admission and witness recovery. These are trusted
+**offline C APIs**, not installed commands or live-route adapters. Release and
+live V2 reads remain pending. Quiesce all physical/authority writers, protect
+manager/witness namespaces, and independently approve the source and published
+parent objects plus leaf names. Descriptor approval does not certify absolute
+path ancestry or exclude privileged/noncooperating writers.
+
+Prepare needs fresh `CustodyOpen` over the source and **published** export,
+the original staging leaf, separately retained publication intent hash and
+committed signed allocation plan/hash/original registry. It requires the exact
+completed intent and completion marker, no staging root and no reserved pending
+temporary control objects. It verifies current custody and target evidence,
+records a canonical physical snapshot, and asks the phase-36 core to sign a
+ticket committing that snapshot's SHA-256 and exact allocated destination map.
+The allocation hash must match the custody target's retained allocation.
+It previews the exact next catalog in a rolled-back transaction, then rechecks
+completed publication and custody before returning owned journal bytes/hash.
+No authority commit or automatic journal-file creation occurs at Prepare;
+SQLite can still write rollback/journal bytes during its preview.
+
+The owner MUST privately persist/fsync the complete journal and its directory,
+and independently retain its SHA-256 outside both exports and manager backups,
+**before Run**. Use `cmeContextV2BufferFree` to release returned bytes. Do not
+replace uncertain journals, refresh their hash from candidate disk state or
+regenerate a plan after partial authority publication. Keep the original
+allocation/acceptance/publication approvals under their established retention
+policy. The retained journal contains no credentials, payloads, keys or absolute
+paths; it binds the reviewed proofs and object identities.
+
+Run/recover takes manager/witness handles, the original independent journal
+hash, journal bytes and approved source/published parent descriptors and names.
+It authenticates the signed ticket against the exact original or planned next
+catalog and unchanged registry. It reopens the roots and compares their full
+original identity/stat plus sorted inventories, private single-link regular
+file stat/length/SHA-256 and closed SQLite headers. No old target capability,
+credentials or receipt bytes are needed: the ticket authenticates the exact
+snapshot constructed from fresh full acceptance/custody. This continues after
+the catalog change expires the old target. Publication controls are checked at
+Prepare; Run relies on the signed retained proof rather than reopening mutable
+intent/marker files or repeating their old-capability-dependent signature API.
+
+After a fresh physical check, Run invokes the witness-guarded catalog commit.
+The destination map and its prepared job appear atomically, while all stored-map
+bindings/crypto and normal registry/catalog writers remain blocked. Run checks
+the physical proof again, authenticates the exact committed catalog and original
+witness pair, and advances that witness to the pinned next catalog. It accepts
+only the original transition or its exact previous-token lost acknowledgement.
+Final physical and authority checks precede success. It never adopts current
+pins as approvals, signs a replacement proof, releases the prepared job or
+changes the registry generation. Completion returns state 2, unchanged registry,
+exact next catalog and acknowledged witness token; independently retain that
+token as well. State 2 means **admitted and witness acknowledged, still blocked**.
+
+Failure clears all outputs but MAY have committed either database. Recover
+using the ORIGINAL journal/hash and namespace approvals. A crash after catalog
+commit leaves the original witness and global block; a crash after witness
+commit is an exact lost acknowledgement. Completed retries reverify all files
+and both authorities without further increments. Late/replaced/unknown bytes,
+metadata, names or authority fail closed and preserve blocking, including after
+an intermediate authority commit. No abort, repair, release, live lease,
+cross-database transaction or independent coherent-backup rollback defense is
+introduced. File checks are point-in-time and do not replace writer coordination.
+Process-crash tests do not certify physical power-loss durability.
+
+Canonical journal v1 uses big-endian counters and uint16 length-prefixed text:
+
+1. `CDSE-HKX-COLUMN-ADMISSION-v1` including NUL, registry anchor (73 bytes),
+   original catalog (40), original witness (40), planned next catalog (40),
+   destination-map name, uint32 ticket length and exact phase-36 ticket bytes,
+   uint32 physical-proof length and exact proof bytes. The externally retained
+   SHA-256 covers every journal byte; the ticket's independent SHA-256 is
+   recomputed and verified by the core. The next catalog/witness metadata is
+   independently pinned through the retained whole-journal hash.
+2. Physical proof starts with `CDSE-HKX-COLUMN-ADMISSION-FILES-v1` including NUL,
+   acceptance, publication-intent and allocation SHA-256 pins. Source then
+   published root each contain parent identity, root leaf, full root stat,
+   uint32 file count, then sorted unique file leaf/full stat/SHA-256 records.
+3. Parent identity is five uint64 values: device, inode, full mode, uid, gid.
+   Full stat adds link count, size, mtime seconds/nanoseconds and ctime
+   seconds/nanoseconds (eleven values total). Times must be nonnegative and
+   nanoseconds below one billion. Atime is excluded. Parent times/link count/
+   size are excluded so unrelated private control creation is permitted;
+   export-root ctime is included because this snapshot is taken AFTER rename.
+
+Bounds: journal 6 MiB, physical proof 4 MiB, core ticket at most
+`cmeContextRegistryMaxBytes`, at most 4100 files per root, existing private leaf
+rules and per-file SQLite limits (ResourcesDB 16 MiB, other images 32 MiB).
+Prepare inherits the stronger complete-export acceptance bounds. Inputs/outputs
+must be stable/nonoverlapping; return statuses are 0 success, 1 invalid or
+unavailable, 2 authority conflict, 3 unavailable provider through fresh custody.
+There is no credential buffer retained by the physical proof or journal.
+
+TODO #147 remains open. Next design an explicit witness-guarded release protocol
+for the prepared admission job, with retained physical proof and exact current
+pins checked on every release/retry. Keep maps blocked through ambiguous states.
+Existing generic mapped crypto does not check witness freshness: clearing its
+catalog block before matching witness acknowledgement would expose a read
+interval. Future release must guard readers across that interval before
+unblocking. Installed handoff/orchestration, live V2 readers, wider mixed-profile/floor-2
+migration/provider acceptance, rename/delete lifecycle and production protected
+custody/monotonic deployment also remain pending.

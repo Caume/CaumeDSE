@@ -372,3 +372,27 @@ done:
     cmeContextColumnCustodyFree(&custody); cmePublicationSessionClose(&session);
     OPENSSL_cleanse(body,sizeof(body)); OPENSSL_cleanse(digest,sizeof(digest)); return(result);
 }
+
+/* Read-only admission handoff over a freshly verified PUBLISHED custody root. */
+int cmeColumnPublicationCompleted(cmeContextColumnCustody *custody,
+    const cmeContextColumnPublication *publication, const char *staging, const unsigned char pin[32])
+{
+    cmePublicationSession session={.directory=-1,.parent=-1};
+    unsigned char body[cmeContextColumnPublicationMaxBytes],digest[32];
+    size_t length=0;
+    int result=1;
+    if (!custody || !pin || cmeCustodyLeaf(staging) || cmePublicationSessionOpen(publication,&session)) goto done;
+    result=cmeContextColumnCustodyCheck(custody); if (result) goto done;
+    result=1;
+    if (strcmp(custody->roots[1].name,session.destinationName) ||
+        cmePublicationPresent(session.parent,staging)!=0 ||
+        cmePublicationPresent(session.directory,session.temporary)!=0 ||
+        cmePublicationPresent(session.directory,session.doneTemporary)!=0) goto done;
+    result=cmePublicationIntent(custody,staging,&session,body,&length,digest); if (result) goto done;
+    result=1;
+    if (CRYPTO_memcmp(digest,pin,32) || cmePublicationRead(session.directory,session.name,body,length,0) ||
+        cmePublicationRead(session.directory,session.done,body,length,0) || cmePublicationSessionCheck(&session)) goto done;
+    result=cmeContextColumnCustodyCheck(custody);
+done:
+    cmePublicationSessionClose(&session); return(result);
+}
