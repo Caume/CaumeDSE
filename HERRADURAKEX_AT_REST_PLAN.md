@@ -3531,9 +3531,138 @@ historical storagePath; that literal registration field is still authenticated,
 not interpreted as proof of the actual root's absolute location.
 
 No artifact/authority writes, entropy, fsync, rename, one-time receipt consumption,
-intent publication, crash recovery or live V2 dispatch is added. Do not serialize
-or reconstruct this opaque handle, treat the phase-33 receipt alone as physical
-custody, or send it to legacy publication workflows. TODO #147 remains open for
-a guarded publication transaction and recovery protocol consuming fresh custody,
-published-map/live readers, wider migration/provider/floor-2/lifecycle gates and
-production ownership/rollback closeout.
+intent publication, crash recovery or live V2 dispatch is added by custody alone.
+Do not serialize/reconstruct this opaque handle or treat the phase-33 receipt
+alone as physical custody. Phase 35 below consumes fresh custody for a separate
+guarded whole-export directory promotion and recovery protocol. Published-map/
+live readers, wider migration/provider/floor-2/lifecycle gates and production
+ownership/rollback closeout remain under TODO #147.
+
+
+## Guarded export publication and recovery (#147 phase 35)
+
+`cmeContextColumnPublicationPrepare/Publish/Recover` promote the **entire verified
+candidate export directory** to one independently approved absent sibling name.
+Source export files are never replaced. The destination parent must be the
+original staging parent object, so one Linux RENAME_NOREPLACE directory operation
+makes the candidate inventory visible without overwriting any existing object.
+This is offline export promotion, not replacement of active engine ResourcesDB,
+map/catalog/witness advancement, storagePath rewriting or live V2 activation.
+
+The typed publication approval supplies an already-open private control-directory
+object, an ASCII intent leaf name <=128 bytes, and an approved destination parent
+object/child name. It reserves `name`, `name.tmp`, `name.done`, `name.done.tmp`.
+Control must be current-euid-owned mode 0700 and outside BOTH export roots; it can
+be their private parent. Destination/control-name collisions refuse. Existing
+custody root/leaf/private-file policy remains in force. Protect all namespace
+anchors and quiesce noncooperating export/control writers independently.
+
+Each operation independently opens the control directory and holds a nonblocking
+exclusive flock on that open description. Cooperating publishers/recoverers
+serialize, including calls using the same original parent FD. This advisory lock
+does not freeze files or constrain other writers. Manager/target lifetimes and
+serialization of each custody object remain the caller's responsibility.
+
+Prepare first requires fresh custody, an absent destination and absent completion
+marker, and fsyncs each staged candidate file, its directory and parent. It
+builds a deterministic domain-separated manager-signed intent from exact custody,
+acceptance and publication evidence. Write the intent through exclusive private
+mode-0600 NOFOLLOW/CLOEXEC temporary creation, complete writes, file fsync,
+no-replace rename and control-directory fsync. Recheck custody/journal before
+returning the whole-intent SHA-256; independently retain that pin before Publish.
+Identical Prepare retries revalidate canonical bytes and return the same pin,
+without replacing a committed intent. A failure can leave reserved temporary or
+prepared intent state; no artifact promotion is performed by Prepare.
+
+Publish requires the externally retained intent pin and the same live fresh
+custody. Recompute the complete canonical intent, compare the actual private
+single-link intent file, require an absent destination/marker, sync candidate
+files and recheck custody/authority/control immediately before promotion. Use
+RENAME_NOREPLACE for the staging directory; no ordinary overwrite fallback exists.
+A successful rename permanently consumes the old custody handle even if a later
+step fails. Reverify the promoted root/files through held descriptors, allowing
+only the directory ctime change caused by rename; sync its directory/parent,
+then atomically persist `name.done` using the SAME intent bytes and the private
+temporary/write/fsync/no-replace/directory-sync sequence. Recheck the journal,
+actual promoted files and current authority before reporting state 2 completed.
+Completion is never inferred from a marker alone.
+
+Recover takes the ORIGINAL source/staging approvals, typed transformation/
+registration/export inputs and explicit credentials, retained acceptance bytes/
+SHA-256, publication approval and independently retained intent SHA-256. Exactly
+one of staging/destination must exist. Both present, both absent, a marker with
+staging present, stale authority, unapproved/replaced objects, altered file
+metadata, wrong pins or invalid journal bytes refuse. Open fresh custody on the
+surviving stage or promoted directory and repeat complete actual-byte acceptance,
+registration/MAC/lookup/plaintext-equivalence and authority validation. Derive the
+same signed intent using the original staging name and match the pinned intent
+BEFORE any promotion or completion writes. A valid prepared stage resumes the
+no-replace promotion; a valid promoted directory completes syncing/marking without
+a second rename. Completed recovery retries revalidate actual files and journals.
+Recovery is roll-forward only: no deletion/rollback of published directories,
+authority reset, automatic pin adoption or regeneration of missing payloads.
+
+Reserved temporaries from interrupted writes may be retried only when they are
+private, current-euid-owned, single-link regular files whose bytes are an exact
+prefix (including empty) of the expected canonical intent. Then discard/rewrite
+that reserved temporary under the lock. Symlink/hardlink/insecure/unknown bytes
+refuse and are preserved. Fully named intent/marker files must match exactly;
+forged committed marker bytes are never silently repaired. Atomic intent/marker
+installation makes a partially written fully named control file unnecessary.
+If initial Prepare was interrupted before its pin was independently retained,
+retry Prepare against fresh independently approved custody; do not adopt a hash
+from an untrusted leftover file.
+
+Canonical evidence uses SHA-256 and fixed unsigned uint64 big-endian numbers.
+Text is uint16 big-endian byte length followed by exact bytes. The manifest is:
+
+1. `CDSE-HKX-COLUMN-PUBLICATION-MANIFEST-v1` including NUL, acceptance SHA-256,
+   allocation digest, deployment UUID, organization UUID, registry generation,
+   minimum format as uint64, registry digest, catalog revision/digest and exact
+   witness revision/digest, then destination-map text.
+2. Control-directory stat identity and intent-name text; destination-parent stat
+   identity and destination leaf text. Identity is device, inode, full mode,
+   uid, gid (five uint64 numbers).
+3. Source then candidate: approved parent identity, original root-name text,
+   root stat, file count; each file in ASCII-name order has name text, full file
+   stat and whole-file SHA-256. Root stat is identity plus link count, size,
+   mtime seconds/nanoseconds. File stat additionally includes ctime seconds/
+   nanoseconds. All times are nonnegative in this publication profile.
+
+Root ctime is intentionally excluded from retained intent equality because the
+approved rename changes it. File identities/ctime and root identities/inventory
+remain fixed; parent/control size/link/timestamps are excluded to allow journal
+and sibling-name updates. Atime is excluded throughout. Fresh custody still
+checks directory ctime within each operation. This does not prove absence of all
+historical directory-entry changes across a restart.
+
+Intent v1 is `CDSE-HKX-COLUMN-PUBLICATION-v1` including NUL, manifest SHA-256,
+acceptance SHA-256, then a 32-byte manager HMAC. Its tag is HMAC-SHA256 under the
+separate manager registry key over `CDSE-HKX-COLUMN-PUBLICATION-SEAL-v1` including
+NUL, canonical 73-byte registry anchor, 40-byte catalog pin, uint8 length-prefixed
+destination-map name and SHA-256 of the intent bytes preceding the tag. Maximum
+intent size 256 bytes. The trusted-core `ColumnPublicationSign` primitive does
+not inspect artifacts; high-level APIs always require actual custody. Old
+acceptance/registration/legacy intent formats remain unchanged and cannot be
+substituted for this intent. No credentials, receipt bytes or absolute artifact
+paths are serialized. Custody retains only the acceptance hash and map label in
+addition to existing metadata, never credentials or payload/receipt bytes.
+
+Prepare clears its digest on failure; Publish/Recover clear state to 0 on failure
+and return state 2 only after verified completion. Return statuses 0/1/2/3 remain
+as before; Linux no-replace support is required. A failed Publish/Recover MAY have
+renamed the directory or persisted control state. Retain intent/acceptance pins
+outside both exports, preserve both namespace approvals, and recover explicitly.
+Do not guess success from directory presence, overwrite a destination, refresh
+pins, or delete unfamiliar artifacts to make a retry pass.
+
+Validation injects abrupt process exits around temporary intent creation,
+prepared intent persistence, directory rename, parent syncing, temporary marker
+creation and completion persistence. These are process-crash/ordering tests,
+not certification of physical power-loss durability. Require a filesystem that
+honors file/directory fsync and no-replace semantics; malicious/noncooperating
+writers, privileged filesystem changes and coherent authority/control rollback
+still need independent ownership/rollback defenses. TODO #147 remains open for
+published-map integration, coordinated authority/witness promotion and recovery,
+live V2 readers, wider mixed-profile/floor-2 migrations and prior provider/
+lifecycle/production-custody closeout.

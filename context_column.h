@@ -248,4 +248,50 @@ int cmeContextColumnCustodyOpen(cmeContextManager *manager, const cmeContextCopy
     cmeContextColumnCustody **custody);
 int cmeContextColumnCustodyCheck(cmeContextColumnCustody *custody);
 void cmeContextColumnCustodyFree(cmeContextColumnCustody **custody);
+
+/* Guarded publication of the COMPLETE candidate export into an absent sibling
+   directory. The independently approved destination parent MUST be the original
+   staging parent. Journal directory is an approved mode-0700 euid-owned object
+   outside both export roots; name <=128 ASCII leaf bytes reserves name, name.tmp,
+   name.done and name.done.tmp. Cooperating calls serialize via a directory flock.
+   Caller must still quiesce all other writers and protect authority/controls.
+   No overwrite, map/catalog/witness advancement, source rewrite or live dispatch.
+
+   Prepare consumes fresh custody, fsyncs candidate files/root/parent, atomically
+   persists a separate manager-signed intent, and returns its SHA256. Independently
+   retain that pin before Publish. Identical Prepare retries are allowed; outputs
+   clear on failure. Publish rechecks the pinned intent and live custody, promotes
+   by Linux RENAME_NOREPLACE, fsyncs parent and atomically persists a completion
+   marker. Successful rename consumes the custody handle even if a later step
+   fails. A failed call may have changed durable state: use Recover with the
+   retained intent pin, never guess from the marker or delete published artifacts.
+
+   Recover uses original source/staging approvals, explicit credentials/evidence
+   and the retained acceptance/intent pins. It fully reopens/verifies surviving
+   stage or destination, matches immutable object/file evidence to the signed
+   intent, then resumes prepared promotion or completes a previous rename. Both
+   names present, unknown/replaced objects, stale authority and forged journals
+   refuse without promotion. Recovery is roll-forward only; completed retries
+   revalidate actual files. State is 2 only on verified durable completion, 0 on
+   failure. No automatic pin adoption, rollback/reset, hardware power-loss or
+   protection from noncooperating/privileged writers is claimed. Serialize access
+   to each custody object; Free consumed handles before borrowed manager/target.
+   Return 0/1/2/3 as custody; Linux no-replace support is required. */
+typedef struct
+{
+    int directory;
+    const char *name;
+    cmeContextColumnCustodyRoot destination;
+} cmeContextColumnPublication;
+#define cmeContextColumnPublicationMaxBytes 256U
+int cmeContextColumnPublicationPrepare(cmeContextColumnCustody *custody,
+    const cmeContextColumnPublication *publication, unsigned char intentDigest[32]);
+int cmeContextColumnPublicationPublish(cmeContextColumnCustody *custody,
+    const cmeContextColumnPublication *publication, const unsigned char intentDigest[32], int *state);
+int cmeContextColumnPublicationRecover(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *registration,
+    const cmeContextColumnRegistrationInputs *credentials, const cmeContextColumnExportInputs *export,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *staging,
+    const unsigned char *acceptance, size_t acceptanceLength, const unsigned char acceptanceDigest[32],
+    const cmeContextColumnPublication *publication, const unsigned char intentDigest[32], int *state);
 #endif
