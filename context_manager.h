@@ -407,4 +407,29 @@ int cmeContextManagerCopyInstallRecover(cmeContextManager *manager, const char *
     const unsigned char job[32], int complete, const cmeContextAnchor *registry,
     const cmeContextMapAnchor *catalog, cmeContextMapAnchor *published);
 
+
+/* Trusted-core catalog-v4 admission. Preview returns a signed canonical ticket,
+   its hash and the exact next catalog without committing. Evidence is an opaque
+   owner-approved digest. These core APIs do NOT validate physical files, phase-35
+   publication, acceptance, or custody; that adapter remains unimplemented.
+   The allocation must be the exact committed signed copy plan at the approved
+   registry/catalog. Persist and independently retain ticket/hash/next pins BEFORE
+   commit. Quiesce all readers/writers and keep authority namespaces fixed.
+   Step authenticates original/next pins and exact ticket. commit=0 classifies
+   1 ready or 2 admitted-blocked; commit=1 atomically inserts the target map and a
+   domain-distinct PREPARED context_copies row. ALL mapped reads/normal writers
+   remain blocked; legacy copy recovery cannot decode this ticket. No release,
+   registry change, witness advancement or live crypto authority is granted.
+   Init catalog v4 BEFORE allocation/acceptance, never implicitly here.
+   Free ticket with free; outputs clear on failure. Inputs/outputs must be
+   stable and nonoverlapping. Return 0/1/2. */
+int cmeContextManagerColumnAdmissionPlan(cmeContextManager *manager,
+    const unsigned char *plan, size_t planLength, const unsigned char planDigest[32],
+    const cmeContextAnchor *originalRegistry, const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog,
+    const char *name, const unsigned char evidence[32],
+    unsigned char **ticket, size_t *length, unsigned char digest[32], cmeContextMapAnchor *next);
+int cmeContextManagerColumnAdmissionStep(cmeContextManager *manager,
+    const cmeContextAnchor *registry, const cmeContextMapAnchor *original, const cmeContextMapAnchor *next,
+    const char *name, const unsigned char evidence[32], const unsigned char *ticket, size_t length,
+    const unsigned char digest[32], int commit, int *state);
 #endif

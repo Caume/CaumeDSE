@@ -2804,3 +2804,193 @@ before:
     for (i=0;i<5;i++) cmeOfflineClose(&files[i]);
     cmeContextCopyInstallFree(&job); cmeContextBindingFree(&binding); return(result);
 }
+
+static const unsigned char cmeAdmissionDomain[]="CDSE-HKX-COLUMN-MAP-ADMISSION-v1";
+
+static int cmeAdmissionDecode(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, const char *name, const unsigned char evidence[32],
+    const unsigned char *ticket, size_t length, const unsigned char digest[32], cmeContextMap **allocation)
+{
+    cmeCopyCursor cursor={ticket,length>=32 ? length-32 : 0};
+    cmeContextMap *map=NULL;
+    unsigned char tag[32],hash[32],packed[73],bytes[73];
+    unsigned int written=0;
+    uint64_t revision=0,count=0,number;
+    char *stored=NULL;
+    size_t i;
+    int result=1;
+    *allocation=NULL;
+    if (!ticket || length<sizeof(cmeAdmissionDomain)+73+40+32+32 || length>cmeContextRegistryMaxBytes ||
+        !digest || !evidence || cmeManagerName(name,1) || cmeManagerAnchorPack(registry,packed) ||
+        registry->minimumFormat!=1 || !catalog || !catalog->revision || catalog->revision==UINT64_MAX ||
+        !EVP_Digest(ticket,length,hash,&written,EVP_sha256(),NULL) || written!=32 || CRYPTO_memcmp(hash,digest,32) ||
+        !HMAC(EVP_sha256(),manager->key,32,ticket,length-32,tag,&written) || written!=32 || CRYPTO_memcmp(tag,ticket+length-32,32) ||
+        memcmp(ticket,cmeAdmissionDomain,sizeof(cmeAdmissionDomain)) || cmeCopyTake(&cursor,NULL,sizeof(cmeAdmissionDomain)) ||
+        cmeCopyTake(&cursor,bytes,73) || CRYPTO_memcmp(bytes,packed,73) || cmeCopyNumber(&cursor,8,&revision) ||
+        revision!=catalog->revision || cmeCopyTake(&cursor,bytes,32) || CRYPTO_memcmp(bytes,catalog->digest,32) ||
+        cmeCopyTake(&cursor,bytes,32) || CRYPTO_memcmp(bytes,evidence,32) || cmeCopyName(&cursor,&stored,1) || strcmp(stored,name)) goto done;
+    map=calloc(1,sizeof(*map)); if (!map || cmeCopyName(&cursor,&map->resource,1) ||
+        cmeCopyNumber(&cursor,4,&count) || !count || count>cmeContextRegistryMaxEntries) goto done;
+    map->role=4; map->active=1; map->slots=calloc((size_t)count,sizeof(*map->slots));
+    if (!map->slots) goto done;
+    map->count=(size_t)count;
+    for (i=0;i<map->count;i++)
+    {
+        cmeContextSlot *slot=&map->slots[i];
+        if (cmeCopyName(&cursor,(char **)&slot->lookup,1) || cmeCopyName(&cursor,(char **)&slot->table,0) ||
+            cmeCopyNumber(&cursor,8,&number) || !number || number>INT64_MAX || cmeCopyName(&cursor,(char **)&slot->field,0)) goto done;
+        slot->row=(int64_t)number;
+        if (i)
+        {
+            const cmeContextSlot *previous=&map->slots[i-1];
+            int order=strcmp(previous->table,slot->table);
+            if (order>0 || (!order && (previous->row>slot->row ||
+                (previous->row==slot->row && strcmp(previous->field,slot->field)>=0)))) goto done;
+        }
+    }
+    if (cursor.remaining) goto done;
+    *allocation=map; map=NULL; result=0;
+done:
+    free(stored); cmeContextMapFree(&map); OPENSSL_cleanse(tag,sizeof(tag)); return(result);
+}
+
+static int cmeAdmissionApply(cmeContextManager *manager, const char *name, cmeContextMap *allocation,
+    const unsigned char *ticket, size_t length, const unsigned char digest[32])
+{
+    cmeContextCopyInstall projected={0};
+    sqlite3_stmt *stmt=NULL;
+    int result=1,pending=0,enabled=0;
+    if (cmeCopyVersion(manager,&enabled) || !enabled || cmeShufflePending(manager,name,&pending) || pending ||
+        sqlite3_prepare_v2(manager->db,"SELECT 1 FROM context_maps WHERE name=?1 UNION ALL SELECT 1 FROM context_copies WHERE name=?1",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"INSERT INTO context_copies VALUES(?1,?2,?3,1,zeroblob(8))",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_bind_blob(stmt,2,digest,32,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,3,ticket,(int)length,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    projected.destinationName=(char *)name; projected.target=allocation;
+    if (cmeCopyInstallMap(manager,&projected)) goto done;
+    result=0;
+done:
+    sqlite3_finalize(stmt); return(result);
+}
+
+int cmeContextManagerColumnAdmissionPlan(cmeContextManager *manager,
+    const unsigned char *plan, size_t planLength, const unsigned char planDigest[32],
+    const cmeContextAnchor *originalRegistry, const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog,
+    const char *name, const unsigned char evidence[32],
+    unsigned char **ticket, size_t *length, unsigned char digest[32], cmeContextMapAnchor *next)
+{
+    cmeMapEncoding encoded={0};
+    cmeManagerState current={0};
+    cmeContextMapAnchor actual={0};
+    cmeContextMap *decoded=NULL,*allocation=NULL;
+    cmeContextAnchor committed={0};
+    cmeContextBinding *binding=NULL;
+    unsigned char packed[73],tag[32],hash[32];
+    unsigned int written=0;
+    size_t i;
+    int result=1,state=0;
+    if (ticket) *ticket=NULL;
+    if (length) *length=0;
+    if (digest) memset(digest,0,32);
+    if (next) memset(next,0,sizeof(*next));
+    if (!manager || !ticket || !length || !digest || !next || !catalog || !registry || registry->minimumFormat!=1 ||
+        !catalog->revision || catalog->revision==UINT64_MAX || !evidence ||
+        cmeManagerName(name,1) || cmeManagerAnchorPack(registry,packed)) return(1);
+    result=cmeContextManagerCopyPlanStatus(manager,plan,planLength,planDigest,originalRegistry,catalog,
+        &state,&allocation,&committed);
+    if (result) goto before;
+    if (state!=2 || (committed.generation!=registry->generation || committed.minimumFormat!=registry->minimumFormat ||
+        CRYPTO_memcmp(committed.digest,registry->digest,32) || CRYPTO_memcmp(committed.deployment,registry->deployment,16) ||
+        CRYPTO_memcmp(committed.organization,registry->organization,16))) { result=2; goto before; }
+    result=cmeContextManagerBind(manager,allocation->resource,4,allocation->slots,allocation->count,registry,&binding);
+    cmeContextBindingFree(&binding); if (result) goto before;
+    result=1; encoded.bytes=malloc(cmeContextRegistryMaxBytes);
+    if (!encoded.bytes || cmeMapAppend(&encoded,cmeAdmissionDomain,sizeof(cmeAdmissionDomain)) || cmeMapAppend(&encoded,packed,73) ||
+        cmeMapNumber(&encoded,catalog->revision,8) || cmeMapAppend(&encoded,catalog->digest,32) ||
+        cmeMapAppend(&encoded,evidence,32) || cmeCopyText(&encoded,name) || cmeCopyText(&encoded,allocation->resource) ||
+        cmeMapNumber(&encoded,allocation->count,4)) goto before;
+    for (i=0;i<allocation->count;i++)
+        if (cmeCopyText(&encoded,allocation->slots[i].lookup) || cmeCopyText(&encoded,allocation->slots[i].table) ||
+            cmeMapNumber(&encoded,(uint64_t)allocation->slots[i].row,8) || cmeCopyText(&encoded,allocation->slots[i].field)) goto before;
+    if (encoded.length>cmeContextRegistryMaxBytes-32 ||
+        !HMAC(EVP_sha256(),manager->key,32,encoded.bytes,encoded.length,tag,&written) || written!=32 ||
+        cmeMapAppend(&encoded,tag,32) || !EVP_Digest(encoded.bytes,encoded.length,hash,&written,EVP_sha256(),NULL) || written!=32 ||
+        cmeAdmissionDecode(manager,registry,catalog,name,evidence,encoded.bytes,encoded.length,hash,&decoded)) goto before;
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&current)) goto done;
+    result=cmeManagerCurrentMatch(&current,registry); if (result) goto done;
+    result=1; if (cmeMapLoad(manager,&actual)) goto done;
+    result=cmeMapMatch(&actual,catalog); if (result) goto done;
+    result=1;
+    if (cmeAdmissionApply(manager,name,decoded,encoded.bytes,encoded.length,hash) ||
+        cmeMapSign(manager,catalog->revision+1,next,tag) ||
+        sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    *ticket=encoded.bytes; encoded.bytes=NULL; *length=encoded.length; memcpy(digest,hash,32); result=0;
+done:
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&current); pthread_mutex_unlock(&manager->mutex);
+before:
+    if (result) memset(next,0,sizeof(*next));
+    free(encoded.bytes); cmeContextMapFree(&decoded); cmeContextMapFree(&allocation); return(result);
+}
+
+int cmeContextManagerColumnAdmissionStep(cmeContextManager *manager,
+    const cmeContextAnchor *registry, const cmeContextMapAnchor *original, const cmeContextMapAnchor *next,
+    const char *name, const unsigned char evidence[32], const unsigned char *ticket, size_t length,
+    const unsigned char digest[32], int commit, int *state)
+{
+    cmeManagerState current={0};
+    cmeContextMapAnchor actual={0},planned={0};
+    cmeContextMap *allocation=NULL;
+    cmeContextBinding *binding=NULL;
+    sqlite3_stmt *stmt=NULL;
+    unsigned char tag[32];
+    int result=1;
+    if (state) *state=0;
+    if (!manager || !state || !next || !original || original->revision==UINT64_MAX || next->revision!=original->revision+1 ||
+        (commit!=0 && commit!=1) || cmeAdmissionDecode(manager,registry,original,name,evidence,ticket,length,digest,&allocation)) goto before;
+    result=cmeContextManagerBind(manager,allocation->resource,4,allocation->slots,allocation->count,registry,&binding);
+    cmeContextBindingFree(&binding); if (result) goto before;
+    pthread_mutex_lock(&manager->mutex); result=1;
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&current)) goto done;
+    result=cmeManagerCurrentMatch(&current,registry); if (result) goto done;
+    result=1; if (cmeMapLoad(manager,&actual)) goto done;
+    if (!cmeMapMatch(&actual,original))
+    {
+        if (cmeAdmissionApply(manager,name,allocation,ticket,length,digest) ||
+            cmeMapSign(manager,next->revision,&planned,tag)) goto done;
+        result=cmeMapMatch(&planned,next); if (result) goto done;
+        if (commit)
+        {
+            cmeManagerCheckpoint("after-begin");
+            result=1;
+            if (cmeMapHead(manager,&planned,tag)) goto done;
+            cmeManagerCheckpoint("after-write");
+            if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+            cmeManagerCheckpoint("after-commit");
+        }
+        *state=commit ? 2 : 1; result=0;
+    }
+    else if (!cmeMapMatch(&actual,next))
+    {
+        result=1;
+        if (sqlite3_prepare_v2(manager->db,"SELECT job,body,state,finished FROM context_copies WHERE name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
+            sqlite3_column_bytes(stmt,0)!=32 || !sqlite3_column_blob(stmt,0) || CRYPTO_memcmp(sqlite3_column_blob(stmt,0),digest,32) ||
+            sqlite3_column_bytes(stmt,1)!=(int)length || !sqlite3_column_blob(stmt,1) || CRYPTO_memcmp(sqlite3_column_blob(stmt,1),ticket,length) ||
+            sqlite3_column_int(stmt,2)!=1 || sqlite3_column_bytes(stmt,3)!=8 || !sqlite3_column_blob(stmt,3) ||
+            memcmp(sqlite3_column_blob(stmt,3),"\0\0\0\0\0\0\0\0",8) || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+        *state=2; result=0;
+    }
+    else result=2;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db) && sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL)!=SQLITE_OK) result=1;
+    cmeManagerStateFree(&current); pthread_mutex_unlock(&manager->mutex);
+before:
+    if (result && state) *state=0;
+    cmeContextMapFree(&allocation); return(result);
+}

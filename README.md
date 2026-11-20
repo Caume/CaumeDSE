@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.36.0
+# Caume Data Security Engine (CaumeDSE) version 2.37.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3034,7 +3034,10 @@ handle for rechecking. The [publication API](HERRADURAKEX_AT_REST_PLAN.md#guarde
 persists a signed intent and promotes a verified complete export into an absent
 sibling directory, with verified roll-forward recovery. This does not replace
 active engine databases or publish maps; published-map integration and live V2
-dispatch remain pending.
+dispatch remain pending. The [blocked admission core](HERRADURAKEX_AT_REST_PLAN.md#blocked-map-admission-core-147-phase-36)
+previews and commits the signed allocation into the catalog under a global block,
+with separately approved witness advancement. It does not check physical files
+or release that block; the publication-to-admission adapter remains pending.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

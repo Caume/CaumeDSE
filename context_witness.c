@@ -444,3 +444,29 @@ int cmeContextWitnessCopyTargetBind(cmeContextManager *manager, cmeContextWitnes
 done:
     cmeContextCopyTargetFree(&candidate); return(result);
 }
+
+int cmeContextWitnessColumnAdmissionCommit(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *retained, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *original, const cmeContextMapAnchor *next,
+    const char *name, const unsigned char evidence[32], const unsigned char *ticket, size_t length,
+    const unsigned char digest[32], int *state)
+{
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    cmeContextWitnessAnchor current={0};
+    int result=1,admission=0;
+    if (state) *state=0;
+    if (!state) return(1);
+    result=cmeContextManagerColumnAdmissionStep(manager,registry,original,next,name,evidence,
+        ticket,length,digest,0,&admission);
+    if (result) return(result);
+    result=cmeContextWitnessReconcile(witness,retained,registry,admission==1 ? original : next,&recovery,&current);
+    if (result) return(result);
+    if (admission==1 && recovery!=cmeWitnessRecoveryCurrent) return(2);
+    if (admission==2 && recovery==cmeWitnessRecoveryAdvanceRequired)
+    {
+        result=cmeContextWitnessCheck(witness,registry,original);
+        if (result) return(result);
+    }
+    return(cmeContextManagerColumnAdmissionStep(manager,registry,original,next,name,evidence,
+        ticket,length,digest,1,state));
+}
