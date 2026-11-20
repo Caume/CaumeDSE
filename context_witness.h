@@ -110,4 +110,19 @@ typedef struct
 int cmeContextCopyTargetEvidence(cmeContextManager *manager, const cmeContextCopyTarget *target,
     cmeContextCopyEvidence *evidence);
 
+/* Trusted OFFLINE guarded admission of an already verified copy allocation.
+   Retain the signed ticket/hash, original/next catalog and exact witness token
+   durably BEFORE commit. Evidence remains caller-verified opaque metadata; no
+   physical acceptance/custody/publication check or lease is supplied here.
+   Ready admission requires the exact original witness pair/token. An admitted
+   retry accepts only that original pair awaiting advancement, or its exact
+   one-step acknowledged successor. Never advances witness or releases the
+   global catalog block. Explicit witness advancement/retention remains required.
+   Inputs stable/nonoverlapping. state clears on failure; return 0/1/2. */
+int cmeContextWitnessColumnAdmissionCommit(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *retained, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *original, const cmeContextMapAnchor *next,
+    const char *name, const unsigned char evidence[32], const unsigned char *ticket, size_t length,
+    const unsigned char digest[32], int *state);
+
 #endif

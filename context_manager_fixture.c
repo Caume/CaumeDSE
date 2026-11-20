@@ -151,7 +151,7 @@ static int cmeFixtureMaps(cmeContextManager *manager, int argc, char **argv)
     unsigned char bytes[40],key[32];
     size_t i,count=0;
     int result=1,store=!strcmp(argv[2],"map-store"),remove=!strcmp(argv[2],"map-remove");
-    int read=!strcmp(argv[2],"map-read");
+    int read=!strcmp(argv[2],"map-read") || !strcmp(argv[2],"admission-map-read");
     memset(&next,0xff,sizeof(next));
     if (!strcmp(argv[2],"map-anchor") && argc==5) result=cmeContextManagerMapFetch(manager,&next);
     else if (!strcmp(argv[2],"map-init") && argc==6)
@@ -170,7 +170,9 @@ static int cmeFixtureMaps(cmeContextManager *manager, int argc, char **argv)
         {
             result=cmeContextManagerMapRead(manager,argv[5],&registry,&expected,&metadata);
             if (result) { if (metadata) result=3; goto done; }
-            printf("{\"resource\":\"%s\",\"role\":%u,\"active\":%d,\"slots\":[",
+            if (!strcmp(argv[2],"admission-map-read")) printf("{\"blocked\":%d,",metadata->blocked);
+            else putchar('{');
+            printf("\"resource\":\"%s\",\"role\":%u,\"active\":%d,\"slots\":[",
                 metadata->resource,metadata->role,metadata->active);
             for (i=0;i<metadata->count;i++)
                 printf("%s[\"%s\",\"%s\",%lld,\"%s\"]",i ? "," : "",metadata->slots[i].lookup,
@@ -565,6 +567,73 @@ done:
     free(allocation); free(intent); cmeContextCopyInstallFree(&job); cmeContextCopyInstallFree(&job); return(result);
 }
 
+static int cmeFixtureCatalogToken(const char *text, cmeContextMapAnchor *anchor)
+{
+    unsigned char bytes[40];
+    size_t i;
+    if (cmeFixtureDecode(text,bytes,40)) return(1);
+    for (i=0;i<8;i++) anchor->revision=(anchor->revision<<8)|bytes[i];
+    memcpy(anchor->digest,bytes+8,32); return(0);
+}
+
+static void cmeFixtureCatalogPrint(const cmeContextMapAnchor *anchor)
+{
+    unsigned char bytes[8];
+    size_t i;
+    for (i=0;i<8;i++) bytes[i]=(unsigned char)(anchor->revision>>(56-8*i));
+    cmeFixturePrint(bytes,8); cmeFixturePrint(anchor->digest,32);
+}
+
+static int cmeFixtureAdmission(cmeContextManager *manager, int argc, char **argv)
+{
+    cmeContextAnchor registry={0},original={0};
+    cmeContextMapAnchor catalog={0},next={0},empty={0};
+    cmeContextWitnessAnchor retained={0};
+    cmeContextWitness *witness=NULL;
+    unsigned char *input=NULL,*ticket=NULL,digest[32],evidence[32],key[32];
+    unsigned char zero[32]={0},planDigest[32];
+    size_t length=0,ticketLength=0;
+    int result=1,state=99,prepare=!strcmp(argv[2],"admission-plan"),guard=!strcmp(argv[2],"admission-guard");
+    if (prepare)
+    {
+        if (argc!=12 || cmeFixtureReadBytes(argv[5],&input,&length) || cmeFixtureDecode(argv[6],planDigest,32) ||
+            cmeFixtureRegistryToken(argv[7],&original) || cmeFixtureRegistryToken(argv[8],&registry) ||
+            cmeFixtureCatalogToken(argv[9],&catalog) || cmeFixtureDecode(argv[11],evidence,32)) goto done;
+        memset(&next,0xff,sizeof(next));
+        result=cmeContextManagerColumnAdmissionPlan(manager,input,length,planDigest,&original,&registry,&catalog,
+            argv[10],evidence,&ticket,&ticketLength,digest,&next);
+        if (result)
+        {
+            if (ticket || ticketLength || memcmp(digest,zero,32) || memcmp(&next,&empty,sizeof(empty))) result=3;
+        }
+        else
+        {
+            cmeFixturePrint(digest,32); putchar(' '); cmeFixtureCatalogPrint(&next); putchar(' ');
+            cmeFixturePrint(ticket,ticketLength); putchar('\n');
+        }
+        goto done;
+    }
+    if (argc!=(guard ? 14 : 13) || cmeFixtureRegistryToken(argv[5],&registry) ||
+        cmeFixtureCatalogToken(argv[6],&catalog) || cmeFixtureCatalogToken(argv[7],&next) ||
+        cmeFixtureDecode(argv[9],evidence,32) || cmeFixtureReadBytes(argv[10],&input,&length) ||
+        cmeFixtureDecode(argv[11],digest,32)) goto done;
+    if (guard)
+    {
+        cmeContextMapAnchor token={0};
+        if (cmeFixtureCatalogToken(argv[13],&token)) goto done;
+        retained.revision=token.revision; memcpy(retained.digest,token.digest,32); memset(key,'w',32);
+        if (cmeContextWitnessOpen(argv[12],0,key,registry.deployment,registry.organization,&registry,&catalog,&witness)) goto done;
+        result=cmeContextWitnessColumnAdmissionCommit(manager,witness,&retained,&registry,&catalog,&next,argv[8],evidence,
+            input,length,digest,&state);
+    }
+    else result=cmeContextManagerColumnAdmissionStep(manager,&registry,&catalog,&next,argv[8],evidence,
+        input,length,digest,atoi(argv[12]),&state);
+    if (result) { if (state) result=3; }
+    else printf("%d\n",state);
+done:
+    free(input); free(ticket); cmeContextWitnessClose(&witness); return(result);
+}
+
 int main(int argc, char **argv)
 {
     cmeContextManager *manager=NULL,*second=NULL;
@@ -582,6 +651,8 @@ int main(int argc, char **argv)
     if (cmeFixtureDecode(argv[3],next.deployment,16) || cmeFixtureDecode(argv[4],next.organization,16)) return(2);
     if (cmeContextManagerOpen(argv[1],!strcmp(argv[2],"init"),key,next.deployment,next.organization,&manager)) goto done;
     if (!strcmp(argv[2],"init") && argc==5) { result=0; goto done; }
+    if (!strcmp(argv[2],"admission-map-read")) { result=cmeFixtureMaps(manager,argc,argv); goto done; }
+    if (!strncmp(argv[2],"admission-",10)) { result=cmeFixtureAdmission(manager,argc,argv); goto done; }
     if (!strncmp(argv[2],"copy-install-",13)) { result=cmeFixtureCopyInstall(manager,argc,argv); goto done; }
     if (!strcmp(argv[2],"copy-provision") || !strcmp(argv[2],"copy-plan-prepare"))
     { result=cmeFixtureCopy(manager,argc,argv); goto done; }

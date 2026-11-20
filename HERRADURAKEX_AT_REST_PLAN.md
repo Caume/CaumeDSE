@@ -3666,3 +3666,91 @@ still need independent ownership/rollback defenses. TODO #147 remains open for
 published-map integration, coordinated authority/witness promotion and recovery,
 live V2 readers, wider mixed-profile/floor-2 migrations and prior provider/
 lifecycle/production-custody closeout.
+
+
+## Blocked map admission core (#147 phase 36)
+
+This trusted offline foundation prepares the catalog side of published-map
+integration. It is not wired to phase-35 publication or to installed/live
+commands. The physical proof adapter and release protocol remain pending.
+Keep authority readers/writers stopped and both exports fixed throughout use.
+Do not call these core APIs on unverified files or use catalog presence as proof
+of acceptance, publication, witness acknowledgement, or permission to read V2.
+
+`cmeContextManagerColumnAdmissionPlan` requires an already committed signed copy
+allocation, its independently retained hash and original registry/catalog pins,
+the exact committed registry, an unused destination-map name, and an opaque
+owner-approved evidence SHA-256. It authenticates the allocation and its current
+registry contexts. Catalog v4 must have been initialized explicitly **before**
+allocation/acceptance; no upgrade occurs here. A rollback-only transaction
+previews the exact next catalog, including both the destination map and a
+prepared admission job. Success returns the signed ticket, its SHA-256 and that
+next catalog pin, without committing any authority change. SQLite may still
+write rollback/journal bytes. The evidence digest has no built-in physical-file
+semantics: this phase neither constructs nor verifies a physical snapshot.
+
+Before committing, the owner must privately persist/fsync the exact ticket and
+independently retain its SHA-256, evidence digest, registry, original and next
+catalog pins and original witness token outside manager/export backups.
+Losing these retained approvals cannot be repaired by trusting candidate state.
+Tickets contain no credentials, keys, payloads or absolute paths.
+
+`cmeContextManagerColumnAdmissionStep` authenticates the ticket/hash, evidence,
+name, registry and exact original/next catalog pins. `commit=0` classifies a
+ready transition as state 1, or an exact committed transition as state 2, without
+committing. `commit=1` atomically inserts the destination map and a prepared,
+domain-distinct `context_copies` job and advances the catalog by exactly one.
+The registry and source map stay unchanged. Both before and after commit it
+checks the exact authenticated authority, including the complete job bytes on
+retry. Competing/later authority and altered tickets fail closed. Failed calls
+can have committed; recover with the original retained ticket and pins, never
+with a newly adopted catalog or a regenerated ticket.
+
+The prepared job deliberately blocks **all stored-map bindings and mapped
+crypto**, as well as normal catalog/registry writers. Authenticated map metadata
+remains inspectable with `blocked=1`. Old bindings expire when the catalog
+advances. Legacy copy-install recovery cannot decode the new ticket and cannot
+release this block. State 2 means **admitted but blocked**, including after a
+witness acknowledgement. There is no release/abort API in this phase; callers
+must not edit/delete the job to bypass recovery. Low-level raw bindings and
+external signing issuers remain trusted core surfaces, not an application
+permission boundary or a substitute for mapped reads.
+
+`cmeContextWitnessColumnAdmissionCommit` additionally requires the independently
+retained witness token. A ready transition needs the exact original witness
+pair. An admitted retry permits that exact original pair awaiting advancement,
+its exact one-step acknowledged successor, or the separately retained current
+acknowledgement. It rejects an unrelated pair that happens to be one revision
+behind and a future acknowledgement before the catalog commit. It never
+advances the witness. After authenticating the committed catalog, the owner
+must separately approve `cmeContextWitnessAdvance`, durably retain its token,
+and reconcile with the original admission approvals. Existing witness lost-ack
+reconciliation handles interruption on either side of this separate advance.
+There is no cross-database transaction, lease or independent rollback defense.
+
+Ticket wire format (big-endian, text is uint8 length-prefixed ASCII):
+
+1. `CDSE-HKX-COLUMN-MAP-ADMISSION-v1` including NUL; canonical registry anchor
+   (73 bytes), original catalog revision/digest (40 bytes), evidence SHA-256.
+2. Destination-map name, allocated resource lookup, uint32 slot count; each
+   slot is lookup, table, positive uint64 row no greater than `INT64_MAX`, field.
+   Slots strictly ascend by table, row, field without duplicates.
+3. HMAC-SHA256 with the separate manager registry key over all preceding bytes.
+   The independently retained ticket SHA-256 covers the entire ticket and tag.
+
+Maximum ticket size is `cmeContextRegistryMaxBytes`; count is bounded by
+`cmeContextRegistryMaxEntries`. Names, active contexts, table/field association,
+role, resource, format floor and catalog capacity use existing manager checks.
+The exact next catalog is independently pinned because the ticket authenticates
+the original transition inputs rather than incorporating its own catalog hash.
+Invalid/unavailable returns 1, conflicting authority returns 2, success returns
+0. Outputs clear on failure; all inputs/outputs must be stable/nonoverlapping.
+Free the owned ticket with `free`. Process-crash tests establish transactional
+behavior, not physical power-loss certification.
+
+TODO #147 remains open. Next integrate a durable, independently pinned physical
+snapshot from completed publication/fresh custody, verify it after the original
+target capability expires, and orchestrate these authority/witness operations.
+Then design an explicit witness-guarded release protocol and live V2 readers.
+Wider mixed-profile/floor-2 migration, provider acceptance, rename/delete
+lifecycle and production custody/monotonic deployment also remain pending.
