@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.38.0
+# Caume Data Security Engine (CaumeDSE) version 2.39.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3041,7 +3041,11 @@ or release that block. The [physical-proof admission adapter](HERRADURAKEX_AT_RE
 verifies completed publication and fresh custody, returns a signed retained
 journal, and rechecks original file identities/hashes while reconciling catalog
 and witness after interruption. Successful admission is still globally blocked;
-explicit guarded release and live V2 dispatch remain pending.
+the [scoped read-release API](HERRADURAKEX_AT_REST_PLAN.md#scoped-witness-aware-read-release-147-phase-38)
+can return verified cells under the independently retained witness acknowledgement.
+It rechecks original physical proof and current authority around decryption;
+generic reads/writers remain blocked. Global activation and live V2 dispatch
+still require a separate transition that older readers reject safely.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

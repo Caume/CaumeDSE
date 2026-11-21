@@ -3861,3 +3861,73 @@ interval. Future release must guard readers across that interval before
 unblocking. Installed handoff/orchestration, live V2 readers, wider mixed-profile/floor-2
 migration/provider acceptance, rename/delete lifecycle and production protected
 custody/monotonic deployment also remain pending.
+
+
+## Scoped witness-aware read release (#147 phase 38)
+
+`cmeContextColumnReadReleaseOpen/Check/Free` and `cmeContextColumnRead` add a
+**scoped read-only release** for the published V2 export already admitted and
+acknowledged by phase 37. This is the first post-admission plaintext read path.
+It does not clear the catalog block, finish the prepared job, enable generic
+mapped crypto/writers or dispatch live HTTP routes. The existing v4 catalog
+would let older generic readers ignore a new witness gate if its job were
+marked completed. Preserve their fail-closed prepared-job block until a future
+explicit catalog/reader transition can guard all readers across witness commits.
+
+Open requires the original phase-37 journal and independently retained SHA-256,
+source/published parent object and leaf approvals, manager/witness handles and
+**the independently retained acknowledged witness token returned by Run**.
+Ready admission, pending witness advancement, previous tokens and changed pins
+are rejected. No adoption, admission, witness advancement or repair occurs.
+Open copies journal/names/pins, duplicates both parent descriptors and checks
+exact committed ticket/catalog/registry, original-to-acknowledged witness
+transition, current acknowledged token and complete physical snapshot. Inputs
+may be freed and original parent descriptors closed after successful Open;
+manager and witness must outlive the capability. Serialize Check/Read/Free.
+
+Check repeats the physical and authority proof. Any observed proof/authority
+failure permanently poisons that capability, including if authority is later
+restored. Free it and obtain a newly reviewed capability with the ORIGINAL
+retained approvals; never refresh pins from candidate disk state. This is
+point-in-time checking, not a lease, revocation of previously returned plaintext,
+absolute-path ancestry proof or independent coherent-backup rollback defense.
+Keep writers stopped and namespaces/keys/journals protected as in phase 37.
+
+Read takes a logical table/row/field and counted target password, not candidate
+frame bytes or a caller-selected file. The signed full inventory must identify
+exactly one extra published file beyond all source files; that is the admitted
+V2 image. Read loads only that original inode/stat/hash-matched SQLite image,
+uses the existing bounded strict container schema/inventory/AEAD and plaintext
+metadata/order validation, then selects the approved cell. It checks current
+witness, physical proof and both manager pins again before returning plaintext.
+Wrong credentials, absent cells or changed bytes yield no output; candidate
+plaintext is wiped on failure. A witness rollback or physical change after
+successful decryption still withholds plaintext. No credential/plaintext is
+retained in the capability. Wrong passwords/missing cells alone do not poison
+otherwise valid state. The caller owns returned bytes and must use
+`cmeContextV2BufferFree`; no legacy/provider fallback is introduced.
+
+The trusted manager core returns a distinct type-3 admission binding only after
+authenticating the exact committed prepared ticket and map. Generic mapped and
+copy-target codec gates reject it. A private read-only codec entry is used only
+inside the guarded full-container read path; there is no admission seal API.
+These low-level core functions do not independently authenticate witnesses or
+physical proof and remain trusted in-process issuer surfaces, not application
+permission boundaries. Public generic codec behavior remains unchanged.
+
+All operations preserve registry/catalog/witness counters, manager job state,
+source and published files. A crash during release construction/read creates no
+durable release state; retry using the original journal/hash and acknowledged
+token. Return codes 0/1/2/3 and stable/nonoverlapping input/empty-output contracts
+match preceding APIs; 3 includes unavailable provider/SQLite-deserialize support.
+The original journal format and existing SQLite/image/ciphertext formats do not
+change. Full profile limits remain 32 MiB image, 16 MiB validated plaintext,
+4096 logical slots and 1..256 target password bytes. Checking the entire image
+per read is an offline correctness boundary, not a live-reader performance claim.
+
+TODO #147 remains open. Next design an explicit opt-in catalog transition and
+witness-aware binding checks for every affected generic read before globally
+clearing the prepared-job block. Older readers must reject that transition.
+Then add durable global-release recovery, installed handoff/orchestration and
+live V2 dispatch. Wider mixed-profile/floor-2/provider acceptance, rename/delete
+lifecycle and production protected-custody/monotonic deployment remain pending.

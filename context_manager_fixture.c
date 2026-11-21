@@ -617,6 +617,18 @@ static int cmeFixtureAdmission(cmeContextManager *manager, int argc, char **argv
         cmeFixtureCatalogToken(argv[6],&catalog) || cmeFixtureCatalogToken(argv[7],&next) ||
         cmeFixtureDecode(argv[9],evidence,32) || cmeFixtureReadBytes(argv[10],&input,&length) ||
         cmeFixtureDecode(argv[11],digest,32)) goto done;
+    if (!strcmp(argv[2],"admission-bind"))
+    {
+        cmeContextMap *metadata=NULL;
+        cmeContextBinding *binding=NULL;
+        result=cmeContextManagerColumnAdmissionBind(manager,&registry,&catalog,&next,argv[8],evidence,input,length,digest,
+            &metadata,&binding);
+        if (!result && (cmeContextBindingCheckAdmission(manager,binding) ||
+            cmeContextBindingCheckMapped(manager,binding)!=1 || cmeContextBindingCheckCopyTarget(manager,binding)!=1)) result=3;
+        cmeContextMapFree(&metadata); cmeContextBindingFree(&binding);
+        if (!result) puts("3");
+        goto done;
+    }
     if (guard)
     {
         cmeContextMapAnchor token={0};

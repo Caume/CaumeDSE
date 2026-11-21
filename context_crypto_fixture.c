@@ -727,13 +727,18 @@ static int cmeFixtureAdmissionRun(int argc, char **argv)
     cmeContextWitness *witness=NULL;
     cmeContextColumnCustodyRoot roots[2]={{.parent=-1},{.parent=-1}};
     cmeContextColumnAdmissionResult output={0},zero={0};
+    cmeContextColumnReadRelease *release=NULL;
+    cmeContextWitnessAnchor acknowledged={0};
+    cmeContextV2Buffer plain={0};
+    unsigned char ackBytes[40],password[256];
+    int reading=strcmp(argv[2],"column-admission-run")!=0,only=!strcmp(argv[2],"column-read-release");
     cmeContextAnchor registry={0};
     cmeContextMapAnchor catalog={0};
     unsigned char key[32],witnessKey[32],digest[32],*journal=NULL,bytes[8],deployment[16],organization[16];
     size_t length=0,i;
     char *names[2]={NULL,NULL};
     int result=1;
-    if (argc!=10 || cmeFixtureHex(argv[3],deployment,16) || cmeFixtureHex(argv[4],organization,16) ||
+    if (argc!=(reading ? (only ? 11 : 15) : 10) || cmeFixtureHex(argv[3],deployment,16) || cmeFixtureHex(argv[4],organization,16) ||
         cmeFixtureHex(argv[9],digest,32) || cmeFixtureReadBounded(argv[8],cmeContextColumnAdmissionMaxBytes,&journal,&length)) goto done;
     memset(key,'k',32); memset(witnessKey,'w',32);
     if (cmeContextManagerOpen(argv[1],0,key,deployment,organization,&manager) ||
@@ -748,6 +753,40 @@ static int cmeFixtureAdmissionRun(int argc, char **argv)
         *slash=0; roots[i].name=slash+1;
         roots[i].parent=open(names[i],O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
         if (roots[i].parent<0) goto done;
+    }
+    if (reading)
+    {
+        size_t passwordLength=0;
+        char *end=NULL;
+        int64_t row=0;
+        if (cmeFixtureHex(argv[10],ackBytes,40)) goto done;
+        for (i=0;i<8;i++) acknowledged.revision=(acknowledged.revision<<8)|ackBytes[i];
+        memcpy(acknowledged.digest,ackBytes+8,32);
+        result=cmeContextColumnReadReleaseOpen(manager,witness,&roots[0],&roots[1],journal,length,digest,&acknowledged,&release);
+        if (result) { if (release) result=99; goto done; }
+        for (i=0;i<2;i++) { close(roots[i].parent); roots[i].parent=-1; }
+        free(journal); journal=NULL; /* The release owns its pins and namespace approvals. */
+        if (only) { puts("read-released"); goto done; }
+        result=1;
+        errno=0; row=strtoll(argv[12],&end,10);
+        if (errno || !*argv[12] || *end || strlen(argv[14])%2 || strlen(argv[14])>512) goto done;
+        passwordLength=strlen(argv[14])/2;
+        if (cmeFixtureHex(argv[14],password,passwordLength)) goto done;
+        result=cmeContextColumnRead(release,argv[11],row,argv[13],password,passwordLength,&plain);
+        if (result)
+        {
+            if (plain.bytes || plain.length) { result=99; goto done; }
+            if (getenv("CDSE_CONTEXT_READ_POISON"))
+            {
+                int failed=result;
+                cmeFixtureCustodyPause("read-poison");
+                if (cmeContextColumnReadReleaseCheck(release)!=failed ||
+                    cmeContextColumnRead(release,argv[11],row,argv[13],password,passwordLength,&plain)!=failed ||
+                    plain.bytes || plain.length) result=99;
+            }
+            goto done;
+        }
+        cmeFixturePrint(plain.bytes,plain.length); putchar('\n'); goto done;
     }
     if (getenv("CDSE_CONTEXT_ADMISSION_CONTRACT"))
     {
@@ -765,6 +804,8 @@ static int cmeFixtureAdmissionRun(int argc, char **argv)
     cmeFixturePrint(bytes,8); cmeFixturePrint(output.witness.digest,32); putchar('\n');
 done:
     for (i=0;i<2;i++) { if (roots[i].parent>=0) close(roots[i].parent); free(names[i]); }
+    cmeContextV2BufferFree(&plain); cmeContextColumnReadReleaseFree(&release);
+    OPENSSL_cleanse(password,sizeof(password));
     free(journal); cmeContextWitnessClose(&witness); cmeContextManagerClose(&manager); return(result);
 }
 #endif
@@ -772,7 +813,7 @@ done:
 int main(int argc, char **argv)
 {
 #ifdef CDSE_CONTEXT_COLUMN_TESTING
-    if (argc>2 && !strcmp(argv[2],"column-admission-run")) return(cmeFixtureAdmissionRun(argc,argv));
+    if (argc>2 && (!strcmp(argv[2],"column-admission-run") || !strcmp(argv[2],"column-read") || !strcmp(argv[2],"column-read-release"))) return(cmeFixtureAdmissionRun(argc,argv));
 #endif
     if (argc>2 && !strncmp(argv[2],"target-",7)) return(cmeFixtureTarget(argc,argv));
     cmeContextManager *manager=NULL;

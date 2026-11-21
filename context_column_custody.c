@@ -131,7 +131,7 @@ done:
     closedir(directory); return(result);
 }
 
-static int cmeCustodyRead(const cmeCustodyDirectory *root, cmeCustodyFile *entry, unsigned char **output, int initial)
+int cmeCustodyRead(const cmeCustodyDirectory *root, cmeCustodyFile *entry, unsigned char **output, int initial)
 {
     unsigned char buffer[16384],digest[32],*copy=NULL;
     EVP_MD_CTX *hash=NULL;

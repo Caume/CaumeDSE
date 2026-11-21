@@ -432,4 +432,14 @@ int cmeContextManagerColumnAdmissionStep(cmeContextManager *manager,
     const cmeContextAnchor *registry, const cmeContextMapAnchor *original, const cmeContextMapAnchor *next,
     const char *name, const unsigned char evidence[32], const unsigned char *ticket, size_t length,
     const unsigned char digest[32], int commit, int *state);
+/* Trusted admission reader core only. Authenticate the exact committed ticket
+   while the global block remains set, then return metadata and a distinct
+   read-only binding. Generic mapped/target codecs refuse this binding. These
+   functions do NOT check witness/physical proof: use ColumnReadRelease/Read.
+   Stable nonoverlapping inputs/outputs, clear outputs on failure; 0/1/2. */
+int cmeContextBindingCheckAdmission(cmeContextManager *manager, const cmeContextBinding *binding);
+int cmeContextManagerColumnAdmissionBind(cmeContextManager *manager,
+    const cmeContextAnchor *registry, const cmeContextMapAnchor *original, const cmeContextMapAnchor *next,
+    const char *name, const unsigned char evidence[32], const unsigned char *ticket, size_t length,
+    const unsigned char digest[32], cmeContextMap **map, cmeContextBinding **binding);
 #endif
