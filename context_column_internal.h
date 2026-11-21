@@ -32,6 +32,13 @@ struct cmeContextColumnCustody
     int failed;
 };
 
+int cmeContextV2OpenAdmissionBinding(cmeContextManager *manager, const cmeContextBinding *binding,
+    const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
+    const unsigned char salt[16], const unsigned char *frame, size_t length, cmeContextV2Buffer *plaintext);
+int cmeColumnStageDeserializeAdmission(cmeContextManager *manager, const cmeContextBinding *binding,
+    const cmeContextMap *map, const unsigned char *image, size_t length, const unsigned char digest[32],
+    const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage);
+int cmeCustodyRead(const cmeCustodyDirectory *root, cmeCustodyFile *entry, unsigned char **output, int initial);
 int cmeCustodyRootOpen(const cmeContextColumnCustodyRoot *input, cmeCustodyDirectory *root);
 int cmeCustodyPhysicalCheck(cmeContextColumnCustody *custody);
 int cmeColumnPublicationCompleted(cmeContextColumnCustody *custody,

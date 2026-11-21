@@ -119,8 +119,8 @@ static int cmeAdmissionSnapshot(cmeContextColumnCustody *custody, const unsigned
 
 /* No target capability or credentials: the manager ticket authenticates this
    exact retained snapshot, originally constructed from complete fresh custody. */
-static int cmeAdmissionSnapshotCheck(const cmeContextColumnCustodyRoot *source,
-    const cmeContextColumnCustodyRoot *published, const unsigned char *bytes, size_t length)
+static int cmeAdmissionSnapshotLoad(const cmeContextColumnCustodyRoot *source,
+    const cmeContextColumnCustodyRoot *published, const unsigned char *bytes, size_t length, cmeContextV2Buffer *image, unsigned char imageDigest[32])
 {
     cmeAdmissionReader reader={bytes,length};
     cmeContextColumnCustody *view=NULL;
@@ -128,6 +128,8 @@ static int cmeAdmissionSnapshotCheck(const cmeContextColumnCustodyRoot *source,
     size_t root,i;
     uint64_t count;
     int result=1;
+    unsigned char *raw=NULL;
+    size_t selected=SIZE_MAX,missing=0;
     if (!bytes || length> CME_PROOF_MAX || length<sizeof(cmeProofDomain)+96 ||
         memcmp(bytes,cmeProofDomain,sizeof(cmeProofDomain)) ||
         cmeAdmissionTake(&reader,NULL,sizeof(cmeProofDomain)+96)) goto done;
@@ -158,9 +160,37 @@ static int cmeAdmissionSnapshotCheck(const cmeContextColumnCustodyRoot *source,
         }
     }
     if (reader.length) goto done;
-    result=cmeCustodyPhysicalCheck(view);
+    result=cmeCustodyPhysicalCheck(view); if (result) goto done;
+    if (image)
+    {
+        size_t j;
+        result=1;
+        if (!imageDigest || view->count[1]!=view->count[0]+1) goto done;
+        j=0;
+        for (i=0;i<view->count[1];i++)
+        {
+            if (j<view->count[0] && !strcmp(view->files[1][i].name,view->files[0][j].name)) j++;
+            else { selected=i; missing++; }
+        }
+        if (j!=view->count[0] || missing!=1 || !strcmp(view->files[1][selected].name,"ResourcesDB") ||
+            cmeCustodyRead(&view->roots[1],&view->files[1][selected],&raw,0)) goto done;
+        image->length=view->files[1][selected].length;
+        image->bytes=malloc(image->length+1); if (!image->bytes) { image->length=0; goto done; }
+        memcpy(image->bytes,raw,image->length); image->bytes[image->length]=0;
+        memcpy(imageDigest,view->files[1][selected].digest,32);
+        result=cmeCustodyPhysicalCheck(view);
+    }
+    else result=0;
 done:
+    free(raw);
+    if (result && image) { cmeContextV2BufferFree(image); if (imageDigest) memset(imageDigest,0,32); }
     cmeContextColumnCustodyFree(&view); return(result);
+}
+
+static int cmeAdmissionSnapshotCheck(const cmeContextColumnCustodyRoot *source,
+    const cmeContextColumnCustodyRoot *published, const unsigned char *bytes, size_t length)
+{
+    return(cmeAdmissionSnapshotLoad(source,published,bytes,length,NULL,NULL));
 }
 
 int cmeContextColumnAdmissionPrepare(cmeContextColumnCustody *custody,
@@ -204,40 +234,74 @@ done:
     free(ticket); free(proof.bytes); free(encoded.bytes); return(result);
 }
 
-int cmeContextColumnAdmissionRun(cmeContextManager *manager, cmeContextWitness *witness,
-    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
-    const unsigned char *journal, size_t length, const unsigned char journalDigest[32],
-    cmeContextColumnAdmissionResult *output)
+typedef struct
+{
+    cmeContextColumnAdmissionResult completed;
+    cmeContextMapAnchor original;
+    cmeContextWitnessAnchor retained;
+    unsigned char proofDigest[32],ticketDigest[32];
+    const unsigned char *ticket,*proof;
+    size_t ticketLength,proofLength;
+    char name[129];
+} cmeAdmissionPlan;
+
+static int cmeAdmissionDecodeJournal(const unsigned char *journal, size_t length,
+    const unsigned char journalDigest[32], cmeAdmissionPlan *plan)
 {
     cmeAdmissionReader reader={journal,length};
     cmeContextColumnAdmissionResult completed={0};
     cmeContextMapAnchor original={0};
-    cmeContextWitnessAnchor retained={0},current={0};
-    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    cmeContextWitnessAnchor retained={0};
     unsigned char digest[32],proofDigest[32],ticketDigest[32];
     const unsigned char *ticket=NULL,*proof=NULL;
     size_t ticketLength=0,proofLength=0;
     uint64_t number;
     char name[129];
-    int result=1,state=0;
-    if (output) memset(output,0,sizeof(*output));
-    if (!output || !manager || !witness || !journal || !journalDigest || length>cmeContextColumnAdmissionMaxBytes ||
+    if (!plan || !journal || !journalDigest || length>cmeContextColumnAdmissionMaxBytes ||
         length<sizeof(cmeAdmissionJournalDomain)+73+120+10 || cmeAdmissionHash(journal,length,digest) ||
         CRYPTO_memcmp(digest,journalDigest,32) || memcmp(journal,cmeAdmissionJournalDomain,sizeof(cmeAdmissionJournalDomain)) ||
         cmeAdmissionTake(&reader,NULL,sizeof(cmeAdmissionJournalDomain)) ||
         cmeAdmissionTake(&reader,completed.registry.deployment,16) || cmeAdmissionTake(&reader,completed.registry.organization,16) ||
-        cmeAdmissionReadNumber(&reader,&completed.registry.generation,8) || cmeAdmissionReadNumber(&reader,&number,1)) goto done;
+        cmeAdmissionReadNumber(&reader,&completed.registry.generation,8) || cmeAdmissionReadNumber(&reader,&number,1)) return(1);
     completed.registry.minimumFormat=(unsigned int)number;
     if (cmeAdmissionTake(&reader,completed.registry.digest,32) || cmeAdmissionReadNumber(&reader,&original.revision,8) ||
         cmeAdmissionTake(&reader,original.digest,32) || cmeAdmissionReadNumber(&reader,&retained.revision,8) ||
         cmeAdmissionTake(&reader,retained.digest,32) || cmeAdmissionReadNumber(&reader,&completed.catalog.revision,8) ||
         cmeAdmissionTake(&reader,completed.catalog.digest,32) || cmeAdmissionReadText(&reader,name,128,0) ||
-        cmeAdmissionReadNumber(&reader,&number,4) || !number || number>cmeContextRegistryMaxBytes || number>reader.length) goto done;
+        cmeAdmissionReadNumber(&reader,&number,4) || !number || number>cmeContextRegistryMaxBytes || number>reader.length) return(1);
     ticket=reader.bytes; ticketLength=(size_t)number;
     if (cmeAdmissionTake(&reader,NULL,ticketLength) || cmeAdmissionReadNumber(&reader,&number,4) ||
-        !number || number>CME_PROOF_MAX || number!=reader.length) goto done;
+        !number || number>CME_PROOF_MAX || number!=reader.length) return(1);
     proof=reader.bytes; proofLength=(size_t)number;
-    if (cmeAdmissionHash(proof,proofLength,proofDigest) || cmeAdmissionHash(ticket,ticketLength,ticketDigest)) goto done;
+    if (cmeAdmissionHash(proof,proofLength,proofDigest) || cmeAdmissionHash(ticket,ticketLength,ticketDigest)) return(1);
+    plan->completed=completed; plan->original=original; plan->retained=retained;
+    memcpy(plan->proofDigest,proofDigest,32); memcpy(plan->ticketDigest,ticketDigest,32);
+    plan->ticket=ticket; plan->ticketLength=ticketLength; plan->proof=proof; plan->proofLength=proofLength;
+    strcpy(plan->name,name); return(0);
+}
+
+int cmeContextColumnAdmissionRun(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *journal, size_t length, const unsigned char journalDigest[32],
+    cmeContextColumnAdmissionResult *output)
+{
+    cmeAdmissionPlan plan={0};
+    cmeContextColumnAdmissionResult completed={0};
+    cmeContextMapAnchor original={0};
+    cmeContextWitnessAnchor retained={0},current={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    unsigned char proofDigest[32],ticketDigest[32];
+    const unsigned char *ticket=NULL,*proof=NULL;
+    size_t ticketLength=0,proofLength=0;
+    char name[129];
+    int result=1,state=0;
+    if (output) memset(output,0,sizeof(*output));
+    if (!output || !manager || !witness) goto done;
+    if (cmeAdmissionDecodeJournal(journal,length,journalDigest,&plan)) goto done;
+    completed=plan.completed; original=plan.original; retained=plan.retained;
+    memcpy(proofDigest,plan.proofDigest,32); memcpy(ticketDigest,plan.ticketDigest,32);
+    ticket=plan.ticket; ticketLength=plan.ticketLength; proof=plan.proof; proofLength=plan.proofLength;
+    strcpy(name,plan.name);
     result=cmeContextManagerColumnAdmissionStep(manager,&completed.registry,&original,&completed.catalog,name,
         proofDigest,ticket,ticketLength,ticketDigest,0,&state); if (result) goto done;
     result=1;
@@ -275,4 +339,126 @@ int cmeContextColumnAdmissionRun(cmeContextManager *manager, cmeContextWitness *
     completed.state=2; *output=completed;
 done:
     return(result);
+}
+
+struct cmeContextColumnReadRelease
+{
+    cmeContextManager *manager;
+    cmeContextWitness *witness;
+    cmeContextWitnessAnchor acknowledged;
+    cmeContextColumnCustodyRoot roots[2];
+    char names[2][NAME_MAX+1];
+    unsigned char *journal,digest[32];
+    size_t length;
+    int failed;
+};
+
+void cmeContextColumnReadReleaseFree(cmeContextColumnReadRelease **release)
+{
+    size_t i;
+    if (!release || !*release) return;
+    for (i=0;i<2;i++) if ((*release)->roots[i].parent>=0) close((*release)->roots[i].parent);
+    free((*release)->journal); OPENSSL_cleanse(*release,sizeof(**release)); free(*release); *release=NULL;
+}
+
+int cmeContextColumnReadReleaseCheck(cmeContextColumnReadRelease *release)
+{
+    cmeAdmissionPlan plan={0};
+    cmeContextWitnessAnchor current={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    int result=1,state=0;
+    if (!release) return(1);
+    if (release->failed) return(release->failed);
+    if (cmeAdmissionDecodeJournal(release->journal,release->length,release->digest,&plan)) goto done;
+    result=cmeContextManagerColumnAdmissionStep(release->manager,&plan.completed.registry,&plan.original,
+        &plan.completed.catalog,plan.name,plan.proofDigest,plan.ticket,plan.ticketLength,plan.ticketDigest,0,&state);
+    if (result) goto done;
+    if (state!=2) { result=2; goto done; }
+    result=cmeContextWitnessReconcile(release->witness,&plan.retained,&plan.completed.registry,&plan.completed.catalog,
+        &recovery,&current); if (result) goto done;
+    if (recovery!=cmeWitnessRecoveryAlreadyAdvanced || current.revision!=release->acknowledged.revision ||
+        CRYPTO_memcmp(current.digest,release->acknowledged.digest,32)) { result=2; goto done; }
+    result=1;
+    if (cmeAdmissionSnapshotCheck(&release->roots[0],&release->roots[1],plan.proof,plan.proofLength)) goto done;
+    result=cmeContextManagerCheckAnchors(release->manager,&plan.completed.registry,&plan.completed.catalog);
+    if (result) goto done;
+    result=cmeContextWitnessReconcile(release->witness,&release->acknowledged,&plan.completed.registry,&plan.completed.catalog,
+        &recovery,&current);
+    if (!result && recovery!=cmeWitnessRecoveryCurrent) result=2;
+done:
+    if (result) release->failed=result;
+    return(result);
+}
+
+int cmeContextColumnReadReleaseOpen(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *journal, size_t length, const unsigned char journalDigest[32],
+    const cmeContextWitnessAnchor *acknowledged, cmeContextColumnReadRelease **release)
+{
+    cmeContextColumnReadRelease *candidate=NULL;
+    const cmeContextColumnCustodyRoot *roots[2]={source,published};
+    size_t i;
+    int result=1;
+    if (release) *release=NULL;
+    if (!release || !manager || !witness || !journal || !journalDigest || !acknowledged || !acknowledged->revision ||
+        !length || length>cmeContextColumnAdmissionMaxBytes) return(1);
+    candidate=calloc(1,sizeof(*candidate)); if (!candidate) goto done;
+    candidate->roots[0].parent=candidate->roots[1].parent=-1;
+    candidate->manager=manager; candidate->witness=witness; candidate->acknowledged=*acknowledged;
+    candidate->journal=malloc(length); if (!candidate->journal) goto done;
+    memcpy(candidate->journal,journal,length); candidate->length=length; memcpy(candidate->digest,journalDigest,32);
+    for (i=0;i<2;i++)
+    {
+        if (!roots[i] || roots[i]->parent<0 || cmeCustodyLeaf(roots[i]->name)) goto done;
+        strcpy(candidate->names[i],roots[i]->name); candidate->roots[i].name=candidate->names[i];
+        candidate->roots[i].parent=fcntl(roots[i]->parent,F_DUPFD_CLOEXEC,3);
+        if (candidate->roots[i].parent<0) goto done;
+    }
+    result=cmeContextColumnReadReleaseCheck(candidate); if (result) goto done;
+    cmeAdmissionCheckpoint("before-read-release");
+    result=cmeContextColumnReadReleaseCheck(candidate); if (result) goto done;
+    *release=candidate; candidate=NULL;
+done:
+    cmeContextColumnReadReleaseFree(&candidate); return(result);
+}
+
+int cmeContextColumnRead(cmeContextColumnReadRelease *release, const char *table, int64_t row, const char *field,
+    const unsigned char *password, size_t passwordLength, cmeContextV2Buffer *plaintext)
+{
+    cmeAdmissionPlan plan={0};
+    cmeContextMap *map=NULL;
+    cmeContextBinding *binding=NULL;
+    cmeContextColumnStage *stage=NULL;
+    cmeContextV2Buffer image={0},candidate={0};
+    unsigned char imageDigest[32];
+    size_t i;
+    int result=1;
+    if (plaintext) { plaintext->bytes=NULL; plaintext->length=0; }
+    if (!plaintext || !release || !table || !field || row<1 || !password || !passwordLength || passwordLength>256) goto done;
+    result=cmeContextColumnReadReleaseCheck(release); if (result) goto done;
+    result=1;
+    if (cmeAdmissionDecodeJournal(release->journal,release->length,release->digest,&plan) ||
+        cmeAdmissionSnapshotLoad(&release->roots[0],&release->roots[1],plan.proof,plan.proofLength,&image,imageDigest)) goto done;
+    result=cmeContextManagerColumnAdmissionBind(release->manager,&plan.completed.registry,&plan.original,&plan.completed.catalog,
+        plan.name,plan.proofDigest,plan.ticket,plan.ticketLength,plan.ticketDigest,&map,&binding); if (result) goto done;
+    result=cmeColumnStageDeserializeAdmission(release->manager,binding,map,image.bytes,image.length,imageDigest,
+        password,passwordLength,&stage); if (result) goto done;
+    result=1;
+    for (i=0;i<stage->count;i++)
+    {
+        const cmeContextColumnCell *cell=&stage->cells[i];
+        if (!strcmp(cell->table,table) && cell->row==row && !strcmp(cell->field,field))
+        {
+            result=cmeContextV2OpenAdmissionBinding(release->manager,binding,table,row,field,password,passwordLength,
+                cell->salt,cell->frame.bytes,cell->frame.length,&candidate);
+            break;
+        }
+    }
+    if (result) goto done;
+    cmeAdmissionCheckpoint("after-read");
+    result=cmeContextColumnReadReleaseCheck(release); if (result) goto done;
+    *plaintext=candidate; memset(&candidate,0,sizeof(candidate));
+done:
+    cmeContextV2BufferFree(&image); cmeContextV2BufferFree(&candidate); cmeContextColumnStageFree(&stage);
+    cmeContextBindingFree(&binding); cmeContextMapFree(&map); return(result);
 }

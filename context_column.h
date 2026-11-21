@@ -332,4 +332,32 @@ int cmeContextColumnAdmissionRun(cmeContextManager *manager, cmeContextWitness *
     const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
     const unsigned char *journal, size_t length, const unsigned char journalDigest[32],
     cmeContextColumnAdmissionResult *result);
+/* Phase-38 scoped READ-ONLY release for the admitted published export. Requires
+   original independently pinned phase-37 journal and independently retained
+   ACKNOWLEDGED witness token. No admission/advance/reset is performed here.
+   Open duplicates parent descriptors and copies journal/names/pins; manager and
+   witness are borrowed until Free. Caller may free inputs/close parents after
+   successful Open. Check/Read/Free must be serialized; observed proof/authority
+   failure permanently poisons this capability. No credentials/plaintext retained.
+   Read loads ONLY the unique published V2 image identified by the signed full
+   inventory, checks exact bytes/schema/cells/semantics and AEAD, and checks
+   witness/physical/authority before releasing a selected cell's plaintext.
+   Wrong credentials/missing cells clear output without poisoning valid state.
+   Generic mapped/copy-target codecs refuse internal read bindings; no seal API.
+   The catalog job and ALL generic reads/writers remain globally blocked: this
+   scoped capability is not global activation or live route dispatch. No counters,
+   files, catalog/job/witness state are changed; interrupted Open can be retried
+   with ORIGINAL approvals. Point-in-time checks require quiescent writers and
+   protected namespaces; no lease/coherent-backup/power-loss guarantee is added.
+   0/1/2/3 return rules, empty outputs, stable nonoverlapping arguments as above.
+   V2BufferFree clears returned plaintext; finish operations before closing handles. */
+typedef struct cmeContextColumnReadRelease cmeContextColumnReadRelease;
+int cmeContextColumnReadReleaseOpen(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *journal, size_t length, const unsigned char journalDigest[32],
+    const cmeContextWitnessAnchor *acknowledged, cmeContextColumnReadRelease **release);
+int cmeContextColumnReadReleaseCheck(cmeContextColumnReadRelease *release);
+void cmeContextColumnReadReleaseFree(cmeContextColumnReadRelease **release);
+int cmeContextColumnRead(cmeContextColumnReadRelease *release, const char *table, int64_t row, const char *field,
+    const unsigned char *password, size_t passwordLength, cmeContextV2Buffer *plaintext);
 #endif
