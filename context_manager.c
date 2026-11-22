@@ -629,7 +629,7 @@ struct cmeContextBinding
 {
     cmeContextAnchor anchor;
     cmeContextMapAnchor mapAnchor;
-    int mapped; /* 0 raw, 1 stored map, 2 retained committed allocation target */
+    int mapped; /* 0 raw, 1 stored map, 2 retained target, 3 admission reader */
     size_t count;
     cmeBoundSlot *slots;
 };
@@ -2993,4 +2993,35 @@ done:
 before:
     if (result && state) *state=0;
     cmeContextMapFree(&allocation); return(result);
+}
+
+int cmeContextBindingCheckAdmission(cmeContextManager *manager, const cmeContextBinding *binding)
+{
+    if (!binding || binding->mapped!=3) return(1);
+    return(cmeContextBindingCheck(manager,binding));
+}
+
+int cmeContextManagerColumnAdmissionBind(cmeContextManager *manager,
+    const cmeContextAnchor *registry, const cmeContextMapAnchor *original, const cmeContextMapAnchor *next,
+    const char *name, const unsigned char evidence[32], const unsigned char *ticket, size_t length,
+    const unsigned char digest[32], cmeContextMap **map, cmeContextBinding **binding)
+{
+    cmeContextMap *metadata=NULL;
+    cmeContextBinding *candidate=NULL;
+    int result=1,state=0;
+    if (map) *map=NULL;
+    if (binding) *binding=NULL;
+    if (!map || !binding) return(1);
+    result=cmeContextManagerColumnAdmissionStep(manager,registry,original,next,name,evidence,ticket,length,digest,0,&state);
+    if (result) goto done;
+    if (state!=2) { result=2; goto done; }
+    result=cmeContextManagerMapRead(manager,name,registry,next,&metadata); if (result) goto done;
+    result=1; if (!metadata->active || !metadata->blocked || metadata->role!=4) goto done;
+    result=cmeContextManagerBind(manager,metadata->resource,metadata->role,metadata->slots,metadata->count,registry,&candidate);
+    if (result) goto done;
+    candidate->mapped=3; candidate->mapAnchor=*next;
+    result=cmeContextBindingCheckAdmission(manager,candidate); if (result) goto done;
+    *map=metadata; metadata=NULL; *binding=candidate; candidate=NULL;
+done:
+    cmeContextMapFree(&metadata); cmeContextBindingFree(&candidate); return(result);
 }
