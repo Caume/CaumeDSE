@@ -594,6 +594,7 @@ static int cmeFixtureAdmission(cmeContextManager *manager, int argc, char **argv
     unsigned char zero[32]={0},planDigest[32];
     size_t length=0,ticketLength=0;
     int result=1,state=99,prepare=!strcmp(argv[2],"admission-plan"),guard=!strcmp(argv[2],"admission-guard");
+    int globalPlan=!strcmp(argv[2],"admission-global-plan"),globalStep=!strcmp(argv[2],"admission-global-step");
     if (prepare)
     {
         if (argc!=12 || cmeFixtureReadBytes(argv[5],&input,&length) || cmeFixtureDecode(argv[6],planDigest,32) ||
@@ -613,10 +614,29 @@ static int cmeFixtureAdmission(cmeContextManager *manager, int argc, char **argv
         }
         goto done;
     }
-    if (argc!=(guard ? 14 : 13) || cmeFixtureRegistryToken(argv[5],&registry) ||
+    if (argc!=(globalStep ? 15 : (guard ? 14 : 13)) || cmeFixtureRegistryToken(argv[5],&registry) ||
         cmeFixtureCatalogToken(argv[6],&catalog) || cmeFixtureCatalogToken(argv[7],&next) ||
         cmeFixtureDecode(argv[9],evidence,32) || cmeFixtureReadBytes(argv[10],&input,&length) ||
         cmeFixtureDecode(argv[11],digest,32)) goto done;
+    if (globalPlan || globalStep)
+    {
+        unsigned char request[32]; cmeContextMapAnchor released={0};
+        if (cmeFixtureDecode(argv[12],request,32) || (globalStep && cmeFixtureCatalogToken(argv[13],&released))) goto done;
+        if (globalPlan)
+        {
+            result=cmeContextManagerColumnGlobalPlan(manager,&registry,&catalog,&next,argv[8],evidence,input,length,digest,request,&released);
+            if (!result) { cmeFixtureCatalogPrint(&released); putchar('\n'); }
+            else if (memcmp(&released,&empty,sizeof(empty))) result=3;
+        }
+        else
+        {
+            result=cmeContextManagerColumnGlobalStep(manager,&registry,&catalog,&next,argv[8],evidence,input,length,digest,
+                request,&released,atoi(argv[14]),&state);
+            if (!result) printf("%d\n",state);
+            else if (state) result=3;
+        }
+        goto done;
+    }
     if (!strcmp(argv[2],"admission-bind"))
     {
         cmeContextMap *metadata=NULL;

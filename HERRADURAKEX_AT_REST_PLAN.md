@@ -3931,3 +3931,93 @@ clearing the prepared-job block. Older readers must reject that transition.
 Then add durable global-release recovery, installed handoff/orchestration and
 live V2 dispatch. Wider mixed-profile/floor-2/provider acceptance, rename/delete
 lifecycle and production protected-custody/monotonic deployment remain pending.
+
+
+## Global catalog release and witnessed bindings (#147 phase 39)
+
+`cmeContextColumnGlobalReleasePrepare/Run` explicitly opt the admitted catalog
+into witness-required v5 and complete the exact phase-36 prepared admission job.
+This releases the global catalog permission block. It does not replace active
+engine databases or install a live storage dispatcher. Existing v1-v4 catalogs
+and their ordinary bindings retain their previous behavior. Opt-in is
+irreversible through these APIs; older readers reject v5 authentication rather
+than bypassing the witness requirement.
+
+Prepare requires the original retained phase-37 admission journal/hash, approved
+source/published directory objects and names, manager/witness handles and the
+independently retained acknowledged W1 token at admitted registry R1/catalog C1.
+It opens and checks phase-38 scoped custody, previews C2 in a rolled-back SQLite
+transaction and returns owned envelope bytes and SHA-256. It changes no authority
+or files. The owner must privately persist/fsync the envelope and its directory
+and independently retain its hash BEFORE calling Run. Run cannot establish that
+external durability or independent retention for the caller. Free returned
+bytes with `cmeContextV2BufferFree`.
+
+The envelope is `CDSE-HKX-COLUMN-GLOBAL-RELEASE-v1\0`, uint32 admission-journal
+length, exact original journal, W1 revision/digest (8+32 bytes) and C2
+revision/digest (8+32 bytes), with big-endian integers. SHA-256 of the prefix
+through W1 is the release request digest; SHA-256 of the entire envelope is the
+independently retained approval. The bound is admission maximum 6 MiB plus
+512 bytes. Physical proof and original signed ticket remain unchanged.
+
+Run verifies the envelope hash, original manager-signed admission and exact
+physical inventory/stat/hash proof. At R1/C1 it requires current acknowledged
+W1. A single transaction adds `registry_meta.witness_version=1`, the singleton
+`context_read_policy` row, and completes the exact job with state 2 and finished
+revision C2=C1+1. It signs the new catalog under `CDSE-HKX-MAP-v5\0` using the
+full canonical v4 typed payload followed by uint32 policy length and policy
+bytes. The policy contains `CDSE-HKX-COLUMN-GLOBAL-POLICY-v1\0`, packed R1
+(73 bytes), original C0 (40), admitted C1 (40), original ticket SHA-256,
+physical-proof SHA-256, release-request SHA-256 and uint8-length map name.
+The singleton, types, bounds and witness flag are validated on every catalog
+authentication. Removing/replacing the policy, changing the flag or computing
+the old v4 signature cannot authenticate the new catalog.
+
+After C2 commits, Run rechecks physical proof and exact manager state, then
+advances W1 to W2 at R1/C2. It checks all three again before returning state 2,
+unchanged R1, C2 and W2. Retain W2 independently before using it. Failure clears
+outputs but either authority may already have committed: retry with the ORIGINAL
+envelope/hash and directory approvals. Recovery accepts exact C1/W1, C2 with
+W1 awaiting advancement, or C2/W2 after lost acknowledgement. Changed/later
+registry, catalog or witness state refuses; no repair, token adoption or reset
+is automatic. Manager transactions and witness storage retain their existing
+crash/durability assumptions; process-crash tests are not physical power-loss
+certification. Physical changes withhold acknowledgement even after C2 commits.
+
+`cmeContextManagerWitnessRequired` authenticates exact pins and reports opt-in.
+Ordinary `cmeContextManagerMapBind` always refuses v5, including after W2 is
+acknowledged. `cmeContextManagerMapBindWitness` requires an independently
+retained CURRENT witness token matching the supplied registry/catalog and an
+active unblocked map. Its distinct type-4 binding borrows the witness until
+`cmeContextBindingFree`; keep both manager and witness alive and serialize use
+and destruction. Binding validation checks witness freshness before and after
+the manager check. Public V2 memory Open/Seal already repeat binding validation
+around crypto, so a late witness change withholds plaintext/ciphertext. There
+is no implicit witness advancement, ordinary-binding fallback, provider fallback
+or witness lease. Unlike scoped phase-38 capabilities, ordinary bindings do not
+promise permanent poisoning; obtain fresh reviewed bindings for operations.
+
+Between C2 commit and W2 acknowledgement, old readers fail catalog
+authentication, ordinary new bindings refuse and witnessed bindings with W1
+fail freshness. C1-scoped read capabilities and prior approval pins expire at
+C2. Trusted low-level GlobalPlan/Step treat physical evidence and request digest
+as opaque issuer inputs; applications must use the guarded column adapter.
+Generic witnessed memory crypto checks authority, not physical file identity;
+its caller must supply approved frames. File-level V2 readers and installed/live
+adapters carrying full container/custody checks remain pending. Older CLI,
+copy/shuffle owner workflows using ordinary bindings fail closed on v5 and need
+an explicit witness-aware migration before use there. Trusted normal metadata
+writers may advance pins after release; retained old bindings then fail until
+separate witness review/advancement and new binding construction.
+
+Registry generation, physical files, ciphertext formats and original admission
+journals are preserved. Inputs must remain stable and nonoverlapping; statuses
+0/1/2/3 and empty-output contracts follow earlier APIs. Protect namespaces,
+keys/envelopes and independent witness retention; keep writers stopped during
+physical admission/release. Point-in-time checks do not revoke returned
+plaintext or defend independent coherent-backup rollback without deployment
+custody/monotonic controls.
+
+TODO #147 stays open for installed/live v5 adapters and active handoff, wider
+mixed-profile/floor-2 migration/provider acceptance, rename/delete lifecycle and
+production protected-custody/monotonic deployment.

@@ -360,4 +360,27 @@ int cmeContextColumnReadReleaseCheck(cmeContextColumnReadRelease *release);
 void cmeContextColumnReadReleaseFree(cmeContextColumnReadRelease **release);
 int cmeContextColumnRead(cmeContextColumnReadRelease *release, const char *table, int64_t row, const char *field,
     const unsigned char *password, size_t passwordLength, cmeContextV2Buffer *plaintext);
+/* Phase-39 opt-in global release. Prepare requires an acknowledged phase-37
+   admission and the independently retained phase-38 witness token. It previews
+   v5 without authority commits and returns an owned release envelope/hash.
+   Privately persist/fsync it and independently retain its SHA before Run.
+   Run authenticates original envelope/physical proof, atomically installs v5
+   and completes the prepared job, then reconciles/advances the witness. Between
+   commits all ordinary bindings are denied and witnessed bindings refuse stale
+   checkpoints. Retain returned witness token separately. Failed calls clear
+   outputs but may have committed either DB: retry ORIGINAL envelope/hash only.
+   v5 is irreversible here; older readers fail catalog authentication. Existing
+   scoped C1 capabilities expire. No active DB replacement, live dispatch, lease,
+   rollback reset or power-loss guarantee. Protect namespaces/quiesce writers.
+   0/1/2/3 rules, stable nonoverlapping inputs, empty outputs; V2BufferFree for
+   envelope. After release use MapBindWitness and free bindings before witness. */
+#define cmeContextColumnGlobalMaxBytes (cmeContextColumnAdmissionMaxBytes+512U)
+int cmeContextColumnGlobalReleasePrepare(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *admission, size_t length, const unsigned char admissionDigest[32],
+    const cmeContextWitnessAnchor *acknowledged, cmeContextV2Buffer *envelope, unsigned char digest[32]);
+int cmeContextColumnGlobalReleaseRun(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *envelope, size_t length, const unsigned char digest[32],
+    cmeContextColumnAdmissionResult *result);
 #endif
