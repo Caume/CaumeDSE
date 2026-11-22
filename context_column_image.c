@@ -100,7 +100,7 @@ static uint32_t cmeColumnImageU32(const unsigned char *bytes)
 }
 
 static int cmeColumnDeserialize(cmeContextManager *manager, const cmeContextCopyTarget *target,
-    const cmeContextBinding *admissionBinding, const cmeContextMap *admissionMap,
+    const cmeContextBinding *admissionBinding, const cmeContextMap *admissionMap, int mapped,
     const unsigned char *image, size_t length, const unsigned char digest[32],
     const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage)
 {
@@ -120,7 +120,7 @@ static int cmeColumnDeserialize(cmeContextManager *manager, const cmeContextCopy
     if (!stage || !manager || (!target && (!admissionBinding || !admissionMap)) || (target && (admissionBinding || admissionMap)) || !image || length<4096 || length>cmeContextColumnMaxImageBytes ||
         !digest || !password || !passwordLength || passwordLength>256) goto done;
     if (target) result=cmeContextCopyTargetSource(manager,target,&map,&binding);
-    else result=cmeContextBindingCheckAdmission(manager,admissionBinding);
+    else result=mapped ? cmeContextBindingCheckMapped(manager,admissionBinding) : cmeContextBindingCheckAdmission(manager,admissionBinding);
     if (result) goto done;
     inventory=target ? map : admissionMap;
     result=1;
@@ -184,14 +184,17 @@ static int cmeColumnDeserialize(cmeContextManager *manager, const cmeContextCopy
         cmeContextColumnCell *cell=&candidate->cells[i];
         result=target ? cmeContextV2OpenCopyTarget(manager,target,cell->table,cell->row,cell->field,password,passwordLength,
             cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]) :
+            (mapped ? cmeContextV2Open(manager,admissionBinding,cell->table,cell->row,cell->field,password,passwordLength,
+                cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]) :
             cmeContextV2OpenAdmissionBinding(manager,admissionBinding,cell->table,cell->row,cell->field,password,passwordLength,
-                cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]);
+                cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]));
         if (result) goto done;
         result=1;
         if (memchr(plain[i].bytes,0,plain[i].length) || (plainTotal+=plain[i].length+1)>cmeContextColumnMaxBytes) goto done;
     }
     if (cmeColumnImagePlain(candidate,plain)) goto done;
-    result=target ? cmeContextBindingCheckMapped(manager,binding) : cmeContextBindingCheckAdmission(manager,admissionBinding);
+    result=target ? cmeContextBindingCheckMapped(manager,binding) : (mapped ? cmeContextBindingCheckMapped(manager,admissionBinding) :
+        cmeContextBindingCheckAdmission(manager,admissionBinding));
     if (result) goto done;
     if (target) { result=cmeContextCopyTargetCheck(manager,target); if (result) goto done; }
     *stage=candidate; candidate=NULL;
@@ -207,7 +210,7 @@ int cmeContextColumnStageDeserialize(cmeContextManager *manager, const cmeContex
     const unsigned char *image, size_t length, const unsigned char digest[32],
     const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage)
 {
-    return(cmeColumnDeserialize(manager,target,NULL,NULL,image,length,digest,password,passwordLength,stage));
+    return(cmeColumnDeserialize(manager,target,NULL,NULL,0,image,length,digest,password,passwordLength,stage));
 }
 
 int cmeColumnStageDeserializeAdmission(cmeContextManager *manager, const cmeContextBinding *binding,
@@ -218,7 +221,14 @@ int cmeColumnStageDeserializeAdmission(cmeContextManager *manager, const cmeCont
     if (stage) *stage=NULL;
     if (!map || !stage) return(1);
     view=*map; view.blocked=0; /* Only a validated type-3 binding authorizes this inventory. */
-    return(cmeColumnDeserialize(manager,NULL,binding,&view,image,length,digest,password,passwordLength,stage));
+    return(cmeColumnDeserialize(manager,NULL,binding,&view,0,image,length,digest,password,passwordLength,stage));
+}
+
+int cmeColumnStageDeserializeMapped(cmeContextManager *manager, const cmeContextBinding *binding,
+    const cmeContextMap *map, const unsigned char *image, size_t length, const unsigned char digest[32],
+    const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage)
+{
+    return(cmeColumnDeserialize(manager,NULL,binding,map,1,image,length,digest,password,passwordLength,stage));
 }
 
 int cmeContextColumnStageSerialize(cmeContextManager *manager, const cmeContextCopyTarget *target,
@@ -304,6 +314,14 @@ int cmeContextColumnStageSerialize(cmeContextManager *manager, const cmeContextC
     return(image && digest ? 3 : 1);
 }
 int cmeColumnStageDeserializeAdmission(cmeContextManager *manager, const cmeContextBinding *binding,
+    const cmeContextMap *map, const unsigned char *image, size_t length, const unsigned char digest[32],
+    const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage)
+{
+    (void)manager; (void)binding; (void)map; (void)image; (void)length; (void)digest; (void)password; (void)passwordLength;
+    if (stage) *stage=NULL;
+    return(stage ? 3 : 1);
+}
+int cmeColumnStageDeserializeMapped(cmeContextManager *manager, const cmeContextBinding *binding,
     const cmeContextMap *map, const unsigned char *image, size_t length, const unsigned char digest[32],
     const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage)
 {
