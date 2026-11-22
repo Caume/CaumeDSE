@@ -4137,3 +4137,63 @@ before reading.
 TODO #147 remains open for installed release orchestration, live witnessed
 reader integration and active handoff, wider migration and provider acceptance,
 lifecycle transitions and production custody.
+
+
+## Installed v5 release command (#147 phase 42)
+
+Use `caumedse-admin context-column-release` with a published export and a
+completed phase-37 admission. Keep export writers stopped. Pass the same
+absolute canonical paths, private authority directories, scope IDs and distinct
+key files used for the installed read command.
+
+```bash
+release_args=(
+  --registry-directory "$registry_directory" --witness-directory "$witness_directory"
+  --deployment "$deployment_hex" --organization "$organization_hex"
+  --registry-key-file "$registry_key_file" --witness-key-file "$witness_key_file"
+  --source-export "$source_export" --published-export "$published_export"
+  --release-envelope "$release_envelope"
+)
+
+caumedse-admin context-column-release prepare "${release_args[@]}" \
+  --admission-journal "$admission_journal" --admission-digest "$retained_admission_sha256" \
+  --retained-witness-token "$retained_w1_token"
+
+# Independently retain the printed digest before running complete.
+caumedse-admin context-column-release complete "${release_args[@]}" \
+  --release-digest "$retained_release_sha256"
+```
+
+`prepare` validates the original retained admission journal, its SHA-256
+digest and the independently acknowledged W1 token. It previews the v5
+catalog and exclusively creates the release envelope with mode `0600`.
+Choose a new path in an owned `0700` directory outside the exports and
+authority directories. The command syncs the envelope and parent before
+printing `release-digest=<sha256>`. Catalog and witness advancement happen
+during `complete`. If preparation or its output fails, preserve any partial
+or uncertain file. While the original admission is current, use a fresh path
+and the same original approvals to prepare again.
+
+`complete` reads and syncs the private envelope and parent, then checks the
+independently retained release digest and original physical proof. The v5
+transition completes the catalog job and advances the witness at the approved
+checkpoint. Success prints `catalog=<token>` and `witness-token=<token>`, each
+with a 40-byte value serialized as 80 lowercase hexadecimal digits. Keep the
+envelope and digest and independently retain the W2 token. Pass that token and
+the same envelope and digest explicitly to `context-column-read`.
+
+Use the same `complete` invocation after interruption or uncertain output.
+The recovery logic accepts only the original approved catalog and witness
+transition, including a committed catalog awaiting its witness or an already
+completed release awaiting acknowledgement. A repeated successful invocation
+returns the same tokens. A failure can leave one or both authority stores
+committed. Preserve the original envelope and separately retained digest for
+recovery. Approval or proof failures emit no result tokens. An output error
+returns failure even if the command already committed the transition.
+
+The command uses the phase-39 release statuses and provides a generic
+diagnostic on failure. The operator supplies retention and acknowledgement
+through separate invocations and protected storage. The installed workflow
+begins with a completed admission. TODO #147 remains open for installed
+admission and publication orchestration, live witnessed readers and active
+handoff, broader migration acceptance, lifecycle and production custody.
