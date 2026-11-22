@@ -4087,3 +4087,53 @@ reader integration/active handoff, wider mixed-profile/floor-2/provider/migratio
 acceptance, rename/delete lifecycle and production protected custody/monotonic
 deployment. This phase supplies the post-release file-reading boundary without
 enabling HTTP dispatch or changing active engine database paths.
+
+
+## Installed V2 file read command (#147 phase 41)
+
+Use `caumedse-admin context-column-read` to read a single verified cell from a
+completed v5 release. Keep export writers stopped and supply the original
+directory paths, envelope and independently retained approvals from phases 39
+and 40.
+
+```sh
+caumedse-admin context-column-read \
+  --registry-directory "$registry_directory" --witness-directory "$witness_directory" \
+  --deployment "$deployment_hex" --organization "$organization_hex" \
+  --registry-key-file "$registry_key_file" --witness-key-file "$witness_key_file" \
+  --source-export "$source_export" --published-export "$published_export" \
+  --release-envelope "$release_envelope" --release-digest "$retained_release_sha256" \
+  --retained-witness-token "$retained_w2_token" --password-file "$target_password_file" \
+  --table data --row 1 --field value
+```
+
+Use absolute canonical paths without symlink components. The registry, witness,
+export roots and export parents must be owned directories with mode `0700`.
+Store the envelope and each credential in an owned regular file with mode
+`0600`, one hard link and a private `0700` parent. Registry and witness keys
+must be distinct. Each key file contains 64 lowercase hexadecimal digits and
+may end with one newline. The deployment and organization IDs each contain 32
+lowercase hexadecimal digits. The separately retained release digest and W2
+token contain 64 and 80 lowercase hexadecimal digits, respectively. The
+password file contains 1 to 256 raw bytes. A newline or NUL byte is part of the
+password.
+
+The command opens the existing manager and witness and passes the original
+envelope, retained digest and token to the verified file adapter. The adapter
+checks the completed release, the physical proof and the full container before
+it returns a cell. It rechecks physical and witness state after decryption.
+The command writes the verified bytes to stdout without a newline or encoding.
+Choose a private destination when capturing plaintext and keep the output
+separate from the approved inputs and export roots.
+
+Exit status `0` reports a successful read and write. Status `1` reports
+invalid input, unavailable data, bad credentials or an output error. Status
+`2` reports an authority conflict, including stale or pending release
+acknowledgement. Status `3` reports unavailable V2 support. Failed validation
+writes no cell bytes, and diagnostics omit paths, credentials and plaintext.
+For an interrupted release, recover it separately with the original approvals
+before reading.
+
+TODO #147 remains open for installed release orchestration, live witnessed
+reader integration and active handoff, wider migration and provider acceptance,
+lifecycle transitions and production custody.

@@ -224,7 +224,8 @@ int main(int argc, char **argv)
     FILE *output;
     if (argc>1 && !strcmp(argv[1],"reprotect-storage")) return(cmeStorageMain(argc,argv));
     if (argc>1 && (!strcmp(argv[1],"context-shuffle") || !strcmp(argv[1],"context-witness") ||
-        !strcmp(argv[1],"context-registered-shuffle") || !strcmp(argv[1],"context-copy-plan"))) return(cmeContextOwnerMain(argc,argv));
+        !strcmp(argv[1],"context-registered-shuffle") || !strcmp(argv[1],"context-copy-plan") ||
+        !strcmp(argv[1],"context-column-read"))) return(cmeContextOwnerMain(argc,argv));
     if (argc==2 && !strcmp(argv[1],"--help"))
     {
         puts("Usage: caumedse-admin reprotect-columnfile --database PATH --confirmed-scope REALPATH\n"
@@ -238,7 +239,8 @@ int main(int argc, char **argv)
              "Owner-approved offline shuffles: caumedse-admin context-shuffle --help\n"
              "Independent owner anchor checkpoint: caumedse-admin context-witness --help\n"
              "Guarded registered shuffles: caumedse-admin context-registered-shuffle --help\n"
-             "Retained copy allocations: caumedse-admin context-copy-plan --help");
+             "Retained copy allocations: caumedse-admin context-copy-plan --help\n"
+             "Verified V2 export reads: caumedse-admin context-column-read --help");
         return(0);
     }
     if (argc<2 || strcmp(argv[1],"reprotect-columnfile")) goto arguments;

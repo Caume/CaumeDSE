@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.41.0
+# Caume Data Security Engine (CaumeDSE) version 2.42.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3055,9 +3055,11 @@ The [released-file read API](HERRADURAKEX_AT_REST_PLAN.md#v2-file-reads-after-gl
 opens the exact completed release using the original retained envelope/hash and
 separately retained witness acknowledgement. It loads only the original
 proof-selected published image, validates the entire V2 container, and rechecks
-physical files and authority before returning a cell. Installed/live adapters
-and active-database handoff remain pending; these offline APIs do not enable
-live V2 dispatch.
+physical files and authority before returning a cell. Operators can run
+`caumedse-admin context-column-read` against a completed offline release. The
+command accepts a password from a private file and writes the verified cell as
+raw bytes. See the [installed command and input formats](HERRADURAKEX_AT_REST_PLAN.md#installed-v2-file-read-command-147-phase-41).
+Live V2 dispatch and active-database handoff remain pending.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit
