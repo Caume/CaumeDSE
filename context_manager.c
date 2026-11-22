@@ -1,6 +1,7 @@
 #include "common.h"
 #include "context_manager.h"
 #include "context_offline.h"
+#include "context_witness.h"
 #include <limits.h>
 #include <openssl/rand.h>
 
@@ -30,6 +31,7 @@ static int cmeMapMatch(const cmeContextMapAnchor *actual, const cmeContextMapAnc
 static int cmeShufflePending(cmeContextManager *manager, const char *name, int *pending);
 static int cmeCopyVersion(cmeContextManager *manager, int *enabled);
 static int cmeCopyPending(cmeContextManager *manager, int *pending);
+static int cmeWitnessVersion(cmeContextManager *manager, int *enabled);
 
 static int cmeManagerAnchorFetch(void *opaque, const unsigned char deployment[16],
                                 const unsigned char organization[16], cmeContextAnchor *anchor)
@@ -629,7 +631,9 @@ struct cmeContextBinding
 {
     cmeContextAnchor anchor;
     cmeContextMapAnchor mapAnchor;
-    int mapped; /* 0 raw, 1 stored map, 2 retained target, 3 admission reader */
+    int mapped; /* 0 raw, 1 stored, 2 target, 3 scoped reader, 4 witnessed map */
+    cmeContextWitness *witness; /* Borrowed for type 4 only. */
+    cmeContextWitnessAnchor acknowledged;
     size_t count;
     cmeBoundSlot *slots;
 };
@@ -757,12 +761,23 @@ int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *
 {
     if (!manager || !binding || memcmp(manager->deployment,binding->anchor.deployment,16) ||
         memcmp(manager->organization,binding->anchor.organization,16)) return(1);
+    if (binding->mapped==4)
+    {
+        cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+        cmeContextWitnessAnchor current={0};
+        int result=cmeContextWitnessReconcile(binding->witness,&binding->acknowledged,&binding->anchor,&binding->mapAnchor,&recovery,&current);
+        if (result) return(result);
+        if (recovery!=cmeWitnessRecoveryCurrent) return(2);
+        result=cmeManagerBindingCurrent(manager,binding); if (result) return(result);
+        result=cmeContextWitnessReconcile(binding->witness,&binding->acknowledged,&binding->anchor,&binding->mapAnchor,&recovery,&current);
+        return(!result && recovery!=cmeWitnessRecoveryCurrent ? 2 : result);
+    }
     return(cmeManagerBindingCurrent(manager,binding));
 }
 
 int cmeContextBindingCheckMapped(cmeContextManager *manager, const cmeContextBinding *binding)
 {
-    if (!binding || binding->mapped!=1) return(1);
+    if (!binding || (binding->mapped!=1 && binding->mapped!=4)) return(1);
     return(cmeContextBindingCheck(manager,binding));
 }
 
@@ -1071,6 +1086,44 @@ done:
     sqlite3_finalize(stmt); return(result);
 }
 
+/* v5 is global: no ordinary binding may ignore the witness gate. */
+static int cmeWitnessVersion(cmeContextManager *manager, int *enabled)
+{
+    sqlite3_stmt *stmt=NULL;
+    int result=1;
+    *enabled=0;
+    if (sqlite3_prepare_v2(manager->db,"SELECT count(*) FROM pragma_table_info('registry_meta') WHERE name='witness_version'",
+        -1,&stmt,NULL)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW) goto done;
+    if (!sqlite3_column_int(stmt,0))
+    {
+        sqlite3_finalize(stmt); stmt=NULL;
+        if (sqlite3_prepare_v2(manager->db,"SELECT 1 FROM sqlite_master WHERE name='context_read_policy'",-1,&stmt,NULL)==SQLITE_OK &&
+            sqlite3_step(stmt)==SQLITE_DONE) result=0;
+        goto done;
+    }
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"SELECT witness_version FROM registry_meta WHERE singleton=1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_ROW || sqlite3_column_type(stmt,0)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,0)!=1 ||
+        sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    *enabled=1; result=0;
+done:
+    sqlite3_finalize(stmt); return(result);
+}
+
+static int cmeWitnessPolicyEncode(cmeContextManager *manager, cmeMapEncoding *encoding)
+{
+    sqlite3_stmt *stmt=NULL;
+    int result=1;
+    if (sqlite3_prepare_v2(manager->db,"SELECT singleton,body FROM context_read_policy",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_ROW || sqlite3_column_type(stmt,0)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,0)!=1 ||
+        sqlite3_column_type(stmt,1)!=SQLITE_BLOB || sqlite3_column_bytes(stmt,1)<1 || sqlite3_column_bytes(stmt,1)>1024 ||
+        !sqlite3_column_blob(stmt,1) || cmeMapNumber(encoding,sqlite3_column_bytes(stmt,1),4) ||
+        cmeMapAppend(encoding,sqlite3_column_blob(stmt,1),sqlite3_column_bytes(stmt,1)) || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    result=0;
+done:
+    sqlite3_finalize(stmt); return(result);
+}
+
 static int cmeMapSign(cmeContextManager *manager, uint64_t revision,
                        cmeContextMapAnchor *anchor, unsigned char tag[32])
 {
@@ -1078,19 +1131,20 @@ static int cmeMapSign(cmeContextManager *manager, uint64_t revision,
     static const unsigned char extendedDomain[]="CDSE-HKX-MAP-v2";
     static const unsigned char pairDomain[]="CDSE-HKX-MAP-v3";
     static const unsigned char copyDomain[]="CDSE-HKX-MAP-v4";
+    static const unsigned char witnessDomain[]="CDSE-HKX-MAP-v5";
     cmeMapEncoding encoding={0};
     sqlite3_stmt *maps=NULL,*slots=NULL;
     sqlite3_int64 names,total,seen=0;
     unsigned int written;
-    int result=1,step,slotStep,extended,paired,copies;
+    int result=1,step,slotStep,extended,paired,copies,witness;
     encoding.bytes=malloc(cmeContextRegistryMaxBytes);
     if (!encoding.bytes || !revision || cmeShuffleVersion(manager,&extended) || cmePairVersion(manager,&paired) ||
-        cmeCopyVersion(manager,&copies) || (paired && !extended) || (copies && !paired) || sqlite3_prepare_v2(manager->db,
+        cmeCopyVersion(manager,&copies) || cmeWitnessVersion(manager,&witness) || (witness && !copies) || (paired && !extended) || (copies && !paired) || sqlite3_prepare_v2(manager->db,
         "SELECT (SELECT count(*) FROM context_maps),(SELECT count(*) FROM context_map_slots)",
         -1,&maps,NULL)!=SQLITE_OK || sqlite3_step(maps)!=SQLITE_ROW) goto done;
     names=sqlite3_column_int64(maps,0); total=sqlite3_column_int64(maps,1);
     if (names<0 || names>cmeContextRegistryMaxEntries || total<0 || total>cmeContextRegistryMaxEntries ||
-        cmeMapAppend(&encoding,copies ? copyDomain : (paired ? pairDomain : (extended ? extendedDomain : domain)),sizeof(domain)) || cmeMapAppend(&encoding,manager->deployment,16) ||
+        cmeMapAppend(&encoding,witness ? witnessDomain : (copies ? copyDomain : (paired ? pairDomain : (extended ? extendedDomain : domain))),sizeof(domain)) || cmeMapAppend(&encoding,manager->deployment,16) ||
         cmeMapAppend(&encoding,manager->organization,16) || cmeMapNumber(&encoding,revision,8) ||
         cmeMapNumber(&encoding,(uint64_t)names,4)) goto done;
     sqlite3_finalize(maps); maps=NULL;
@@ -1123,6 +1177,7 @@ static int cmeMapSign(cmeContextManager *manager, uint64_t revision,
     if (step!=SQLITE_DONE || names || seen!=total || (extended && cmeShuffleEncode(manager,revision,&encoding)) ||
         (paired && cmePairEncode(manager,&encoding)) ||
         (copies && cmeCopyJobsEncode(manager,revision,&encoding)) ||
+        (witness && cmeWitnessPolicyEncode(manager,&encoding)) ||
         !HMAC(EVP_sha256(),manager->key,32,encoding.bytes,encoding.length,tag,&written) || written!=32 ||
         !EVP_Digest(encoding.bytes,encoding.length,anchor->digest,&written,EVP_sha256(),NULL) || written!=32) goto done;
     anchor->revision=revision; result=0;
@@ -1239,7 +1294,11 @@ static int cmeManagerBindingCurrent(cmeContextManager *manager, const cmeContext
     if (binding->mapped)
     {
         result=1; if (cmeMapLoad(manager,&map)) goto done;
+        int witnessed=0;
         result=cmeMapMatch(&map,&binding->mapAnchor); if (result) goto done;
+        result=1;
+        if (cmeWitnessVersion(manager,&witnessed) || (binding->mapped==1 && witnessed) ||
+            (binding->mapped==4 && !witnessed)) goto done;
     }
     result=sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)==SQLITE_OK ? 0 : 1;
 done:
@@ -1404,6 +1463,12 @@ int cmeContextManagerMapBind(cmeContextManager *manager, const char *name,
     if (!binding) return(1);
     result=cmeContextManagerMapRead(manager,name,expected,mapExpected,&map);
     if (!result && (!map->active || map->blocked)) result=1;
+    if (!result)
+    {
+        int required=0;
+        result=cmeContextManagerWitnessRequired(manager,expected,mapExpected,&required);
+        if (!result && required) result=1;
+    }
     if (!result) result=cmeContextManagerBind(manager,map->resource,map->role,map->slots,map->count,expected,binding);
     if (!result)
     {
@@ -3024,4 +3089,169 @@ int cmeContextManagerColumnAdmissionBind(cmeContextManager *manager,
     *map=metadata; metadata=NULL; *binding=candidate; candidate=NULL;
 done:
     cmeContextMapFree(&metadata); cmeContextBindingFree(&candidate); return(result);
+}
+
+int cmeContextManagerWitnessRequired(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, int *required)
+{
+    cmeManagerState state={0}; cmeContextMapAnchor actual={0};
+    int result=1,value=0;
+    if (required) *required=0;
+    if (!manager || !registry || !catalog || !required) return(1);
+    pthread_mutex_lock(&manager->mutex);
+    if (sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=cmeShuffleCurrent(manager,registry,catalog,&state,&actual); if (result) goto done;
+    result=1;
+    if (cmeWitnessVersion(manager,&value) || sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    *required=value; result=0;
+done:
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
+}
+
+int cmeContextManagerMapBindWitness(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *acknowledged, const char *name, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, cmeContextBinding **binding)
+{
+    cmeContextMap *map=NULL; cmeContextBinding *candidate=NULL;
+    cmeContextWitnessAnchor current={0}; cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    int result=1,required=0;
+    if (binding) *binding=NULL;
+    if (!binding || !witness || !acknowledged) return(1);
+    result=cmeContextManagerWitnessRequired(manager,registry,catalog,&required); if (result) goto done;
+    if (!required) { result=1; goto done; }
+    result=cmeContextWitnessReconcile(witness,acknowledged,registry,catalog,&recovery,&current); if (result) goto done;
+    if (recovery!=cmeWitnessRecoveryCurrent) { result=2; goto done; }
+    result=cmeContextManagerMapRead(manager,name,registry,catalog,&map); if (result) goto done;
+    result=1; if (!map->active || map->blocked) goto done;
+    result=cmeContextManagerBind(manager,map->resource,map->role,map->slots,map->count,registry,&candidate);
+    if (result) goto done;
+    candidate->mapped=4; candidate->mapAnchor=*catalog; candidate->witness=witness; candidate->acknowledged=*acknowledged;
+    result=cmeContextBindingCheckMapped(manager,candidate); if (result) goto done;
+    *binding=candidate; candidate=NULL;
+done:
+    cmeContextMapFree(&map); cmeContextBindingFree(&candidate); return(result);
+}
+
+static int cmeReleaseRow(cmeContextManager *manager, const char *name, const unsigned char *ticket, size_t length,
+    const unsigned char digest[32], int state, uint64_t finished)
+{
+    sqlite3_stmt *stmt=NULL; unsigned char bytes[8]; size_t i; int result=1;
+    for (i=0;i<8;i++) bytes[i]=(unsigned char)(finished>>(56-8*i));
+    if (sqlite3_prepare_v2(manager->db,"SELECT job,body,state,finished FROM context_copies WHERE name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
+        sqlite3_column_bytes(stmt,0)!=32 || !sqlite3_column_blob(stmt,0) || CRYPTO_memcmp(sqlite3_column_blob(stmt,0),digest,32) ||
+        sqlite3_column_bytes(stmt,1)!=(int)length || !sqlite3_column_blob(stmt,1) || CRYPTO_memcmp(sqlite3_column_blob(stmt,1),ticket,length) ||
+        sqlite3_column_type(stmt,2)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,2)!=state ||
+        sqlite3_column_bytes(stmt,3)!=8 || !sqlite3_column_blob(stmt,3) || CRYPTO_memcmp(sqlite3_column_blob(stmt,3),bytes,8) ||
+        sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    result=0;
+done:
+    sqlite3_finalize(stmt); return(result);
+}
+
+static int cmeReleaseApply(cmeContextManager *manager, const char *name, const unsigned char *body, size_t length,
+    uint64_t revision)
+{
+    sqlite3_stmt *stmt=NULL; unsigned char bytes[8]; size_t i; int result=1;
+    for (i=0;i<8;i++) bytes[i]=(unsigned char)(revision>>(56-8*i));
+    if (sqlite3_exec(manager->db,"ALTER TABLE registry_meta ADD COLUMN witness_version INTEGER NOT NULL DEFAULT 1 CHECK(witness_version=1);"
+        "CREATE TABLE context_read_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1),body BLOB NOT NULL);",NULL,NULL,NULL)!=SQLITE_OK ||
+        sqlite3_prepare_v2(manager->db,"INSERT INTO context_read_policy VALUES(1,?1)",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,1,body,(int)length,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    sqlite3_finalize(stmt); stmt=NULL;
+    if (sqlite3_prepare_v2(manager->db,"UPDATE context_copies SET state=2,finished=?1 WHERE name=?2 AND state=1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_blob(stmt,1,bytes,8,SQLITE_STATIC)!=SQLITE_OK || sqlite3_bind_text(stmt,2,name,-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_step(stmt)!=SQLITE_DONE || sqlite3_changes(manager->db)!=1) goto done;
+    result=0;
+done:
+    sqlite3_finalize(stmt); return(result);
+}
+
+static int cmeReleaseAction(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *original, const cmeContextMapAnchor *admitted, const char *name,
+    const unsigned char evidence[32], const unsigned char *ticket, size_t length, const unsigned char digest[32],
+    const unsigned char request[32], const cmeContextMapAnchor *expectedNext, int commit,
+    cmeContextMapAnchor *published, int *state)
+{
+    static const unsigned char domain[]="CDSE-HKX-COLUMN-GLOBAL-POLICY-v1";
+    unsigned char bytes[1024],packed[73],tag[32];
+    cmeMapEncoding policy={bytes,0};
+    cmeManagerState current={0}; cmeContextMapAnchor actual={0},planned={0};
+    cmeContextMap *allocation=NULL; cmeContextBinding *binding=NULL;
+    sqlite3_stmt *stmt=NULL;
+    int result=1,required=0;
+    if (state) *state=0;
+    if (published) memset(published,0,sizeof(*published));
+    if (!manager || !state || !published || !original || original->revision==UINT64_MAX || !admitted ||
+        admitted->revision!=original->revision+1 || admitted->revision==UINT64_MAX || !request || (commit!=0 && commit!=1) ||
+        (commit && !expectedNext) || (expectedNext && expectedNext->revision!=admitted->revision+1) ||
+        cmeManagerAnchorPack(registry,packed) || cmeAdmissionDecode(manager,registry,original,name,evidence,ticket,length,digest,&allocation)) goto before;
+    _Static_assert(sizeof(domain)+73+80+96+129<=sizeof(bytes),"global policy bound");
+    if (cmeMapAppend(&policy,domain,sizeof(domain)) || cmeMapAppend(&policy,packed,73) ||
+        cmeMapNumber(&policy,original->revision,8) || cmeMapAppend(&policy,original->digest,32) ||
+        cmeMapNumber(&policy,admitted->revision,8) || cmeMapAppend(&policy,admitted->digest,32) ||
+        cmeMapAppend(&policy,digest,32) || cmeMapAppend(&policy,evidence,32) || cmeMapAppend(&policy,request,32) ||
+        cmeCopyText(&policy,name)) goto before;
+    result=cmeContextManagerBind(manager,allocation->resource,4,allocation->slots,allocation->count,registry,&binding);
+    cmeContextBindingFree(&binding); if (result) goto before;
+    pthread_mutex_lock(&manager->mutex); result=1;
+    if (sqlite3_exec(manager->db,"BEGIN IMMEDIATE",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    result=cmeShuffleCurrent(manager,registry,admitted,&current,&actual);
+    if (result==2 && expectedNext)
+    {
+        result=cmeMapMatch(&actual,expectedNext);
+        /* Registry mismatch must never be mistaken for an exact catalog retry. */
+        if (!result) result=cmeManagerCurrentMatch(&current,registry);
+        if (result) goto done;
+        result=1;
+        if (cmeWitnessVersion(manager,&required) || !required ||
+            cmeReleaseRow(manager,name,ticket,length,digest,2,expectedNext->revision) ||
+            sqlite3_prepare_v2(manager->db,"SELECT body FROM context_read_policy WHERE singleton=1",-1,&stmt,NULL)!=SQLITE_OK ||
+            sqlite3_step(stmt)!=SQLITE_ROW || sqlite3_column_bytes(stmt,0)!=(int)policy.length || !sqlite3_column_blob(stmt,0) ||
+            CRYPTO_memcmp(sqlite3_column_blob(stmt,0),policy.bytes,policy.length) || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+        *state=2; *published=*expectedNext; result=0; goto done;
+    }
+    if (result) goto done;
+    result=1;
+    if (cmeWitnessVersion(manager,&required) || required || cmeReleaseRow(manager,name,ticket,length,digest,1,0) ||
+        cmeReleaseApply(manager,name,policy.bytes,policy.length,admitted->revision+1) ||
+        cmeMapSign(manager,admitted->revision+1,&planned,tag)) goto done;
+    if (expectedNext) { result=cmeMapMatch(&planned,expectedNext); if (result) goto done; }
+    if (commit)
+    {
+        result=1; cmeManagerCheckpoint("global-after-begin");
+        if (cmeMapHead(manager,&planned,tag)) goto done;
+        cmeManagerCheckpoint("global-after-write");
+        if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+        cmeManagerCheckpoint("global-after-commit");
+    }
+    *published=planned; *state=commit ? 2 : 1; result=0;
+done:
+    sqlite3_finalize(stmt);
+    if (!sqlite3_get_autocommit(manager->db) && sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL)!=SQLITE_OK) result=1;
+    cmeManagerStateFree(&current); pthread_mutex_unlock(&manager->mutex);
+before:
+    cmeContextMapFree(&allocation);
+    if (result) { if (state) *state=0; if (published) memset(published,0,sizeof(*published)); }
+    return(result);
+}
+
+int cmeContextManagerColumnGlobalPlan(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *original, const cmeContextMapAnchor *admitted, const char *name,
+    const unsigned char evidence[32], const unsigned char *ticket, size_t length, const unsigned char digest[32],
+    const unsigned char request[32], cmeContextMapAnchor *next)
+{
+    int state=0;
+    return(cmeReleaseAction(manager,registry,original,admitted,name,evidence,ticket,length,digest,request,NULL,0,next,&state));
+}
+
+int cmeContextManagerColumnGlobalStep(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *original, const cmeContextMapAnchor *admitted, const char *name,
+    const unsigned char evidence[32], const unsigned char *ticket, size_t length, const unsigned char digest[32],
+    const unsigned char request[32], const cmeContextMapAnchor *next, int commit, int *state)
+{
+    cmeContextMapAnchor published={0};
+    if (!next) { if (state) *state=0; return(1); }
+    return(cmeReleaseAction(manager,registry,original,admitted,name,evidence,ticket,length,digest,request,next,commit,&published,state));
 }

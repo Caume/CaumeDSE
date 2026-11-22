@@ -5,6 +5,8 @@
 
 typedef struct cmeContextManager cmeContextManager;
 typedef struct cmeContextBinding cmeContextBinding;
+typedef struct cmeContextWitness cmeContextWitness;
+typedef struct cmeContextWitnessAnchor cmeContextWitnessAnchor;
 
 typedef struct
 {
@@ -442,4 +444,26 @@ int cmeContextManagerColumnAdmissionBind(cmeContextManager *manager,
     const cmeContextAnchor *registry, const cmeContextMapAnchor *original, const cmeContextMapAnchor *next,
     const char *name, const unsigned char evidence[32], const unsigned char *ticket, size_t length,
     const unsigned char digest[32], cmeContextMap **map, cmeContextBinding **binding);
+/* Explicit global v5 opt-in. All ordinary stored-map bindings fail closed on
+   v5; MapBindWitness requires a separately retained CURRENT witness token and
+   borrows witness until BindingFree. Every mapped codec pre/post check rechecks
+   that token and both manager pins. Free/rebind per operation; no lease.
+   Required is authenticated; outputs clear on failure. Inputs nonoverlapping. */
+int cmeContextManagerWitnessRequired(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, int *required);
+int cmeContextManagerMapBindWitness(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *acknowledged, const char *name, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *catalog, cmeContextBinding **binding);
+/* Trusted transition core: opaque request digest; physical/witness validation
+   belongs to ColumnGlobalRelease. Preview rolls back; commit atomically installs
+   v5 policy and completes the exact prepared admission job. No registry/witness
+   mutation. Original/next pins and request are required on exact retries. 0/1/2. */
+int cmeContextManagerColumnGlobalPlan(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *original, const cmeContextMapAnchor *admitted, const char *name,
+    const unsigned char evidence[32], const unsigned char *ticket, size_t length, const unsigned char digest[32],
+    const unsigned char request[32], cmeContextMapAnchor *next);
+int cmeContextManagerColumnGlobalStep(cmeContextManager *manager, const cmeContextAnchor *registry,
+    const cmeContextMapAnchor *original, const cmeContextMapAnchor *admitted, const char *name,
+    const unsigned char evidence[32], const unsigned char *ticket, size_t length, const unsigned char digest[32],
+    const unsigned char request[32], const cmeContextMapAnchor *next, int commit, int *state);
 #endif

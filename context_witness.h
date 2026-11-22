@@ -4,7 +4,7 @@
 #include "context_manager.h"
 
 typedef struct cmeContextWitness cmeContextWitness;
-typedef struct
+typedef struct cmeContextWitnessAnchor
 {
     uint64_t revision;
     unsigned char digest[32];
