@@ -383,4 +383,21 @@ int cmeContextColumnGlobalReleaseRun(cmeContextManager *manager, cmeContextWitne
     const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
     const unsigned char *envelope, size_t length, const unsigned char digest[32],
     cmeContextColumnAdmissionResult *result);
+/* Phase-40 read-only file adapter for the exact completed v5 global release.
+   Supply the ORIGINAL retained release envelope/hash and independently retained
+   acknowledged W2 token. Owns copied envelope/names and duplicated parent FDs;
+   manager/witness must outlive release. Check/Read/Free share the existing API.
+   Every check authenticates the exact completed job/policy, current authority
+   and original physical proof. Reads only the proof-selected full V2 image and
+   validates all cells/integrity/plaintext before selecting a cell. Rechecks after
+   decryption; observed physical/authority failure permanently poisons this
+   capability. Wrong passwords/absent slots alone do not poison it. No writes,
+   witness advancement, pin adoption, live dispatch or active-file replacement.
+   Stable nonoverlapping inputs, serialize use/free, no lease or coherent-backup
+   rollback guarantee; keep writers stopped and retained evidence protected.
+   0/1/2/3 and empty-output rules match ReadReleaseOpen; free via ReadReleaseFree. */
+int cmeContextColumnGlobalReadOpen(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *envelope, size_t length, const unsigned char digest[32],
+    const cmeContextWitnessAnchor *acknowledged, cmeContextColumnReadRelease **release);
 #endif

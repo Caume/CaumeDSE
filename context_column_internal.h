@@ -38,6 +38,10 @@ int cmeContextV2OpenAdmissionBinding(cmeContextManager *manager, const cmeContex
 int cmeColumnStageDeserializeAdmission(cmeContextManager *manager, const cmeContextBinding *binding,
     const cmeContextMap *map, const unsigned char *image, size_t length, const unsigned char digest[32],
     const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage);
+/* Authenticated unblocked stored-map inventory; no admission block override. */
+int cmeColumnStageDeserializeMapped(cmeContextManager *manager, const cmeContextBinding *binding,
+    const cmeContextMap *map, const unsigned char *image, size_t length, const unsigned char digest[32],
+    const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage);
 int cmeCustodyRead(const cmeCustodyDirectory *root, cmeCustodyFile *entry, unsigned char **output, int initial);
 int cmeCustodyRootOpen(const cmeContextColumnCustodyRoot *input, cmeCustodyDirectory *root);
 int cmeCustodyPhysicalCheck(cmeContextColumnCustody *custody);

@@ -4021,3 +4021,69 @@ custody/monotonic controls.
 TODO #147 stays open for installed/live v5 adapters and active handoff, wider
 mixed-profile/floor-2 migration/provider acceptance, rename/delete lifecycle and
 production protected-custody/monotonic deployment.
+
+
+## V2 file reads after global release (#147 phase 40)
+
+`cmeContextColumnGlobalReadOpen` adds the read-only physical-file adapter for the
+exact completed phase-39 v5 release. Pass the ORIGINAL retained release envelope
+and independently retained SHA-256, approved source/published directory objects
+and names, manager/witness handles, and the independently retained acknowledged
+W2 token. It returns the existing opaque `cmeContextColumnReadRelease` capability;
+use `cmeContextColumnReadReleaseCheck`, `cmeContextColumnRead` and
+`cmeContextColumnReadReleaseFree` with it. The old Open still authorizes only
+the phase-38 C1-scoped read and expires at C2; no ordinary-binding fallback is
+introduced. Existing v1-v4 behavior and private type-3 gates remain unchanged.
+
+Open copies the envelope/hash/names, duplicates both parent descriptors and
+checks twice before returning. Callers may then free the input envelope/names
+and close their original parent descriptors. The manager and witness must
+outlive the capability; serialize Check/Read/Free and protect retained approvals.
+No credentials or plaintext are retained. Failed Open clears the output handle.
+
+Check decodes the shared bounded phase-39 envelope and embedded original
+admission, authenticates the manager-signed ticket and exact completed job/policy
+at R1/C2, and requires the original W1-to-W2 transition and separately retained
+W2 to agree with current witness state. It checks the entire original physical
+proof and repeats manager/witness freshness checks afterwards. Prepared C1,
+committed C2 with an unadvanced witness, missing/wrong acknowledgements and
+later/different registry/catalog/witness state refuse. Check never calls global
+commit or witness advancement, adopts new pins or completes an interrupted
+release. Recover with GlobalReleaseRun and ORIGINAL approvals separately.
+
+Read checks the capability, loads only the unique additional published V2 image
+identified by the original signed admission proof, and obtains an unblocked
+witnessed type-4 binding for the exact admitted map. It reuses the bounded strict
+SQLite container schema/integrity/inventory/AEAD and full plaintext-metadata/order
+checks for EVERY cell, then decrypts the requested table/row/field. The private
+mapped deserializer preserves the stored map's active/block flags; it cannot
+use the admission-only block override. Public memory crypto repeats witnessed
+binding checks around decryption. Before returning any plaintext, Read repeats
+the full physical and authority check; even a changed companion file or witness
+after successful decryption withholds the candidate plaintext and wipes it.
+
+Any observed physical-proof or authority failure permanently poisons this
+capability, including failures during image loading and failures detected while
+handling a crypto error. Restoring witness state does not revive it; free it and
+reopen only with the original independently reviewed approvals. Bad passwords,
+invalid selectors or unavailable providers alone do not poison otherwise valid
+physical/authority state. Failed reads clear outputs; callers own successful
+bytes and must free them with `cmeContextV2BufferFree`.
+
+The APIs make no authoritative registry/catalog/witness commits and preserve
+source/published files, release envelopes, counters and ciphertext formats.
+Bounds and statuses 0/1/2/3 follow earlier APIs: envelope at most 6 MiB + 512,
+image at most 32 MiB, validated plaintext at most 16 MiB, existing 4096-slot
+inventory limit and counted passwords 1..256 bytes. Inputs must remain stable
+and nonoverlapping. Full-export rehash and full-container verification per read
+are offline correctness checks, not a live-reader performance claim. Keep
+writers stopped and namespaces/evidence protected. These point-in-time checks
+are not a lease, revocation of previously returned plaintext, absolute-ancestry
+proof or defense against independently restored coherent backups. No physical
+power-loss certification is added.
+
+TODO #147 remains open for installed owner orchestration, live witnessed V2
+reader integration/active handoff, wider mixed-profile/floor-2/provider/migration
+acceptance, rename/delete lifecycle and production protected custody/monotonic
+deployment. This phase supplies the post-release file-reading boundary without
+enabling HTTP dispatch or changing active engine database paths.
