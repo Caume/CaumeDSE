@@ -233,11 +233,251 @@ static int cmeColumnOwnerKey(const char *path, unsigned char key[32])
     return(result);
 }
 
+#define CME_COLUMN_ADMISSION_APPROVAL_MAX (4U*1024U*1024U)
+
+enum
+{
+    admissionSchema, admissionRegistry, admissionCatalog, admissionMap, admissionLookups,
+    admissionAllocation, admissionAllocationDigest, admissionSourceProfile, admissionDestinationMap,
+    admissionSourceDigest, admissionCandidateDigest, admissionRegistrationDigest, admissionMetadataProfile,
+    admissionSourceFile, admissionDestinationFile, admissionSourceDocument, admissionDestinationDocument,
+    admissionStorageId, admissionOrganizationResource, admissionColumnId, admissionStoragePath,
+    admissionSourceRow, admissionDestinationRow, admissionSourceResources, admissionCandidateResources,
+    admissionExportDigest, admissionRegistrationReceipt, admissionReceiptDigest, admissionCompanions,
+    admissionAcceptance, admissionAcceptanceDigest, admissionPublicationDirectory, admissionPublicationJob,
+    admissionPublicationDigest, admissionStaging, admissionFields
+};
+
+typedef struct
+{
+    char *value[admissionFields];
+    const char **lookups;
+    size_t lookupCount;
+    cmeContextColumnExportArtifact *companions;
+    size_t companionCount;
+    int64_t sourceRow,destinationRow;
+} cmeColumnAdmissionApproval;
+
+static void cmeColumnAdmissionApprovalFree(cmeColumnAdmissionApproval *approval)
+{
+    size_t i;
+    for (i=0;i<admissionFields;i++) free(approval->value[i]);
+    for (i=0;i<approval->lookupCount;i++) free((char *)approval->lookups[i]);
+    for (i=0;i<approval->companionCount;i++) free((char *)approval->companions[i].name);
+    free(approval->lookups);
+    free(approval->companions);
+}
+
+static int cmeColumnAdmissionParse(const char *body, cmeColumnAdmissionApproval *approval)
+{
+    static const char *const names[admissionFields]={
+        "schema","originalRegistry","catalog","sourceMap","lookups","allocationPlan","allocationDigest",
+        "sourceProfile","destinationMap","sourceDigest","candidateDigest","registrationEvidenceDigest",
+        "metadataProfile","sourceFile","destinationFile","sourceDocument","destinationDocument",
+        "storageId","organizationResource","columnId","storagePath","sourceRow","destinationRow",
+        "sourceResourcesDigest","candidateResourcesDigest","exportDigest","registrationReceipt",
+        "registrationReceiptDigest","companions","acceptanceReceipt","acceptanceDigest",
+        "publicationDirectory","publicationJob","publicationDigest","staging"
+    };
+    sqlite3 *db=NULL;
+    sqlite3_stmt *member=NULL,*tuple=NULL;
+    unsigned char seen[admissionFields]={0};
+    size_t i,count=0;
+    int result=1,step;
+    if (sqlite3_open(":memory:",&db)!=SQLITE_OK ||
+        sqlite3_prepare_v2(db,"SELECT key,type,value FROM json_each(?1) WHERE json_valid(?1)=1 AND json_type(?1)='object'",
+            -1,&member,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(member,1,body,-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(member))==SQLITE_ROW)
+    {
+        const char *key=(const char *)sqlite3_column_text(member,0);
+        const char *type=(const char *)sqlite3_column_text(member,1);
+        if (!key || !type || strlen(key)!=(size_t)sqlite3_column_bytes(member,0)) goto done;
+        for (i=0;i<admissionFields;i++) if (!strcmp(key,names[i])) break;
+        if (i==admissionFields || seen[i]) goto done;
+        seen[i]=1;
+        count++;
+        if (i==admissionSchema || i==admissionSourceRow || i==admissionDestinationRow)
+        {
+            int64_t number=sqlite3_column_int64(member,2);
+            if (strcmp(type,"integer") || sqlite3_column_type(member,2)!=SQLITE_INTEGER || number<1) goto done;
+            if (i==admissionSchema) { if (number!=1) goto done; }
+            else if (i==admissionSourceRow) approval->sourceRow=number;
+            else approval->destinationRow=number;
+        }
+        else
+        {
+            int array=i==admissionLookups || i==admissionCompanions;
+            if (strcmp(type,array ? "array" : "text") ||
+                !(approval->value[i]=cmeOwnerText(member,2,array ? CME_COLUMN_ADMISSION_APPROVAL_MAX : PATH_MAX-1))) goto done;
+        }
+    }
+    if (step!=SQLITE_DONE || count!=admissionFields) goto done;
+    sqlite3_finalize(member);
+    member=NULL;
+
+    approval->lookups=calloc(cmeContextRegistryMaxEntries,sizeof(*approval->lookups));
+    approval->companions=calloc(cmeContextRegistryMaxEntries+2,sizeof(*approval->companions));
+    if (!approval->lookups || !approval->companions ||
+        sqlite3_prepare_v2(db,"SELECT type,value FROM json_each(?1) ORDER BY key",-1,&member,NULL)!=SQLITE_OK ||
+        sqlite3_bind_text(member,1,approval->value[admissionLookups],-1,SQLITE_STATIC)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(member))==SQLITE_ROW)
+    {
+        if (approval->lookupCount==cmeContextRegistryMaxEntries ||
+            strcmp((const char *)sqlite3_column_text(member,0),"text")) goto done;
+        approval->lookups[approval->lookupCount]=cmeOwnerText(member,1,128);
+        if (!approval->lookups[approval->lookupCount]) goto done;
+        approval->lookupCount++;
+    }
+    if (step!=SQLITE_DONE || !approval->lookupCount || sqlite3_reset(member)!=SQLITE_OK ||
+        sqlite3_bind_text(member,1,approval->value[admissionCompanions],-1,SQLITE_STATIC)!=SQLITE_OK ||
+        sqlite3_prepare_v2(db,"SELECT json_extract(?1,'$[0]'),json_extract(?1,'$[1]'),json_extract(?1,'$[2]') "
+            "WHERE json_array_length(?1)=3 AND json_type(?1,'$[0]')='text' "
+            "AND json_type(?1,'$[1]')='integer' AND json_type(?1,'$[2]')='text'",-1,&tuple,NULL)!=SQLITE_OK) goto done;
+    while ((step=sqlite3_step(member))==SQLITE_ROW)
+    {
+        cmeContextColumnExportArtifact *entry;
+        int64_t length;
+        char *digest;
+        int invalid;
+        if (approval->companionCount==cmeContextRegistryMaxEntries+2 ||
+            strcmp((const char *)sqlite3_column_text(member,0),"array") ||
+            sqlite3_bind_value(tuple,1,sqlite3_column_value(member,1))!=SQLITE_OK ||
+            sqlite3_step(tuple)!=SQLITE_ROW || sqlite3_column_type(tuple,1)!=SQLITE_INTEGER) goto done;
+        length=sqlite3_column_int64(tuple,1);
+        if (length<1 || length>cmeContextColumnMaxImageBytes) goto done;
+        entry=&approval->companions[approval->companionCount++];
+        entry->length=(size_t)length;
+        entry->name=cmeOwnerText(tuple,0,NAME_MAX);
+        digest=cmeOwnerText(tuple,2,64);
+        invalid=cmeOwnerHex(digest,entry->digest,sizeof(entry->digest));
+        free(digest);
+        if (!entry->name || invalid || sqlite3_reset(tuple)!=SQLITE_OK) goto done;
+    }
+    if (step==SQLITE_DONE && approval->companionCount) result=0;
+done:
+    sqlite3_finalize(tuple);
+    sqlite3_finalize(member);
+    sqlite3_close(db);
+    return(result);
+}
+
+static int cmeColumnAdmissionOwnerPrepare(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *retained, const cmeContextColumnCustodyRoot roots[2],
+    const char *manifest, const char *manifestDigest, const char *sourceKeyPath, const char *registrationKeyPath,
+    const char *passwordPath, cmeContextV2Buffer *journal, unsigned char journalDigest[32])
+{
+    cmeColumnAdmissionApproval approval={0};
+    cmeContextAnchor original={0};
+    cmeContextMapAnchor catalog={0};
+    cmeContextColumnTransformApproval transform={0};
+    cmeContextColumnRegistrationApproval registration={0};
+    cmeContextColumnRegistrationInputs credentials={0};
+    cmeContextColumnExportInputs export={0};
+    cmeContextColumnPublication publication={0};
+    cmeOfflineArtifact control={.file=-1,.directory=-1};
+    cmeContextCopyTarget *target=NULL;
+    cmeContextColumnCustody *custody=NULL;
+    char *body=NULL,*allocation=NULL,*receipt=NULL,*acceptance=NULL,*sourceKey=NULL,*registrationKey=NULL,*password=NULL;
+    char controlPath[PATH_MAX];
+    char *const *v=approval.value;
+    size_t bodyLength=0,allocationLength=0,acceptanceLength=0,sourceKeyLength=0,registrationKeyLength=0,i;
+    unsigned char bytes[73],expected[32],actual[32],allocationDigest[32],acceptanceDigest[32],publicationDigest[32];
+    unsigned int written=0;
+    int pathLength,result=1;
+
+    if (cmeOwnerHex(manifestDigest,expected,sizeof(expected)) ||
+        cmeOwnerRead(manifest,CME_COLUMN_ADMISSION_APPROVAL_MAX,&body,&bodyLength,cmeOwnerTextFile) ||
+        !EVP_Digest(body,bodyLength,actual,&written,EVP_sha256(),NULL) || written!=sizeof(actual) ||
+        CRYPTO_memcmp(actual,expected,sizeof(actual)) || cmeColumnAdmissionParse(body,&approval) ||
+        cmeOwnerHex(v[admissionRegistry],bytes,73)) goto done;
+    memcpy(original.deployment,bytes,16);
+    memcpy(original.organization,bytes+16,16);
+    for (i=0;i<8;i++) original.generation=(original.generation<<8)|bytes[32+i];
+    original.minimumFormat=bytes[40];
+    memcpy(original.digest,bytes+41,32);
+    if (cmeOwnerHex(v[admissionCatalog],bytes,40)) goto done;
+    for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
+    memcpy(catalog.digest,bytes+8,32);
+
+    if (cmeOwnerHex(v[admissionAllocationDigest],allocationDigest,32) ||
+        cmeOwnerHex(v[admissionAcceptanceDigest],acceptanceDigest,32) ||
+        cmeOwnerHex(v[admissionPublicationDigest],publicationDigest,32) ||
+        cmeOwnerHex(v[admissionSourceDigest],transform.sourceDigest,32) ||
+        cmeOwnerHex(v[admissionCandidateDigest],transform.candidateDigest,32) ||
+        cmeOwnerHex(v[admissionRegistrationDigest],transform.registrationEvidenceDigest,32) ||
+        cmeOwnerHex(v[admissionSourceResources],registration.sourceResourcesDigest,32) ||
+        cmeOwnerHex(v[admissionCandidateResources],registration.candidateResourcesDigest,32) ||
+        cmeOwnerHex(v[admissionExportDigest],export.approvalDigest,32) ||
+        cmeOwnerHex(v[admissionReceiptDigest],export.registrationReceiptDigest,32)) goto done;
+    if (strchr(v[admissionPublicationJob],'/')) goto done;
+    pathLength=snprintf(controlPath,sizeof(controlPath),"%s/%s",v[admissionPublicationDirectory],v[admissionPublicationJob]);
+    if (pathLength<0 || (size_t)pathLength>=sizeof(controlPath) || cmeOfflineOpen(controlPath,0,&control) ||
+        cmeOwnerRead(v[admissionAllocation],cmeContextCopyPlanMaxBytes,&allocation,&allocationLength,cmeOwnerBinaryFile) ||
+        cmeOwnerRead(v[admissionRegistrationReceipt],cmeContextColumnTransformMaxBytes,&receipt,
+            &export.registrationReceiptLength,cmeOwnerBinaryFile) ||
+        cmeOwnerRead(v[admissionAcceptance],cmeContextColumnAcceptanceMaxBytes,&acceptance,&acceptanceLength,cmeOwnerBinaryFile) ||
+        cmeOwnerRead(sourceKeyPath,256,&sourceKey,&sourceKeyLength,cmeOwnerTextFile) ||
+        cmeOwnerRead(registrationKeyPath,256,&registrationKey,&registrationKeyLength,cmeOwnerTextFile) ||
+        cmeOwnerRead(passwordPath,256,&password,&credentials.passwordLength,cmeOwnerBinaryFile)) goto done;
+
+    credentials.sourceKey=sourceKey;
+    credentials.registrationKey=registrationKey;
+    credentials.password=(const unsigned char *)password;
+    transform.sourceProfile=v[admissionSourceProfile];
+    transform.destinationMap=v[admissionDestinationMap];
+    registration.metadataProfile=v[admissionMetadataProfile];
+    registration.sourceFile=v[admissionSourceFile];
+    registration.destinationFile=v[admissionDestinationFile];
+    registration.sourceDocument=v[admissionSourceDocument];
+    registration.destinationDocument=v[admissionDestinationDocument];
+    registration.storageId=v[admissionStorageId];
+    registration.organizationResource=v[admissionOrganizationResource];
+    registration.columnId=v[admissionColumnId];
+    registration.storagePath=v[admissionStoragePath];
+    registration.sourceRow=approval.sourceRow;
+    registration.destinationRow=approval.destinationRow;
+    export.companions=approval.companions;
+    export.count=approval.companionCount;
+    export.registrationReceipt=(const unsigned char *)receipt;
+    publication.directory=control.directory;
+    publication.name=control.name;
+    publication.destination=roots[1];
+
+    result=cmeContextWitnessCopyTargetBind(manager,witness,retained,(const unsigned char *)allocation,allocationLength,
+        allocationDigest,&original,&catalog,v[admissionMap],approval.lookups,approval.lookupCount,&target);
+    if (result) goto done;
+    result=cmeContextColumnCustodyOpen(manager,target,&transform,&registration,&credentials,&export,
+        &roots[0],&roots[1],(const unsigned char *)acceptance,acceptanceLength,acceptanceDigest,&custody);
+    if (result) goto done;
+    result=cmeContextColumnAdmissionPrepare(custody,&publication,v[admissionStaging],publicationDigest,
+        (const unsigned char *)allocation,allocationLength,allocationDigest,&original,journal,journalDigest);
+
+done:
+    if (sourceKey) OPENSSL_cleanse(sourceKey,sourceKeyLength);
+    if (registrationKey) OPENSSL_cleanse(registrationKey,registrationKeyLength);
+    if (password) OPENSSL_cleanse(password,credentials.passwordLength);
+    free(sourceKey);
+    free(registrationKey);
+    free(password);
+    free(body);
+    free(allocation);
+    free(receipt);
+    free(acceptance);
+    cmeContextColumnCustodyFree(&custody);
+    cmeContextCopyTargetFree(&target);
+    cmeOfflineClose(&control);
+    cmeColumnAdmissionApprovalFree(&approval);
+    return(result);
+}
+
 typedef enum
 {
     cmeColumnOwnerRead=1,
     cmeColumnOwnerPrepare=2,
-    cmeColumnOwnerComplete=4
+    cmeColumnOwnerComplete=4,
+    cmeColumnOwnerAdmissionPrepare=8,
+    cmeColumnOwnerAdmissionComplete=16
 } cmeColumnOwnerAction;
 
 static void cmeColumnOwnerAnchor(const char *label, uint64_t revision, const unsigned char digest[32])
@@ -257,9 +497,14 @@ static int cmeColumnOwnerMain(int argc, char **argv)
     {
         registryDirectory, witnessDirectory, deploymentId, organizationId, sourceExport, publishedExport,
         envelopePath, registryKeyFile, witnessKeyFile, releaseDigest, witnessToken, admissionPath,
-        admissionDigest, passwordFile, tableName, rowNumber, fieldName, optionCount
+        admissionDigest, passwordFile, tableName, rowNumber, fieldName, approvalPath, approvalDigest,
+        sourceKeyFile, registrationKeyFile, optionCount
     };
-    enum { allActions=cmeColumnOwnerRead|cmeColumnOwnerPrepare|cmeColumnOwnerComplete };
+    enum
+    {
+        releaseActions=cmeColumnOwnerRead|cmeColumnOwnerPrepare|cmeColumnOwnerComplete,
+        allActions=releaseActions|cmeColumnOwnerAdmissionPrepare|cmeColumnOwnerAdmissionComplete
+    };
     static const struct { const char *name; unsigned int actions; } options[optionCount]={
         [registryDirectory]={"--registry-directory",allActions},
         [witnessDirectory]={"--witness-directory",allActions},
@@ -267,17 +512,21 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         [organizationId]={"--organization",allActions},
         [sourceExport]={"--source-export",allActions},
         [publishedExport]={"--published-export",allActions},
-        [envelopePath]={"--release-envelope",allActions},
+        [envelopePath]={"--release-envelope",releaseActions},
         [registryKeyFile]={"--registry-key-file",allActions},
         [witnessKeyFile]={"--witness-key-file",allActions},
         [releaseDigest]={"--release-digest",cmeColumnOwnerRead|cmeColumnOwnerComplete},
-        [witnessToken]={"--retained-witness-token",cmeColumnOwnerRead|cmeColumnOwnerPrepare},
-        [admissionPath]={"--admission-journal",cmeColumnOwnerPrepare},
-        [admissionDigest]={"--admission-digest",cmeColumnOwnerPrepare},
-        [passwordFile]={"--password-file",cmeColumnOwnerRead},
+        [witnessToken]={"--retained-witness-token",cmeColumnOwnerRead|cmeColumnOwnerPrepare|cmeColumnOwnerAdmissionPrepare},
+        [admissionPath]={"--admission-journal",cmeColumnOwnerPrepare|cmeColumnOwnerAdmissionPrepare|cmeColumnOwnerAdmissionComplete},
+        [admissionDigest]={"--admission-digest",cmeColumnOwnerPrepare|cmeColumnOwnerAdmissionComplete},
+        [passwordFile]={"--password-file",cmeColumnOwnerRead|cmeColumnOwnerAdmissionPrepare},
         [tableName]={"--table",cmeColumnOwnerRead},
         [rowNumber]={"--row",cmeColumnOwnerRead},
-        [fieldName]={"--field",cmeColumnOwnerRead}
+        [fieldName]={"--field",cmeColumnOwnerRead},
+        [approvalPath]={"--approval",cmeColumnOwnerAdmissionPrepare},
+        [approvalDigest]={"--approval-digest",cmeColumnOwnerAdmissionPrepare},
+        [sourceKeyFile]={"--source-key-file",cmeColumnOwnerAdmissionPrepare},
+        [registrationKeyFile]={"--registration-key-file",cmeColumnOwnerAdmissionPrepare}
     };
     const char *values[optionCount]={0};
     const char *error="invalid input or unavailable state. Run --help for usage";
@@ -293,11 +542,14 @@ static int cmeColumnOwnerMain(int argc, char **argv)
     unsigned char deployment[16],organization[16],digest[32],token[40],preparedDigest[32];
     unsigned char registryKey[32]={0},witnessKey[32]={0};
     char *evidence=NULL,*password=NULL;
+    FILE *outputStream=NULL,*diagnostics=NULL;
+    const char *destinationPath=NULL;
     size_t evidenceLength=0,passwordLength=0,option;
     long long row=0;
-    int i=2,result=1;
+    int i=2,result=1,savedOutput=-1,savedDiagnostics=-1;
     cmeColumnOwnerAction action=cmeColumnOwnerRead;
-    int reading=!strcmp(argv[1],"context-column-read");
+    int reading=!strcmp(argv[1],"context-column-read"),admitting=!strcmp(argv[1],"context-column-admission");
+    int preparing;
 
     if (argc==3 && !strcmp(argv[2],"--help"))
     {
@@ -310,6 +562,16 @@ static int cmeColumnOwnerMain(int argc, char **argv)
                  "Use absolute canonical paths and private owner files. Stop export writers before reading.\n"
                  "Use the original retained release digest and separately acknowledged witness token.\n"
                  "Password files hold 1-256 raw bytes. Stdout contains the verified cell bytes.");
+        else if (admitting)
+            puts("Usage: caumedse-admin context-column-admission (prepare | complete)\n"
+                 "  --registry-directory DIRECTORY --witness-directory DIRECTORY --deployment HEX32 --organization HEX32\n"
+                 "  --registry-key-file FILE --witness-key-file FILE --source-export DIRECTORY --published-export DIRECTORY\n"
+                 "  Prepare: --approval FILE --approval-digest RETAINED_SHA256 --retained-witness-token W0\n"
+                 "    --source-key-file FILE --registration-key-file FILE --password-file FILE --admission-journal NEW_FILE\n"
+                 "  Complete or recover: --admission-journal FILE --admission-digest RETAINED_SHA256\n"
+                 "Use absolute canonical paths and private owner files. Stop export writers.\n"
+                 "Retain the prepared journal digest independently before completing.\n"
+                 "Complete prints the blocked catalog and witness tokens.");
         else
             puts("Usage: caumedse-admin context-column-release (prepare | complete)\n"
                  "  --registry-directory DIRECTORY --witness-directory DIRECTORY --deployment HEX32 --organization HEX32\n"
@@ -324,11 +586,12 @@ static int cmeColumnOwnerMain(int argc, char **argv)
     if (!reading)
     {
         if (argc<3) goto done;
-        if (!strcmp(argv[2],"prepare")) action=cmeColumnOwnerPrepare;
-        else if (!strcmp(argv[2],"complete")) action=cmeColumnOwnerComplete;
+        if (!strcmp(argv[2],"prepare")) action=admitting ? cmeColumnOwnerAdmissionPrepare : cmeColumnOwnerPrepare;
+        else if (!strcmp(argv[2],"complete")) action=admitting ? cmeColumnOwnerAdmissionComplete : cmeColumnOwnerComplete;
         else goto done;
         i++;
     }
+    preparing=action==cmeColumnOwnerPrepare || action==cmeColumnOwnerAdmissionPrepare;
     for (;i<argc;i++)
     {
         for (option=0;option<optionCount;option++)
@@ -347,7 +610,7 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         row=strtoll(values[rowNumber],NULL,10);
         if (errno || row<1 || row>INT64_MAX) goto done;
     }
-    if (action!=cmeColumnOwnerComplete)
+    if (options[witnessToken].actions&action)
     {
         if (cmeOwnerHex(values[witnessToken],token,sizeof(token))) goto done;
         for (i=0;i<8;i++) acknowledged.revision=(acknowledged.revision<<8)|token[i];
@@ -358,19 +621,22 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         cmeOwnerHex(values[organizationId],organization,sizeof(organization)) ||
         cmeOfflineOpen(values[sourceExport],0,&source) || cmeOfflineOpen(values[publishedExport],0,&published)) goto done;
 
-    if (action==cmeColumnOwnerPrepare)
+    if (preparing)
     {
-        const char *path=values[envelopePath];
-        if (!cmeOwnerOutside(values[sourceExport],path) || !cmeOwnerOutside(values[publishedExport],path) ||
-            !cmeOwnerOutside(values[registryDirectory],path) || !cmeOwnerOutside(values[witnessDirectory],path) ||
-            cmeOfflineOpen(path,0,&destination) || cmeOfflineAbsent(&destination) ||
-            cmeOwnerHex(values[admissionDigest],digest,sizeof(digest)) ||
-            cmeOwnerRead(values[admissionPath],cmeContextColumnAdmissionMaxBytes,&evidence,&evidenceLength,
-                cmeOwnerBinaryFile)) goto done;
+        destinationPath=values[admitting ? admissionPath : envelopePath];
+        if (!cmeOwnerOutside(values[sourceExport],destinationPath) || !cmeOwnerOutside(values[publishedExport],destinationPath) ||
+            !cmeOwnerOutside(values[registryDirectory],destinationPath) || !cmeOwnerOutside(values[witnessDirectory],destinationPath) ||
+            cmeOfflineOpen(destinationPath,0,&destination) || cmeOfflineAbsent(&destination)) goto done;
     }
-    else if (cmeOwnerHex(values[releaseDigest],digest,sizeof(digest)) ||
+    if (action==cmeColumnOwnerPrepare || action==cmeColumnOwnerAdmissionComplete)
+    {
+        if (cmeOwnerHex(values[admissionDigest],digest,sizeof(digest)) ||
+            cmeOwnerRead(values[admissionPath],cmeContextColumnAdmissionMaxBytes,&evidence,&evidenceLength,
+                preparing ? cmeOwnerBinaryFile : cmeOwnerDurableBinaryFile)) goto done;
+    }
+    else if (!preparing && (cmeOwnerHex(values[releaseDigest],digest,sizeof(digest)) ||
         cmeOwnerRead(values[envelopePath],cmeContextColumnGlobalMaxBytes,&evidence,&evidenceLength,
-            reading ? cmeOwnerBinaryFile : cmeOwnerDurableBinaryFile)) goto done;
+            reading ? cmeOwnerBinaryFile : cmeOwnerDurableBinaryFile))) goto done;
 
     if (cmeColumnOwnerKey(values[registryKeyFile],registryKey) ||
         cmeColumnOwnerKey(values[witnessKeyFile],witnessKey) ||
@@ -381,24 +647,42 @@ static int cmeColumnOwnerMain(int argc, char **argv)
 
     roots[0]=(cmeContextColumnCustodyRoot){.parent=source.directory,.name=source.name};
     roots[1]=(cmeContextColumnCustodyRoot){.parent=published.directory,.name=published.name};
-    if (action==cmeColumnOwnerPrepare)
+    if (preparing)
     {
-        result=cmeContextColumnGlobalReleasePrepare(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
+        if (admitting)
+        {
+            /* Keep legacy crypto diagnostics away from the operator output streams. */
+            savedOutput=dup(STDOUT_FILENO);
+            savedDiagnostics=dup(STDERR_FILENO);
+            if (savedOutput<0 || savedDiagnostics<0 || !(outputStream=fdopen(savedOutput,"w"))) goto done;
+            savedOutput=-1;
+            if (!(diagnostics=fdopen(savedDiagnostics,"w"))) goto done;
+            savedDiagnostics=-1;
+            if (fflush(NULL) || !freopen("/dev/null","w",stdout) || !freopen("/dev/null","w",stderr)) goto done;
+            result=cmeColumnAdmissionOwnerPrepare(manager,witness,&acknowledged,roots,values[approvalPath],
+                values[approvalDigest],values[sourceKeyFile],values[registrationKeyFile],values[passwordFile],
+                &output,preparedDigest);
+        }
+        else result=cmeContextColumnGlobalReleasePrepare(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
             evidenceLength,digest,&acknowledged,&output,preparedDigest);
         if (result) goto done;
-        result=cmeOwnerSave(&destination,values[envelopePath],output.bytes,output.length);
+        result=cmeOwnerSave(&destination,destinationPath,output.bytes,output.length);
         if (result)
         {
-            error="could not save the release envelope. Preserve any partial file";
+            error=admitting ? "could not save the admission journal. Preserve any partial file" :
+                "could not save the release envelope. Preserve any partial file";
             goto done;
         }
-        fputs("release-digest=",stdout);
-        cmeOwnerPrint(preparedDigest,sizeof(preparedDigest));
-        putchar('\n');
+        FILE *out=outputStream ? outputStream : stdout;
+        fputs(admitting ? "admission-digest=" : "release-digest=",out);
+        cmeOwnerWriteHex(out,preparedDigest,sizeof(preparedDigest));
+        fputc('\n',out);
     }
-    else if (action==cmeColumnOwnerComplete)
+    else if (!reading)
     {
-        result=cmeContextColumnGlobalReleaseRun(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
+        if (admitting) result=cmeContextColumnAdmissionRun(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
+            evidenceLength,digest,&completed);
+        else result=cmeContextColumnGlobalReleaseRun(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
             evidenceLength,digest,&completed);
         if (result) goto done;
         cmeColumnOwnerAnchor("catalog=",completed.catalog.revision,completed.catalog.digest);
@@ -421,19 +705,21 @@ static int cmeColumnOwnerMain(int argc, char **argv)
             goto done;
         }
     }
-    if (fflush(stdout)==EOF || ferror(stdout))
+    FILE *out=outputStream ? outputStream : stdout;
+    if (fflush(out)==EOF || ferror(out))
     {
         result=1;
         error=reading ? "could not write cell to stdout" :
-            "could not write release results. Preserve the envelope and retained approvals";
+            (admitting ? "could not write admission results. Preserve the journal and retained approvals" :
+                "could not write release results. Preserve the envelope and retained approvals");
     }
 
 done:
     if (result)
     {
-        if (result==2) error="release or witness approval is stale";
-        else if (result==3) error="V2 reader is unavailable";
-        fprintf(stderr,"%s: %s\n",argv[1],error);
+        if (result==2) error=admitting ? "admission or witness approval is stale" : "release or witness approval is stale";
+        else if (result==3) error=admitting ? "V2 admission is unavailable" : "V2 reader is unavailable";
+        fprintf(diagnostics ? diagnostics : stderr,"%s: %s\n",argv[1],error);
     }
     if (password) OPENSSL_cleanse(password,passwordLength);
     free(password);
@@ -447,6 +733,10 @@ done:
     cmeOfflineClose(&source);
     cmeOfflineClose(&published);
     cmeOfflineClose(&destination);
+    if (outputStream) fclose(outputStream);
+    if (diagnostics) fclose(diagnostics);
+    if (savedOutput>=0) close(savedOutput);
+    if (savedDiagnostics>=0) close(savedDiagnostics);
     return(result);
 }
 
@@ -1992,7 +2282,8 @@ static void cmeOwnerRegisteredOutput(FILE *output, const char *action, const cme
 
 int cmeContextOwnerMain(int argc, char **argv)
 {
-    if (argc>1 && (!strcmp(argv[1],"context-column-read") || !strcmp(argv[1],"context-column-release")))
+    if (argc>1 && (!strcmp(argv[1],"context-column-read") || !strcmp(argv[1],"context-column-release") ||
+        !strcmp(argv[1],"context-column-admission")))
         return(cmeColumnOwnerMain(argc,argv));
     if (argc>1 && !strcmp(argv[1],"context-copy-plan")) return(cmeCopyOwnerMain(argc,argv));
     cmeOwnerApproval approval={0};
