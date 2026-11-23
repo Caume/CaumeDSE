@@ -5737,7 +5737,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
                     {
                         if (resultRegisterCols) //Free resultRegisterCols data obtained by cmeGetUnprotectDBRegisters() call above to check if results were available.
                         {
-                            for (cont=0; cont<numResultRegisterCols;cont++)
+                            for (cont=0; cont<numResultRegisterCols*(numResultRegisters+1);cont++)
                             {
                                cmeFree(resultRegisterCols[cont]);
                             }
