@@ -4197,3 +4197,121 @@ through separate invocations and protected storage. The installed workflow
 begins with a completed admission. TODO #147 remains open for installed
 admission and publication orchestration, live witnessed readers and active
 handoff, broader migration acceptance, lifecycle and production custody.
+
+
+## Installed V2 admission command (#147 phase 43)
+
+Use `caumedse-admin context-column-admission` after the verified export has
+been published and its original publication intent and completion marker are
+retained. Keep export writers stopped for preparation and completion.
+
+```bash
+admission_args=(
+  --registry-directory "$registry_directory" --witness-directory "$witness_directory"
+  --deployment "$deployment_hex" --organization "$organization_hex"
+  --registry-key-file "$registry_key_file" --witness-key-file "$witness_key_file"
+  --source-export "$source_export" --published-export "$published_export"
+  --admission-journal "$admission_journal"
+)
+
+caumedse-admin context-column-admission prepare "${admission_args[@]}" \
+  --approval "$approval_json" --approval-digest "$retained_approval_sha256" \
+  --retained-witness-token "$retained_w0_token" \
+  --source-key-file "$source_key_file" --registration-key-file "$registration_key_file" \
+  --password-file "$password_file"
+
+# Independently retain the printed journal digest before completion.
+caumedse-admin context-column-admission complete "${admission_args[@]}" \
+  --admission-digest "$retained_admission_sha256"
+```
+
+Prepare uses a private schema-1 JSON object up to 4 MiB. Review the approval
+against the retained allocation, registration and publication evidence and
+independently retain the SHA-256 of the exact JSON bytes. Every field below is
+required. Unknown fields, duplicate names and mistyped values fail validation.
+Substitute the original approved values for the placeholders.
+
+```json
+{
+  "schema": 1,
+  "originalRegistry": "<allocation's original 73-byte registry token in hex>",
+  "catalog": "<original 40-byte catalog token in hex>",
+  "sourceMap": "<approved source map>",
+  "lookups": ["<first allocation lookup>", "<next allocation lookup>"],
+  "allocationPlan": "/private/control/copy.plan",
+  "allocationDigest": "<retained allocation SHA-256>",
+  "sourceProfile": "aes-256-gcm",
+  "destinationMap": "<approved destination map>",
+  "sourceDigest": "<source ColumnFile SHA-256>",
+  "candidateDigest": "<V2 ColumnFile SHA-256>",
+  "registrationEvidenceDigest": "<registration approval SHA-256>",
+  "metadataProfile": "aes-256-gcm",
+  "sourceFile": "source.sqlite",
+  "destinationFile": "candidate.sqlite",
+  "sourceDocument": "<source document selector>",
+  "destinationDocument": "<destination document selector>",
+  "storageId": "<approved local storage selector>",
+  "organizationResource": "<approved organization resource>",
+  "columnId": "<approved column selector>",
+  "storagePath": "<literal approved registration path>",
+  "sourceRow": 1,
+  "destinationRow": 2,
+  "sourceResourcesDigest": "<source ResourcesDB SHA-256>",
+  "candidateResourcesDigest": "<candidate ResourcesDB SHA-256>",
+  "exportDigest": "<complete export approval SHA-256>",
+  "registrationReceipt": "/private/control/registration.receipt",
+  "registrationReceiptDigest": "<retained registration receipt SHA-256>",
+  "companions": [
+    ["LogsDB", 4096, "<LogsDB SHA-256>"],
+    ["RolesDB", 4096, "<RolesDB SHA-256>"],
+    ["source.sqlite", 4096, "<source ColumnFile SHA-256>"]
+  ],
+  "acceptanceReceipt": "/private/control/acceptance.receipt",
+  "acceptanceDigest": "<retained export acceptance SHA-256>",
+  "publicationDirectory": "/private/publication-control",
+  "publicationJob": "<original publication job leaf>",
+  "publicationDigest": "<retained publication intent SHA-256>",
+  "staging": "<original now-absent staging leaf>"
+}
+```
+
+Supply canonical absolute paths for the approval and receipt files, allocation
+plan and publication control directory. The approved registration
+`storagePath` is the literal stored value. Use the allocation's exact lookup
+order and include every approved companion in ascending ASCII leaf order,
+with the actual byte length and original retained SHA-256. Registry and
+catalog tokens and digests use lowercase hexadecimal digits. The original
+registry token precedes allocation. W0 acknowledges the committed allocation
+registry and its original catalog, as required by the copy target binding.
+Use the approved legacy AES profile for each source and metadata field.
+
+Use the phase-41 private file conventions for the authority keys and target
+password. The source and registration keys are separate inputs containing
+1 to 256 exact bytes with no NULs. A trailing newline is part of the key.
+Keep the approval, all receipts, keys and journal in private files with
+mode `0600`, one hard link and owned `0700` parents outside both export roots.
+The new journal path must also be outside the authority directories.
+
+Prepare reopens the retained allocation and verifies the registered V2
+candidate and complete export through physical custody. It checks the original
+publication intent and completion marker before writing a private journal.
+After syncing the journal and its directory it prints
+`admission-digest=<sha256>`. The authority transition happens during
+completion. Preserve any partial or uncertain journal and use a fresh path for
+another preparation while the original approvals are current.
+
+Complete reads and syncs the retained journal, validates its independently
+retained digest and rechecks the signed physical proof. It prints
+`catalog=<token>` and `witness-token=<token>` only after the blocked catalog
+and witness commits are verified. Both tokens are 40-byte values in lowercase
+hexadecimal. Repeat the same command after interruption or uncertain output
+using the original journal and digest. Recovery uses the existing registry and
+witness key files and the approved export paths. Preparation credentials and
+receipts are only required during preparation. Failed validation emits no
+result tokens. An output error can follow a successful authority commit.
+
+The admitted catalog still blocks ordinary reads. Retain W1 independently
+and pass it with the original journal and digest to `context-column-release
+prepare`, then follow the release and read workflow. TODO #147 continues with
+installed publication orchestration, live witnessed readers, broader migration
+and lifecycle acceptance, and production custody.
