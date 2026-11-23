@@ -32,22 +32,6 @@ static int cmeCopyOwnerExport(sqlite3 *db, const cmeOwnerApproval *approval,
 static int cmeCopyOwnerDestination(sqlite3 *source, sqlite3 *destination,
     const cmeOwnerApproval *approval, const cmeOfflineArtifact *column, const char *key);
 
-static int cmeOwnerHex(const char *value, unsigned char *bytes, size_t length)
-{
-    size_t i;
-    if (!value || strlen(value)!=2*length) return(1);
-    for (i=0;i<2*length;i++)
-    {
-        unsigned int digit;
-        if (value[i]>='0' && value[i]<='9') digit=value[i]-'0';
-        else if (value[i]>='a' && value[i]<='f') digit=value[i]-'a'+10;
-        else return(1);
-        if (!(i%2)) bytes[i/2]=(unsigned char)(digit<<4);
-        else bytes[i/2]|=(unsigned char)digit;
-    }
-    return(0);
-}
-
 static void cmeOwnerWriteHex(FILE *output, const unsigned char *bytes, size_t length)
 {
     size_t i;
@@ -115,23 +99,23 @@ static int cmeOwnerParse(const char *body, cmeOwnerApproval *approval)
     }
     if (step!=SQLITE_DONE || seen!=(approval->schema==1 ? 12U : (approval->schema==2 ? 13U : 19U)) ||
         (approval->schema==1 ? approval->values[12]!=NULL : approval->values[12]==NULL) ||
-        cmeOwnerHex(approval->values[2],approval->deployment,16) ||
-        cmeOwnerHex(approval->values[3],approval->organization,16) || cmeOwnerHex(approval->values[5],bytes,73)) goto done;
+        cmeOfflineDecodeHex(approval->values[2],approval->deployment,16) ||
+        cmeOfflineDecodeHex(approval->values[3],approval->organization,16) || cmeOfflineDecodeHex(approval->values[5],bytes,73)) goto done;
     for (i=0;i<(approval->schema==1 ? 12U : (approval->schema==2 ? 13U : 19U));i++)
         if (!approval->values[i]) goto done;
     memcpy(approval->registry.deployment,bytes,16); memcpy(approval->registry.organization,bytes+16,16);
     for (i=0;i<8;i++) approval->registry.generation=(approval->registry.generation<<8)|bytes[32+i];
     approval->registry.minimumFormat=bytes[40]; memcpy(approval->registry.digest,bytes+41,32);
     if (memcmp(approval->deployment,bytes,16) || memcmp(approval->organization,bytes+16,16) ||
-        cmeOwnerHex(approval->values[6],bytes,40) || cmeOwnerHex(approval->values[9],approval->source,32) ||
-        cmeOwnerHex(approval->values[10],approval->target,32)) goto done;
+        cmeOfflineDecodeHex(approval->values[6],bytes,40) || cmeOfflineDecodeHex(approval->values[9],approval->source,32) ||
+        cmeOfflineDecodeHex(approval->values[10],approval->target,32)) goto done;
     for (i=0;i<8;i++) approval->catalog.revision=(approval->catalog.revision<<8)|bytes[i];
     memcpy(approval->catalog.digest,bytes+8,32);
     sqlite3_finalize(stmt); stmt=NULL;
     if (approval->schema==3)
     {
-        if (cmeOwnerHex(approval->values[15],approval->resourcesSource,32) ||
-            cmeOwnerHex(approval->values[16],approval->resourcesTarget,32) || sqlite3_prepare_v2(db,
+        if (cmeOfflineDecodeHex(approval->values[15],approval->resourcesSource,32) ||
+            cmeOfflineDecodeHex(approval->values[16],approval->resourcesTarget,32) || sqlite3_prepare_v2(db,
             "SELECT json_extract(?1,'$[0]'),json_extract(?1,'$[1]'),json_extract(?1,'$[2]'),"
             "json_extract(?1,'$[3]'),json_extract(?1,'$[4]') WHERE json_array_length(?1)=5 AND "
             "json_type(?1,'$[0]')='integer' AND json_type(?1,'$[1]')='text' AND json_type(?1,'$[2]')='text' "
@@ -169,68 +153,9 @@ done:
     sqlite3_finalize(stmt); sqlite3_finalize(slot); sqlite3_close(db); return(result);
 }
 
-typedef enum
-{
-    cmeOwnerTextFile,
-    cmeOwnerDurableBinaryFile,
-    cmeOwnerBinaryFile
-} cmeOwnerFileMode;
-
-static int cmeOwnerRead(const char *path, size_t maximum, char **body, size_t *length, cmeOwnerFileMode mode)
-{
-    cmeOfflineArtifact parent={.file=-1,.directory=-1};
-    struct stat before,after;
-    char canonical[PATH_MAX],*candidate=NULL;
-    size_t offset=0;
-    int fd=-1,result=1;
-    *body=NULL;
-    if (!realpath(path,canonical) || strcmp(path,canonical) || cmeOfflineOpen(path,0,&parent)) goto done;
-    fd=openat(parent.directory,parent.name,O_RDONLY|O_NOFOLLOW|O_NONBLOCK);
-    if (fd<0 || fstat(fd,&before) || !S_ISREG(before.st_mode) || before.st_uid!=geteuid() ||
-        (before.st_mode&07777)!=0600 || before.st_nlink!=1 || before.st_size<1 ||
-        (uint64_t)before.st_size>maximum || !(candidate=malloc((size_t)before.st_size+1))) goto done;
-    while (offset<(size_t)before.st_size)
-    {
-        ssize_t count=read(fd,candidate+offset,(size_t)before.st_size-offset);
-        if (count<0 && errno==EINTR) continue;
-        if (count<=0) goto done;
-        offset+=(size_t)count;
-    }
-    if ((mode==cmeOwnerDurableBinaryFile && (fsync(fd) || fsync(parent.directory))) ||
-        fstat(fd,&after) || before.st_size!=after.st_size || before.st_mtim.tv_sec!=after.st_mtim.tv_sec ||
-        before.st_mtim.tv_nsec!=after.st_mtim.tv_nsec || before.st_ctim.tv_sec!=after.st_ctim.tv_sec ||
-        before.st_ctim.tv_nsec!=after.st_ctim.tv_nsec || before.st_mode!=after.st_mode ||
-        before.st_uid!=after.st_uid || before.st_nlink!=after.st_nlink ||
-        (mode==cmeOwnerTextFile && memchr(candidate,0,offset)) ||
-        fstatat(parent.directory,parent.name,&after,AT_SYMLINK_NOFOLLOW) ||
-        before.st_dev!=after.st_dev || before.st_ino!=after.st_ino) goto done;
-    candidate[offset]=0; *body=candidate; candidate=NULL;
-    if (length) *length=offset;
-    result=0;
-done:
-    if (candidate) { OPENSSL_cleanse(candidate,offset); free(candidate); }
-    if (fd>=0) close(fd);
-    cmeOfflineClose(&parent); return(result);
-}
-
 static int cmeOwnerFile(const char *path, size_t maximum, char **body)
 {
-    return(cmeOwnerRead(path,maximum,body,NULL,cmeOwnerTextFile));
-}
-
-static int cmeColumnOwnerKey(const char *path, unsigned char key[32])
-{
-    char *text=NULL;
-    size_t length=0;
-    int result=cmeOwnerRead(path,65,&text,&length,cmeOwnerTextFile);
-    if (!result)
-    {
-        if (length==65 && text[64]=='\n') text[64]=0;
-        result=cmeOwnerHex(text,key,32);
-        OPENSSL_cleanse(text,length);
-        free(text);
-    }
-    return(result);
+    return(cmeOfflineReadPrivate(path,maximum,body,NULL,cmeOfflineTextFile));
 }
 
 typedef enum
@@ -362,7 +287,7 @@ static int cmeColumnAdmissionParse(const char *body, cmeColumnAdmissionApproval 
         entry->length=(size_t)length;
         entry->name=cmeOwnerText(tuple,0,NAME_MAX);
         digest=cmeOwnerText(tuple,2,64);
-        invalid=cmeOwnerHex(digest,entry->digest,sizeof(entry->digest));
+        invalid=cmeOfflineDecodeHex(digest,entry->digest,sizeof(entry->digest));
         free(digest);
         if (!entry->name || invalid || sqlite3_reset(tuple)!=SQLITE_OK) goto done;
     }
@@ -399,17 +324,17 @@ static int cmeColumnOwnerVerifyExport(cmeColumnOwnerAction action, cmeContextMan
     unsigned int written=0;
     int pathLength,result=1,state=0;
 
-    if (cmeOwnerHex(manifestDigest,expected,sizeof(expected)) ||
-        cmeOwnerRead(manifest,CME_COLUMN_ADMISSION_APPROVAL_MAX,&body,&bodyLength,cmeOwnerTextFile) ||
+    if (cmeOfflineDecodeHex(manifestDigest,expected,sizeof(expected)) ||
+        cmeOfflineReadPrivate(manifest,CME_COLUMN_ADMISSION_APPROVAL_MAX,&body,&bodyLength,cmeOfflineTextFile) ||
         !EVP_Digest(body,bodyLength,actual,&written,EVP_sha256(),NULL) || written!=sizeof(actual) ||
         CRYPTO_memcmp(actual,expected,sizeof(actual)) || cmeColumnAdmissionParse(body,&approval) ||
-        cmeOwnerHex(v[admissionRegistry],bytes,73)) goto done;
+        cmeOfflineDecodeHex(v[admissionRegistry],bytes,73)) goto done;
     memcpy(original.deployment,bytes,16);
     memcpy(original.organization,bytes+16,16);
     for (i=0;i<8;i++) original.generation=(original.generation<<8)|bytes[32+i];
     original.minimumFormat=bytes[40];
     memcpy(original.digest,bytes+41,32);
-    if (cmeOwnerHex(v[admissionCatalog],bytes,40)) goto done;
+    if (cmeOfflineDecodeHex(v[admissionCatalog],bytes,40)) goto done;
     for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
     memcpy(catalog.digest,bytes+8,32);
 
@@ -420,27 +345,27 @@ static int cmeColumnOwnerVerifyExport(cmeColumnOwnerAction action, cmeContextMan
         if (!retainedPublication) retainedPublication=v[admissionPublicationDigest];
     }
     else if (v[admissionPublicationDigest]) goto done;
-    if (action!=cmeColumnOwnerPublicationPrepare && cmeOwnerHex(retainedPublication,publicationDigest,32)) goto done;
+    if (action!=cmeColumnOwnerPublicationPrepare && cmeOfflineDecodeHex(retainedPublication,publicationDigest,32)) goto done;
 
-    if (cmeOwnerHex(v[admissionAllocationDigest],allocationDigest,32) ||
-        cmeOwnerHex(v[admissionAcceptanceDigest],acceptanceDigest,32) ||
-        cmeOwnerHex(v[admissionSourceDigest],transform.sourceDigest,32) ||
-        cmeOwnerHex(v[admissionCandidateDigest],transform.candidateDigest,32) ||
-        cmeOwnerHex(v[admissionRegistrationDigest],transform.registrationEvidenceDigest,32) ||
-        cmeOwnerHex(v[admissionSourceResources],registration.sourceResourcesDigest,32) ||
-        cmeOwnerHex(v[admissionCandidateResources],registration.candidateResourcesDigest,32) ||
-        cmeOwnerHex(v[admissionExportDigest],export.approvalDigest,32) ||
-        cmeOwnerHex(v[admissionReceiptDigest],export.registrationReceiptDigest,32)) goto done;
+    if (cmeOfflineDecodeHex(v[admissionAllocationDigest],allocationDigest,32) ||
+        cmeOfflineDecodeHex(v[admissionAcceptanceDigest],acceptanceDigest,32) ||
+        cmeOfflineDecodeHex(v[admissionSourceDigest],transform.sourceDigest,32) ||
+        cmeOfflineDecodeHex(v[admissionCandidateDigest],transform.candidateDigest,32) ||
+        cmeOfflineDecodeHex(v[admissionRegistrationDigest],transform.registrationEvidenceDigest,32) ||
+        cmeOfflineDecodeHex(v[admissionSourceResources],registration.sourceResourcesDigest,32) ||
+        cmeOfflineDecodeHex(v[admissionCandidateResources],registration.candidateResourcesDigest,32) ||
+        cmeOfflineDecodeHex(v[admissionExportDigest],export.approvalDigest,32) ||
+        cmeOfflineDecodeHex(v[admissionReceiptDigest],export.registrationReceiptDigest,32)) goto done;
     if (strchr(v[admissionPublicationJob],'/')) goto done;
     pathLength=snprintf(controlPath,sizeof(controlPath),"%s/%s",v[admissionPublicationDirectory],v[admissionPublicationJob]);
     if (pathLength<0 || (size_t)pathLength>=sizeof(controlPath) || cmeOfflineOpen(controlPath,0,&control) ||
-        cmeOwnerRead(v[admissionAllocation],cmeContextCopyPlanMaxBytes,&allocation,&allocationLength,cmeOwnerBinaryFile) ||
-        cmeOwnerRead(v[admissionRegistrationReceipt],cmeContextColumnTransformMaxBytes,&receipt,
-            &export.registrationReceiptLength,cmeOwnerBinaryFile) ||
-        cmeOwnerRead(v[admissionAcceptance],cmeContextColumnAcceptanceMaxBytes,&acceptance,&acceptanceLength,cmeOwnerBinaryFile) ||
-        cmeOwnerRead(sourceKeyPath,256,&sourceKey,&sourceKeyLength,cmeOwnerTextFile) ||
-        cmeOwnerRead(registrationKeyPath,256,&registrationKey,&registrationKeyLength,cmeOwnerTextFile) ||
-        cmeOwnerRead(passwordPath,256,&password,&credentials.passwordLength,cmeOwnerBinaryFile)) goto done;
+        cmeOfflineReadPrivate(v[admissionAllocation],cmeContextCopyPlanMaxBytes,&allocation,&allocationLength,cmeOfflineBinaryFile) ||
+        cmeOfflineReadPrivate(v[admissionRegistrationReceipt],cmeContextColumnTransformMaxBytes,&receipt,
+            &export.registrationReceiptLength,cmeOfflineBinaryFile) ||
+        cmeOfflineReadPrivate(v[admissionAcceptance],cmeContextColumnAcceptanceMaxBytes,&acceptance,&acceptanceLength,cmeOfflineBinaryFile) ||
+        cmeOfflineReadPrivate(sourceKeyPath,256,&sourceKey,&sourceKeyLength,cmeOfflineTextFile) ||
+        cmeOfflineReadPrivate(registrationKeyPath,256,&registrationKey,&registrationKeyLength,cmeOfflineTextFile) ||
+        cmeOfflineReadPrivate(passwordPath,256,&password,&credentials.passwordLength,cmeOfflineBinaryFile)) goto done;
 
     credentials.sourceKey=sourceKey;
     credentials.registrationKey=registrationKey;
@@ -663,13 +588,13 @@ static int cmeColumnOwnerMain(int argc, char **argv)
     }
     if (options[witnessToken].actions&action)
     {
-        if (cmeOwnerHex(values[witnessToken],token,sizeof(token))) goto done;
+        if (cmeOfflineDecodeHex(values[witnessToken],token,sizeof(token))) goto done;
         for (i=0;i<8;i++) acknowledged.revision=(acknowledged.revision<<8)|token[i];
         memcpy(acknowledged.digest,token+8,sizeof(acknowledged.digest));
         if (!acknowledged.revision) goto done;
     }
-    if (cmeOwnerHex(values[deploymentId],deployment,sizeof(deployment)) ||
-        cmeOwnerHex(values[organizationId],organization,sizeof(organization)) ||
+    if (cmeOfflineDecodeHex(values[deploymentId],deployment,sizeof(deployment)) ||
+        cmeOfflineDecodeHex(values[organizationId],organization,sizeof(organization)) ||
         cmeOfflineOpen(values[sourceExport],0,&source) || cmeOfflineOpen(values[publishedExport],0,&published)) goto done;
 
     if (preparing)
@@ -681,16 +606,16 @@ static int cmeColumnOwnerMain(int argc, char **argv)
     }
     if (action==cmeColumnOwnerPrepare || action==cmeColumnOwnerAdmissionComplete)
     {
-        if (cmeOwnerHex(values[admissionDigest],digest,sizeof(digest)) ||
-            cmeOwnerRead(values[admissionPath],cmeContextColumnAdmissionMaxBytes,&evidence,&evidenceLength,
-                preparing ? cmeOwnerBinaryFile : cmeOwnerDurableBinaryFile)) goto done;
+        if (cmeOfflineDecodeHex(values[admissionDigest],digest,sizeof(digest)) ||
+            cmeOfflineReadPrivate(values[admissionPath],cmeContextColumnAdmissionMaxBytes,&evidence,&evidenceLength,
+                preparing ? cmeOfflineBinaryFile : cmeOfflineDurableBinaryFile)) goto done;
     }
-    else if (!preparing && !publishing && (cmeOwnerHex(values[releaseDigest],digest,sizeof(digest)) ||
-        cmeOwnerRead(values[envelopePath],cmeContextColumnGlobalMaxBytes,&evidence,&evidenceLength,
-            reading ? cmeOwnerBinaryFile : cmeOwnerDurableBinaryFile))) goto done;
+    else if (!preparing && !publishing && (cmeOfflineDecodeHex(values[releaseDigest],digest,sizeof(digest)) ||
+        cmeOfflineReadPrivate(values[envelopePath],cmeContextColumnGlobalMaxBytes,&evidence,&evidenceLength,
+            reading ? cmeOfflineBinaryFile : cmeOfflineDurableBinaryFile))) goto done;
 
-    if (cmeColumnOwnerKey(values[registryKeyFile],registryKey) ||
-        cmeColumnOwnerKey(values[witnessKeyFile],witnessKey) ||
+    if (cmeOfflineReadKey(values[registryKeyFile],registryKey) ||
+        cmeOfflineReadKey(values[witnessKeyFile],witnessKey) ||
         !CRYPTO_memcmp(registryKey,witnessKey,sizeof(registryKey)) ||
         cmeContextManagerOpen(values[registryDirectory],0,registryKey,deployment,organization,&manager) ||
         cmeContextWitnessOpen(values[witnessDirectory],0,witnessKey,deployment,organization,NULL,NULL,&witness) ||
@@ -758,7 +683,7 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         result=cmeContextColumnGlobalReadOpen(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
             evidenceLength,digest,&acknowledged,&release);
         if (result) goto done;
-        result=cmeOwnerRead(values[passwordFile],256,&password,&passwordLength,cmeOwnerBinaryFile);
+        result=cmeOfflineReadPrivate(values[passwordFile],256,&password,&passwordLength,cmeOfflineBinaryFile);
         if (result) goto done;
         result=cmeContextColumnRead(release,values[tableName],(int64_t)row,values[fieldName],
             (const unsigned char *)password,passwordLength,&output);
@@ -847,26 +772,26 @@ static int cmeCopyOwnerParse(const char *body, cmeOwnerApproval *approval)
     required=approval->schema==1 ? 11U : (approval->schema==2 ? 16U : (approval->schema>=5 ? (approval->schema==6 ? 26U : 24U) : 20U));
     if (step!=SQLITE_DONE || seen!=required) goto done;
     for (i=0;i<required;i++) if (!approval->values[columns[i]]) goto done;
-    if (cmeOwnerHex(approval->values[2],approval->deployment,16) ||
-        cmeOwnerHex(approval->values[3],approval->organization,16) || cmeOwnerHex(approval->values[5],bytes,73)) goto done;
+    if (cmeOfflineDecodeHex(approval->values[2],approval->deployment,16) ||
+        cmeOfflineDecodeHex(approval->values[3],approval->organization,16) || cmeOfflineDecodeHex(approval->values[5],bytes,73)) goto done;
     memcpy(approval->registry.deployment,bytes,16); memcpy(approval->registry.organization,bytes+16,16);
     for (i=0;i<8;i++) approval->registry.generation=(approval->registry.generation<<8)|bytes[32+i];
     approval->registry.minimumFormat=bytes[40]; memcpy(approval->registry.digest,bytes+41,32);
     if (memcmp(approval->deployment,bytes,16) || memcmp(approval->organization,bytes+16,16) ||
-        approval->registry.minimumFormat!=1 || cmeOwnerHex(approval->values[6],bytes,40)) goto done;
+        approval->registry.minimumFormat!=1 || cmeOfflineDecodeHex(approval->values[6],bytes,40)) goto done;
     for (i=0;i<8;i++) approval->catalog.revision=(approval->catalog.revision<<8)|bytes[i];
     memcpy(approval->catalog.digest,bytes+8,32);
-    if (approval->schema>=2 && (cmeOwnerHex(approval->values[15],approval->source,32) ||
-        cmeOwnerHex(approval->values[16],approval->target,32))) goto done;
+    if (approval->schema>=2 && (cmeOfflineDecodeHex(approval->values[15],approval->source,32) ||
+        cmeOfflineDecodeHex(approval->values[16],approval->target,32))) goto done;
     sqlite3_finalize(stmt); stmt=NULL;
-    if (approval->schema>=5 && (cmeOwnerHex(approval->values[23],approval->resourcesTarget,32) ||
+    if (approval->schema>=5 && (cmeOfflineDecodeHex(approval->values[23],approval->resourcesTarget,32) ||
         *approval->values[25]!='/' || strcmp(approval->values[21],approval->values[25]))) goto done;
     if (approval->schema>=3)
     {
         size_t registration;
         for (registration=0;registration<(approval->schema>=5 ? 2U : 1U);registration++)
         {
-            if (cmeOwnerHex(approval->values[20],approval->resourcesSource,32) || *approval->values[21]!='/' ||
+            if (cmeOfflineDecodeHex(approval->values[20],approval->resourcesSource,32) || *approval->values[21]!='/' ||
                 sqlite3_prepare_v2(db,"SELECT json_extract(?1,'$[0]'),json_extract(?1,'$[1]'),json_extract(?1,'$[2]'),"
                 "json_extract(?1,'$[3]'),json_extract(?1,'$[4]') WHERE json_array_length(?1)=5 AND "
                 "json_type(?1,'$[0]')='integer' AND json_type(?1,'$[1]')='text' AND json_type(?1,'$[2]')='text' "
@@ -1094,11 +1019,11 @@ static int cmeCopyOwnerInstall(cmeContextManager *manager, cmeContextWitness *wi
     size_t i;
     int result=1,advance=!strcmp(action,"--advance-install-witness");
     int status=!strcmp(action,"--install-status");
-    if (cmeOwnerHex(registryText,bytes,73)) goto done;
+    if (cmeOfflineDecodeHex(registryText,bytes,73)) goto done;
     memcpy(registry.deployment,bytes,16); memcpy(registry.organization,bytes+16,16);
     for (i=0;i<8;i++) registry.generation=(registry.generation<<8)|bytes[32+i];
     registry.minimumFormat=bytes[40]; memcpy(registry.digest,bytes+41,32);
-    if (cmeOwnerHex(catalogText,bytes,40)) goto done;
+    if (cmeOfflineDecodeHex(catalogText,bytes,40)) goto done;
     for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
     memcpy(catalog.digest,bytes+8,32);
     if (cmeContextManagerCopyPlanMatch(manager,allocation,allocationLength,allocationDigest,
@@ -1248,14 +1173,14 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     if (!installRecovery && (check ? (approval.schema!=(publication ? 6 : (destination ? 5 : (export ? 4 : (registered ? 3 : 2)))) || !orgFile) :
         (approval.schema!=1 || orgFile))) goto done;
     if ((publication && !publicationPrepare) || installRecovery)
-    { if (!publicationDigestText || cmeOwnerHex(publicationDigestText,publicationDigest,32)) goto done; }
+    { if (!publicationDigestText || cmeOfflineDecodeHex(publicationDigestText,publicationDigest,32)) goto done; }
     else if (publicationDigestText) goto done;
-    if (((prepare || installInit) ? digestText!=NULL : (!digestText || cmeOwnerHex(digestText,digest,32))) ||
-        (advance ? (!approvedRegistry || cmeOwnerHex(approvedRegistry,approved,73)) : approvedRegistry!=NULL)) goto done;
+    if (((prepare || installInit) ? digestText!=NULL : (!digestText || cmeOfflineDecodeHex(digestText,digest,32))) ||
+        (advance ? (!approvedRegistry || cmeOfflineDecodeHex(approvedRegistry,approved,73)) : approvedRegistry!=NULL)) goto done;
     if (strlen(keyText)==65 && keyText[64]=='\n') keyText[64]=0;
     if (strlen(witnessText)==65 && witnessText[64]=='\n') witnessText[64]=0;
-    if (cmeOwnerHex(keyText,key,32) || cmeOwnerHex(witnessText,witnessKey,32) || !CRYPTO_memcmp(key,witnessKey,32) ||
-        cmeOwnerHex(token,bytes,40)) goto done;
+    if (cmeOfflineDecodeHex(keyText,key,32) || cmeOfflineDecodeHex(witnessText,witnessKey,32) || !CRYPTO_memcmp(key,witnessKey,32) ||
+        cmeOfflineDecodeHex(token,bytes,40)) goto done;
     for (i=0;i<8;i++) retained.revision=(retained.revision<<8)|bytes[i];
     memcpy(retained.digest,bytes+8,32);
     if (cmeContextManagerOpen(approval.values[1],0,key,approval.deployment,approval.organization,&manager) ||
@@ -1282,8 +1207,8 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     if (installRecovery)
     {
         if (cmeCopyOwnerPublicationPaths(&approval,&parent,manifest,keyFile,witnessFile,manifest,&intentParent) ||
-            cmeOwnerRead(approval.values[8],cmeContextCopyPlanMaxBytes,&planText,&length,cmeOwnerDurableBinaryFile) ||
-            cmeOwnerRead(approval.values[26],cmeContextCopyPublicationMaxBytes,&intentText,&intentLength,cmeOwnerDurableBinaryFile)) goto done;
+            cmeOfflineReadPrivate(approval.values[8],cmeContextCopyPlanMaxBytes,&planText,&length,cmeOfflineDurableBinaryFile) ||
+            cmeOfflineReadPrivate(approval.values[26],cmeContextCopyPublicationMaxBytes,&intentText,&intentLength,cmeOfflineDurableBinaryFile)) goto done;
         result=cmeCopyOwnerInstall(manager,witness,&retained,&approval,action,currentRegistryText,currentCatalogText,
             digest,publicationDigest,(unsigned char *)planText,length,(unsigned char *)intentText,intentLength,lookups);
         goto done;
@@ -1299,7 +1224,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         if (result) goto done;
         planText=(char *)prepared; prepared=NULL;
     }
-    else if (cmeOwnerRead(approval.values[8],cmeContextCopyPlanMaxBytes,&planText,&length,cmeOwnerDurableBinaryFile)) goto done;
+    else if (cmeOfflineReadPrivate(approval.values[8],cmeContextCopyPlanMaxBytes,&planText,&length,cmeOfflineDurableBinaryFile)) goto done;
     result=1;
     if (cmeContextManagerCopyPlanMatch(manager,(unsigned char *)planText,length,digest,&approval.registry,
         &approval.catalog,approval.values[4],lookups,approval.count)) goto done;
@@ -1363,7 +1288,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
                 result=cmeOwnerSave(&intentParent,approval.values[26],intent,intentLength); if (result) goto done;
                 intentText=(char *)intent; intent=NULL;
             }
-            else if (cmeOwnerRead(approval.values[26],cmeContextCopyPublicationMaxBytes,&intentText,&intentLength,cmeOwnerDurableBinaryFile)) goto done;
+            else if (cmeOfflineReadPrivate(approval.values[26],cmeContextCopyPublicationMaxBytes,&intentText,&intentLength,cmeOfflineDurableBinaryFile)) goto done;
             result=cmeContextManagerCopyPublicationMatch(manager,(unsigned char *)planText,length,digest,
                 &approval.registry,&approval.catalog,requestDigest,approval.values[27],
                 (unsigned char *)intentText,intentLength,publicationDigest);
@@ -2420,7 +2345,7 @@ int cmeContextOwnerMain(int argc, char **argv)
     if ((registeredCommand ? (approval.schema!=3 || !orgFile || !retainedToken ||
         approval.registry.minimumFormat!=1) :
         (approval.schema==3 || orgFile || retainedToken || !strcmp(action,"--check"))) ||
-        cmeOwnerHex(keyText,key,32) || (!witnessCommand && jobText && cmeOwnerHex(jobText,job,32)) ||
+        cmeOfflineDecodeHex(keyText,key,32) || (!witnessCommand && jobText && cmeOfflineDecodeHex(jobText,job,32)) ||
         (witnessCommand && strcmp(action,"--init") && strcmp(action,"--status") && strcmp(action,"--advance") && strcmp(action,"--reconcile")) ||
         (!witnessCommand && (!strcmp(action,"--advance") || !strcmp(action,"--reconcile"))) ||
         (approval.schema==1 && (witnessCommand || witnessFile || witnessDirectory)) ||
@@ -2430,14 +2355,14 @@ int cmeContextOwnerMain(int argc, char **argv)
         if (!witnessDirectory || strcmp(witnessDirectory,approval.values[12]) ||
             cmeOwnerWitnessPaths(&approval,manifest,keyFile,witnessFile) || cmeOwnerFile(witnessFile,65,&witnessText)) goto done;
         if (strlen(witnessText)==65 && witnessText[64]=='\n') witnessText[64]=0;
-        if (cmeOwnerHex(witnessText,witnessKey,32) || !CRYPTO_memcmp(key,witnessKey,32)) goto done;
+        if (cmeOfflineDecodeHex(witnessText,witnessKey,32) || !CRYPTO_memcmp(key,witnessKey,32)) goto done;
         result=cmeContextManagerCheckAnchors(manager,&approval.registry,&approval.catalog); if (result) goto done;
         result=1;
         if (cmeContextWitnessOpen(approval.values[12],witnessCommand && !strcmp(action,"--init"),witnessKey,
             approval.deployment,approval.organization,&approval.registry,&approval.catalog,&witness)) goto done;
         if (registeredCommand)
         {
-            if (cmeOwnerHex(retainedToken,bytes,40)) goto done;
+            if (cmeOfflineDecodeHex(retainedToken,bytes,40)) goto done;
             for (i=0;i<8;i++) witnessExpected.revision=(witnessExpected.revision<<8)|bytes[i];
             memcpy(witnessExpected.digest,bytes+8,32);
             result=cmeContextWitnessReconcile(witness,&witnessExpected,&approval.registry,&approval.catalog,&recovery,&witnessPublished);
@@ -2446,7 +2371,7 @@ int cmeContextOwnerMain(int argc, char **argv)
         }
         else if (witnessCommand && (!strcmp(action,"--advance") || !strcmp(action,"--reconcile")))
         {
-            if (!jobText || cmeOwnerHex(jobText,bytes,40)) goto done;
+            if (!jobText || cmeOfflineDecodeHex(jobText,bytes,40)) goto done;
             for (i=0;i<8;i++) witnessExpected.revision=(witnessExpected.revision<<8)|bytes[i];
             memcpy(witnessExpected.digest,bytes+8,32);
             if (!strcmp(action,"--reconcile"))
