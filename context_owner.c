@@ -22,6 +22,7 @@ typedef struct
 
 static int cmeOwnerSameSlot(const cmeContextSlot *a, const cmeContextSlot *b);
 static int cmeOwnerOutside(const char *export, const char *path);
+static int cmeOwnerSave(cmeOfflineArtifact *parent, const char *path, const unsigned char *bytes, size_t length);
 static int cmeCopyOwnerPreflight(const cmeOwnerApproval *approval, const cmeContextMap *source,
     const cmeContextMap *destination, const char *key);
 static int cmeCopyOwnerRegistration(sqlite3 *db, const cmeOwnerApproval *approval,
@@ -217,7 +218,7 @@ static int cmeOwnerFile(const char *path, size_t maximum, char **body)
     return(cmeOwnerRead(path,maximum,body,NULL,cmeOwnerTextFile));
 }
 
-static int cmeColumnReadOwnerKey(const char *path, unsigned char key[32])
+static int cmeColumnOwnerKey(const char *path, unsigned char key[32])
 {
     char *text=NULL;
     size_t length=0;
@@ -232,109 +233,220 @@ static int cmeColumnReadOwnerKey(const char *path, unsigned char key[32])
     return(result);
 }
 
-static int cmeColumnReadOwnerMain(int argc, char **argv)
+typedef enum
+{
+    cmeColumnOwnerRead=1,
+    cmeColumnOwnerPrepare=2,
+    cmeColumnOwnerComplete=4
+} cmeColumnOwnerAction;
+
+static void cmeColumnOwnerAnchor(const char *label, uint64_t revision, const unsigned char digest[32])
+{
+    unsigned char number[8];
+    size_t i;
+    for (i=0;i<sizeof(number);i++) number[i]=(unsigned char)(revision>>(56-8*i));
+    fputs(label,stdout);
+    cmeOwnerPrint(number,sizeof(number));
+    cmeOwnerPrint(digest,32);
+    putchar('\n');
+}
+
+static int cmeColumnOwnerMain(int argc, char **argv)
 {
     enum
     {
         registryDirectory, witnessDirectory, deploymentId, organizationId, sourceExport, publishedExport,
-        envelopePath, envelopeDigest, witnessToken, registryKeyFile, witnessKeyFile, passwordFile,
-        tableName, rowNumber, fieldName, optionCount
+        envelopePath, registryKeyFile, witnessKeyFile, releaseDigest, witnessToken, admissionPath,
+        admissionDigest, passwordFile, tableName, rowNumber, fieldName, optionCount
     };
-    static const char *const names[optionCount]={
-        "--registry-directory", "--witness-directory", "--deployment", "--organization",
-        "--source-export", "--published-export", "--release-envelope", "--release-digest",
-        "--retained-witness-token", "--registry-key-file", "--witness-key-file", "--password-file",
-        "--table", "--row", "--field"
+    enum { allActions=cmeColumnOwnerRead|cmeColumnOwnerPrepare|cmeColumnOwnerComplete };
+    static const struct { const char *name; unsigned int actions; } options[optionCount]={
+        [registryDirectory]={"--registry-directory",allActions},
+        [witnessDirectory]={"--witness-directory",allActions},
+        [deploymentId]={"--deployment",allActions},
+        [organizationId]={"--organization",allActions},
+        [sourceExport]={"--source-export",allActions},
+        [publishedExport]={"--published-export",allActions},
+        [envelopePath]={"--release-envelope",allActions},
+        [registryKeyFile]={"--registry-key-file",allActions},
+        [witnessKeyFile]={"--witness-key-file",allActions},
+        [releaseDigest]={"--release-digest",cmeColumnOwnerRead|cmeColumnOwnerComplete},
+        [witnessToken]={"--retained-witness-token",cmeColumnOwnerRead|cmeColumnOwnerPrepare},
+        [admissionPath]={"--admission-journal",cmeColumnOwnerPrepare},
+        [admissionDigest]={"--admission-digest",cmeColumnOwnerPrepare},
+        [passwordFile]={"--password-file",cmeColumnOwnerRead},
+        [tableName]={"--table",cmeColumnOwnerRead},
+        [rowNumber]={"--row",cmeColumnOwnerRead},
+        [fieldName]={"--field",cmeColumnOwnerRead}
     };
     const char *values[optionCount]={0};
+    const char *error="invalid input or unavailable state. Run --help for usage";
     cmeOfflineArtifact source={.file=-1,.directory=-1},published={.file=-1,.directory=-1};
+    cmeOfflineArtifact destination={.file=-1,.directory=-1};
     cmeContextColumnCustodyRoot roots[2];
     cmeContextManager *manager=NULL;
     cmeContextWitness *witness=NULL;
     cmeContextColumnReadRelease *release=NULL;
     cmeContextWitnessAnchor acknowledged={0};
-    cmeContextV2Buffer plaintext={0};
-    unsigned char deployment[16],organization[16],digest[32],token[40];
+    cmeContextColumnAdmissionResult completed={0};
+    cmeContextV2Buffer output={0};
+    unsigned char deployment[16],organization[16],digest[32],token[40],preparedDigest[32];
     unsigned char registryKey[32]={0},witnessKey[32]={0};
-    char *envelope=NULL,*password=NULL;
-    size_t envelopeLength=0,passwordLength=0,option;
-    long long row;
-    int i,result=1;
+    char *evidence=NULL,*password=NULL;
+    size_t evidenceLength=0,passwordLength=0,option;
+    long long row=0;
+    int i=2,result=1;
+    cmeColumnOwnerAction action=cmeColumnOwnerRead;
+    int reading=!strcmp(argv[1],"context-column-read");
 
     if (argc==3 && !strcmp(argv[2],"--help"))
     {
-        puts("Usage: caumedse-admin context-column-read --registry-directory DIRECTORY --witness-directory DIRECTORY\n"
-             "  --deployment HEX32 --organization HEX32 --registry-key-file FILE --witness-key-file FILE\n"
-             "  --source-export DIRECTORY --published-export DIRECTORY\n"
-             "  --release-envelope FILE --release-digest SHA256 --retained-witness-token TOKEN\n"
-             "  --password-file FILE --table NAME --row POSITIVE_INTEGER --field NAME\n"
-             "Use absolute canonical paths and private owner files. Stop export writers before reading.\n"
-             "Use the original retained release digest and separately acknowledged witness token.\n"
-             "Password files hold 1-256 raw bytes. Stdout contains the verified cell bytes.");
+        if (reading)
+            puts("Usage: caumedse-admin context-column-read --registry-directory DIRECTORY --witness-directory DIRECTORY\n"
+                 "  --deployment HEX32 --organization HEX32 --registry-key-file FILE --witness-key-file FILE\n"
+                 "  --source-export DIRECTORY --published-export DIRECTORY\n"
+                 "  --release-envelope FILE --release-digest SHA256 --retained-witness-token TOKEN\n"
+                 "  --password-file FILE --table NAME --row POSITIVE_INTEGER --field NAME\n"
+                 "Use absolute canonical paths and private owner files. Stop export writers before reading.\n"
+                 "Use the original retained release digest and separately acknowledged witness token.\n"
+                 "Password files hold 1-256 raw bytes. Stdout contains the verified cell bytes.");
+        else
+            puts("Usage: caumedse-admin context-column-release (prepare | complete)\n"
+                 "  --registry-directory DIRECTORY --witness-directory DIRECTORY --deployment HEX32 --organization HEX32\n"
+                 "  --registry-key-file FILE --witness-key-file FILE --source-export DIRECTORY --published-export DIRECTORY\n"
+                 "  Prepare: --admission-journal FILE --admission-digest SHA256 --retained-witness-token W1 --release-envelope NEW_FILE\n"
+                 "  Complete or recover: --release-envelope FILE --release-digest RETAINED_SHA256\n"
+                 "Use absolute canonical paths and private owner files. Stop export writers.\n"
+                 "Prepare saves an envelope and prints its digest. Retain the digest separately before completion.\n"
+                 "Complete prints the catalog and witness tokens. Retain the witness token separately before reading.");
         return(0);
     }
-    for (i=2;i<argc;i++)
+    if (!reading)
+    {
+        if (argc<3) goto done;
+        if (!strcmp(argv[2],"prepare")) action=cmeColumnOwnerPrepare;
+        else if (!strcmp(argv[2],"complete")) action=cmeColumnOwnerComplete;
+        else goto done;
+        i++;
+    }
+    for (;i<argc;i++)
     {
         for (option=0;option<optionCount;option++)
-            if (!strcmp(argv[i],names[option])) break;
-        if (option==optionCount || values[option] || ++i>=argc || !*argv[i]) goto done;
+            if (!strcmp(argv[i],options[option].name)) break;
+        if (option==optionCount || !(options[option].actions&action) || values[option] ||
+            ++i>=argc || !*argv[i]) goto done;
         values[option]=argv[i];
     }
     for (option=0;option<optionCount;option++)
-        if (!values[option]) goto done;
+        if ((options[option].actions&action) && !values[option]) goto done;
 
-    if (strspn(values[rowNumber],"0123456789")!=strlen(values[rowNumber])) goto done;
-    errno=0;
-    row=strtoll(values[rowNumber],NULL,10);
-    if (errno || row<1 || row>INT64_MAX ||
-        cmeOwnerHex(values[deploymentId],deployment,sizeof(deployment)) ||
+    if (reading)
+    {
+        if (strspn(values[rowNumber],"0123456789")!=strlen(values[rowNumber])) goto done;
+        errno=0;
+        row=strtoll(values[rowNumber],NULL,10);
+        if (errno || row<1 || row>INT64_MAX) goto done;
+    }
+    if (action!=cmeColumnOwnerComplete)
+    {
+        if (cmeOwnerHex(values[witnessToken],token,sizeof(token))) goto done;
+        for (i=0;i<8;i++) acknowledged.revision=(acknowledged.revision<<8)|token[i];
+        memcpy(acknowledged.digest,token+8,sizeof(acknowledged.digest));
+        if (!acknowledged.revision) goto done;
+    }
+    if (cmeOwnerHex(values[deploymentId],deployment,sizeof(deployment)) ||
         cmeOwnerHex(values[organizationId],organization,sizeof(organization)) ||
-        cmeOwnerHex(values[envelopeDigest],digest,sizeof(digest)) ||
-        cmeOwnerHex(values[witnessToken],token,sizeof(token))) goto done;
-    for (i=0;i<8;i++) acknowledged.revision=(acknowledged.revision<<8)|token[i];
-    memcpy(acknowledged.digest,token+8,sizeof(acknowledged.digest));
-    if (!acknowledged.revision ||
-        cmeOfflineOpen(values[sourceExport],0,&source) || cmeOfflineOpen(values[publishedExport],0,&published) ||
-        cmeOwnerRead(values[envelopePath],cmeContextColumnGlobalMaxBytes,&envelope,&envelopeLength,cmeOwnerBinaryFile) ||
-        cmeColumnReadOwnerKey(values[registryKeyFile],registryKey) ||
-        cmeColumnReadOwnerKey(values[witnessKeyFile],witnessKey) ||
+        cmeOfflineOpen(values[sourceExport],0,&source) || cmeOfflineOpen(values[publishedExport],0,&published)) goto done;
+
+    if (action==cmeColumnOwnerPrepare)
+    {
+        const char *path=values[envelopePath];
+        if (!cmeOwnerOutside(values[sourceExport],path) || !cmeOwnerOutside(values[publishedExport],path) ||
+            !cmeOwnerOutside(values[registryDirectory],path) || !cmeOwnerOutside(values[witnessDirectory],path) ||
+            cmeOfflineOpen(path,0,&destination) || cmeOfflineAbsent(&destination) ||
+            cmeOwnerHex(values[admissionDigest],digest,sizeof(digest)) ||
+            cmeOwnerRead(values[admissionPath],cmeContextColumnAdmissionMaxBytes,&evidence,&evidenceLength,
+                cmeOwnerBinaryFile)) goto done;
+    }
+    else if (cmeOwnerHex(values[releaseDigest],digest,sizeof(digest)) ||
+        cmeOwnerRead(values[envelopePath],cmeContextColumnGlobalMaxBytes,&evidence,&evidenceLength,
+            reading ? cmeOwnerBinaryFile : cmeOwnerDurableBinaryFile)) goto done;
+
+    if (cmeColumnOwnerKey(values[registryKeyFile],registryKey) ||
+        cmeColumnOwnerKey(values[witnessKeyFile],witnessKey) ||
         !CRYPTO_memcmp(registryKey,witnessKey,sizeof(registryKey)) ||
         cmeContextManagerOpen(values[registryDirectory],0,registryKey,deployment,organization,&manager) ||
-        cmeContextWitnessOpen(values[witnessDirectory],0,witnessKey,deployment,organization,NULL,NULL,&witness)) goto done;
+        cmeContextWitnessOpen(values[witnessDirectory],0,witnessKey,deployment,organization,NULL,NULL,&witness) ||
+        signal(SIGPIPE,SIG_IGN)==SIG_ERR) goto done;
 
     roots[0]=(cmeContextColumnCustodyRoot){.parent=source.directory,.name=source.name};
     roots[1]=(cmeContextColumnCustodyRoot){.parent=published.directory,.name=published.name};
-    result=cmeContextColumnGlobalReadOpen(manager,witness,&roots[0],&roots[1],(const unsigned char *)envelope,
-        envelopeLength,digest,&acknowledged,&release);
-    if (result) goto done;
-    result=cmeOwnerRead(values[passwordFile],256,&password,&passwordLength,cmeOwnerBinaryFile);
-    if (result) goto done;
-    result=cmeContextColumnRead(release,values[tableName],(int64_t)row,values[fieldName],
-        (const unsigned char *)password,passwordLength,&plaintext);
-    if (result) goto done;
-    if (signal(SIGPIPE,SIG_IGN)==SIG_ERR ||
-        fwrite(plaintext.bytes,1,plaintext.length,stdout)!=plaintext.length || fflush(stdout)==EOF)
+    if (action==cmeColumnOwnerPrepare)
     {
-        fputs("context-column-read: could not write cell to stdout\n",stderr);
-        result=1;
+        result=cmeContextColumnGlobalReleasePrepare(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
+            evidenceLength,digest,&acknowledged,&output,preparedDigest);
+        if (result) goto done;
+        result=cmeOwnerSave(&destination,values[envelopePath],output.bytes,output.length);
+        if (result)
+        {
+            error="could not save the release envelope. Preserve any partial file";
+            goto done;
+        }
+        fputs("release-digest=",stdout);
+        cmeOwnerPrint(preparedDigest,sizeof(preparedDigest));
+        putchar('\n');
     }
-    goto cleanup;
+    else if (action==cmeColumnOwnerComplete)
+    {
+        result=cmeContextColumnGlobalReleaseRun(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
+            evidenceLength,digest,&completed);
+        if (result) goto done;
+        cmeColumnOwnerAnchor("catalog=",completed.catalog.revision,completed.catalog.digest);
+        cmeColumnOwnerAnchor("witness-token=",completed.witness.revision,completed.witness.digest);
+    }
+    else
+    {
+        result=cmeContextColumnGlobalReadOpen(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
+            evidenceLength,digest,&acknowledged,&release);
+        if (result) goto done;
+        result=cmeOwnerRead(values[passwordFile],256,&password,&passwordLength,cmeOwnerBinaryFile);
+        if (result) goto done;
+        result=cmeContextColumnRead(release,values[tableName],(int64_t)row,values[fieldName],
+            (const unsigned char *)password,passwordLength,&output);
+        if (result) goto done;
+        if (fwrite(output.bytes,1,output.length,stdout)!=output.length)
+        {
+            result=1;
+            error="could not write cell to stdout";
+            goto done;
+        }
+    }
+    if (fflush(stdout)==EOF || ferror(stdout))
+    {
+        result=1;
+        error=reading ? "could not write cell to stdout" :
+            "could not write release results. Preserve the envelope and retained approvals";
+    }
 
 done:
-    fprintf(stderr,"context-column-read: %s\n",result==2 ? "release or witness approval is stale" :
-        (result==3 ? "V2 reader is unavailable" : "invalid input or verified cell unavailable; run --help for usage"));
-cleanup:
+    if (result)
+    {
+        if (result==2) error="release or witness approval is stale";
+        else if (result==3) error="V2 reader is unavailable";
+        fprintf(stderr,"%s: %s\n",argv[1],error);
+    }
     if (password) OPENSSL_cleanse(password,passwordLength);
     free(password);
-    free(envelope);
+    free(evidence);
     OPENSSL_cleanse(registryKey,sizeof(registryKey));
     OPENSSL_cleanse(witnessKey,sizeof(witnessKey));
-    cmeContextV2BufferFree(&plaintext);
+    cmeContextV2BufferFree(&output);
     cmeContextColumnReadReleaseFree(&release);
     cmeContextWitnessClose(&witness);
     cmeContextManagerClose(&manager);
     cmeOfflineClose(&source);
     cmeOfflineClose(&published);
+    cmeOfflineClose(&destination);
     return(result);
 }
 
@@ -465,9 +577,8 @@ static int cmeCopyOwnerPaths(const cmeOwnerApproval *approval, const char *manif
     return(0);
 }
 
-/* Leave even partial/uncertain files in place: never replace an owner receipt.
-   A subsequent prepare refuses the name; no registry IDs are published here. */
-static int cmeCopyOwnerSave(cmeOfflineArtifact *parent, const char *path, const unsigned char *bytes, size_t length)
+/* Keep partial files for inspection and preserve any existing owner receipt. */
+static int cmeOwnerSave(cmeOfflineArtifact *parent, const char *path, const unsigned char *bytes, size_t length)
 {
     struct stat file,entry,directory;
     char directoryPath[PATH_MAX],*slash;
@@ -891,7 +1002,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
                     &approval.registry,&approval.catalog,requestDigest,approval.values[27],&intent,&intentLength,publicationDigest);
                 if (result) goto done;
                 result=cmeContextWitnessCheck(witness,&next,&approval.catalog); if (result) goto done;
-                result=cmeCopyOwnerSave(&intentParent,approval.values[26],intent,intentLength); if (result) goto done;
+                result=cmeOwnerSave(&intentParent,approval.values[26],intent,intentLength); if (result) goto done;
                 intentText=(char *)intent; intent=NULL;
             }
             else if (cmeOwnerRead(approval.values[26],cmeContextCopyPublicationMaxBytes,&intentText,&intentLength,cmeOwnerDurableBinaryFile)) goto done;
@@ -946,7 +1057,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     if (prepare)
     {
         if (state!=1) { result=2; goto done; }
-        result=cmeCopyOwnerSave(&parent,approval.values[8],(unsigned char *)planText,length); if (result) goto done;
+        result=cmeOwnerSave(&parent,approval.values[8],(unsigned char *)planText,length); if (result) goto done;
     }
     else if (!strcmp(action,"--commit") || advance)
     {
@@ -1881,7 +1992,8 @@ static void cmeOwnerRegisteredOutput(FILE *output, const char *action, const cme
 
 int cmeContextOwnerMain(int argc, char **argv)
 {
-    if (argc>1 && !strcmp(argv[1],"context-column-read")) return(cmeColumnReadOwnerMain(argc,argv));
+    if (argc>1 && (!strcmp(argv[1],"context-column-read") || !strcmp(argv[1],"context-column-release")))
+        return(cmeColumnOwnerMain(argc,argv));
     if (argc>1 && !strcmp(argv[1],"context-copy-plan")) return(cmeCopyOwnerMain(argc,argv));
     cmeOwnerApproval approval={0};
     cmeContextManager *manager=NULL;
