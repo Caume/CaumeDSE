@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.45.0
+# Caume Data Security Engine (CaumeDSE) version 2.46.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3066,8 +3066,11 @@ to prepare its journal and complete or recover blocked admission.
 Use `caumedse-admin context-column-release` to prepare the envelope and complete
 or recover a release from retained approvals. The
 [release command](HERRADURAKEX_AT_REST_PLAN.md#installed-v5-release-command-147-phase-42)
-prints the witness token to retain before reading. Live V2 dispatch and
-active-database handoff remain pending.
+prints the witness token to retain before reading. An operator can then
+[enable one live V2 read route](HERRADURAKEX_AT_REST_PLAN.md#live-witnessed-v2-read-147-phase-45)
+for the released export. It requires mutual TLS and the existing content-row
+read permission, and returns one verified cell as hexadecimal JSON. The
+route defaults to disabled. Active-database handoff remains pending.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

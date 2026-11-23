@@ -1,6 +1,7 @@
 #ifndef CME_CONTEXT_OFFLINE_H
 #define CME_CONTEXT_OFFLINE_H
 
+#include <stddef.h>
 #include <sys/stat.h>
 #include <limits.h>
 
@@ -25,5 +26,16 @@ int cmeOfflineInstall(cmeOfflineArtifact *active, cmeOfflineArtifact *staged);
 int cmeOfflineCreate(cmeOfflineArtifact *active, cmeOfflineArtifact *staged);
 int cmeOfflineAbsent(const cmeOfflineArtifact *artifact);
 int cmeOfflineVerify(const cmeOfflineArtifact *artifact);
+
+typedef enum
+{
+    cmeOfflineTextFile,
+    cmeOfflineDurableBinaryFile,
+    cmeOfflineBinaryFile
+} cmeOfflineFileMode;
+
+int cmeOfflineReadPrivate(const char *path, size_t maximum, char **body, size_t *length, cmeOfflineFileMode mode);
+int cmeOfflineDecodeHex(const char *value, unsigned char *bytes, size_t length);
+int cmeOfflineReadKey(const char *path, unsigned char key[32]);
 
 #endif

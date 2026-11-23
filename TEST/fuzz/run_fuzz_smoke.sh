@@ -29,19 +29,7 @@ if [ -z "$PERL_CCOPTS" ]; then
 fi
 PERL_LDOPTS=$(perl -MExtUtils::Embed -e ldopts)
 
-COMMON_SOURCES=(
-    "$REPO_ROOT/config.c"
-    "$REPO_ROOT/crypto.c"
-    "$REPO_ROOT/db.c"
-    "$REPO_ROOT/engine_admin.c"
-    "$REPO_ROOT/engine_interface.c"
-    "$REPO_ROOT/filehandling.c"
-    "$REPO_ROOT/perl_interpreter.c"
-    "$REPO_ROOT/runtime.c"
-    "$REPO_ROOT/strhandling.c"
-    "$REPO_ROOT/webservice_interface.c"
-    "$REPO_ROOT/xs_init.c"
-)
+COMMON_SOURCES=$(make -s --no-print-directory -C "$REPO_ROOT" list-common-c-sources)
 
 HARNESSES=(
     "url_request"
@@ -90,13 +78,13 @@ export ASAN_OPTIONS=${ASAN_OPTIONS:-detect_leaks=0:abort_on_error=1}
 export UBSAN_OPTIONS=${UBSAN_OPTIONS:-halt_on_error=1:print_stacktrace=1}
 
 OBJECTS=()
-for src in "${COMMON_SOURCES[@]}"; do
+while IFS= read -r src; do
     obj="$BUILD_DIR/$(basename "$src" .c).o"
     # shellcheck disable=SC2086
     "$CC_BIN" "${BASE_FLAGS[@]}" $PERL_CCOPTS -fsanitize=address,undefined \
-        -c "$src" -o "$obj"
+        -c "$REPO_ROOT/$src" -o "$obj"
     OBJECTS+=("$obj")
-done
+done <<< "$COMMON_SOURCES"
 
 for harness in "${HARNESSES[@]}"; do
     src="$SCRIPT_DIR/${harness}_fuzzer.c"

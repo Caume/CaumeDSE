@@ -17,6 +17,7 @@
 /organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents get put delete head options
 /organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents/{document} get post put delete head options
 /organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents/{document}/content get head options
+/organizations/{organization}/storage/{storage}/documentTypes/file.csv.cdse-v2/documents/{document}/contentRows/{contentRow} get
 /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows options
 /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows/{contentRow} get post put delete head options
 /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentColumns options

@@ -4396,3 +4396,51 @@ caumedse-admin context-column-admission prepare "${publication_args[@]}" \
   --publication-digest "$retained_publication_sha256" \
   --admission-journal "$admission_journal"
 ```
+
+## Live witnessed V2 read (#147 phase 45)
+
+After completing phase 42 and retaining the release digest and the new
+witness token independently, an operator can bind one released export to
+one route on an engine built with V2 HerraduraKEx support. Start the engine
+with the following environment variables. The active engine must already recognize the HTTP organization
+and storage IDs. Choose the binding for the release owned by that organization.
+Keep the original release artifacts and authority directories protected and
+quiesce their writers while the route is enabled.
+
+| Variable | Value |
+| --- | --- |
+| `CDSE_V2_READ_ENABLED` | Set to `1` to enable. The default is disabled. |
+| `CDSE_V2_READ_ORG`, `CDSE_V2_READ_STORAGE`, `CDSE_V2_READ_DOCUMENT` | Exact HTTP resource identifiers for the one exposed document. |
+| `CDSE_V2_READ_DEPLOYMENT`, `CDSE_V2_READ_ORGANIZATION` | The release authority's deployment and organization identifiers, each 32 lowercase hexadecimal digits. |
+| `CDSE_V2_READ_REGISTRY_DIRECTORY`, `CDSE_V2_READ_WITNESS_DIRECTORY` | Absolute canonical paths to the existing authority and separate witness directories. |
+| `CDSE_V2_READ_SOURCE_EXPORT`, `CDSE_V2_READ_PUBLISHED_EXPORT` | Absolute canonical paths to the original source and published exports. |
+| `CDSE_V2_READ_RELEASE_ENVELOPE`, `CDSE_V2_READ_RELEASE_DIGEST` | Original phase-42 envelope path and independently retained SHA-256 digest, 64 lowercase hexadecimal digits. |
+| `CDSE_V2_READ_WITNESS_TOKEN` | Independently retained W2 token printed on completing the release, 80 lowercase hexadecimal digits. |
+| `CDSE_V2_READ_REGISTRY_KEY_FILE`, `CDSE_V2_READ_WITNESS_KEY_FILE` | Paths to files with distinct keys, each 64 lowercase hexadecimal digits with an optional trailing newline. |
+| `CDSE_V2_READ_PASSWORD_FILE` | Path to the exact 1–256 target password bytes, including any newline present in the password. |
+
+Use absolute canonical paths, owned mode-`0700` directories, and owned
+mode-`0600` files with a single link for the envelope and credentials.
+Keep the credential bytes in those private files.
+
+Send an HTTPS GET to
+`/organizations/{organization}/storage/{storage}/documentTypes/file.csv.cdse-v2/documents/{document}/contentRows/{contentRow}`.
+Use the normal client certificate chain, `userId`, `orgId`, and `orgKey`.
+The authenticated organization must match the URL organization and the
+configured binding. The account needs the `contentRows` GET permission.
+The row is a positive decimal integer through `9223372036854775807`.
+The optional `outputType=json` selects the route's default format.
+The response contains `valueHex`, the lowercase hexadecimal bytes of the
+logical `data/value` cell, and carries `Cache-Control: no-store`.
+
+The reader opens the existing authority and witness and verifies the retained
+pins and original proof before returning a cell. It repeats the checks for
+each request and processes one verified read at a time. A busy reader, missing
+cell, stale witness, or failed artifact verification returns `503`. A disabled
+or unmatched binding returns `404` after successful authorization. The
+reserved document type serves only this GET. DEBUG authorization and HTTP
+certificate bypasses cannot access it.
+
+This binding serves the fixed offline export from the running HTTPS engine.
+Active-catalog handoff, live mutations, and production credential custody
+remain open under #147.

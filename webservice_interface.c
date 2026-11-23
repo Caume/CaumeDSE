@@ -43,6 +43,8 @@ Copyright 2010-2026 by Omar Alejandro Herrera Reyna
 
 ***/
 #include "common.h"
+#include "context_column.h"
+#include "context_live.h"
 #include <errno.h>
 #include <signal.h>
 #include <sys/stat.h>
@@ -346,6 +348,75 @@ static int cmeWebServiceSetResponseHeader(char ***responseHeaders,
         }
     }
     return(2);
+}
+
+static int cmeWebServiceV2TypeRoute(const char **elements, int count)
+{
+    return(count>=6 && !strcmp(elements[0],"organizations") && !strcmp(elements[2],"storage") &&
+        !strcmp(elements[4],"documentTypes") && !strcmp(elements[5],cmeContextColumnRegistrationType));
+}
+
+static int cmeWebServiceV2Query(const char **arguments)
+{
+    static const char *keys[]={"userId","orgId","orgKey","outputType"};
+    unsigned int seen=0;
+    int i;
+    size_t index;
+    for (i=0;i<cmeWSURIMaxArguments && arguments[i];i+=2)
+    {
+        for (index=0;index<sizeof(keys)/sizeof(keys[0]);index++)
+            if (!strcmp(arguments[i],keys[index])) break;
+        if (index==sizeof(keys)/sizeof(keys[0]) || (seen&(1U<<index)) ||
+            !arguments[i+1] || !*arguments[i+1]) return(1);
+        if (index==3 && strcmp(arguments[i+1],"json")) return(1);
+        seen|=1U<<index;
+    }
+    return((seen&7U)!=7U);
+}
+
+static int cmeWebServiceV2Read(char **responseText, char ***responseHeaders, const char **elements,
+    int count, const char **arguments, const char *method, const char *orgId)
+{
+    static const char prefix[]="{\"valueHex\":\"";
+    static const char suffix[]="\"}";
+    static const char hex[]="0123456789abcdef";
+    cmeContextV2Buffer value={0};
+    long long row;
+    size_t i;
+    int status;
+
+    if (count!=10 || strcmp(elements[6],"documents") || strcmp(elements[8],"contentRows") ||
+        strcmp(elements[1],orgId)) return(404);
+    if (strcmp(method,"GET"))
+    {
+        cmeWebServiceSetResponseHeader(responseHeaders,"Allow","GET");
+        return(405);
+    }
+    if (cmeWebServiceV2Query(arguments) || strspn(elements[9],"0123456789")!=strlen(elements[9])) return(400);
+    errno=0;
+    row=strtoll(elements[9],NULL,10);
+    if (errno || row<1 || row>INT64_MAX) return(400);
+
+    status=cmeContextLiveRead(orgId,elements[3],elements[7],(int64_t)row,&value);
+    if (status==200)
+    {
+        *responseText=malloc(sizeof(prefix)-1+2*value.length+sizeof(suffix));
+        if (*responseText)
+        {
+            char *encoded=*responseText+sizeof(prefix)-1;
+            memcpy(*responseText,prefix,sizeof(prefix)-1);
+            for (i=0;i<value.length;i++)
+            {
+                encoded[2*i]=hex[value.bytes[i]>>4];
+                encoded[2*i+1]=hex[value.bytes[i]&15];
+            }
+            memcpy(encoded+2*value.length,suffix,sizeof(suffix));
+            cmeWebServiceSetResponseHeader(responseHeaders,"Content-Type","application/json");
+        }
+        else status=503;
+    }
+    cmeContextV2BufferFree(&value);
+    return(status);
 }
 
 static int cmeWebServiceRequestWantsJSON(const char **argumentElements)
@@ -873,6 +944,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     int cont,responseEncoding __attribute__((unused)),result;
     int exitcode=1;
     int numUrlElements=0;
+    int v2Route=0;
     int responseCode=0;
     long int responseDataSize=0;
     char *page=NULL;
@@ -890,6 +962,11 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     struct stat statResponseFile;
     #define cmeWebServiceAnswerConnectionFree() \
         do { \
+            if (v2Route) \
+            { \
+                if (page) OPENSSL_cleanse(page,strlen(page)); \
+                if (responseText) OPENSSL_cleanse(responseText,strlen(responseText)); \
+            } \
             cmeFree(page); \
             cmeFree(responseText); \
             if (response) \
@@ -1080,6 +1157,7 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
     fprintf(stdout,"CaumeDSE Debug: cmeWebServiceAnswerConnection(), new %s request for %s using version %s\n", method, url, version);
 #endif
     cmeWebServiceParseURL(url, &urlElements, &numUrlElements);  //Parse URL.
+    v2Route=cmeWebServiceV2TypeRoute((const char **)urlElements,numUrlElements);
     MHD_get_connection_values (connection, MHD_GET_ARGUMENT_KIND, (MHD_KeyValueIterator)&cmeWebServiceParseKeys, argumentElements);   //Parse Headers.
     MHD_get_connection_values (connection, MHD_HEADER_KIND, (MHD_KeyValueIterator)&cmeWebServiceParseKeys, headerElements);   //Parse Arguments.
     result=cmeWebServiceProcessRequest (&responseText,&responseFilePath,&responseHeaders,&responseCode,
@@ -1087,7 +1165,8 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
                                         (const char **)headerElements,(const char **)argumentElements,method,connection);
     con_info->answerCode=responseCode;
     cmeWebServiceSetResponseHeader(&responseHeaders,"X-Request-Id",con_info->requestId?con_info->requestId:"");
-    if (strcmp(method,"HEAD")&&cmeWebServiceRequestWantsJSON((const char **)argumentElements))
+    if (v2Route) cmeWebServiceSetResponseHeader(&responseHeaders,"Cache-Control","no-store");
+    if (strcmp(method,"HEAD")&&(v2Route||cmeWebServiceRequestWantsJSON((const char **)argumentElements)))
     {
         cmeWebServiceApplyJSONErrorEnvelope(&responseText,&responseHeaders,responseCode,con_info->requestId);
     }
@@ -1154,14 +1233,20 @@ int cmeWebServiceAnswerConnection (void *cls, struct MHD_Connection *connection,
             }
             else
             {
-                cmeStrConstrAppend(&page,"%s",responseText); //Add plain response to response page.
+                if (v2Route)
+                {
+                    page=responseText;
+                    responseText=NULL;
+                }
+                else cmeStrConstrAppend(&page,"%s",responseText); //Add plain response to response page.
                 responseDataSize=(long int)strlen(page);
                 //Create response body:
                 response=MHD_create_response_from_buffer((size_t)responseDataSize,(void*) page, MHD_RESPMEM_MUST_COPY);
             }
 #ifdef DEBUG
-            fprintf(stdout,"CaumeDSE Debug: cmeWebServiceAnswerConnection(), user request successful "
-                    "Method: '%s'. Url: '%s'.\n responseText: '%s'.\n",method,url,page);
+            if (!v2Route)
+                fprintf(stdout,"CaumeDSE Debug: cmeWebServiceAnswerConnection(), user request successful "
+                        "Method: '%s'. Url: '%s'.\n responseText: '%s'.\n",method,url,page);
 #endif
             result=MHD_add_response_header(response,"Server","CaumeDSE " cmeEngineVersion);
         }
@@ -1197,18 +1282,18 @@ int cmeWebServiceParseURL(const char *url, char ***urlElements, int *numUrlEleme
 {
     int cont=0;
     char *urlCopy=NULL;
-    char *token=NULL;
+    char *token=NULL,*next=NULL;
 
     *numUrlElements=0;
     *urlElements=(char **)malloc(sizeof(char *)*cmeIDDURIMaxDepth);
-    cmeStrConstrAppend(&urlCopy,"%s",url);    //Because strtok() modifies parsed string.
-    token=strtok(urlCopy,"/?");
+    cmeStrConstrAppend(&urlCopy,"%s",url);    //Because strtok_r() modifies parsed string.
+    token=strtok_r(urlCopy,"/?",&next);
     while ((cont<cmeIDDURIMaxDepth)&&(token))
     {
         (*numUrlElements)++;
         (*urlElements)[cont]=NULL;
         cmeStrConstrAppend(&((*urlElements)[cont]),"%s",token);
-        token=strtok(NULL,"/?");
+        token=strtok_r(NULL,"/?",&next);
 #ifdef DEBUG
         fprintf(stdout,"CaumeDSE Debug: cmeWebServiceParseURL(), element at level %d: '%s'.\n",
                 *numUrlElements,(*urlElements)[cont]);
@@ -3101,6 +3186,18 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
         cmeWebServiceProcessRequestFree();
         *responseCode=503; //Response: Error 503 service unavailable.
         return(15);
+    }
+    else if (cmeWebServiceV2TypeRoute(urlElements,numUrlElements))
+    {
+        if (!(authentication&2)
+#ifdef DEBUG
+            || debugSkipAuthz
+#endif
+            ) *responseCode=403;
+        else *responseCode=cmeWebServiceV2Read(responseText,responseHeaders,urlElements,numUrlElements,
+            argumentElements,method,orgId);
+        cmeWebServiceProcessRequestFree();
+        return(0);
     }
     //Process trasactions (logs) requests:
     else if ((numUrlElements==1)&&(strcmp(urlElements[0],"transactions")==0)) //transaction class resource.
@@ -5640,7 +5737,7 @@ int cmeWebServiceProcessRoleTableResource (char **responseText, char **responseF
                     {
                         if (resultRegisterCols) //Free resultRegisterCols data obtained by cmeGetUnprotectDBRegisters() call above to check if results were available.
                         {
-                            for (cont=0; cont<numResultRegisterCols;cont++)
+                            for (cont=0; cont<numResultRegisterCols*(numResultRegisters+1);cont++)
                             {
                                cmeFree(resultRegisterCols[cont]);
                             }

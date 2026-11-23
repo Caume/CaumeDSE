@@ -836,6 +836,11 @@ int cmeGetUnprotectDBRegisters (sqlite3 *pDB, const char *tableName, const char 
             }
         }
     }
+    // Release any values from the last unmatched row before excluding the scratch row.
+    for (cont2=0;cont2<numColumns;cont2++)
+    {
+        cmeFree((*resultRegisterCols)[(*numResultRegisters)*numColumns+cont2]);
+    }
     cmeGetUnprotectDBRegisterFree();
     (*numResultRegisters)--; //Adjust number of results by eliminating the last row which is a placeholder for the next "potential" match.
     return(0);

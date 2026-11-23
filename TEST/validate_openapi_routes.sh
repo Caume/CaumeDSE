@@ -78,6 +78,7 @@ required_paths=(
     "/organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents:"
     "/organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents/{document}:"
     "/organizations/{organization}/storage/{storage}/documentTypes/{documentType}/documents/{document}/content:"
+    "/organizations/{organization}/storage/{storage}/documentTypes/file.csv.cdse-v2/documents/{document}/contentRows/{contentRow}:"
     "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows/{contentRow}:"
     "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentColumns/{contentColumn}:"
     "/organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/parserScripts/{parserScript}:"

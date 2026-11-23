@@ -145,3 +145,71 @@ int cmeOfflineCreate(cmeOfflineArtifact *active, cmeOfflineArtifact *staged)
     (void)active; (void)staged; return(1);
 #endif
 }
+
+int cmeOfflineDecodeHex(const char *value, unsigned char *bytes, size_t length)
+{
+    size_t i;
+    if (!value || strlen(value)!=2*length) return(1);
+    for (i=0;i<2*length;i++)
+    {
+        unsigned int digit;
+        if (value[i]>='0' && value[i]<='9') digit=value[i]-'0';
+        else if (value[i]>='a' && value[i]<='f') digit=value[i]-'a'+10;
+        else return(1);
+        if (!(i%2)) bytes[i/2]=(unsigned char)(digit<<4);
+        else bytes[i/2]|=(unsigned char)digit;
+    }
+    return(0);
+}
+
+int cmeOfflineReadPrivate(const char *path, size_t maximum, char **body, size_t *length, cmeOfflineFileMode mode)
+{
+    cmeOfflineArtifact parent={.file=-1,.directory=-1};
+    struct stat before,after;
+    char canonical[PATH_MAX],*candidate=NULL;
+    size_t offset=0;
+    int fd=-1,result=1;
+    *body=NULL;
+    if (!path || !realpath(path,canonical) || strcmp(path,canonical) || cmeOfflineOpen(path,0,&parent)) goto done;
+    fd=openat(parent.directory,parent.name,O_RDONLY|O_NOFOLLOW|O_NONBLOCK);
+    if (fd<0 || fstat(fd,&before) || !S_ISREG(before.st_mode) || before.st_uid!=geteuid() ||
+        (before.st_mode&07777)!=0600 || before.st_nlink!=1 || before.st_size<1 ||
+        (uint64_t)before.st_size>maximum || !(candidate=malloc((size_t)before.st_size+1))) goto done;
+    while (offset<(size_t)before.st_size)
+    {
+        ssize_t count=read(fd,candidate+offset,(size_t)before.st_size-offset);
+        if (count<0 && errno==EINTR) continue;
+        if (count<=0) goto done;
+        offset+=(size_t)count;
+    }
+    if ((mode==cmeOfflineDurableBinaryFile && (fsync(fd) || fsync(parent.directory))) ||
+        fstat(fd,&after) || before.st_size!=after.st_size || before.st_mtim.tv_sec!=after.st_mtim.tv_sec ||
+        before.st_mtim.tv_nsec!=after.st_mtim.tv_nsec || before.st_ctim.tv_sec!=after.st_ctim.tv_sec ||
+        before.st_ctim.tv_nsec!=after.st_ctim.tv_nsec || before.st_mode!=after.st_mode ||
+        before.st_uid!=after.st_uid || before.st_nlink!=after.st_nlink ||
+        (mode==cmeOfflineTextFile && memchr(candidate,0,offset)) ||
+        fstatat(parent.directory,parent.name,&after,AT_SYMLINK_NOFOLLOW) ||
+        before.st_dev!=after.st_dev || before.st_ino!=after.st_ino) goto done;
+    candidate[offset]=0; *body=candidate; candidate=NULL;
+    if (length) *length=offset;
+    result=0;
+done:
+    if (candidate) { OPENSSL_cleanse(candidate,offset); free(candidate); }
+    if (fd>=0) close(fd);
+    cmeOfflineClose(&parent); return(result);
+}
+
+int cmeOfflineReadKey(const char *path, unsigned char key[32])
+{
+    char *text=NULL;
+    size_t length=0;
+    int result=cmeOfflineReadPrivate(path,65,&text,&length,cmeOfflineTextFile);
+    if (!result)
+    {
+        if (length==65 && text[64]=='\n') text[64]=0;
+        result=cmeOfflineDecodeHex(text,key,32);
+        OPENSSL_cleanse(text,length);
+        free(text);
+    }
+    return(result);
+}

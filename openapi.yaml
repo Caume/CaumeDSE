@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: CaumeDSE REST API
-  version: 2.45.0
+  version: 2.46.0
   description: |
     Machine-readable reference for the stable CaumeDSE routes documented in
-    README.md and exercised by TEST/run_debug_components.sh. Responses are
+    README.md and exercised by the live API tests. Responses are
     currently HTML, CSV, or JSON-oriented text tables unless a route returns
     only a status code. Responses include an `X-Request-Id` header for log
     correlation. When `outputType=json` is requested and a non-HEAD request
@@ -964,6 +964,73 @@ paths:
         "200":
           $ref: "#/components/responses/TextResponse"
 
+  /organizations/{organization}/storage/{storage}/documentTypes/file.csv.cdse-v2/documents/{document}/contentRows/{contentRow}:
+    parameters:
+      - $ref: "#/components/parameters/organization"
+      - $ref: "#/components/parameters/storage"
+      - $ref: "#/components/parameters/document"
+      - name: contentRow
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+        description: Positive decimal logical row number.
+    get:
+      tags: [Document content]
+      summary: Read one cell from the configured witnessed V2 release.
+      description: |
+        Requires HTTPS client-certificate authentication, the normal
+        contentRows GET permission, and an explicit operator binding for this
+        organization, storage, and document. Returns the bytes of the
+        logical data/value cell as lowercase hexadecimal. Every read
+        verifies the original release, current witness, and published image.
+        The default configuration disables this route.
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/orgId"
+        - $ref: "#/components/parameters/orgKey"
+        - name: outputType
+          in: query
+          schema:
+            type: string
+            enum: [json]
+      responses:
+        "200":
+          description: Verified cell bytes.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valueHex]
+                properties:
+                  valueHex:
+                    type: string
+                    pattern: '^([0-9a-f]{2})*$'
+        "400":
+          description: Invalid row number or query parameters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: The cell or a verified release is unavailable, or the reader is busy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /organizations/{organization}/storage/{storage}/documentTypes/file.csv/documents/{document}/contentRows:
     parameters:
       - $ref: "#/components/parameters/organization"
