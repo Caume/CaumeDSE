@@ -28,14 +28,8 @@ class AdmissionHelpTests(unittest.TestCase):
                 self.assertEqual((result.returncode, result.stdout), (1, b''))
 
 
-class InstalledAdmissionTests(admission.AdmissionTests):
-    def retain(self):
-        # AdmissionTests still builds and physically publishes the verified export.
-        # The installed command must create the journal for these cases.
-        pass
-
-    def setUp(self):
-        super().setUp()
+class OwnerApprovalFixture:
+    def set_up_owner_approval(self, publication_digest=None):
         self.plan_path.chmod(0o600)
         self.receipt.chmod(0o600)
         self.acceptance.chmod(0o600)
@@ -61,9 +55,11 @@ class InstalledAdmissionTests(admission.AdmissionTests):
             registrationReceipt=str(self.receipt), registrationReceiptDigest=self.sha(self.receipt.read_bytes()),
             companions=[[name, source.stat().st_size, digest] for name, source, _, digest in self.companions],
             acceptanceReceipt=str(self.acceptance), acceptanceDigest=self.sha(self.acceptance.read_bytes()),
-            publicationDirectory=str(self.control), publicationJob=self.job, publicationDigest=self.intent,
+            publicationDirectory=str(self.control), publicationJob=self.job,
             staging=self.candidate_root.name,
         )
+        if publication_digest is not None:
+            self.manifest['publicationDigest'] = publication_digest
         self.approval_pin = self.write_manifest()
 
     @staticmethod
@@ -114,9 +110,9 @@ class InstalledAdmissionTests(admission.AdmissionTests):
         return ((self.authority/'registry.sqlite').read_bytes(), (self.witness/'witness.sqlite').read_bytes(),
                 [p.read_bytes() for root in (self.source_root, self.published) for p in sorted(root.iterdir())])
 
-    def prepare_journal(self):
+    def prepare_journal(self, **changes):
         before = self.snapshots()
-        result = self.cli('prepare')
+        result = self.cli('prepare', **changes)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, b'')
         self.journal = self.journal_path.read_bytes()
@@ -127,7 +123,7 @@ class InstalledAdmissionTests(admission.AdmissionTests):
         prefix = admission.DOMAIN + bytes.fromhex(self.registry + self.plan_catalog + self.retained)
         self.assertTrue(self.journal.startswith(prefix))
         self.next_catalog = self.journal[len(prefix):len(prefix)+40].hex()
-        self.assertTrue(self.journal.endswith(self.physical_proof_bytes()))
+        self.assertTrue(self.journal.endswith(admission.AdmissionTests.physical_proof_bytes(self)))
         self.assertEqual(self.snapshots(), before)
 
     def run_admission_cli(self):
@@ -149,6 +145,16 @@ class InstalledAdmissionTests(admission.AdmissionTests):
             self.assertEqual(json.loads(record.stdout)['blocked'], 1)
             self.assertNotEqual(self.map_bind(name=name).returncode, 0)
         return token
+
+
+class InstalledAdmissionTests(OwnerApprovalFixture, admission.AdmissionTests):
+    def retain(self):
+        # The installed command creates the admission journal in these cases.
+        pass
+
+    def setUp(self):
+        super().setUp()
+        self.set_up_owner_approval(self.intent)
 
     def test_admit_release_and_read_with_separate_acknowledgements(self):
         self.prepare_journal()
@@ -211,6 +217,7 @@ class InstalledAdmissionTests(admission.AdmissionTests):
     def test_prepare_refuses_wrong_or_malformed_independent_approvals(self):
         before = self.snapshots()
         self.assertEqual(self.cli('prepare', approval_digest='00'*32).returncode, 1)
+        self.assertEqual(self.cli('prepare', publication_digest=self.intent).returncode, 1)
         for changes in (dict(schema=True), dict(unexpected='value'), dict(sourceRow=True),
                         dict(companions=[['RolesDB', True, '00'*32]]),
                         dict(acceptanceDigest='00'*32), dict(publicationDigest='00'*32),
