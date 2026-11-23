@@ -32,6 +32,10 @@ TESTS_ENVIRONMENT = srcdir='$(srcdir)'
 ipathdata_DATA = favicon.ico TEST/testCertAuth/ca.pem TEST/testCertAuth/server.pem TEST/testCertAuth/server.key
 EXTRA_DIST = $(TESTS) TEST samples favicon.ico CHANGELOG.md README.md TUTORIAL.md API_EXAMPLES.md AI_USAGE.md HERRADURAKEX_AT_REST_PLAN.md openapi.yaml herradura_compat.h
 
+.PHONY: list-common-c-sources
+list-common-c-sources:
+	@printf '%s\n' $(caume_common_sources) | sed -n '/\.c$$/p'
+
 xs_init.c:
 	`@PERL@ -MExtUtils::Embed -e xsinit -- -o xs_init.c`
 

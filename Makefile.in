@@ -2522,6 +2522,10 @@ uninstall-am: uninstall-ipathbinPROGRAMS uninstall-ipathdataDATA \
 .PRECIOUS: Makefile
 
 
+.PHONY: list-common-c-sources
+list-common-c-sources:
+	@printf '%s\n' $(caume_common_sources) | sed -n '/\.c$$/p'
+
 xs_init.c:
 	`@PERL@ -MExtUtils::Embed -e xsinit -- -o xs_init.c`
 
