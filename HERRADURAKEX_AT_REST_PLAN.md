@@ -4228,8 +4228,11 @@ caumedse-admin context-column-admission complete "${admission_args[@]}" \
 Prepare uses a private schema-1 JSON object up to 4 MiB. Review the approval
 against the retained allocation, registration and publication evidence and
 independently retain the SHA-256 of the exact JSON bytes. Every field below is
-required. Unknown fields, duplicate names and mistyped values fail validation.
-Substitute the original approved values for the placeholders.
+required except `publicationDigest`, which may be supplied as
+`--publication-digest`. Supply the digest in exactly one place so an approval
+used for publication can carry forward unchanged. Unknown fields, duplicate
+names and mistyped values fail validation. Substitute the original approved
+values for the placeholders.
 
 ```json
 {
@@ -4315,3 +4318,81 @@ and pass it with the original journal and digest to `context-column-release
 prepare`, then follow the release and read workflow. TODO #147 continues with
 installed publication orchestration, live witnessed readers, broader migration
 and lifecycle acceptance, and production custody.
+
+
+## Installed V2 publication command (#147 phase 44)
+
+Use `caumedse-admin context-column-publication` with a source export, a
+verified staged V2 export and its retained acceptance and registration
+receipts. Quiesce export readers and writers. The staging and published
+directories must be distinct children of the same owned, private parent.
+Pass the intended destination as `--published-export`. The `staging` field
+of the independently pinned approval selects the original staging leaf under
+that parent. The destination must be absent before promotion.
+For the admission handoff, initialize the copy-install catalog (v4) before the
+original allocation, as described in phase 36.
+
+Use the schema-1 approval shown in phase 43, omitting `publicationDigest`.
+Retain the SHA-256 of the original approval bytes and the committed
+allocation's W0 witness token. The `publicationDirectory` in the approval
+identifies the private control directory outside the exports, and
+`publicationJob` selects the job file. Keep the approval, receipts and
+credential files in the private locations described in phase 43.
+
+```bash
+publication_args=(
+  --registry-directory "$registry_directory" --witness-directory "$witness_directory"
+  --deployment "$deployment_hex" --organization "$organization_hex"
+  --registry-key-file "$registry_key_file" --witness-key-file "$witness_key_file"
+  --source-export "$source_export" --published-export "$published_export"
+  --approval "$approval_json" --approval-digest "$retained_approval_sha256"
+  --retained-witness-token "$retained_w0_token"
+  --source-key-file "$source_key_file" --registration-key-file "$registration_key_file"
+  --password-file "$password_file"
+)
+
+caumedse-admin context-column-publication prepare "${publication_args[@]}"
+
+# Independently retain the printed digest before promotion.
+caumedse-admin context-column-publication publish "${publication_args[@]}" \
+  --publication-digest "$retained_publication_sha256"
+```
+
+`prepare` checks the approval digest, current witness, actual export contents
+and retained receipts. It syncs the stage and saves the signed intent, then
+prints `publication-digest=<sha256>`. Repeat an interrupted preparation with
+the same approvals while the original stage survives and the destination is
+absent. Identical preparations can return the same digest.
+
+`publish` checks the independently retained intent digest and fresh custody,
+then promotes the original staged directory with Linux atomic no-replace
+rename. It syncs the promoted directory and its parent and completes the
+`<publicationJob>.done` marker. After verified success it prints
+`publication-complete`. Catalog admission and witness advancement are separate
+steps.
+
+If publication is interrupted or its response is lost, retain the original
+control files and run recovery with the same paths and approvals.
+
+```bash
+caumedse-admin context-column-publication recover "${publication_args[@]}" \
+  --publication-digest "$retained_publication_sha256"
+```
+
+Recovery reverifies whichever of the stage or published export survives. It
+checks the retained intent before resuming promotion or completing the marker.
+It refuses ambiguous or replaced objects, including a destination that
+appeared while the stage still exists. Successful recovery prints the same
+completion result. Failed verification emits no result. An output error can
+follow a completed rename and marker commit, so use recovery to verify the
+outcome.
+
+Pass the same approval and W0 and the independently retained publication digest
+to the installed admission command. The publication intent and marker remain
+evidence for admission.
+
+```bash
+caumedse-admin context-column-admission prepare "${publication_args[@]}" \
+  --publication-digest "$retained_publication_sha256" \
+  --admission-journal "$admission_journal"
+```
