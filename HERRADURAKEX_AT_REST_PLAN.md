@@ -4442,5 +4442,35 @@ reserved document type serves only this GET. DEBUG authorization and HTTP
 certificate bypasses cannot access it.
 
 This binding serves the fixed offline export from the running HTTPS engine.
-Active-catalog handoff, live mutations, and production credential custody
-remain open under #147.
+Phase 46 adds the active catalog mode below.
+
+## Active catalog V2 reads (#147 phase 46)
+
+Set `CDSE_V2_READ_CATALOG=1` alongside the phase-45 enablement, organization,
+storage, authority paths and retained release approvals. In this mode the
+published registration determines the document identifier. Omit
+`CDSE_V2_READ_DOCUMENT`. An unset catalog flag or the value `0` selects the
+phase-45 direct document pin. The same HTTPS route, certificate and
+`contentRows` GET permission apply in either mode.
+
+Provision one matching document record in the engine's active
+`ResourcesDB` during offline maintenance. Copy the protected cells and lookup
+values exactly from the released `ResourcesDB` registration for the V2
+payload. The active SQLite integer `id` may be assigned independently.
+Use the requesting organization's existing key and the engine's configured
+AES metadata profile for that registration.
+
+Each catalog-mode request derives the three protected lookups from the
+authenticated organization, storage and document. It verifies the published
+registration against the original release proof, checks the decrypted
+selectors and single-part V2 payload name, and compares the active record
+with the pinned protected record. The reader reopens the active catalog and
+repeats the comparison after decryption. The published proof determines
+which payload file is read. Catalog access is read-only.
+
+A missing registration returns `404`. A mismatched or duplicate registration,
+an invalid proof or a stale witness returns `503`. The release and witness
+checks still apply on each request. Protect the active catalog and release
+directories during operation. The checks apply at the time of each read.
+Automated registration installation, live mutations, and production
+credential custody remain open under #147.

@@ -1,6 +1,7 @@
 /* Synthetic keys/data only; invoked by the command contract tests. */
 #include "common.h"
 #include "context_column.h"
+#include "runtime.h"
 
 static int cmeFixtureV2Registration(const char *root, int sibling)
 {
@@ -347,6 +348,15 @@ int main(int argc, char **argv)
     int result;
     if (argc!=3) return(2);
     cmeInitDefaultEncAlg();
+#ifdef DEBUG
+    if (!strcmp(argv[2],"init-test-engine"))
+    {
+        if (cmeSetDebugTestDataDirectory(argv[1])) return(1);
+        cmeAdminKeyAutoConfirm=1;
+        cmeAdminOrgKeyOverride=cmeFixtureKey();
+        return(cmeSetupEngineAdminDBs());
+    }
+#endif
     if (!strcmp(argv[2],"v2-registration")) return(cmeFixtureV2Registration(argv[1],0));
     if (!strcmp(argv[2],"v2-sibling")) return(cmeFixtureV2Registration(argv[1],1));
     if (!strcmp(argv[2],"registered-readback")) return(cmeFixtureRegisteredReadback(argv[1]));

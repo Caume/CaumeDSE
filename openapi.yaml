@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CaumeDSE REST API
-  version: 2.46.0
+  version: 2.47.0
   description: |
     Machine-readable reference for the stable CaumeDSE routes documented in
     README.md and exercised by the live API tests. Responses are
@@ -983,10 +983,12 @@ paths:
       description: |
         Requires HTTPS client-certificate authentication, the normal
         contentRows GET permission, and an explicit operator binding for this
-        organization, storage, and document. Returns the bytes of the
-        logical data/value cell as lowercase hexadecimal. Every read
-        verifies the original release, current witness, and published image.
-        The default configuration disables this route.
+        organization and storage. Operators can pin the document identifier
+        directly or require an active catalog registration that matches the
+        original release. Returns the bytes of the logical data/value cell
+        as lowercase hexadecimal. Every read verifies the original release,
+        current witness, and published image. The default configuration
+        disables this route.
       parameters:
         - $ref: "#/components/parameters/userId"
         - $ref: "#/components/parameters/orgId"
@@ -1024,9 +1026,13 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: The route is disabled, the binding does not match, or the document registration is absent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: The cell or a verified release is unavailable, or the reader is busy.
+          description: The verified cell is unavailable, the registration is ambiguous or mismatched, or the reader is busy.
           content:
             application/json:
               schema:

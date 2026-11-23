@@ -5,7 +5,7 @@
 #include "context_crypto.h"
 
 /* Call only after normal certificate and role checks. Returns an HTTP status. */
-int cmeContextLiveRead(const char *org, const char *storage, const char *document,
+int cmeContextLiveRead(const char *org, const char *storage, const char *document, const char *orgKey,
     int64_t row, cmeContextV2Buffer *value);
 
 #endif

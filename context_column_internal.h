@@ -32,6 +32,24 @@ struct cmeContextColumnCustody
     int failed;
 };
 
+typedef struct
+{
+    unsigned char *resources;
+    size_t length;
+    unsigned char digest[32];
+    char payload[NAME_MAX+1];
+} cmeColumnCatalogSnapshot;
+
+typedef struct
+{
+    const char *path,*organization,*storage,*document,*key,*profile;
+} cmeColumnCatalogQuery;
+
+enum { cmeColumnCatalogMissing=4 };
+
+int cmeColumnCatalogMatch(const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query);
+int cmeColumnReadRegistered(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query,
+    int64_t row, const unsigned char *password, size_t passwordLength, cmeContextV2Buffer *plaintext);
 int cmeContextV2OpenAdmissionBinding(cmeContextManager *manager, const cmeContextBinding *binding,
     const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
     const unsigned char salt[16], const unsigned char *frame, size_t length, cmeContextV2Buffer *plaintext);
