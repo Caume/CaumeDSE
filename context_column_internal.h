@@ -78,6 +78,8 @@ int cmeCustodyNested(int directory, const struct stat *other);
 /* Strict legacy AES salted-value decoder, after SQL length/type checks. */
 int cmeContextColumnLegacyDecode(const char *value, const char *salt, const char *key,
     const char *profile, char **plain);
+int cmeContextColumnLegacyCheck(const unsigned char *source, size_t length, const unsigned char digest[32],
+    const char *key, const char *profile);
 /* Reverify the complete legacy source and target container, then compare every
    transformed plaintext. No entropy, writes or externally returned plaintext. */
 int cmeContextColumnTransformCheck(cmeContextManager *manager, const cmeContextCopyTarget *target,

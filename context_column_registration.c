@@ -668,16 +668,19 @@ int cmeContextColumnExportDigest(const cmeContextColumnTransformApproval *transf
     const cmeContextColumnExportArtifact *companions, size_t count, unsigned char digest[32])
 {
     static const unsigned char domain[]="CDSE-HKX-COLUMN-EXPORT-v1";
+    static const unsigned char profiledDomain[]="CDSE-HKX-COLUMN-EXPORT-v2";
     EVP_MD_CTX *hash=NULL;
     unsigned char pin[32],number[8];
     unsigned int written=0;
     size_t i,j,n,total=0,roles=0,logs=0;
-    int result=1;
+    int result=1,profiled=0,selected=0;
     if (digest) memset(digest,0,32);
     if (!digest || !companions || count<3 || count>cmeContextRegistryMaxEntries+2 ||
         cmeContextColumnRegistrationDigest(transform,registration,pin)) goto done;
+    for (i=0;i<count;i++) if (companions[i].legacyProfile) { profiled=1; break; }
     hash=EVP_MD_CTX_new();
-    if (!hash || !EVP_DigestInit_ex(hash,EVP_sha256(),NULL) || !EVP_DigestUpdate(hash,domain,sizeof(domain)) ||
+    if (!hash || !EVP_DigestInit_ex(hash,EVP_sha256(),NULL) ||
+        !EVP_DigestUpdate(hash,profiled ? profiledDomain : domain,sizeof(domain)) ||
         !EVP_DigestUpdate(hash,pin,32)) goto done;
     for (j=0;j<8;j++) number[j]=(unsigned char)((uint64_t)count>>(8*(7-j)));
     if (!EVP_DigestUpdate(hash,number,8)) goto done;
@@ -685,18 +688,33 @@ int cmeContextColumnExportDigest(const cmeContextColumnTransformApproval *transf
     {
         const cmeContextColumnExportArtifact *entry=&companions[i];
         int internal=entry->name && (!strcmp(entry->name,"RolesDB") || !strcmp(entry->name,"LogsDB"));
+        unsigned char profile=0;
         if (!entry->name || (!internal && cmeRegText(entry->name,255,1)) ||
             (i && strcmp(companions[i-1].name,entry->name)>=0) ||
             entry->length>cmeContextColumnMaxImageBytes || (internal && entry->length>cmeContextColumnMaxBytes) ||
             entry->length>cmeContextColumnExportMaxBytes-total) goto done;
+        if (entry->legacyProfile)
+        {
+            if (internal || entry->length<100 || entry->length>cmeContextColumnMaxBytes) goto done;
+            if (!strcmp(entry->legacyProfile,"aes-256-gcm")) profile=1;
+            else if (!strcmp(entry->legacyProfile,"aes-256-cbc")) profile=2;
+            else goto done;
+        }
+        if (profiled && !internal && !profile) goto done;
+        if (!strcmp(entry->name,registration->sourceFile))
+        {
+            if (profiled && strcmp(entry->legacyProfile,transform->sourceProfile)) goto done;
+            selected=1;
+        }
         total+=entry->length; n=strlen(entry->name);
         roles+=!strcmp(entry->name,"RolesDB"); logs+=!strcmp(entry->name,"LogsDB");
         number[0]=(unsigned char)(n>>8); number[1]=(unsigned char)n;
         if (!EVP_DigestUpdate(hash,number,2) || !EVP_DigestUpdate(hash,entry->name,n)) goto done;
         for (j=0;j<8;j++) number[j]=(unsigned char)((uint64_t)entry->length>>(8*(7-j)));
         if (!EVP_DigestUpdate(hash,number,8) || !EVP_DigestUpdate(hash,entry->digest,32)) goto done;
+        if (profiled && !EVP_DigestUpdate(hash,&profile,1)) goto done;
     }
-    if (roles!=1 || logs!=1 || !EVP_DigestFinal_ex(hash,pin,&written) || written!=32) goto done;
+    if (roles!=1 || logs!=1 || (profiled && !selected) || !EVP_DigestFinal_ex(hash,pin,&written) || written!=32) goto done;
     memcpy(digest,pin,32); result=0;
 done:
     EVP_MD_CTX_free(hash); OPENSSL_cleanse(pin,sizeof(pin)); return(result);
@@ -795,6 +813,9 @@ int cmeContextColumnExportCheck(const cmeContextColumnTransformApproval *transfo
                 &written,"sha256",&salt,inputs->registrationKey) || written!=64 || strlen(plain[10])!=64 ||
                 CRYPTO_memcmp(tag,plain[10],64)) goto done;
             free(salt); salt=NULL; free(tag); tag=NULL;
+            if (entry->legacyProfile && strcmp(entry->name,registration->sourceFile) &&
+                cmeContextColumnLegacyCheck(entry->source,entry->length,entry->digest,inputs->sourceKey,entry->legacyProfile))
+                goto done;
             for (i=0;i<5;i++) if (sqlite3_bind_text(insert,(int)i+1,plain[fields[i]],-1,SQLITE_TRANSIENT)!=SQLITE_OK) goto done;
             if (sqlite3_step(insert)!=SQLITE_DONE || sqlite3_reset(insert)!=SQLITE_OK) goto done;
             cmeRegPlainFree(plain);

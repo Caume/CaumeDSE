@@ -32,6 +32,7 @@ class InstalledPublicationTests(owner.OwnerApprovalFixture, publication.Provider
             self.assertEqual(result.returncode, 0, result.stderr)
 
     def setUp(self):
+        self.use_profiled_export = self._testMethodName == 'test_profiled_publication_and_admission'
         super().setUp()
         self.registry = self.current()
         self.journal_path = self.root/'admission.journal'
@@ -111,6 +112,24 @@ class InstalledPublicationTests(owner.OwnerApprovalFixture, publication.Provider
     def test_publish_metadata_cbc(self):
         self.prepare_publication()
         self.finish_publication('publish')
+
+    def test_profiled_publication_and_admission(self):
+        self.assertEqual(self.manifest['schema'], 2)
+        source = self.files(self.source_root)
+        tuples = [list(entry) for entry in self.manifest['companions']]
+        for entry in tuples:
+            if entry[0] == 'sibling.sqlite':
+                entry[3] = None
+        invalid = self.write_manifest(companions=tuples)
+        self.assertEqual(self.run_publication('prepare', approval_digest=invalid).returncode, 1)
+        self.assertFalse((self.control / self.job).exists())
+        self.assertEqual(self.write_manifest(), self.approval_pin)
+        self.prepare_publication()
+        self.finish_publication('publish')
+        self.prepare_journal(publication_digest=self.intent)
+        self.run_admission_cli()
+        self.assertEqual(self.files(self.source_root), source)
+        self.assertEqual((self.published / 'sibling.sqlite').read_bytes(), source['sibling.sqlite'])
 
     def test_recover_after_interruption_following_rename(self):
         self.prepare_publication()

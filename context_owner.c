@@ -195,6 +195,7 @@ typedef struct
     cmeContextColumnExportArtifact *companions;
     size_t companionCount;
     int64_t sourceRow,destinationRow;
+    int schema;
 } cmeColumnAdmissionApproval;
 
 static void cmeColumnAdmissionApprovalFree(cmeColumnAdmissionApproval *approval)
@@ -202,7 +203,11 @@ static void cmeColumnAdmissionApprovalFree(cmeColumnAdmissionApproval *approval)
     size_t i;
     for (i=0;i<admissionFields;i++) free(approval->value[i]);
     for (i=0;i<approval->lookupCount;i++) free((char *)approval->lookups[i]);
-    for (i=0;i<approval->companionCount;i++) free((char *)approval->companions[i].name);
+    for (i=0;i<approval->companionCount;i++)
+    {
+        free((char *)approval->companions[i].name);
+        free((char *)approval->companions[i].legacyProfile);
+    }
     free(approval->lookups);
     free(approval->companions);
 }
@@ -240,7 +245,11 @@ static int cmeColumnAdmissionParse(const char *body, cmeColumnAdmissionApproval 
         {
             int64_t number=sqlite3_column_int64(member,2);
             if (strcmp(type,"integer") || sqlite3_column_type(member,2)!=SQLITE_INTEGER || number<1) goto done;
-            if (i==admissionSchema) { if (number!=1) goto done; }
+            if (i==admissionSchema)
+            {
+                if (number!=1 && number!=2) goto done;
+                approval->schema=(int)number;
+            }
             else if (i==admissionSourceRow) approval->sourceRow=number;
             else approval->destinationRow=number;
         }
@@ -270,9 +279,11 @@ static int cmeColumnAdmissionParse(const char *body, cmeColumnAdmissionApproval 
     }
     if (step!=SQLITE_DONE || !approval->lookupCount || sqlite3_reset(member)!=SQLITE_OK ||
         sqlite3_bind_text(member,1,approval->value[admissionCompanions],-1,SQLITE_STATIC)!=SQLITE_OK ||
-        sqlite3_prepare_v2(db,"SELECT json_extract(?1,'$[0]'),json_extract(?1,'$[1]'),json_extract(?1,'$[2]') "
-            "WHERE json_array_length(?1)=3 AND json_type(?1,'$[0]')='text' "
-            "AND json_type(?1,'$[1]')='integer' AND json_type(?1,'$[2]')='text'",-1,&tuple,NULL)!=SQLITE_OK) goto done;
+        sqlite3_prepare_v2(db,"SELECT json_extract(?1,'$[0]'),json_extract(?1,'$[1]'),json_extract(?1,'$[2]'),"
+            "json_extract(?1,'$[3]') WHERE json_array_length(?1)=?2 AND json_type(?1,'$[0]')='text' "
+            "AND json_type(?1,'$[1]')='integer' AND json_type(?1,'$[2]')='text' "
+            "AND (?2=3 OR json_type(?1,'$[3]') IN ('text','null'))",-1,&tuple,NULL)!=SQLITE_OK ||
+        sqlite3_bind_int(tuple,2,approval->schema+2)!=SQLITE_OK) goto done;
     while ((step=sqlite3_step(member))==SQLITE_ROW)
     {
         cmeContextColumnExportArtifact *entry;
@@ -291,7 +302,16 @@ static int cmeColumnAdmissionParse(const char *body, cmeColumnAdmissionApproval 
         digest=cmeOwnerText(tuple,2,64);
         invalid=cmeOfflineDecodeHex(digest,entry->digest,sizeof(entry->digest));
         free(digest);
-        if (!entry->name || invalid || sqlite3_reset(tuple)!=SQLITE_OK) goto done;
+        if (!entry->name || invalid) goto done;
+        if (approval->schema==2)
+        {
+            if (!strcmp(entry->name,"LogsDB") || !strcmp(entry->name,"RolesDB"))
+            {
+                if (sqlite3_column_type(tuple,3)!=SQLITE_NULL) goto done;
+            }
+            else if (!(entry->legacyProfile=cmeOwnerText(tuple,3,16))) goto done;
+        }
+        if (sqlite3_reset(tuple)!=SQLITE_OK) goto done;
     }
     if (step==SQLITE_DONE && approval->companionCount) result=0;
 done:
