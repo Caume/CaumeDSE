@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CaumeDSE REST API
-  version: 2.47.0
+  version: 2.48.0
   description: |
     Machine-readable reference for the stable CaumeDSE routes documented in
     README.md and exercised by the live API tests. Responses are

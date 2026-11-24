@@ -4454,11 +4454,10 @@ phase-45 direct document pin. The same HTTPS route, certificate and
 `contentRows` GET permission apply in either mode.
 
 Provision one matching document record in the engine's active
-`ResourcesDB` during offline maintenance. Copy the protected cells and lookup
-values exactly from the released `ResourcesDB` registration for the V2
-payload. The active SQLite integer `id` may be assigned independently.
-Use the requesting organization's existing key and the engine's configured
-AES metadata profile for that registration.
+`ResourcesDB` during offline maintenance with the phase-47 installer below.
+The protected cells and lookup values come from the released `ResourcesDB`
+registration for the V2 payload. The active SQLite integer `id` may be
+assigned independently.
 
 Each catalog-mode request derives the three protected lookups from the
 authenticated organization, storage and document. It verifies the published
@@ -4472,5 +4471,44 @@ A missing registration returns `404`. A mismatched or duplicate registration,
 an invalid proof or a stale witness returns `503`. The release and witness
 checks still apply on each request. Protect the active catalog and release
 directories during operation. The checks apply at the time of each read.
-Automated registration installation, live mutations, and production
+
+## Offline V2 registration installation (#147 phase 47)
+
+After phase 42 completes the release, use the original release envelope,
+its independently retained SHA-256 and the separately acknowledged W2
+token. Stop the engine and other catalog, release, and authority writers
+before running the installer. The active database must be an existing
+`ResourcesDB` outside the release and authority directories. Use an absolute
+canonical path, an owned mode-`0700` parent, and a mode-`0600` single-link
+database. A cleanly closed catalog can use WAL or rollback journaling.
+If SQLite recovery is pending, complete it during maintenance before retrying.
+
+```bash
+caumedse-admin context-column-register \
+  --registry-directory "$registry_directory" --witness-directory "$witness_directory" \
+  --deployment "$deployment_hex" --organization "$organization_hex" \
+  --registry-key-file "$registry_key_file" --witness-key-file "$witness_key_file" \
+  --source-export "$source_export" --published-export "$published_export" \
+  --release-envelope "$release_envelope" --release-digest "$retained_release_digest" \
+  --retained-witness-token "$retained_w2_token" \
+  --active-resources "$active_resources_db" --metadata-profile "$metadata_profile" \
+  --registration-key-file "$registration_key_file" \
+  --org-resource-id "$org_resource_id" --storage-id "$storage_id" --document-id "$document_id"
+```
+
+The registration key file holds 1–256 NUL-free bytes of the existing
+organization key, including a newline only if it belongs to the key.
+Use the same `aes-256-gcm` or `aes-256-cbc` metadata profile as the release
+registration and the active engine. The active catalog must already
+contain the authorized organization and local storage.
+
+The installer copies the exact protected cells and lookups into one
+locally numbered row. It verifies the release, checks for conflicting
+document and payload registrations, and compares the inserted row with
+the approved record before committing. SQLite commits the row atomically.
+An exact existing row succeeds with the same `registration=present`
+output. Retry with the original approvals after losing the output.
+A conflict, unsupported catalog layout, or stale witness leaves existing
+registrations intact. Start the engine with `CDSE_V2_READ_CATALOG=1`
+after a successful installation. Live mutations and production
 credential custody remain open under #147.

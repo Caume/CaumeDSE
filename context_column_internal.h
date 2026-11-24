@@ -1,6 +1,8 @@
 #ifndef CME_CONTEXT_COLUMN_INTERNAL_H
 #define CME_CONTEXT_COLUMN_INTERNAL_H
 
+#include "context_offline.h"
+
 /* Private representation shared by the staging and container codecs. */
 struct cmeContextColumnStage
 {
@@ -48,6 +50,9 @@ typedef struct
 enum { cmeColumnCatalogMissing=4 };
 
 int cmeColumnCatalogMatch(const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query);
+int cmeColumnCatalogInstall(const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query,
+    const cmeOfflineArtifact *active, cmeContextColumnReadRelease *release);
+int cmeColumnInstallRegistration(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query);
 int cmeColumnReadRegistered(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query,
     int64_t row, const unsigned char *password, size_t passwordLength, cmeContextV2Buffer *plaintext);
 int cmeContextV2OpenAdmissionBinding(cmeContextManager *manager, const cmeContextBinding *binding,

@@ -177,25 +177,57 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
         with self.server(protocol='http') as port:
             self.assert_refused(self.request(port, tls=False), (401, 403))
 
-    def test_active_catalog_requires_exact_released_registration(self):
+    def initialize_catalog(self):
         setup = subprocess.run([PAYLOAD, self.data, 'init-test-engine'], env=self.reg_env,
                                capture_output=True, timeout=30)
         self.assertEqual(setup.returncode, 0, 'engine fixture initialization failed')
         self.key = 'fixture-source-key'
-        fields = self.fields()
-        route = ROUTE.replace('/released/', f'/{fields["destination_document"]}/')
+        self.registration_key = self.private('catalog.key', self.key.encode())
         active = self.data / 'ResourcesDB'
+        active.chmod(0o600)
+        return active
+
+    def register_args(self, **overrides):
+        fields = self.fields()
+        options = dict(password_file=None, table=None, row=None, field=None,
+                       active_resources=self.data / 'ResourcesDB', registration_key_file=self.registration_key,
+                       metadata_profile=self.metadata_profile, org_resource_id=fields['organization_resource'],
+                       storage_id=fields['storage_id'], document_id=fields['destination_document'])
+        options.update(overrides)
+        return [*read_cli.REGISTER, *self.command_options(**options)]
+
+    def register(self, expected=0, **overrides):
+        result = self.invoke(self.register_args(**overrides))
+        self.assertEqual(result.returncode, expected, result.stderr)
+        self.assertNotIn(self.key.encode(), result.stderr)
+        self.assertNotIn(str(self.root).encode(), result.stderr)
+        self.assertEqual(result.stdout, b'' if expected else b'registration=present\n')
+        if not expected:
+            self.assertEqual(result.stderr, b'')
+
+    def approved_registration(self):
         published = self.published / 'ResourcesDB'
         with closing(sqlite3.connect(f'{published.as_uri()}?mode=ro', uri=True)) as db:
-            approved = db.execute('SELECT * FROM documents WHERE id=?', (fields['destination_row'],)).fetchone()
-        row = (37, *approved[1:])
-        insert = 'INSERT INTO documents VALUES (' + ','.join('?' for _ in row) + ')'
+            return db.execute('SELECT * FROM documents WHERE id=?', (self.fields()['destination_row'],)).fetchone()
+
+    def test_active_catalog_requires_exact_released_registration(self):
+        active = self.initialize_catalog()
+        route = ROUTE.replace('/released/', f'/{self.fields()["destination_document"]}/')
         settings = dict(CDSE_V2_READ_CATALOG='1', CDSE_DEFAULT_ENC_ALG=self.metadata_profile)
         with self.server(**settings) as port:
             self.assert_refused(self.request(port, route=route), (404,))
             self.assert_refused(self.request(port), (404,))
-            with closing(sqlite3.connect(active)) as db, db:
-                db.execute(insert, row)
+        authority = self.authority_files()
+        self.register()
+        before = active.read_bytes()
+        self.register()
+        self.assertEqual(active.read_bytes(), before)
+        self.assertEqual(self.authority_files(), authority)
+        with closing(sqlite3.connect(active)) as db:
+            row = db.execute('SELECT * FROM documents').fetchone()
+        self.assertEqual(row[1:], self.approved_registration()[1:])
+        insert = 'INSERT INTO documents VALUES (' + ','.join('?' for _ in row) + ')'
+        with self.server(**settings) as port:
             before = active.read_bytes()
             status, headers, body = self.request(port, route=route)
             self.assertEqual(status, 200, body)
@@ -205,18 +237,84 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
             self.assert_refused(self.request(port, route=route, cert=False), (401, 403))
 
             with closing(sqlite3.connect(active)) as db, db:
-                db.execute(insert, (38, *row[1:]))
+                db.execute(insert, (row[0] + 1, *row[1:]))
             self.assert_refused(self.request(port, route=route), (503,))
             with closing(sqlite3.connect(active)) as db, db:
-                db.execute('DELETE FROM documents WHERE id=38')
-                db.execute("UPDATE documents SET partMAC='' WHERE id=37")
+                db.execute('DELETE FROM documents WHERE id=?', (row[0] + 1,))
+                db.execute("UPDATE documents SET partMAC='' WHERE id=?", (row[0],))
             self.assert_refused(self.request(port, route=route), (503,))
             with closing(sqlite3.connect(active)) as db, db:
-                db.execute('DELETE FROM documents WHERE id=37')
+                db.execute('DELETE FROM documents WHERE id=?', (row[0],))
             self.assert_refused(self.request(port, route=route), (404,))
 
         with self.server(**settings, CDSE_V2_READ_WITNESS_TOKEN=self.acknowledged) as port:
             self.assert_refused(self.request(port, route=route), (503,))
+
+    def test_registration_refuses_conflicts_and_rolls_back_busy_commit(self):
+        active = self.initialize_catalog()
+        before = active.read_bytes()
+        wrong_key = self.private('wrong-catalog.key', b'invalid')
+        alias = self.root / 'alias'
+        alias.mkdir(mode=0o700)
+        (alias / 'ResourcesDB').symlink_to(active)
+        for status, options in (
+            (2, {'retained_witness_token': self.acknowledged}),
+            (1, {'release_digest': '00' * 32}),
+            (1, {'registration_key_file': wrong_key}),
+            (1, {'active_resources': self.published / 'ResourcesDB'}),
+            (1, {'active_resources': alias / 'ResourcesDB'}),
+        ):
+            with self.subTest(status=status, options=options):
+                self.register(status, **options)
+                self.assertEqual(active.read_bytes(), before)
+
+        approved = self.approved_registration()
+        insert = 'INSERT INTO documents VALUES (' + ','.join('?' for _ in approved) + ')'
+        for rows in (
+            [(*approved[:-3], None, None, None)],
+            [(3, *approved[1:10], '', *approved[11:])],
+            [approved, (3, *approved[1:])],
+        ):
+            with closing(sqlite3.connect(active)) as db, db:
+                db.executemany(insert, rows)
+            before = active.read_bytes()
+            self.register(1)
+            self.assertEqual(active.read_bytes(), before)
+            with closing(sqlite3.connect(active)) as db, db:
+                db.execute('DELETE FROM documents')
+        with closing(sqlite3.connect(active)) as db, db:
+            db.execute('CREATE TRIGGER fixture_guard AFTER INSERT ON documents BEGIN SELECT 1; END')
+        before = active.read_bytes()
+        self.register(1)
+        self.assertEqual(active.read_bytes(), before)
+        with closing(sqlite3.connect(active)) as db, db:
+            db.execute('DROP TRIGGER fixture_guard')
+        with closing(sqlite3.connect(active)) as db:
+            db.execute('PRAGMA journal_mode=DELETE').fetchone()
+            before = active.read_bytes()
+            db.execute('BEGIN')
+            self.assertEqual(db.execute('SELECT count(*) FROM documents').fetchone()[0], 0)
+            self.register(1)
+            self.assertEqual(active.read_bytes(), before)
+            self.assertFalse(active.with_name('ResourcesDB-journal').exists())
+            db.rollback()
+        if Path('/dev/full').exists():
+            with open('/dev/full', 'wb') as output:
+                lost = subprocess.run(self.register_args(), stdout=output, stderr=subprocess.PIPE, timeout=90)
+            self.assertEqual(lost.returncode, 1)
+            self.assertIn(b'could not report registration status', lost.stderr)
+            with closing(sqlite3.connect(active)) as db:
+                self.assertEqual(db.execute('SELECT count(*) FROM documents').fetchone()[0], 1)
+        self.register()
+        with closing(sqlite3.connect(active)) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM documents').fetchone()[0], 1)
+
+    def test_offline_registration_metadata_cbc(self):
+        active = self.initialize_catalog()
+        self.register()
+        with closing(sqlite3.connect(active)) as db:
+            row = db.execute('SELECT * FROM documents').fetchone()
+        self.assertEqual(row[1:], self.approved_registration()[1:])
 
 
 for _parent in LiveReadTests.__mro__[1:]:
