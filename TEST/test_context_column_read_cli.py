@@ -13,18 +13,21 @@ from test_context_frame import PASSWORD
 ADMIN = str(Path(os.environ.get('CDSE_CONTEXT_OWNER_ADMIN', './caumedse-admin')).resolve())
 COMMAND = [ADMIN, 'context-column-read']
 REGISTER = [ADMIN, 'context-column-register']
+UNREGISTER = [ADMIN, 'context-column-unregister']
 
 
 class CommandTests(unittest.TestCase):
     def test_register_help_and_incomplete_invocation(self):
         main = subprocess.run([ADMIN, '--help'], capture_output=True, timeout=30, check=True)
-        self.assertIn(b'context-column-register --help', main.stdout)
-        usage = subprocess.run([*REGISTER, '--help'], capture_output=True, timeout=30, check=True)
-        for option in (b'--active-resources', b'--retained-witness-token', b'--registration-key-file'):
-            self.assertIn(option, usage.stdout)
-        bad = subprocess.run([*REGISTER, '--release-digest', '00' * 32], capture_output=True, timeout=30)
-        self.assertEqual(bad.returncode, 1)
-        self.assertEqual(bad.stdout, b'')
+        for command, outcome in ((REGISTER, b'present'), (UNREGISTER, b'absent')):
+            with self.subTest(command=command[1]):
+                self.assertIn(f'{command[1]} --help'.encode(), main.stdout)
+                usage = subprocess.run([*command, '--help'], capture_output=True, timeout=30, check=True)
+                for option in (b'--active-resources', b'--retained-witness-token', b'--registration-key-file',
+                               b'registration=' + outcome):
+                    self.assertIn(option, usage.stdout)
+                bad = subprocess.run([*command, '--release-digest', '00' * 32], capture_output=True, timeout=30)
+                self.assertEqual((bad.returncode, bad.stdout), (1, b''))
 
     def test_help_lists_installed_command_and_required_approvals(self):
         main = subprocess.run([ADMIN, '--help'], capture_output=True, timeout=30, check=True)

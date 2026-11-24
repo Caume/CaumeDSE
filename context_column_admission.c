@@ -497,7 +497,8 @@ static void cmeAdmissionRegistrationFree(cmeColumnCatalogSnapshot *registration)
     }
 }
 
-int cmeColumnInstallRegistration(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query)
+int cmeColumnUpdateRegistration(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query,
+    cmeColumnCatalogAction action)
 {
     cmeOfflineArtifact active={.file=-1,.directory=-1};
     cmeColumnCatalogSnapshot registration={0};
@@ -520,7 +521,7 @@ int cmeColumnInstallRegistration(cmeContextColumnReadRelease *release, const cme
     if (cmeGlobalDecode(release->journal,release->length,release->digest,&plan,&previous,&catalog,request) ||
         cmeAdmissionSnapshotLoad(&release->roots[0],&release->roots[1],plan.proof,plan.proofLength,
             NULL,NULL,&registration)) goto done;
-    result=cmeColumnCatalogInstall(&registration,query,&active,release);
+    result=cmeColumnCatalogUpdate(&registration,query,&active,release,action);
 done:
     cmeAdmissionRegistrationFree(&registration);
     cmeOfflineClose(&active);

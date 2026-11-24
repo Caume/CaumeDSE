@@ -49,10 +49,17 @@ typedef struct
 
 enum { cmeColumnCatalogMissing=4 };
 
+typedef enum
+{
+    cmeColumnCatalogRegister,
+    cmeColumnCatalogUnregister
+} cmeColumnCatalogAction;
+
 int cmeColumnCatalogMatch(const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query);
-int cmeColumnCatalogInstall(const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query,
-    const cmeOfflineArtifact *active, cmeContextColumnReadRelease *release);
-int cmeColumnInstallRegistration(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query);
+int cmeColumnCatalogUpdate(const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query,
+    const cmeOfflineArtifact *active, cmeContextColumnReadRelease *release, cmeColumnCatalogAction action);
+int cmeColumnUpdateRegistration(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query,
+    cmeColumnCatalogAction action);
 int cmeColumnReadRegistered(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query,
     int64_t row, const unsigned char *password, size_t passwordLength, cmeContextV2Buffer *plaintext);
 int cmeContextV2OpenAdmissionBinding(cmeContextManager *manager, const cmeContextBinding *binding,

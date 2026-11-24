@@ -375,13 +375,13 @@ done:
 }
 
 static int cmeRegActiveConflicts(sqlite3 *db, const cmeRegApproved *approved,
-    const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query, int *present)
+    const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query, sqlite3_int64 *matchingId)
 {
     sqlite3_stmt *stmt=NULL;
     char *plain[18]={0};
     int i,step,result=1;
 
-    *present=0;
+    *matchingId=0;
     if (sqlite3_prepare_v2(db,"SELECT * FROM main.documents",-1,&stmt,NULL)!=SQLITE_OK ||
         cmeRegDocumentColumns(stmt)) goto done;
     while ((step=sqlite3_step(stmt))==SQLITE_ROW)
@@ -395,9 +395,9 @@ static int cmeRegActiveConflicts(sqlite3 *db, const cmeRegApproved *approved,
         }
         if (i==3)
         {
-            if (*present || sqlite3_column_type(stmt,0)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,0)<1 ||
+            if (*matchingId || sqlite3_column_type(stmt,0)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,0)<1 ||
                 cmeRegMatchesApproved(approved->row,stmt)) goto done;
-            *present=1;
+            *matchingId=sqlite3_column_int64(stmt,0);
             continue;
         }
         /* Detect matching legacy rows even when their lookup cells are absent. */
@@ -432,6 +432,19 @@ static int cmeRegInsertApproved(sqlite3 *db, sqlite3_stmt *approved)
     if (sqlite3_prepare_v2(db,sql,-1,&stmt,NULL)!=SQLITE_OK) goto done;
     for (i=1;i<18;i++) if (sqlite3_bind_value(stmt,i,sqlite3_column_value(approved,i))!=SQLITE_OK) goto done;
     result=(sqlite3_step(stmt)!=SQLITE_DONE || sqlite3_changes(db)!=1);
+done:
+    sqlite3_finalize(stmt);
+    return(result);
+}
+
+static int cmeRegRemoveApproved(sqlite3 *db, sqlite3_int64 id)
+{
+    sqlite3_stmt *stmt=NULL;
+    int result=1,previousChanges=sqlite3_total_changes(db);
+    if (sqlite3_prepare_v2(db,"DELETE FROM main.documents WHERE id=?1",-1,&stmt,NULL)!=SQLITE_OK ||
+        sqlite3_bind_int64(stmt,1,id)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    /* SQLite includes foreign-key actions in the connection's total. */
+    result=(sqlite3_changes(db)!=1 || sqlite3_total_changes(db)!=previousChanges+1);
 done:
     sqlite3_finalize(stmt);
     return(result);
@@ -549,19 +562,21 @@ done:
 #endif
 }
 
-int cmeColumnCatalogInstall(const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query,
-    const cmeOfflineArtifact *guard, cmeContextColumnReadRelease *release)
+int cmeColumnCatalogUpdate(const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query,
+    const cmeOfflineArtifact *guard, cmeContextColumnReadRelease *release, cmeColumnCatalogAction action)
 {
 #if defined(HAVE_SQLITE3_DESERIALIZE)
     cmeRegApproved approved={0};
     sqlite3 *active=NULL;
     sqlite3_stmt *currentRow=NULL;
     unsigned int budget=20000;
-    int present,result=1,flags=SQLITE_OPEN_READWRITE|SQLITE_OPEN_FULLMUTEX;
+    sqlite3_int64 matchingId;
+    int result=1,flags=SQLITE_OPEN_READWRITE|SQLITE_OPEN_FULLMUTEX;
 #ifdef SQLITE_OPEN_NOFOLLOW
     flags|=SQLITE_OPEN_NOFOLLOW;
 #endif
-    if (cmeRegApprovedOpen(snapshot,query,&approved) || cmeOfflineVerify(guard) ||
+    if ((action!=cmeColumnCatalogRegister && action!=cmeColumnCatalogUnregister) ||
+        cmeRegApprovedOpen(snapshot,query,&approved) || cmeOfflineVerify(guard) ||
         cmeRegActiveIdentity(query->path,guard) || sqlite3_open_v2(query->path,&active,flags,NULL)!=SQLITE_OK ||
         sqlite3_db_config(active,SQLITE_DBCONFIG_DEFENSIVE,1,NULL)!=SQLITE_OK) goto done;
     sqlite3_limit(active,SQLITE_LIMIT_LENGTH,cmeContextColumnMaxCellBytes);
@@ -569,11 +584,16 @@ int cmeColumnCatalogInstall(const cmeColumnCatalogSnapshot *snapshot, const cmeC
     if (sqlite3_exec(active,"PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON; PRAGMA synchronous=EXTRA; BEGIN IMMEDIATE",
             NULL,NULL,NULL)!=SQLITE_OK || cmeRegActiveIdentity(query->path,guard) ||
         cmeRegWritableDocuments(active) || cmeRegActiveScope(active,query) ||
-        cmeRegActiveConflicts(active,&approved,snapshot,query,&present) ||
-        (!present && cmeRegInsertApproved(active,approved.row)) ||
+        cmeRegActiveConflicts(active,&approved,snapshot,query,&matchingId)) goto done;
+    if (action==cmeColumnCatalogUnregister)
+    {
+        if ((matchingId && cmeRegRemoveApproved(active,matchingId)) ||
+            cmeRegFindLiveRow(active,approved.lookups,&currentRow)!=cmeColumnCatalogMissing) goto done;
+    }
+    else if ((!matchingId && cmeRegInsertApproved(active,approved.row)) ||
         cmeRegFindLiveRow(active,approved.lookups,&currentRow) ||
-        cmeRegMatchesApproved(approved.row,currentRow) || sqlite3_step(approved.row)!=SQLITE_DONE ||
-        sqlite3_step(currentRow)!=SQLITE_DONE) goto done;
+        cmeRegMatchesApproved(approved.row,currentRow) || sqlite3_step(currentRow)!=SQLITE_DONE) goto done;
+    if (sqlite3_step(approved.row)!=SQLITE_DONE) goto done;
     sqlite3_finalize(currentRow); currentRow=NULL;
     result=cmeContextColumnReadReleaseCheck(release);
     if (result) goto done;
@@ -589,6 +609,7 @@ done:
     (void)query;
     (void)guard;
     (void)release;
+    (void)action;
     return(3);
 #endif
 }

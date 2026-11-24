@@ -188,21 +188,23 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
         active.chmod(0o600)
         return active
 
-    def register_args(self, **overrides):
+    def registration_args(self, *, retire=False, **overrides):
         fields = self.fields()
         options = dict(password_file=None, table=None, row=None, field=None,
                        active_resources=self.data / 'ResourcesDB', registration_key_file=self.registration_key,
                        metadata_profile=self.metadata_profile, org_resource_id=fields['organization_resource'],
                        storage_id=fields['storage_id'], document_id=fields['destination_document'])
         options.update(overrides)
-        return [*read_cli.REGISTER, *self.command_options(**options)]
+        command = read_cli.UNREGISTER if retire else read_cli.REGISTER
+        return [*command, *self.command_options(**options)]
 
-    def register(self, expected=0, **overrides):
-        result = self.invoke(self.register_args(**overrides))
+    def change_registration(self, expected=0, *, retire=False, **overrides):
+        result = self.invoke(self.registration_args(retire=retire, **overrides))
         self.assertEqual(result.returncode, expected, result.stderr)
         self.assertNotIn(self.key.encode(), result.stderr)
         self.assertNotIn(str(self.root).encode(), result.stderr)
-        self.assertEqual(result.stdout, b'' if expected else b'registration=present\n')
+        status = b'registration=absent\n' if retire else b'registration=present\n'
+        self.assertEqual(result.stdout, b'' if expected else status)
         if not expected:
             self.assertEqual(result.stderr, b'')
 
@@ -225,9 +227,9 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
             self.assert_refused(self.request(port, route=route), (404,))
             self.assert_refused(self.request(port), (404,))
         authority = self.authority_files()
-        self.register()
+        self.change_registration()
         before = active.read_bytes()
-        self.register()
+        self.change_registration()
         self.assertEqual(active.read_bytes(), before)
         self.assertEqual(self.authority_files(), authority)
         with closing(sqlite3.connect(active)) as db:
@@ -251,7 +253,16 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
                 db.execute("UPDATE documents SET partMAC='' WHERE id=?", (row[0],))
             self.assert_refused(self.request(port, route=route), (503,))
             with closing(sqlite3.connect(active)) as db, db:
-                db.execute('DELETE FROM documents WHERE id=?', (row[0],))
+                db.execute('UPDATE documents SET partMAC=? WHERE id=?', (row[10], row[0]))
+        self.change_registration(retire=True)
+        before = active.read_bytes()
+        self.change_registration(retire=True)
+        self.assertEqual(active.read_bytes(), before)
+        self.change_registration(2, retire=True, retained_witness_token=self.acknowledged)
+        self.assertEqual(active.read_bytes(), before)
+        self.assertEqual(self.authority_files(), authority)
+        self.read_cell()
+        with self.server(**settings) as port:
             self.assert_refused(self.request(port, route=route), (404,))
 
         with self.server(**settings, CDSE_V2_READ_WITNESS_TOKEN=self.acknowledged) as port:
@@ -272,7 +283,7 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
             (1, {'active_resources': alias / 'ResourcesDB'}),
         ):
             with self.subTest(status=status, options=options):
-                self.register(status, **options)
+                self.change_registration(status, **options)
                 self.assertEqual(active.read_bytes(), before)
 
         approved = self.approved_registration()
@@ -285,14 +296,15 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
             with closing(sqlite3.connect(active)) as db, db:
                 db.executemany(insert, rows)
             before = active.read_bytes()
-            self.register(1)
+            self.change_registration(1)
+            self.change_registration(1, retire=True)
             self.assertEqual(active.read_bytes(), before)
             with closing(sqlite3.connect(active)) as db, db:
                 db.execute('DELETE FROM documents')
         with closing(sqlite3.connect(active)) as db, db:
             db.execute('CREATE TRIGGER fixture_guard AFTER INSERT ON documents BEGIN SELECT 1; END')
         before = active.read_bytes()
-        self.register(1)
+        self.change_registration(1)
         self.assertEqual(active.read_bytes(), before)
         with closing(sqlite3.connect(active)) as db, db:
             db.execute('DROP TRIGGER fixture_guard')
@@ -301,27 +313,72 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
             before = active.read_bytes()
             db.execute('BEGIN')
             self.assertEqual(db.execute('SELECT count(*) FROM documents').fetchone()[0], 0)
-            self.register(1)
+            self.change_registration(1)
             self.assertEqual(active.read_bytes(), before)
             self.assertFalse(active.with_name('ResourcesDB-journal').exists())
             db.rollback()
         if Path('/dev/full').exists():
             with open('/dev/full', 'wb') as output:
-                lost = subprocess.run(self.register_args(), stdout=output, stderr=subprocess.PIPE, timeout=90)
+                lost = subprocess.run(self.registration_args(), stdout=output, stderr=subprocess.PIPE, timeout=90)
             self.assertEqual(lost.returncode, 1)
             self.assertIn(b'could not report registration status', lost.stderr)
             with closing(sqlite3.connect(active)) as db:
                 self.assertEqual(db.execute('SELECT count(*) FROM documents').fetchone()[0], 1)
-        self.register()
+        self.change_registration()
         with closing(sqlite3.connect(active)) as db:
             self.assertEqual(db.execute('SELECT count(*) FROM documents').fetchone()[0], 1)
 
     def test_offline_registration_metadata_cbc(self):
         active = self.initialize_catalog()
-        self.register()
+        self.change_registration()
         with closing(sqlite3.connect(active)) as db:
             row = db.execute('SELECT * FROM documents').fetchone()
         self.assertEqual(row[1:], self.approved_registration()[1:])
+
+    def test_unregister_preserves_unrelated_rows_and_rolls_back(self):
+        active = self.initialize_catalog()
+        self.change_registration()
+        source = self.published / 'ResourcesDB'
+        with closing(sqlite3.connect(f'{source.as_uri()}?mode=ro', uri=True)) as db:
+            legacy = db.execute('SELECT * FROM documents WHERE id=?', (self.fields()['source_row'],)).fetchone()
+        with closing(sqlite3.connect(active)) as db, db:
+            registration = db.execute('SELECT * FROM documents').fetchone()
+            legacy = (registration[0] + 1, *legacy[1:])
+            db.execute('INSERT INTO documents VALUES (' + ','.join('?' for _ in legacy) + ')', legacy)
+            db.execute('CREATE TABLE retained (id INTEGER REFERENCES documents(id) ON DELETE CASCADE)')
+            db.execute('INSERT INTO retained VALUES (?)', (registration[0],))
+        authority = self.authority_files()
+        before = active.read_bytes()
+        self.change_registration(2, retire=True, retained_witness_token=self.acknowledged)
+        self.assertEqual(active.read_bytes(), before)
+        self.change_registration(1, retire=True)
+        self.assertEqual(active.read_bytes(), before)
+        with closing(sqlite3.connect(active)) as db, db:
+            self.assertEqual(db.execute('SELECT id FROM retained').fetchall(), [(registration[0],)])
+            db.execute('DROP TABLE retained')
+        with closing(sqlite3.connect(active)) as db:
+            db.execute('PRAGMA journal_mode=DELETE').fetchone()
+            before = active.read_bytes()
+            db.execute('BEGIN')
+            self.assertEqual(db.execute('SELECT count(*) FROM documents').fetchone()[0], 2)
+            self.change_registration(1, retire=True)
+            self.assertEqual(active.read_bytes(), before)
+            self.assertFalse(active.with_name('ResourcesDB-journal').exists())
+            db.rollback()
+        if Path('/dev/full').exists():
+            with open('/dev/full', 'wb') as output:
+                lost = subprocess.run(self.registration_args(retire=True), stdout=output,
+                                      stderr=subprocess.PIPE, timeout=90)
+            self.assertEqual(lost.returncode, 1)
+            self.assertIn(b'could not report registration status', lost.stderr)
+        else:
+            self.change_registration(retire=True)
+        with closing(sqlite3.connect(active)) as db:
+            self.assertEqual(db.execute('SELECT * FROM documents').fetchall(), [legacy])
+        before = active.read_bytes()
+        self.change_registration(retire=True)
+        self.assertEqual(active.read_bytes(), before)
+        self.assertEqual(self.authority_files(), authority)
 
 
 for _parent in LiveReadTests.__mro__[1:]:
