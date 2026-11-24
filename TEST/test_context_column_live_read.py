@@ -39,6 +39,7 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
             raise unittest.SkipTest('requires a DEBUG server with an isolated data directory')
 
     def setUp(self):
+        self.use_profiled_export = self._testMethodName == 'test_active_catalog_requires_exact_released_registration'
         super().setUp()
         self.data = self.root / 'engine'
         self.data.mkdir(mode=0o700)
@@ -211,6 +212,12 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
             return db.execute('SELECT * FROM documents WHERE id=?', (self.fields()['destination_row'],)).fetchone()
 
     def test_active_catalog_requires_exact_released_registration(self):
+        sibling = self.published / 'sibling.sqlite'
+        self.assertEqual(sibling.read_bytes(), (self.source_root / sibling.name).read_bytes())
+        legacy = subprocess.run([PAYLOAD, sibling, 'registered-readback'],
+                                env=dict(self.reg_env, CDSE_DEFAULT_ENC_ALG='aes-256-cbc'),
+                                capture_output=True, timeout=30)
+        self.assertEqual(legacy.returncode, 0, 'preserved AES-CBC document readback failed')
         active = self.initialize_catalog()
         route = ROUTE.replace('/released/', f'/{self.fields()["destination_document"]}/')
         settings = dict(CDSE_V2_READ_CATALOG='1', CDSE_DEFAULT_ENC_ALG=self.metadata_profile)

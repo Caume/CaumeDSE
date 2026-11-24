@@ -4512,3 +4512,39 @@ A conflict, unsupported catalog layout, or stale witness leaves existing
 registrations intact. Start the engine with `CDSE_V2_READ_CATALOG=1`
 after a successful installation. Live mutations and production
 credential custody remain open under #147.
+
+## Mixed-profile export acceptance (#147 phase 48)
+
+Use schema `2` in the owner approval for a mixed AES export. Keep the
+existing approval fields and use four elements for every entry in
+`companions`. Keep the entries sorted by ASCII leaf name.
+
+| Entry | Elements |
+| --- | --- |
+| Legacy CSV document | File name, byte length, SHA-256, `aes-256-gcm` or `aes-256-cbc` |
+| `RolesDB` or `LogsDB` | File name, byte length, SHA-256, JSON `null` |
+
+Include the selected source document and make its fourth element equal to
+`sourceProfile`. Use the existing source key file for all legacy payloads.
+The `metadataProfile` and registration key continue to govern the
+protected catalog metadata and registration MACs.
+
+To compute the schema-2 `exportDigest`, initialize SHA-256 with
+`CDSE-HKX-COLUMN-EXPORT-v2` followed by a NUL byte. Append the 32-byte
+registration approval digest and the big-endian uint64 companion count.
+For each sorted companion append the big-endian uint16 name length, name
+bytes, big-endian uint64 file length, 32-byte SHA-256 and one profile
+byte. Use `0` for the two internal databases, `1` for AES-GCM, and `2`
+for AES-CBC. Independently retain the resulting digest and the acceptance
+receipt before publication and admission. The three-element schema-1
+approval and its original digest remain supported.
+
+During acceptance the checker authenticates the protected registration
+and file MAC, then verifies each legacy companion's SQLite schema, AES
+profile declarations, decrypted cells, row order, and integrity tags.
+The source and candidate exports retain each legacy document byte for
+byte. The selected document is transformed to V2 under its existing
+witnessed approval. Publication, admission, release and registration
+installation continue to use the same sequence. This phase covers
+single-part local CSV documents with one explicit AES profile per
+payload and a common source key.

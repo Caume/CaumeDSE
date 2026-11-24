@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.48.0
+# Caume Data Security Engine (CaumeDSE) version 2.49.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3076,6 +3076,10 @@ also requires the engine's active `ResourcesDB` to contain the exact published
 registration for the requested document. Use the
 [offline registration installer](HERRADURAKEX_AT_REST_PLAN.md#offline-v2-registration-installation-147-phase-47)
 to provision that row from the completed release.
+Use a [profiled export approval](HERRADURAKEX_AT_REST_PLAN.md#mixed-profile-export-acceptance-147-phase-48)
+when the source export contains legacy documents protected with different
+AES profiles. The approval pins each document's profile and preserves the
+companion bytes during migration.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

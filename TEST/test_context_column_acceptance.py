@@ -17,6 +17,8 @@ from test_context_crypto import available
 
 
 class AcceptanceTests(registrations.RegistrationTests):
+    use_profiled_export = False
+
     def setUp(self):
         super().setUp()
         self.acceptance=self.root/'acceptance.receipt'
@@ -28,6 +30,9 @@ class AcceptanceTests(registrations.RegistrationTests):
             for field in ('requestMethod','responseCode','authenticated'):
                 if field not in columns:db.execute(f'alter table transactions add column {field} TEXT')
         self.companions=[]
+        self.companion_profiles={}
+        if self.use_profiled_export:
+            self.add_profiled_sibling()
         self.reset_companions()
         self.acceptance.write_bytes(self.acceptance_signed())
 
@@ -40,9 +45,12 @@ class AcceptanceTests(registrations.RegistrationTests):
 
     def export_digest(self,entries=None):
         entries=self.companions if entries is None else entries
-        body=b'CDSE-HKX-COLUMN-EXPORT-v1\0'+bytes.fromhex(self.registration_digest())+struct.pack('>Q',len(entries))
+        domain=b'CDSE-HKX-COLUMN-EXPORT-v2\0' if self.companion_profiles else b'CDSE-HKX-COLUMN-EXPORT-v1\0'
+        profiles={None:0,'aes-256-gcm':1,'aes-256-cbc':2}
+        body=domain+bytes.fromhex(self.registration_digest())+struct.pack('>Q',len(entries))
         for name,source,candidate,pin in entries:
             value=name.encode();body+=struct.pack('>H',len(value))+value+struct.pack('>Q',source.stat().st_size)+bytes.fromhex(pin)
+            if self.companion_profiles:body+=bytes([profiles.get(self.companion_profiles.get(name),255)])
         return hashlib.sha256(body).hexdigest()
 
     def acceptance_signed(self,entries=None,inner=None):
@@ -56,18 +64,31 @@ class AcceptanceTests(registrations.RegistrationTests):
         entries=self.companions if entries is None else entries
         args=self.registered_args();args[2]='target-export-verify' if verify else 'target-export-prepare'
         args.extend([str(self.receipt),inner_pin or hashlib.sha256(self.receipt.read_bytes()).hexdigest(),pin or self.export_digest(entries),str(len(entries))])
-        for name,source,candidate,digest in entries:args.extend([name,str(source),str(candidate),digest])
+        for name,source,candidate,digest in entries:
+            profile=self.companion_profiles.get(name)
+            args.extend([f'{name}:{profile}' if profile is not None else name,str(source),str(candidate),digest])
         if verify:args.extend([str(self.acceptance),receipt_pin or hashlib.sha256(self.acceptance.read_bytes()).hexdigest()])
         return args
 
     def accepted(self,verify=False,env=None,**options):return self.invoke(self.export_args(verify,**options),env)
 
-    def add_sibling(self,field=None,value=None):
-        (self.root/'sibling.sqlite').write_bytes(self.source.read_bytes())
+    def add_sibling(self,field=None,value=None,profile=None):
+        sibling=self.root/'sibling.sqlite'
+        if profile:
+            result=subprocess.run([registrations.transforms.images.columns.PAYLOAD,sibling,'registered-column'],
+                env=dict(self.reg_env,CDSE_DEFAULT_ENC_ALG=profile,CDSE_FIXTURE_REGISTERED_TAGS='1'),
+                capture_output=True,timeout=30)
+            self.assertEqual(result.returncode,0,'sibling fixture creation failed')
+        else:sibling.write_bytes(self.source.read_bytes())
         env=dict(self.reg_env)
         if field:env.update(CDSE_FIXTURE_V2_FIELD=field,CDSE_FIXTURE_V2_VALUE=value)
         self.payload('v2-sibling',env);self.rebuild_candidate();self.refresh_receipt();self.reset_companions()
         self.acceptance.write_bytes(self.acceptance_signed())
+
+    def add_profiled_sibling(self):
+        companion='aes-256-cbc' if self.profile=='aes-256-gcm' else 'aes-256-gcm'
+        self.companion_profiles={self.source.name:self.profile,'sibling.sqlite':companion}
+        self.add_sibling(profile=companion)
 
     def repin(self):
         self.companions=[(n,s,c,hashlib.sha256(s.read_bytes()).hexdigest()) for n,s,c,p in self.companions]
@@ -171,6 +192,19 @@ class ProviderAcceptanceTests(AcceptanceTests):
     def test_empty_source_empty(self):self.roundtrip_export()
     def test_complete_sibling_inventory(self):self.add_sibling();self.roundtrip_export()
     def test_null_bounds_and_digest_contract(self):self.roundtrip_export(env={'CDSE_CONTEXT_EXPORT_CONTRACT':'1'})
+
+    def test_profiled_mixed_export_and_wrong_or_missing_profile(self):
+        self.add_profiled_sibling()
+        self.roundtrip_export(env={'CDSE_CONTEXT_EXPORT_CONTRACT':'1'})
+        approved=self.export_digest()
+        for profile in (self.profile, 'aes-256-ctr', None):
+            with self.subTest(profile=profile):
+                self.companion_profiles['sibling.sqlite']=profile
+                self.assertNotEqual(self.export_digest(),approved)
+                self.assertEqual(self.accepted().returncode,1)
+        self.companion_profiles['sibling.sqlite']='aes-256-cbc'
+        self.companion_profiles['source.sqlite']='aes-256-cbc'
+        self.assertEqual(self.accepted().returncode,1)
 
     def test_generic_registration_is_not_export_acceptance(self):
         self.add_sibling('partMAC','00'*32)

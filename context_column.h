@@ -165,6 +165,8 @@ int cmeContextColumnRegisteredVerify(cmeContextManager *manager, const cmeContex
    must be unique local registrations at the approved literal storagePath.
    RolesDB/LogsDB require current bounded SQLite schemas/integrity; their retained
    pins authenticate unchanged bytes, not individual historical field semantics.
+   Profiled exports pin the legacy AES payload profile for every document and
+   verify unchanged companions with the same source key as the selected document.
    No multipart/remote/non-CSV sibling profiles. At most 4098 companions, 32 MiB
    each, 64 MiB aggregate per export; internal DBs at most 16 MiB. */
 typedef struct
@@ -173,6 +175,7 @@ typedef struct
     const unsigned char *source,*candidate;
     size_t length;
     unsigned char digest[32];
+    const char *legacyProfile;
 } cmeContextColumnExportArtifact;
 typedef struct
 {

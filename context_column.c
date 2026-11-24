@@ -120,6 +120,19 @@ done:
     free(salt); free(tag); return(result);
 }
 
+static void cmeColumnPlainClear(char **plain, size_t count)
+{
+    size_t i;
+    if (!plain) return;
+    for (i=0;i<count;i++)
+        if (plain[i])
+        {
+            OPENSSL_cleanse(plain[i],strlen(plain[i]));
+            free(plain[i]);
+            plain[i]=NULL;
+        }
+}
+
 /* Inventory and decode ALL rows before the first target seal. All plaintext is
    private, bounded by the source image, and destroyed on every exit. */
 static int cmeColumnRead(sqlite3 *db, const cmeContextMap *map, const char *key, const char *profile, char **plain)
@@ -130,8 +143,12 @@ static int cmeColumnRead(sqlite3 *db, const cmeContextMap *map, const char *key,
     unsigned char seen[7]={0},orders[cmeContextRegistryMaxEntries]={0};
     sqlite3_stmt *stmt=NULL;
     size_t i,j,cells=0,rows=0,total=0,indices[4];
+    size_t maxCells=map ? map->count : cmeContextRegistryMaxEntries;
+    char *scratch[4]={0};
     int table,field,step,result=1;
-    if (!map->active || map->blocked || map->role!=4 || !map->count || map->count>cmeContextRegistryMaxEntries) return(1);
+    if (map && (!map->active || map->blocked || map->role!=4 || !map->count ||
+        map->count>cmeContextRegistryMaxEntries)) return(1);
+    if (!map) plain=scratch;
     for (table=0;table<2;table++)
     {
         if (sqlite3_prepare_v2(db,table ? "SELECT * FROM data ORDER BY id" : "SELECT * FROM meta ORDER BY id",
@@ -145,11 +162,16 @@ static int cmeColumnRead(sqlite3 *db, const cmeContextMap *map, const char *key,
             for (field=0;field<4;field++)
             {
                 const char *text=cmeColumnText(stmt,field<2 ? field+1 : field+2);
-                size_t matches=0,index=0;
-                for (i=0;i<map->count;i++)
-                    if (map->slots[i].row==row && !strcmp(map->slots[i].table,table ? "data" : "meta") &&
-                        !strcmp(map->slots[i].field,fields[table][field])) { matches++; index=i; }
-                if (matches!=1 || !text || plain[index] || ++cells>map->count) goto done;
+                size_t index=(size_t)field;
+                if (map)
+                {
+                    size_t matches=0;
+                    for (i=0;i<map->count;i++)
+                        if (map->slots[i].row==row && !strcmp(map->slots[i].table,table ? "data" : "meta") &&
+                            !strcmp(map->slots[i].field,fields[table][field])) { matches++; index=i; }
+                    if (matches!=1) goto done;
+                }
+                if (!text || plain[index] || ++cells>maxCells) goto done;
                 indices[field]=index;
                 if (table && field==3 && !seen[2]) plain[index]=strdup(text);
                 else if (cmeContextColumnLegacyDecode(text,salt,key,profile,&plain[index])) goto done;
@@ -174,13 +196,15 @@ static int cmeColumnRead(sqlite3 *db, const cmeContextMap *map, const char *key,
                 for (j=0;j<4;j++) if (cmeColumnTag(j<2 ? plain[indices[2]] : value,
                     cmeColumnText(stmt,6+j),salt,key,seen[3+j])) goto done;
             }
+            cmeColumnPlainClear(scratch,4);
         }
         if (step!=SQLITE_DONE) goto done;
         sqlite3_finalize(stmt); stmt=NULL;
         if (!table && (!seen[0] || !seen[1])) goto done;
     }
-    if (!rows || cells!=map->count) goto done;
+    if (!rows || (map && cells!=map->count)) goto done;
     for (i=0;i<rows;i++) if (!orders[i]) goto done;
+    if (!map) { result=0; goto done; }
     /* Source declarations are provenance, not the destination profile. Rewrite
        both protect and shuffle declarations before target encryption. */
     for (i=0;i<map->count;i++)
@@ -195,7 +219,46 @@ static int cmeColumnRead(sqlite3 *db, const cmeContextMap *map, const char *key,
                 }
     result=0;
 done:
+    cmeColumnPlainClear(scratch,4);
     sqlite3_finalize(stmt); return(result);
+}
+
+static int cmeColumnOpen(const unsigned char *source, size_t length, const unsigned char expected[32],
+    sqlite3 **db, unsigned char **copy, unsigned int *budget)
+{
+    unsigned char digest[32];
+    unsigned int written=0;
+    if (!source || length<100 || length>cmeContextColumnMaxBytes || !expected ||
+        !(*copy=sqlite3_malloc64(length))) return(1);
+    memcpy(*copy,source,length);
+    if (!EVP_Digest(*copy,length,digest,&written,EVP_sha256(),NULL) || written!=32 || CRYPTO_memcmp(digest,expected,32) ||
+        memcmp(*copy,"SQLite format 3",16) || (*copy)[18]!=1 || (*copy)[19]!=1 ||
+        sqlite3_open(":memory:",db)!=SQLITE_OK ||
+        sqlite3_deserialize(*db,"main",*copy,length,length,SQLITE_DESERIALIZE_READONLY)!=SQLITE_OK) return(1);
+    sqlite3_limit(*db,SQLITE_LIMIT_LENGTH,cmeContextColumnMaxCellBytes);
+    sqlite3_limit(*db,SQLITE_LIMIT_SQL_LENGTH,65536);
+    sqlite3_limit(*db,SQLITE_LIMIT_COLUMN,16);
+    sqlite3_progress_handler(*db,1000,cmeColumnBudget,budget);
+    return(sqlite3_db_config(*db,SQLITE_DBCONFIG_DEFENSIVE,1,NULL)!=SQLITE_OK ||
+        sqlite3_exec(*db,"PRAGMA trusted_schema=OFF; PRAGMA query_only=ON",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeColumnSchema(*db));
+}
+
+int cmeContextColumnLegacyCheck(const unsigned char *source, size_t length, const unsigned char digest[32],
+    const char *key, const char *profile)
+{
+    sqlite3 *db=NULL;
+    unsigned char *copy=NULL;
+    unsigned int budget=20000;
+    int result=1;
+    if (key && *key && strnlen(key,257)<=256 && profile &&
+        (!strcmp(profile,"aes-256-gcm") || !strcmp(profile,"aes-256-cbc")) &&
+        !cmeColumnOpen(source,length,digest,&db,&copy,&budget))
+        result=cmeColumnRead(db,NULL,key,profile,NULL);
+    sqlite3_close(db);
+    if (copy) OPENSSL_cleanse(copy,length);
+    sqlite3_free(copy);
+    return(result);
 }
 
 int cmeContextColumnStageCreate(cmeContextManager *manager, const cmeContextCopyTarget *target,
@@ -204,8 +267,8 @@ int cmeContextColumnStageCreate(cmeContextManager *manager, const cmeContextCopy
     const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage)
 {
     sqlite3 *db=NULL;
-    unsigned char *image=NULL,digest[32];
-    unsigned int written=0,budget=20000;
+    unsigned char *image=NULL;
+    unsigned int budget=20000;
     cmeContextMap *map=NULL;
     cmeContextBinding *binding=NULL;
     cmeContextColumnStage *candidate=NULL;
@@ -220,19 +283,8 @@ int cmeContextColumnStageCreate(cmeContextManager *manager, const cmeContextCopy
         !password || !passwordLength || passwordLength>256) goto done;
     result=cmeContextCopyTargetSource(manager,target,&map,&binding); if (result) goto done;
     result=1;
-    if (!map->count || map->count>cmeContextRegistryMaxEntries || !(image=sqlite3_malloc64(length))) goto done;
-    memcpy(image,source,length);
-    if (!EVP_Digest(image,length,digest,&written,EVP_sha256(),NULL) || written!=32 || CRYPTO_memcmp(digest,sourceDigest,32) ||
-        memcmp(image,"SQLite format 3",16) || image[18]!=1 || image[19]!=1 ||
-        sqlite3_open(":memory:",&db)!=SQLITE_OK) goto done;
-    if (sqlite3_deserialize(db,"main",image,length,length,SQLITE_DESERIALIZE_READONLY)!=SQLITE_OK) goto done;
-    sqlite3_limit(db,SQLITE_LIMIT_LENGTH,cmeContextColumnMaxCellBytes);
-    sqlite3_limit(db,SQLITE_LIMIT_SQL_LENGTH,65536);
-    sqlite3_limit(db,SQLITE_LIMIT_COLUMN,16);
-    sqlite3_progress_handler(db,1000,cmeColumnBudget,&budget);
-    if (sqlite3_db_config(db,SQLITE_DBCONFIG_DEFENSIVE,1,NULL)!=SQLITE_OK ||
-        sqlite3_exec(db,"PRAGMA trusted_schema=OFF; PRAGMA query_only=ON",NULL,NULL,NULL)!=SQLITE_OK ||
-        cmeColumnSchema(db) || !(plain=calloc(map->count,sizeof(*plain))) ||
+    if (!map->count || map->count>cmeContextRegistryMaxEntries ||
+        cmeColumnOpen(source,length,sourceDigest,&db,&image,&budget) || !(plain=calloc(map->count,sizeof(*plain))) ||
         cmeColumnRead(db,map,sourceKey,sourceProfile,plain)) goto done;
     candidate=calloc(1,sizeof(*candidate)); if (!candidate) goto done;
     candidate->cells=calloc(map->count,sizeof(*candidate->cells)); if (!candidate->cells) goto done;
@@ -261,11 +313,11 @@ int cmeContextColumnStageCreate(cmeContextManager *manager, const cmeContextCopy
 done:
     cmeContextV2BufferFree(&readback);
     cmeContextColumnStageFree(&candidate);
-    if (plain) for (i=0;i<map->count;i++) if (plain[i]) { OPENSSL_cleanse(plain[i],strlen(plain[i])); free(plain[i]); }
+    if (plain) cmeColumnPlainClear(plain,map->count);
     free(plain); cmeContextBindingFree(&binding); cmeContextMapFree(&map);
     sqlite3_close(db);
     if (image) OPENSSL_cleanse(image,length);
-    sqlite3_free(image); OPENSSL_cleanse(digest,sizeof(digest)); return(result);
+    sqlite3_free(image); return(result);
 }
 int cmeContextColumnTransformCheck(cmeContextManager *manager, const cmeContextCopyTarget *target,
     const unsigned char *source, size_t sourceLength, const unsigned char sourceDigest[32],
@@ -274,8 +326,8 @@ int cmeContextColumnTransformCheck(cmeContextManager *manager, const cmeContextC
     const unsigned char *password, size_t passwordLength)
 {
     sqlite3 *db=NULL;
-    unsigned char *copy=NULL,digest[32];
-    unsigned int written=0,budget=20000;
+    unsigned char *copy=NULL;
+    unsigned int budget=20000;
     cmeContextMap *map=NULL;
     cmeContextBinding *binding=NULL;
     cmeContextColumnStage *candidate=NULL;
@@ -290,16 +342,8 @@ int cmeContextColumnTransformCheck(cmeContextManager *manager, const cmeContextC
         !password || !passwordLength || passwordLength>256) goto done;
     result=cmeContextCopyTargetSource(manager,target,&map,&binding); if (result) goto done;
     result=1;
-    if (!map->count || map->count>cmeContextRegistryMaxEntries || !(copy=sqlite3_malloc64(sourceLength))) goto done;
-    memcpy(copy,source,sourceLength);
-    if (!EVP_Digest(copy,sourceLength,digest,&written,EVP_sha256(),NULL) || written!=32 || CRYPTO_memcmp(digest,sourceDigest,32) ||
-        memcmp(copy,"SQLite format 3",16) || copy[18]!=1 || copy[19]!=1 || sqlite3_open(":memory:",&db)!=SQLITE_OK ||
-        sqlite3_deserialize(db,"main",copy,sourceLength,sourceLength,SQLITE_DESERIALIZE_READONLY)!=SQLITE_OK) goto done;
-    sqlite3_limit(db,SQLITE_LIMIT_LENGTH,cmeContextColumnMaxCellBytes); sqlite3_limit(db,SQLITE_LIMIT_SQL_LENGTH,65536);
-    sqlite3_limit(db,SQLITE_LIMIT_COLUMN,16); sqlite3_progress_handler(db,1000,cmeColumnBudget,&budget);
-    if (sqlite3_db_config(db,SQLITE_DBCONFIG_DEFENSIVE,1,NULL)!=SQLITE_OK ||
-        sqlite3_exec(db,"PRAGMA trusted_schema=OFF; PRAGMA query_only=ON",NULL,NULL,NULL)!=SQLITE_OK ||
-        cmeColumnSchema(db) || !(expected=calloc(map->count,sizeof(*expected))) ||
+    if (!map->count || map->count>cmeContextRegistryMaxEntries ||
+        cmeColumnOpen(source,sourceLength,sourceDigest,&db,&copy,&budget) || !(expected=calloc(map->count,sizeof(*expected))) ||
         cmeColumnRead(db,map,sourceKey,sourceProfile,expected)) goto done;
     result=cmeContextColumnStageDeserialize(manager,target,image,imageLength,imageDigest,password,passwordLength,&candidate);
     if (result) goto done;
@@ -321,12 +365,18 @@ int cmeContextColumnTransformCheck(cmeContextManager *manager, const cmeContextC
     result=cmeContextCopyTargetCheck(manager,target);
 done:
     cmeContextV2BufferFree(&plain); cmeContextColumnStageFree(&candidate);
-    if (expected) for (i=0;i<map->count;i++) if (expected[i]) { OPENSSL_cleanse(expected[i],strlen(expected[i])); free(expected[i]); }
+    if (expected) cmeColumnPlainClear(expected,map->count);
     free(expected); cmeContextBindingFree(&binding); cmeContextMapFree(&map); sqlite3_close(db);
     if (copy) OPENSSL_cleanse(copy,sourceLength);
-    sqlite3_free(copy); OPENSSL_cleanse(digest,sizeof(digest)); return(result);
+    sqlite3_free(copy); return(result);
 }
 #else
+int cmeContextColumnLegacyCheck(const unsigned char *source, size_t length, const unsigned char digest[32],
+    const char *key, const char *profile)
+{
+    (void)source; (void)length; (void)digest; (void)key; (void)profile;
+    return(3);
+}
 int cmeContextColumnTransformCheck(cmeContextManager *manager, const cmeContextCopyTarget *target,
     const unsigned char *source, size_t sourceLength, const unsigned char sourceDigest[32],
     const char *sourceKey, const char *sourceProfile,

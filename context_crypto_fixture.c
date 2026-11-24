@@ -251,6 +251,8 @@ static int cmeFixtureExport(cmeContextManager *manager, cmeContextCopyTarget *ta
     for (i=0;i<n;i++)
     {
         unsigned char *source=NULL,*candidate=NULL;
+        char *profile=strchr(argv[4+4*i],':');
+        if (profile) { *profile=0; entries[i].legacyProfile=profile+1; }
         entries[i].name=argv[4+4*i];
         if (cmeFixtureReadBounded(argv[5+4*i],cmeContextColumnMaxImageBytes,&source,&entries[i].length)) goto done;
         entries[i].source=source;

@@ -40,8 +40,9 @@ class OwnerApprovalFixture:
         self.registration_key = self.private('registration.key', b'fixture-source-key')
         self.password_file = self.private('target.password', PASSWORD)
         fields = self.fields()
+        profiled = bool(self.companion_profiles)
         self.manifest = dict(
-            schema=1, originalRegistry=self.plan_registry, catalog=self.plan_catalog,
+            schema=2 if profiled else 1, originalRegistry=self.plan_registry, catalog=self.plan_catalog,
             sourceMap='view', lookups=self.lookups, allocationPlan=str(self.plan_path),
             allocationDigest=self.plan_digest, sourceProfile=fields['profile'], destinationMap=self.destination,
             sourceDigest=fields['source_digest'], candidateDigest=fields['image_digest'],
@@ -53,7 +54,9 @@ class OwnerApprovalFixture:
             destinationRow=fields['destination_row'], sourceResourcesDigest=fields['source_resources_digest'],
             candidateResourcesDigest=fields['candidate_resources_digest'], exportDigest=self.export_digest(),
             registrationReceipt=str(self.receipt), registrationReceiptDigest=self.sha(self.receipt.read_bytes()),
-            companions=[[name, source.stat().st_size, digest] for name, source, _, digest in self.companions],
+            companions=[[name, source.stat().st_size, digest] +
+                        ([self.companion_profiles.get(name)] if profiled else [])
+                        for name, source, _, digest in self.companions],
             acceptanceReceipt=str(self.acceptance), acceptanceDigest=self.sha(self.acceptance.read_bytes()),
             publicationDirectory=str(self.control), publicationJob=self.job,
             staging=self.candidate_root.name,
