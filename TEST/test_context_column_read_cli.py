@@ -14,9 +14,21 @@ ADMIN = str(Path(os.environ.get('CDSE_CONTEXT_OWNER_ADMIN', './caumedse-admin'))
 COMMAND = [ADMIN, 'context-column-read']
 REGISTER = [ADMIN, 'context-column-register']
 UNREGISTER = [ADMIN, 'context-column-unregister']
+REVOKE = [ADMIN, 'context-column-revoke']
 
 
 class CommandTests(unittest.TestCase):
+    def test_revoke_help_and_incomplete_invocation(self):
+        main = subprocess.run([ADMIN, '--help'], capture_output=True, timeout=30, check=True)
+        self.assertIn(b'context-column-revoke --help', main.stdout)
+        usage = subprocess.run([*REVOKE, '--help'], capture_output=True, timeout=30, check=True)
+        for option in (b'--release-envelope', b'--release-digest', b'--retained-witness-token',
+                       b'--revocation-envelope', b'--revocation-digest'):
+            self.assertIn(option, usage.stdout)
+        for action in ('prepare', 'complete', 'recover'):
+            result = subprocess.run([*REVOKE, action], capture_output=True, timeout=30)
+            self.assertEqual((result.returncode, result.stdout), (1, b''))
+
     def test_register_help_and_incomplete_invocation(self):
         main = subprocess.run([ADMIN, '--help'], capture_output=True, timeout=30, check=True)
         for command, outcome in ((REGISTER, b'present'), (UNREGISTER, b'absent')):

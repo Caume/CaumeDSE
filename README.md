@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.50.0
+# Caume Data Security Engine (CaumeDSE) version 2.51.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3078,6 +3078,9 @@ registration for the requested document. Use the
 to provision that row from the completed release.
 The offline retirement command removes the approved row from the active
 catalog. See the [retirement procedure](HERRADURAKEX_AT_REST_PLAN.md#offline-v2-registration-retirement-147-phase-49).
+Use [witnessed release revocation](HERRADURAKEX_AT_REST_PLAN.md#witnessed-v2-release-revocation-147-phase-50)
+to disable the selected release for offline and HTTPS reads. Retain the
+revocation approval digest and the successor witness token separately.
 Use a [profiled export approval](HERRADURAKEX_AT_REST_PLAN.md#mixed-profile-export-acceptance-147-phase-48)
 when the source export contains legacy documents protected with different
 AES profiles. The approval pins each document's profile and preserves the

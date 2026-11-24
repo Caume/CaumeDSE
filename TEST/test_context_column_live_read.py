@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the witnessed reader through the real DEBUG HTTPS server."""
 from contextlib import closing, contextmanager
+import hashlib
 import http.client
 import json
 import os
@@ -379,6 +380,92 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
         self.change_registration(retire=True)
         self.assertEqual(active.read_bytes(), before)
         self.assertEqual(self.authority_files(), authority)
+
+    def test_revocation_recovery_refuses_offline_and_both_https_reads(self):
+        active = self.initialize_catalog()
+        self.change_registration()
+        document = self.fields()['destination_document']
+        route = ROUTE.replace('/released/', f'/{document}/')
+        settings = dict(CDSE_V2_READ_DOCUMENT=document, CDSE_DEFAULT_ENC_ALG=self.metadata_profile)
+        self.read_cell()
+        for catalog in ('0', '1'):
+            with self.server(**settings, CDSE_V2_READ_CATALOG=catalog) as port:
+                status, _, body = self.request(port, route=route)
+                self.assertEqual(status, 200, body)
+                self.assertEqual(json.loads(body), {'valueHex': PLAINTEXT.hex()})
+
+        active_bytes = active.read_bytes()
+        revocation = self.root / 'revocation.bin'
+        options = dict(password_file=None, table=None, row=None, field=None, revocation_envelope=revocation)
+        before = self.authority_files()
+        registry = self.authority / 'registry.sqlite'
+        other_slots = 'SELECT * FROM context_map_slots WHERE map_name<>? ORDER BY map_name, table_name, slot, field_name'
+        with closing(sqlite3.connect(registry)) as db:
+            preserved = db.execute(other_slots, (self.destination,)).fetchall()
+        self.assertTrue(preserved)
+        prepare = self.command_options(**options, retained_witness_token=self.acknowledged)
+        rejected = self.invoke([*read_cli.REVOKE, 'prepare', *prepare])
+        self.assertEqual((rejected.returncode, rejected.stdout), (2, b''))
+        self.assertFalse(revocation.exists())
+        prepared = self.invoke([*read_cli.REVOKE, 'prepare', *self.command_options(**options)])
+        self.assertEqual(prepared.returncode, 0, prepared.stderr)
+        approval = revocation.read_bytes()
+        digest = hashlib.sha256(approval).hexdigest()
+        self.assertEqual(prepared.stdout, f'revocation-digest={digest}\n'.encode())
+        self.assertEqual(approval[:-40], b'CDSE-HKX-COLUMN-REVOCATION-v1\0' +
+                         bytes.fromhex(self.global_pin + self.final_token))
+        self.assertEqual(self.authority_files(), before)
+
+        options['retained_witness_token'] = None
+        complete = [*read_cli.REVOKE, 'complete']
+        bad = self.invoke([*complete, *self.command_options(**options, revocation_digest='00' * 32)])
+        self.assertEqual((bad.returncode, bad.stdout), (1, b''))
+        changed = approval[:-1] + bytes([approval[-1] ^ 1])
+        options['revocation_envelope'] = self.private('other-successor.bin', changed)
+        bad = self.invoke([*complete, *self.command_options(**options,
+                          revocation_digest=hashlib.sha256(changed).hexdigest())])
+        self.assertEqual((bad.returncode, bad.stdout), (2, b''))
+        self.assertEqual(self.authority_files(), before)
+
+        options['revocation_envelope'] = revocation
+        complete.extend(self.command_options(**options, revocation_digest=digest))
+        with closing(sqlite3.connect(self.witness / 'witness.sqlite')) as db:
+            db.execute('BEGIN IMMEDIATE')
+            interrupted = self.invoke(complete)
+            self.assertEqual((interrupted.returncode, interrupted.stdout), (1, b''))
+            db.rollback()
+        pending = self.authority_files()
+        self.assertEqual(pending, (before[0], approval[-40:].hex(), before[2], before[3]))
+        self.assertEqual(self.cli().returncode, 2)
+
+        if Path('/dev/full').exists():
+            with open('/dev/full', 'wb') as output:
+                lost = subprocess.run(complete, stdout=output, stderr=subprocess.PIPE, timeout=90)
+            self.assertEqual(lost.returncode, 1)
+            self.assertIn(b'could not write revocation results', lost.stderr)
+        resumed = self.invoke(complete)
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        after = self.authority_files()
+        result = dict(line.split('=', 1) for line in resumed.stdout.decode().splitlines())
+        self.assertEqual(result['catalog'], after[1])
+        self.assertEqual(int(result['witness-token'][:16], 16), int(self.final_token[:16], 16) + 1)
+        retry = self.invoke(complete)
+        self.assertEqual((retry.returncode, retry.stdout, retry.stderr), (0, resumed.stdout, b''))
+        self.assertEqual(self.authority_files(), after)
+        self.assertEqual((after[0], after[1], after[3]), (pending[0], pending[1], pending[3]))
+        self.assertEqual(active.read_bytes(), active_bytes)
+        with closing(sqlite3.connect(registry)) as db:
+            tombstones = db.execute('SELECT name FROM context_maps WHERE active=0').fetchall()
+            self.assertEqual(tombstones, [(self.destination,)])
+            self.assertEqual(db.execute('SELECT count(*) FROM context_map_slots WHERE map_name=?',
+                                        (self.destination,)).fetchone(), (0,))
+            self.assertEqual(db.execute(other_slots, (self.destination,)).fetchall(), preserved)
+
+        for token in (self.final_token, result['witness-token']):
+            self.assertEqual(self.cli(retained_witness_token=token).returncode, 2)
+            for catalog in ('0', '1'):
+                with self.server(**settings, CDSE_V2_READ_CATALOG=catalog, CDSE_V2_READ_WITNESS_TOKEN=token) as port:
+                    self.assert_refused(self.request(port, route=route), (503,))
 
 
 for _parent in LiveReadTests.__mro__[1:]:

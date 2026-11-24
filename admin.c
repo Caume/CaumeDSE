@@ -227,6 +227,7 @@ int main(int argc, char **argv)
         !strcmp(argv[1],"context-registered-shuffle") || !strcmp(argv[1],"context-copy-plan") ||
         !strcmp(argv[1],"context-column-read") || !strcmp(argv[1],"context-column-register") ||
         !strcmp(argv[1],"context-column-unregister") || !strcmp(argv[1],"context-column-release") ||
+        !strcmp(argv[1],"context-column-revoke") ||
         !strcmp(argv[1],"context-column-admission") || !strcmp(argv[1],"context-column-publication"))) return(cmeContextOwnerMain(argc,argv));
     if (argc==2 && !strcmp(argv[1],"--help"))
     {
@@ -245,6 +246,7 @@ int main(int argc, char **argv)
              "Verified V2 export reads: caumedse-admin context-column-read --help\n"
              "Install a released V2 registration: caumedse-admin context-column-register --help\n"
              "Retire a released V2 registration: caumedse-admin context-column-unregister --help\n"
+             "Revoke a witnessed V2 release: caumedse-admin context-column-revoke --help\n"
              "Prepare or recover a V2 release: caumedse-admin context-column-release --help\n"
              "Admit a verified V2 export: caumedse-admin context-column-admission --help\n"
              "Publish a verified V2 export: caumedse-admin context-column-publication --help");

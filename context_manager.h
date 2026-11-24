@@ -171,6 +171,12 @@ int cmeContextManagerMapStore(cmeContextManager *manager, const char *name, cons
 int cmeContextManagerMapRemove(cmeContextManager *manager, const char *name,
                                const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
                                cmeContextMapAnchor *published);
+/* Preview rolls back. Approved commits only the exact previewed successor.
+   These core operations do not validate or advance a witness. */
+int cmeContextManagerMapRemovePlan(cmeContextManager *manager, const char *name,
+    const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog, cmeContextMapAnchor *next);
+int cmeContextManagerMapRemoveApproved(cmeContextManager *manager, const char *name,
+    const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog, const cmeContextMapAnchor *next);
 /* Owned authenticated metadata for exact reconciliation, including tombstones
    and mappings whose registrations were subsequently revoked. This is NOT a
    validated storage binding. Free with MapFree; never use it to skip MapBind. */

@@ -1309,7 +1309,8 @@ done:
 static int cmeManagerMapWrite(cmeContextManager *manager, const char *name, const char *resource,
                               unsigned int role, const cmeContextSlot *slots, size_t count,
                               const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
-                              cmeContextMapAnchor *published, int remove)
+                              cmeContextMapAnchor *published, int remove,
+                              const cmeContextMapAnchor *approved, int commit)
 {
     cmeManagerState state={0};
     cmeContextMapAnchor current={0},next={0},copy;
@@ -1317,6 +1318,7 @@ static int cmeManagerMapWrite(cmeContextManager *manager, const char *name, cons
     sqlite3_stmt *stmt=NULL;
     unsigned char tag[32];
     size_t i;
+    sqlite3_int64 changes;
     int result=1,step,pending;
     if (mapExpected) { copy=*mapExpected; mapExpected=&copy; }
     if (published) memset(published,0,sizeof(*published));
@@ -1344,14 +1346,18 @@ static int cmeManagerMapWrite(cmeContextManager *manager, const char *name, cons
     }
     else if (step!=SQLITE_DONE || remove) goto done;
     sqlite3_finalize(stmt); stmt=NULL;
+    changes=sqlite3_total_changes(manager->db);
     if (sqlite3_prepare_v2(manager->db,remove ? "UPDATE context_maps SET active=0 WHERE name=?1" :
         "INSERT INTO context_maps VALUES(?1,?2,?3,1) ON CONFLICT(name) DO NOTHING",-1,&stmt,NULL)!=SQLITE_OK ||
         sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || (!remove &&
         (sqlite3_bind_text(stmt,2,resource,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_bind_int(stmt,3,(int)role)!=SQLITE_OK)) ||
         sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    if (remove && (sqlite3_changes(manager->db)!=1 || sqlite3_total_changes(manager->db)-changes!=1)) goto done;
     sqlite3_finalize(stmt); stmt=NULL;
+    changes=sqlite3_total_changes(manager->db);
     if (sqlite3_prepare_v2(manager->db,"DELETE FROM context_map_slots WHERE map_name=?1",-1,&stmt,NULL)!=SQLITE_OK ||
         sqlite3_bind_text(stmt,1,name,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
+    if (remove && sqlite3_total_changes(manager->db)-changes!=sqlite3_changes(manager->db)) goto done;
     sqlite3_finalize(stmt); stmt=NULL;
     if (!remove)
     {
@@ -1365,13 +1371,24 @@ static int cmeManagerMapWrite(cmeContextManager *manager, const char *name, cons
                 sqlite3_step(stmt)!=SQLITE_DONE || sqlite3_reset(stmt)!=SQLITE_OK) goto done;
         sqlite3_finalize(stmt); stmt=NULL;
     }
-    if (cmeMapSign(manager,current.revision+1,&next,tag) || cmeMapHead(manager,&next,tag)) goto done;
-    cmeManagerCheckpoint("after-write");
-    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
-    cmeManagerCheckpoint("after-commit"); *published=next; result=0;
+    if (cmeMapSign(manager,current.revision+1,&next,tag)) goto done;
+    if (approved)
+    {
+        result=cmeMapMatch(&next,approved); if (result) goto done;
+    }
+    result=1;
+    if (commit)
+    {
+        if (cmeMapHead(manager,&next,tag)) goto done;
+        cmeManagerCheckpoint("after-write");
+        if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+        cmeManagerCheckpoint("after-commit");
+    }
+    *published=next; result=0;
 done:
     sqlite3_finalize(stmt);
-    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    if (!sqlite3_get_autocommit(manager->db) && sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL)!=SQLITE_OK)
+    { memset(published,0,sizeof(*published)); result=1; }
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex); return(result);
 }
 
@@ -1380,14 +1397,28 @@ int cmeContextManagerMapStore(cmeContextManager *manager, const char *name, cons
                               const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
                               cmeContextMapAnchor *published)
 {
-    return(cmeManagerMapWrite(manager,name,resource,role,slots,count,expected,mapExpected,published,0));
+    return(cmeManagerMapWrite(manager,name,resource,role,slots,count,expected,mapExpected,published,0,NULL,1));
 }
 
 int cmeContextManagerMapRemove(cmeContextManager *manager, const char *name,
                                const cmeContextAnchor *expected, const cmeContextMapAnchor *mapExpected,
                                cmeContextMapAnchor *published)
 {
-    return(cmeManagerMapWrite(manager,name,NULL,0,NULL,0,expected,mapExpected,published,1));
+    return(cmeManagerMapWrite(manager,name,NULL,0,NULL,0,expected,mapExpected,published,1,NULL,1));
+}
+
+int cmeContextManagerMapRemovePlan(cmeContextManager *manager, const char *name,
+    const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog, cmeContextMapAnchor *next)
+{
+    return(cmeManagerMapWrite(manager,name,NULL,0,NULL,0,registry,catalog,next,1,NULL,0));
+}
+
+int cmeContextManagerMapRemoveApproved(cmeContextManager *manager, const char *name,
+    const cmeContextAnchor *registry, const cmeContextMapAnchor *catalog, const cmeContextMapAnchor *next)
+{
+    cmeContextMapAnchor published={0};
+    if (!next) return(1);
+    return(cmeManagerMapWrite(manager,name,NULL,0,NULL,0,registry,catalog,&published,1,next,1));
 }
 
 void cmeContextMapFree(cmeContextMap **map)

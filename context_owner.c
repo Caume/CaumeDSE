@@ -169,7 +169,9 @@ typedef enum
     cmeColumnOwnerPublicationPrepare=32,
     cmeColumnOwnerPublish=64,
     cmeColumnOwnerPublicationRecover=128,
-    cmeColumnOwnerUpdateCatalog=256
+    cmeColumnOwnerUpdateCatalog=256,
+    cmeColumnOwnerRevokePrepare=512,
+    cmeColumnOwnerRevokeComplete=1024
 } cmeColumnOwnerAction;
 
 #define CME_COLUMN_ADMISSION_APPROVAL_MAX (4U*1024U*1024U)
@@ -476,11 +478,13 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         envelopePath, registryKeyFile, witnessKeyFile, releaseDigest, witnessToken, admissionPath,
         admissionDigest, passwordFile, tableName, rowNumber, fieldName, approvalPath, approvalDigest,
         sourceKeyFile, registrationKeyFile, publicationPin,
-        activeResources, catalogOrg, catalogStorage, catalogDocument, metadataProfile, optionCount
+        activeResources, catalogOrg, catalogStorage, catalogDocument, metadataProfile,
+        revocationPath, revocationDigest, optionCount
     };
     enum
     {
-        releaseActions=cmeColumnOwnerRead|cmeColumnOwnerPrepare|cmeColumnOwnerComplete|cmeColumnOwnerUpdateCatalog,
+        revocationActions=cmeColumnOwnerRevokePrepare|cmeColumnOwnerRevokeComplete,
+        releaseActions=cmeColumnOwnerRead|cmeColumnOwnerPrepare|cmeColumnOwnerComplete|cmeColumnOwnerUpdateCatalog|revocationActions,
         publicationActions=cmeColumnOwnerPublicationPrepare|cmeColumnOwnerPublish|cmeColumnOwnerPublicationRecover,
         custodyActions=cmeColumnOwnerAdmissionPrepare|publicationActions,
         allActions=releaseActions|custodyActions|cmeColumnOwnerAdmissionComplete
@@ -495,8 +499,9 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         [envelopePath]={"--release-envelope",releaseActions},
         [registryKeyFile]={"--registry-key-file",allActions},
         [witnessKeyFile]={"--witness-key-file",allActions},
-        [releaseDigest]={"--release-digest",cmeColumnOwnerRead|cmeColumnOwnerComplete|cmeColumnOwnerUpdateCatalog},
-        [witnessToken]={"--retained-witness-token",cmeColumnOwnerRead|cmeColumnOwnerPrepare|custodyActions|cmeColumnOwnerUpdateCatalog},
+        [releaseDigest]={"--release-digest",releaseActions&~cmeColumnOwnerPrepare},
+        [witnessToken]={"--retained-witness-token",cmeColumnOwnerRead|cmeColumnOwnerPrepare|custodyActions|
+            cmeColumnOwnerUpdateCatalog|cmeColumnOwnerRevokePrepare},
         [admissionPath]={"--admission-journal",cmeColumnOwnerPrepare|cmeColumnOwnerAdmissionPrepare|cmeColumnOwnerAdmissionComplete},
         [admissionDigest]={"--admission-digest",cmeColumnOwnerPrepare|cmeColumnOwnerAdmissionComplete},
         [passwordFile]={"--password-file",cmeColumnOwnerRead|custodyActions},
@@ -512,7 +517,9 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         [catalogOrg]={"--org-resource-id",cmeColumnOwnerUpdateCatalog},
         [catalogStorage]={"--storage-id",cmeColumnOwnerUpdateCatalog},
         [catalogDocument]={"--document-id",cmeColumnOwnerUpdateCatalog},
-        [metadataProfile]={"--metadata-profile",cmeColumnOwnerUpdateCatalog}
+        [metadataProfile]={"--metadata-profile",cmeColumnOwnerUpdateCatalog},
+        [revocationPath]={"--revocation-envelope",revocationActions},
+        [revocationDigest]={"--revocation-digest",cmeColumnOwnerRevokeComplete}
     };
     const char *values[optionCount]={0};
     const char *error="invalid input or unavailable state. Run --help for usage";
@@ -526,15 +533,17 @@ static int cmeColumnOwnerMain(int argc, char **argv)
     cmeContextColumnAdmissionResult completed={0};
     cmeContextV2Buffer output={0};
     unsigned char deployment[16],organization[16],digest[32],token[40],preparedDigest[32];
+    unsigned char revocationPin[32];
     unsigned char registryKey[32]={0},witnessKey[32]={0};
-    char *evidence=NULL,*password=NULL;
+    char *evidence=NULL,*password=NULL,*revocation=NULL;
     FILE *outputStream=NULL,*diagnostics=NULL;
     const char *destinationPath=NULL;
-    size_t evidenceLength=0,passwordLength=0,option;
+    size_t evidenceLength=0,passwordLength=0,revocationLength=0,option;
     long long row=0;
     int i=2,result=1,savedOutput=-1,savedDiagnostics=-1;
     int reading=!strcmp(argv[1],"context-column-read"),admitting=!strcmp(argv[1],"context-column-admission");
     int publishing=!strcmp(argv[1],"context-column-publication"),preparing;
+    int revoking=!strcmp(argv[1],"context-column-revoke");
     int unregistering=!strcmp(argv[1],"context-column-unregister");
     int updatingCatalog=unregistering || !strcmp(argv[1],"context-column-register");
     cmeColumnOwnerAction action=updatingCatalog ? cmeColumnOwnerUpdateCatalog : cmeColumnOwnerRead;
@@ -581,6 +590,16 @@ static int cmeColumnOwnerMain(int argc, char **argv)
                  "Use absolute canonical paths and private owner files. Stop export writers.\n"
                  "Retain the prepared journal digest independently before completing.\n"
                  "Complete prints the blocked catalog and witness tokens.");
+        else if (revoking)
+            puts("Usage: caumedse-admin context-column-revoke (prepare | complete)\n"
+                 "  --registry-directory DIRECTORY --witness-directory DIRECTORY --deployment HEX32 --organization HEX32\n"
+                 "  --registry-key-file FILE --witness-key-file FILE --source-export DIRECTORY --published-export DIRECTORY\n"
+                 "  --release-envelope FILE --release-digest RETAINED_SHA256\n"
+                 "  Prepare: --retained-witness-token W2 --revocation-envelope NEW_FILE\n"
+                 "  Complete or recover: --revocation-envelope FILE --revocation-digest RETAINED_SHA256\n"
+                 "Stop the engine and authority/export writers. Use absolute canonical paths and private owner files.\n"
+                 "Prepare prints the approval digest. Retain it separately before completion.\n"
+                 "Complete prints the catalog and witness tokens. Retry with the original approvals after interruption.");
         else
             puts("Usage: caumedse-admin context-column-release (prepare | complete)\n"
                  "  --registry-directory DIRECTORY --witness-directory DIRECTORY --deployment HEX32 --organization HEX32\n"
@@ -595,7 +614,13 @@ static int cmeColumnOwnerMain(int argc, char **argv)
     if (!reading && !updatingCatalog)
     {
         if (argc<3) goto done;
-        if (!strcmp(argv[2],"prepare"))
+        if (revoking)
+        {
+            if (!strcmp(argv[2],"prepare")) action=cmeColumnOwnerRevokePrepare;
+            else if (!strcmp(argv[2],"complete")) action=cmeColumnOwnerRevokeComplete;
+            else goto done;
+        }
+        else if (!strcmp(argv[2],"prepare"))
             action=publishing ? cmeColumnOwnerPublicationPrepare : (admitting ? cmeColumnOwnerAdmissionPrepare : cmeColumnOwnerPrepare);
         else if (publishing && !strcmp(argv[2],"publish")) action=cmeColumnOwnerPublish;
         else if (publishing && !strcmp(argv[2],"recover")) action=cmeColumnOwnerPublicationRecover;
@@ -604,7 +629,7 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         else goto done;
         i++;
     }
-    preparing=action==cmeColumnOwnerPrepare || action==cmeColumnOwnerAdmissionPrepare;
+    preparing=action==cmeColumnOwnerPrepare || action==cmeColumnOwnerAdmissionPrepare || action==cmeColumnOwnerRevokePrepare;
     for (;i<argc;i++)
     {
         for (option=0;option<optionCount;option++)
@@ -643,7 +668,7 @@ static int cmeColumnOwnerMain(int argc, char **argv)
 
     if (preparing)
     {
-        destinationPath=values[admitting ? admissionPath : envelopePath];
+        destinationPath=values[revoking ? revocationPath : (admitting ? admissionPath : envelopePath)];
         if (!cmeOwnerOutside(values[sourceExport],destinationPath) || !cmeOwnerOutside(values[publishedExport],destinationPath) ||
             !cmeOwnerOutside(values[registryDirectory],destinationPath) || !cmeOwnerOutside(values[witnessDirectory],destinationPath) ||
             cmeOfflineOpen(destinationPath,0,&destination) || cmeOfflineAbsent(&destination)) goto done;
@@ -654,9 +679,13 @@ static int cmeColumnOwnerMain(int argc, char **argv)
             cmeOfflineReadPrivate(values[admissionPath],cmeContextColumnAdmissionMaxBytes,&evidence,&evidenceLength,
                 preparing ? cmeOfflineBinaryFile : cmeOfflineDurableBinaryFile)) goto done;
     }
-    else if (!preparing && !publishing && (cmeOfflineDecodeHex(values[releaseDigest],digest,sizeof(digest)) ||
+    else if ((options[releaseDigest].actions&action) && (cmeOfflineDecodeHex(values[releaseDigest],digest,sizeof(digest)) ||
         cmeOfflineReadPrivate(values[envelopePath],cmeContextColumnGlobalMaxBytes,&evidence,&evidenceLength,
             reading || updatingCatalog ? cmeOfflineBinaryFile : cmeOfflineDurableBinaryFile))) goto done;
+    if (action==cmeColumnOwnerRevokeComplete &&
+        (cmeOfflineDecodeHex(values[revocationDigest],revocationPin,sizeof(revocationPin)) ||
+         cmeOfflineReadPrivate(values[revocationPath],cmeContextColumnRevocationMaxBytes,&revocation,&revocationLength,
+            cmeOfflineDurableBinaryFile))) goto done;
 
     if (cmeOfflineReadKey(values[registryKeyFile],registryKey) ||
         cmeOfflineReadKey(values[witnessKeyFile],witnessKey) ||
@@ -697,7 +726,13 @@ static int cmeColumnOwnerMain(int argc, char **argv)
     }
     else if (preparing)
     {
-        if (!admitting)
+        if (revoking)
+        {
+            result=cmeContextColumnRevocationPrepare(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
+                evidenceLength,digest,&acknowledged,&output,preparedDigest);
+            if (result) goto done;
+        }
+        else if (!admitting)
         {
             result=cmeContextColumnGlobalReleasePrepare(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
                 evidenceLength,digest,&acknowledged,&output,preparedDigest);
@@ -706,18 +741,21 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         result=cmeOwnerSave(&destination,destinationPath,output.bytes,output.length);
         if (result)
         {
-            error=admitting ? "could not save the admission journal. Preserve any partial file" :
+            error=revoking ? "could not save the revocation envelope. Preserve any partial file" :
+                admitting ? "could not save the admission journal. Preserve any partial file" :
                 "could not save the release envelope. Preserve any partial file";
             goto done;
         }
         FILE *out=outputStream ? outputStream : stdout;
-        fputs(admitting ? "admission-digest=" : "release-digest=",out);
+        fputs(revoking ? "revocation-digest=" : (admitting ? "admission-digest=" : "release-digest="),out);
         cmeOwnerWriteHex(out,preparedDigest,sizeof(preparedDigest));
         fputc('\n',out);
     }
     else if (!reading && !updatingCatalog)
     {
-        if (admitting) result=cmeContextColumnAdmissionRun(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
+        if (revoking) result=cmeContextColumnRevocationRun(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
+            evidenceLength,digest,(const unsigned char *)revocation,revocationLength,revocationPin,&completed);
+        else if (admitting) result=cmeContextColumnAdmissionRun(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
             evidenceLength,digest,&completed);
         else result=cmeContextColumnGlobalReleaseRun(manager,witness,&roots[0],&roots[1],(const unsigned char *)evidence,
             evidenceLength,digest,&completed);
@@ -766,6 +804,7 @@ static int cmeColumnOwnerMain(int argc, char **argv)
         if (publishing) error="could not write publication results. Preserve the intent and retained approvals";
         else if (updatingCatalog) error="could not report registration status. Retry with the original approvals";
         else if (reading) error="could not write cell to stdout";
+        else if (revoking) error="could not write revocation results. Retry with the original approvals";
         else if (admitting) error="could not write admission results. Preserve the journal and retained approvals";
         else error="could not write release results. Preserve the envelope and retained approvals";
     }
@@ -776,13 +815,15 @@ done:
         if (publishing && result==2) error="publication or witness approval is stale";
         else if (publishing && result==3) error="V2 publication is unavailable";
         else if (updatingCatalog && result==3) error="V2 catalog registration is unavailable";
-        else if (result==2) error=admitting ? "admission or witness approval is stale" : "release or witness approval is stale";
+        else if (result==2) error=revoking ? "revocation or witness approval is stale" :
+            (admitting ? "admission or witness approval is stale" : "release or witness approval is stale");
         else if (result==3) error=admitting ? "V2 admission is unavailable" : "V2 reader is unavailable";
         fprintf(diagnostics ? diagnostics : stderr,"%s: %s\n",argv[1],error);
     }
     if (password) OPENSSL_cleanse(password,passwordLength);
     free(password);
     free(evidence);
+    free(revocation);
     OPENSSL_cleanse(registryKey,sizeof(registryKey));
     OPENSSL_cleanse(witnessKey,sizeof(witnessKey));
     cmeContextV2BufferFree(&output);
@@ -2343,6 +2384,7 @@ int cmeContextOwnerMain(int argc, char **argv)
 {
     if (argc>1 && (!strcmp(argv[1],"context-column-read") || !strcmp(argv[1],"context-column-register") ||
         !strcmp(argv[1],"context-column-unregister") || !strcmp(argv[1],"context-column-release") ||
+        !strcmp(argv[1],"context-column-revoke") ||
         !strcmp(argv[1],"context-column-admission") || !strcmp(argv[1],"context-column-publication")))
         return(cmeColumnOwnerMain(argc,argv));
     if (argc>1 && !strcmp(argv[1],"context-copy-plan")) return(cmeCopyOwnerMain(argc,argv));
