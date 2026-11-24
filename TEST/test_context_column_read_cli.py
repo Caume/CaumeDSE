@@ -12,9 +12,20 @@ from test_context_frame import PASSWORD
 
 ADMIN = str(Path(os.environ.get('CDSE_CONTEXT_OWNER_ADMIN', './caumedse-admin')).resolve())
 COMMAND = [ADMIN, 'context-column-read']
+REGISTER = [ADMIN, 'context-column-register']
 
 
 class CommandTests(unittest.TestCase):
+    def test_register_help_and_incomplete_invocation(self):
+        main = subprocess.run([ADMIN, '--help'], capture_output=True, timeout=30, check=True)
+        self.assertIn(b'context-column-register --help', main.stdout)
+        usage = subprocess.run([*REGISTER, '--help'], capture_output=True, timeout=30, check=True)
+        for option in (b'--active-resources', b'--retained-witness-token', b'--registration-key-file'):
+            self.assertIn(option, usage.stdout)
+        bad = subprocess.run([*REGISTER, '--release-digest', '00' * 32], capture_output=True, timeout=30)
+        self.assertEqual(bad.returncode, 1)
+        self.assertEqual(bad.stdout, b'')
+
     def test_help_lists_installed_command_and_required_approvals(self):
         main = subprocess.run([ADMIN, '--help'], capture_output=True, timeout=30, check=True)
         self.assertIn(b'context-column-read --help', main.stdout)

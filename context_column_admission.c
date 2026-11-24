@@ -163,11 +163,11 @@ static int cmeAdmissionSnapshotLoad(const cmeContextColumnCustodyRoot *source,
     }
     if (reader.length) goto done;
     result=cmeCustodyPhysicalCheck(view); if (result) goto done;
-    if (image)
+    if (image || registration)
     {
         size_t j,resources=SIZE_MAX;
         result=1;
-        if (!imageDigest || view->count[1]!=view->count[0]+1) goto done;
+        if ((image && !imageDigest) || view->count[1]!=view->count[0]+1) goto done;
         j=0;
         for (i=0;i<view->count[1];i++)
         {
@@ -175,12 +175,15 @@ static int cmeAdmissionSnapshotLoad(const cmeContextColumnCustodyRoot *source,
             if (j<view->count[0] && !strcmp(view->files[1][i].name,view->files[0][j].name)) j++;
             else { selected=i; missing++; }
         }
-        if (j!=view->count[0] || missing!=1 || !strcmp(view->files[1][selected].name,"ResourcesDB") ||
-            cmeCustodyRead(&view->roots[1],&view->files[1][selected],&raw,0)) goto done;
-        image->length=view->files[1][selected].length;
-        image->bytes=malloc(image->length+1); if (!image->bytes) { image->length=0; goto done; }
-        memcpy(image->bytes,raw,image->length); image->bytes[image->length]=0;
-        memcpy(imageDigest,view->files[1][selected].digest,32);
+        if (j!=view->count[0] || missing!=1 || !strcmp(view->files[1][selected].name,"ResourcesDB")) goto done;
+        if (image)
+        {
+            if (cmeCustodyRead(&view->roots[1],&view->files[1][selected],&raw,0)) goto done;
+            image->length=view->files[1][selected].length;
+            image->bytes=malloc(image->length+1); if (!image->bytes) { image->length=0; goto done; }
+            memcpy(image->bytes,raw,image->length); image->bytes[image->length]=0;
+            memcpy(imageDigest,view->files[1][selected].digest,32);
+        }
         if (registration)
         {
             if (resources==SIZE_MAX || cmeCustodyRead(&view->roots[1],&view->files[1][resources],
@@ -485,6 +488,45 @@ int cmeContextColumnGlobalReadOpen(cmeContextManager *manager, cmeContextWitness
     return(cmeColumnReadReleaseOpen(1,manager,witness,source,published,journal,length,journalDigest,acknowledged,release));
 }
 
+static void cmeAdmissionRegistrationFree(cmeColumnCatalogSnapshot *registration)
+{
+    if (registration->resources)
+    {
+        OPENSSL_cleanse(registration->resources,registration->length);
+        free(registration->resources);
+    }
+}
+
+int cmeColumnInstallRegistration(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query)
+{
+    cmeOfflineArtifact active={.file=-1,.directory=-1};
+    cmeColumnCatalogSnapshot registration={0};
+    cmeAdmissionPlan plan={0};
+    cmeContextMapAnchor catalog={0};
+    cmeContextWitnessAnchor previous={0};
+    unsigned char request[32];
+    struct stat root;
+    size_t i;
+    int result;
+
+    if (!release || !release->global || !query || !query->path) return(1);
+    result=cmeContextColumnReadReleaseCheck(release);
+    if (result) return(result);
+    result=1;
+    if (cmeOfflineOpenPayload(query->path,&active) || strcmp(active.name,cmeDefaultResourcesDBName)) goto done;
+    for (i=0;i<2;i++)
+        if (fstatat(release->roots[i].parent,release->roots[i].name,&root,AT_SYMLINK_NOFOLLOW) ||
+            cmeCustodyNested(active.directory,&root)) goto done;
+    if (cmeGlobalDecode(release->journal,release->length,release->digest,&plan,&previous,&catalog,request) ||
+        cmeAdmissionSnapshotLoad(&release->roots[0],&release->roots[1],plan.proof,plan.proofLength,
+            NULL,NULL,&registration)) goto done;
+    result=cmeColumnCatalogInstall(&registration,query,&active,release);
+done:
+    cmeAdmissionRegistrationFree(&registration);
+    cmeOfflineClose(&active);
+    return(result);
+}
+
 static int cmeColumnReadCell(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query,
     const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
     cmeContextV2Buffer *plaintext)
@@ -566,11 +608,7 @@ done:
         int checked=cmeContextColumnReadReleaseCheck(release);
         if (checked) result=checked;
     }
-    if (registration.resources)
-    {
-        OPENSSL_cleanse(registration.resources,registration.length);
-        free(registration.resources);
-    }
+    cmeAdmissionRegistrationFree(&registration);
     cmeContextV2BufferFree(&image); cmeContextV2BufferFree(&candidate); cmeContextColumnStageFree(&stage);
     cmeContextBindingFree(&binding); cmeContextMapFree(&map); return(result);
 }
