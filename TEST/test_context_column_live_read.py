@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the witnessed reader through the real DEBUG HTTPS server."""
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import http.client
 import json
 import os
@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import shutil
 import socket
+import sqlite3
 import ssl
 import subprocess
 import time
@@ -16,6 +17,7 @@ from urllib.parse import urlencode
 
 import test_context_column_read_cli as read_cli
 from test_context_crypto import available
+from test_context_column import PAYLOAD
 
 
 SERVER = Path(os.environ.get('CDSE_CONTEXT_LIVE_SERVER', './CaumeDSE-debug-tests')).resolve()
@@ -26,6 +28,9 @@ PLAINTEXT = b'fixture-alpha'
 
 @unittest.skipUnless(available(), 'requires the V2 provider')
 class LiveReadTests(read_cli.ReleasedReadCommandTests):
+    registration_org = 'EngineOrg'
+    registration_storage = 'EngineStorage'
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -71,6 +76,7 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
             port = listener.getsockname()[1]
         env = dict(os.environ, **self.environment)
         env['CDSE_DEBUG_TEST_SKIP_AUTHZ'] = '0'
+        env['CDSE_V2_READ_CATALOG'] = '0'
         env[f'CDSE_DEBUG_TEST_{protocol.upper()}_PORT'] = str(port)
         env.update(overrides)
         log = self.root / 'live-service.log'
@@ -170,6 +176,47 @@ class LiveReadTests(read_cli.ReleasedReadCommandTests):
                 self.assert_refused(self.request(port), (status,))
         with self.server(protocol='http') as port:
             self.assert_refused(self.request(port, tls=False), (401, 403))
+
+    def test_active_catalog_requires_exact_released_registration(self):
+        setup = subprocess.run([PAYLOAD, self.data, 'init-test-engine'], env=self.reg_env,
+                               capture_output=True, timeout=30)
+        self.assertEqual(setup.returncode, 0, 'engine fixture initialization failed')
+        self.key = 'fixture-source-key'
+        fields = self.fields()
+        route = ROUTE.replace('/released/', f'/{fields["destination_document"]}/')
+        active = self.data / 'ResourcesDB'
+        published = self.published / 'ResourcesDB'
+        with closing(sqlite3.connect(f'{published.as_uri()}?mode=ro', uri=True)) as db:
+            approved = db.execute('SELECT * FROM documents WHERE id=?', (fields['destination_row'],)).fetchone()
+        row = (37, *approved[1:])
+        insert = 'INSERT INTO documents VALUES (' + ','.join('?' for _ in row) + ')'
+        settings = dict(CDSE_V2_READ_CATALOG='1', CDSE_DEFAULT_ENC_ALG=self.metadata_profile)
+        with self.server(**settings) as port:
+            self.assert_refused(self.request(port, route=route), (404,))
+            self.assert_refused(self.request(port), (404,))
+            with closing(sqlite3.connect(active)) as db, db:
+                db.execute(insert, row)
+            before = active.read_bytes()
+            status, headers, body = self.request(port, route=route)
+            self.assertEqual(status, 200, body)
+            self.assertEqual(headers.get('Cache-Control'), 'no-store')
+            self.assertEqual(json.loads(body), {'valueHex': PLAINTEXT.hex()})
+            self.assertEqual(active.read_bytes(), before)
+            self.assert_refused(self.request(port, route=route, cert=False), (401, 403))
+
+            with closing(sqlite3.connect(active)) as db, db:
+                db.execute(insert, (38, *row[1:]))
+            self.assert_refused(self.request(port, route=route), (503,))
+            with closing(sqlite3.connect(active)) as db, db:
+                db.execute('DELETE FROM documents WHERE id=38')
+                db.execute("UPDATE documents SET partMAC='' WHERE id=37")
+            self.assert_refused(self.request(port, route=route), (503,))
+            with closing(sqlite3.connect(active)) as db, db:
+                db.execute('DELETE FROM documents WHERE id=37')
+            self.assert_refused(self.request(port, route=route), (404,))
+
+        with self.server(**settings, CDSE_V2_READ_WITNESS_TOKEN=self.acknowledged) as port:
+            self.assert_refused(self.request(port, route=route), (503,))
 
 
 for _parent in LiveReadTests.__mro__[1:]:

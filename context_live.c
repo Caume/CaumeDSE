@@ -1,15 +1,17 @@
 #include "common.h"
 #include "context_column.h"
+#include "context_column_internal.h"
 #include "context_live.h"
 #include "context_offline.h"
 
 /* A read verifies the entire release. Bound this work to one request at a time. */
 static pthread_mutex_t cmeContextLiveLock=PTHREAD_MUTEX_INITIALIZER;
 
-int cmeContextLiveRead(const char *org, const char *storage, const char *document,
+int cmeContextLiveRead(const char *org, const char *storage, const char *document, const char *orgKey,
     int64_t row, cmeContextV2Buffer *value)
 {
     const char *enabled=getenv("CDSE_V2_READ_ENABLED");
+    const char *catalogMode=getenv("CDSE_V2_READ_CATALOG");
     const char *routeOrg=getenv("CDSE_V2_READ_ORG");
     const char *routeStorage=getenv("CDSE_V2_READ_STORAGE");
     const char *routeDocument=getenv("CDSE_V2_READ_DOCUMENT");
@@ -22,15 +24,25 @@ int cmeContextLiveRead(const char *org, const char *storage, const char *documen
     cmeContextWitness *witness=NULL;
     cmeContextColumnReadRelease *release=NULL;
     cmeContextWitnessAnchor acknowledged={0};
+    char activePath[PATH_MAX];
+    cmeColumnCatalogQuery catalog={activePath,org,storage,document,orgKey,cmeDefaultEncAlg};
     unsigned char deployment[16],organization[16],digest[32],token[40];
     unsigned char registryKey[32],witnessKey[32];
     char *envelope=NULL,*password=NULL;
     size_t envelopeLength=0,passwordLength=0,i;
-    int status=503;
+    int status=503,result,useCatalog,pathLength;
 
     if (!enabled || strcmp(enabled,"1") || !routeOrg || strcmp(routeOrg,org) ||
-        !routeStorage || strcmp(routeStorage,storage) || !routeDocument || strcmp(routeDocument,document))
+        !routeStorage || strcmp(routeStorage,storage))
         return(404);
+    useCatalog=(catalogMode && !strcmp(catalogMode,"1"));
+    if (catalogMode && !useCatalog && strcmp(catalogMode,"0")) return(503);
+    if (!useCatalog && (!routeDocument || strcmp(routeDocument,document))) return(404);
+    if (useCatalog)
+    {
+        pathLength=snprintf(activePath,sizeof(activePath),"%s%s",cmeDefaultFilePath,cmeDefaultResourcesDBName);
+        if (pathLength<0 || (size_t)pathLength>=sizeof(activePath)) return(503);
+    }
     if (pthread_mutex_trylock(&cmeContextLiveLock)) return(503);
 
     if (!sourcePath || !publishedPath ||
@@ -55,9 +67,13 @@ int cmeContextLiveRead(const char *org, const char *storage, const char *documen
     roots[1]=(cmeContextColumnCustodyRoot){.parent=published.directory,.name=published.name};
     if (cmeContextColumnGlobalReadOpen(manager,witness,&roots[0],&roots[1],(const unsigned char *)envelope,
             envelopeLength,digest,&acknowledged,&release) ||
-        cmeOfflineReadPrivate(getenv("CDSE_V2_READ_PASSWORD_FILE"),256,&password,&passwordLength,cmeOfflineBinaryFile) ||
-        cmeContextColumnRead(release,"data",row,"value",(const unsigned char *)password,passwordLength,value)) goto done;
-    status=200;
+        cmeOfflineReadPrivate(getenv("CDSE_V2_READ_PASSWORD_FILE"),256,&password,&passwordLength,cmeOfflineBinaryFile)) goto done;
+    if (useCatalog)
+        result=cmeColumnReadRegistered(release,&catalog,row,(const unsigned char *)password,passwordLength,value);
+    else
+        result=cmeContextColumnRead(release,"data",row,"value",(const unsigned char *)password,passwordLength,value);
+    if (!result) status=200;
+    else if (result==cmeColumnCatalogMissing) status=404;
 
 done:
     if (password) OPENSSL_cleanse(password,passwordLength);

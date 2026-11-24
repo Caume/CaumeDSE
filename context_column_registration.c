@@ -171,20 +171,31 @@ done:
     free(expected); return(result);
 }
 
-static int cmeRegRow(sqlite3 *db, int destination, const cmeContextColumnRegistrationApproval *a,
-    const cmeContextColumnRegistrationInputs *in, char **plain)
+static int cmeRegDocumentColumns(sqlite3_stmt *stmt)
 {
     static const char *names[]={"id","userId","orgId","salt","resourceInfo","columnFile","type","documentId",
         "storageId","orgResourceId","partMAC","totalParts","partId","lastModified","columnId",
         "documentIdLookup","storageIdLookup","orgResourceIdLookup"};
+    int i;
+    if (sqlite3_column_count(stmt)!=18) return(1);
+    for (i=0;i<18;i++)
+    {
+        const char *name=sqlite3_column_name(stmt,i);
+        if (!name || strcmp(name,names[i])) return(1);
+    }
+    return(0);
+}
+
+static int cmeRegRow(sqlite3 *db, int destination, const cmeContextColumnRegistrationApproval *a,
+    const cmeContextColumnRegistrationInputs *in, char **plain)
+{
     sqlite3_stmt *stmt=NULL;
     char *salt=NULL,*tag=NULL;
     const char *saltText;
     int result=1,i,written=0;
     int64_t row=destination ? a->destinationRow : a->sourceRow;
     if (sqlite3_prepare_v2(db,"SELECT * FROM documents WHERE id=?1",-1,&stmt,NULL)!=SQLITE_OK ||
-        sqlite3_column_count(stmt)!=18 || sqlite3_bind_int64(stmt,1,row)!=SQLITE_OK) goto done;
-    for (i=0;i<18;i++) if (strcmp(sqlite3_column_name(stmt,i),names[i])) goto done;
+        cmeRegDocumentColumns(stmt) || sqlite3_bind_int64(stmt,1,row)!=SQLITE_OK) goto done;
     if (sqlite3_step(stmt)!=SQLITE_ROW || sqlite3_column_type(stmt,0)!=SQLITE_INTEGER || sqlite3_column_int64(stmt,0)!=row) goto done;
     for (i=1;i<15;i++) if (i!=3 && cmeRegDecode(stmt,i,in->registrationKey,a->metadataProfile,&plain[i])) goto done;
     if (strcmp(plain[5],destination ? a->destinationFile : a->sourceFile) ||
@@ -212,6 +223,38 @@ static int cmeRegCell(sqlite3_stmt *a, sqlite3_stmt *b, int column)
     if (type!=SQLITE_TEXT && type!=SQLITE_BLOB) return(1);
     left=sqlite3_column_blob(a,column); right=sqlite3_column_blob(b,column); n=sqlite3_column_bytes(a,column);
     return(n!=sqlite3_column_bytes(b,column) || (n && (!left || !right || memcmp(left,right,n))));
+}
+
+static int cmeRegFindLiveRow(sqlite3 *db, char **lookups, sqlite3_stmt **stmt)
+{
+    static const char sql[]="SELECT * FROM main.documents WHERE documentIdLookup COLLATE BINARY=?1 "
+        "AND storageIdLookup COLLATE BINARY=?2 AND orgResourceIdLookup COLLATE BINARY=?3 "
+        "AND EXISTS (SELECT 1 FROM pragma_table_list WHERE schema='main' AND name='documents' AND type='table') LIMIT 2";
+    int i,step;
+    if (sqlite3_prepare_v2(db,sql,-1,stmt,NULL)!=SQLITE_OK || cmeRegDocumentColumns(*stmt)) return(1);
+    for (i=0;i<3;i++) if (sqlite3_bind_text(*stmt,i+1,lookups[i],-1,SQLITE_STATIC)!=SQLITE_OK) return(1);
+    step=sqlite3_step(*stmt);
+    if (step==SQLITE_DONE) return(cmeColumnCatalogMissing);
+    return(step!=SQLITE_ROW || sqlite3_column_type(*stmt,0)!=SQLITE_INTEGER || sqlite3_column_int64(*stmt,0)<1);
+}
+
+static int cmeRegLiveIdentity(sqlite3_stmt *released, const cmeColumnCatalogSnapshot *snapshot,
+    const cmeColumnCatalogQuery *query)
+{
+    static const int columns[]={5,6,7,8,9,11,12};
+    const char *expected[]={snapshot->payload,cmeContextColumnRegistrationType,query->document,
+        query->storage,query->organization,"1","1"};
+    size_t i;
+    int result;
+    for (i=0;i<sizeof(columns)/sizeof(*columns);i++)
+    {
+        char *value=NULL;
+        result=cmeRegDecode(released,columns[i],query->key,query->profile,&value);
+        if (!result && strcmp(value,expected[i])) result=1;
+        if (value) { OPENSSL_cleanse(value,strlen(value)); free(value); }
+        if (result) return(result);
+    }
+    return(0);
 }
 
 static int cmeRegClone(sqlite3 *source, sqlite3 *candidate, int64_t destinationRow)
@@ -290,6 +333,58 @@ done:
     cmeRegPlainFree(plain); sqlite3_finalize(stmt); return(result);
 }
 #endif
+
+int cmeColumnCatalogMatch(const cmeColumnCatalogSnapshot *snapshot, const cmeColumnCatalogQuery *query)
+{
+#if defined(HAVE_SQLITE3_DESERIALIZE)
+    static const char *fields[]={"documentId","storageId","orgResourceId"};
+    const char *selectors[]={query->document,query->storage,query->organization};
+    char *lookups[3]={0};
+    unsigned char *copy=NULL;
+    sqlite3 *released=NULL,*active=NULL;
+    sqlite3_stmt *approvedRow=NULL,*currentRow=NULL;
+    unsigned int releasedBudget=20000,activeBudget=20000;
+    int i,result=1,flags=SQLITE_OPEN_READONLY|SQLITE_OPEN_FULLMUTEX;
+#ifdef SQLITE_OPEN_NOFOLLOW
+    flags|=SQLITE_OPEN_NOFOLLOW;
+#endif
+    if (!query->key || !*query->key || strnlen(query->key,257)>256 ||
+        (strcmp(query->profile,"aes-256-gcm") && strcmp(query->profile,"aes-256-cbc"))) return(1);
+    for (i=0;i<3;i++)
+        if (cmeRegText(selectors[i],128,0) ||
+            cmeGetProtectDBLookupValue(fields[i],selectors[i],query->key,&lookups[i]) ||
+            !lookups[i] || strlen(lookups[i])!=64) goto done;
+    if (cmeRegOpen(snapshot->resources,snapshot->length,snapshot->digest,&released,&copy,
+            &releasedBudget)) goto done;
+    result=cmeRegFindLiveRow(released,lookups,&approvedRow);
+    if (result) goto done;
+    result=1;
+    if (cmeRegLiveIdentity(approvedRow,snapshot,query) || sqlite3_open_v2(query->path,&active,flags,NULL)!=SQLITE_OK ||
+        sqlite3_db_config(active,SQLITE_DBCONFIG_DEFENSIVE,1,NULL)!=SQLITE_OK ||
+        sqlite3_exec(active,"PRAGMA trusted_schema=OFF",NULL,NULL,NULL)!=SQLITE_OK) goto done;
+    sqlite3_limit(active,SQLITE_LIMIT_LENGTH,cmeContextColumnMaxCellBytes);
+    sqlite3_progress_handler(active,1000,cmeRegBudget,&activeBudget);
+    result=cmeRegFindLiveRow(active,lookups,&currentRow);
+    if (result) goto done;
+    result=1;
+    /* A local SQLite row id may change on import. All protected cells and
+       lookup values must still be exactly those in the approved export. */
+    for (i=1;i<18;i++) if (cmeRegCell(approvedRow,currentRow,i)) goto done;
+    if (sqlite3_step(approvedRow)!=SQLITE_DONE || sqlite3_step(currentRow)!=SQLITE_DONE) goto done;
+    result=0;
+done:
+    sqlite3_finalize(approvedRow); sqlite3_finalize(currentRow);
+    sqlite3_close(released); sqlite3_close(active);
+    if (copy) OPENSSL_cleanse(copy,snapshot->length);
+    sqlite3_free(copy);
+    for (i=0;i<3;i++) free(lookups[i]);
+    return(result);
+#else
+    (void)snapshot;
+    (void)query;
+    return(3);
+#endif
+}
 
 static int cmeRegCheck(cmeContextManager *manager, const cmeContextCopyTarget *target,
     const cmeContextColumnTransformApproval *transform, const cmeContextColumnRegistrationApproval *approval,

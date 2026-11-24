@@ -121,7 +121,8 @@ static int cmeAdmissionSnapshot(cmeContextColumnCustody *custody, const unsigned
 /* No target capability or credentials: the manager ticket authenticates this
    exact retained snapshot, originally constructed from complete fresh custody. */
 static int cmeAdmissionSnapshotLoad(const cmeContextColumnCustodyRoot *source,
-    const cmeContextColumnCustodyRoot *published, const unsigned char *bytes, size_t length, cmeContextV2Buffer *image, unsigned char imageDigest[32])
+    const cmeContextColumnCustodyRoot *published, const unsigned char *bytes, size_t length,
+    cmeContextV2Buffer *image, unsigned char imageDigest[32], cmeColumnCatalogSnapshot *registration)
 {
     cmeAdmissionReader reader={bytes,length};
     cmeContextColumnCustody *view=NULL;
@@ -164,12 +165,13 @@ static int cmeAdmissionSnapshotLoad(const cmeContextColumnCustodyRoot *source,
     result=cmeCustodyPhysicalCheck(view); if (result) goto done;
     if (image)
     {
-        size_t j;
+        size_t j,resources=SIZE_MAX;
         result=1;
         if (!imageDigest || view->count[1]!=view->count[0]+1) goto done;
         j=0;
         for (i=0;i<view->count[1];i++)
         {
+            if (!strcmp(view->files[1][i].name,"ResourcesDB")) resources=i;
             if (j<view->count[0] && !strcmp(view->files[1][i].name,view->files[0][j].name)) j++;
             else { selected=i; missing++; }
         }
@@ -179,6 +181,14 @@ static int cmeAdmissionSnapshotLoad(const cmeContextColumnCustodyRoot *source,
         image->bytes=malloc(image->length+1); if (!image->bytes) { image->length=0; goto done; }
         memcpy(image->bytes,raw,image->length); image->bytes[image->length]=0;
         memcpy(imageDigest,view->files[1][selected].digest,32);
+        if (registration)
+        {
+            if (resources==SIZE_MAX || cmeCustodyRead(&view->roots[1],&view->files[1][resources],
+                    &registration->resources,0)) goto done;
+            registration->length=view->files[1][resources].length;
+            memcpy(registration->digest,view->files[1][resources].digest,32);
+            strcpy(registration->payload,view->files[1][selected].name);
+        }
         result=cmeCustodyPhysicalCheck(view);
     }
     else result=0;
@@ -191,7 +201,7 @@ done:
 static int cmeAdmissionSnapshotCheck(const cmeContextColumnCustodyRoot *source,
     const cmeContextColumnCustodyRoot *published, const unsigned char *bytes, size_t length)
 {
-    return(cmeAdmissionSnapshotLoad(source,published,bytes,length,NULL,NULL));
+    return(cmeAdmissionSnapshotLoad(source,published,bytes,length,NULL,NULL,NULL));
 }
 
 int cmeContextColumnAdmissionPrepare(cmeContextColumnCustody *custody,
@@ -475,14 +485,16 @@ int cmeContextColumnGlobalReadOpen(cmeContextManager *manager, cmeContextWitness
     return(cmeColumnReadReleaseOpen(1,manager,witness,source,published,journal,length,journalDigest,acknowledged,release));
 }
 
-int cmeContextColumnRead(cmeContextColumnReadRelease *release, const char *table, int64_t row, const char *field,
-    const unsigned char *password, size_t passwordLength, cmeContextV2Buffer *plaintext)
+static int cmeColumnReadCell(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query,
+    const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
+    cmeContextV2Buffer *plaintext)
 {
     cmeAdmissionPlan plan={0};
     cmeContextMap *map=NULL;
     cmeContextBinding *binding=NULL;
     cmeContextColumnStage *stage=NULL;
     cmeContextV2Buffer image={0},candidate={0};
+    cmeColumnCatalogSnapshot registration={0};
     unsigned char imageDigest[32];
     cmeContextMapAnchor catalog={0};
     cmeContextWitnessAnchor previous={0};
@@ -490,7 +502,8 @@ int cmeContextColumnRead(cmeContextColumnReadRelease *release, const char *table
     size_t i;
     int result=1;
     if (plaintext) { plaintext->bytes=NULL; plaintext->length=0; }
-    if (!plaintext || !release || !table || !field || row<1 || !password || !passwordLength || passwordLength>256) return(1);
+    if (!plaintext || !release || (query && !release->global) || !table || !field || row<1 ||
+        !password || !passwordLength || passwordLength>256) return(1);
     result=cmeContextColumnReadReleaseCheck(release); if (result) goto done;
     result=1;
     if (release->global)
@@ -498,8 +511,14 @@ int cmeContextColumnRead(cmeContextColumnReadRelease *release, const char *table
         if (cmeGlobalDecode(release->journal,release->length,release->digest,&plan,&previous,&catalog,request)) goto done;
     }
     else if (cmeAdmissionDecodeJournal(release->journal,release->length,release->digest,&plan)) goto done;
-    if (cmeAdmissionSnapshotLoad(&release->roots[0],&release->roots[1],plan.proof,plan.proofLength,&image,imageDigest))
+    if (cmeAdmissionSnapshotLoad(&release->roots[0],&release->roots[1],plan.proof,plan.proofLength,
+            &image,imageDigest,query ? &registration : NULL))
     { if (release->global) release->failed=1; goto done; }
+    if (query)
+    {
+        result=cmeColumnCatalogMatch(&registration,query);
+        if (result) goto done;
+    }
     if (release->global)
     {
         result=cmeContextManagerMapBindWitness(release->manager,release->witness,&release->acknowledged,plan.name,
@@ -534,6 +553,11 @@ int cmeContextColumnRead(cmeContextColumnReadRelease *release, const char *table
     if (result) goto done;
     cmeAdmissionCheckpoint(release->global ? "after-global-read" : "after-read");
     result=cmeContextColumnReadReleaseCheck(release); if (result) goto done;
+    if (query)
+    {
+        result=cmeColumnCatalogMatch(&registration,query);
+        if (result) goto done;
+    }
     *plaintext=candidate; memset(&candidate,0,sizeof(candidate));
 done:
     if (result && release && release->global)
@@ -542,8 +566,25 @@ done:
         int checked=cmeContextColumnReadReleaseCheck(release);
         if (checked) result=checked;
     }
+    if (registration.resources)
+    {
+        OPENSSL_cleanse(registration.resources,registration.length);
+        free(registration.resources);
+    }
     cmeContextV2BufferFree(&image); cmeContextV2BufferFree(&candidate); cmeContextColumnStageFree(&stage);
     cmeContextBindingFree(&binding); cmeContextMapFree(&map); return(result);
+}
+
+int cmeContextColumnRead(cmeContextColumnReadRelease *release, const char *table, int64_t row, const char *field,
+    const unsigned char *password, size_t passwordLength, cmeContextV2Buffer *plaintext)
+{
+    return(cmeColumnReadCell(release,NULL,table,row,field,password,passwordLength,plaintext));
+}
+
+int cmeColumnReadRegistered(cmeContextColumnReadRelease *release, const cmeColumnCatalogQuery *query,
+    int64_t row, const unsigned char *password, size_t passwordLength, cmeContextV2Buffer *plaintext)
+{
+    return(cmeColumnReadCell(release,query,"data",row,"value",password,passwordLength,plaintext));
 }
 
 int cmeContextColumnGlobalReleasePrepare(cmeContextManager *manager, cmeContextWitness *witness,

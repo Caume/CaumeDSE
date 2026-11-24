@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.46.0
+# Caume Data Security Engine (CaumeDSE) version 2.47.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -3070,7 +3070,10 @@ prints the witness token to retain before reading. An operator can then
 [enable one live V2 read route](HERRADURAKEX_AT_REST_PLAN.md#live-witnessed-v2-read-147-phase-45)
 for the released export. It requires mutual TLS and the existing content-row
 read permission, and returns one verified cell as hexadecimal JSON. The
-route defaults to disabled. Active-database handoff remains pending.
+route defaults to disabled. The optional
+[active catalog mode](HERRADURAKEX_AT_REST_PLAN.md#active-catalog-v2-reads-147-phase-46)
+also requires the engine's active `ResourcesDB` to contain the exact published
+registration for the requested document.
 
 All other keys are assumed to be human generated passwords or passphrases
 which require key expansion with a slow function, in order to limit

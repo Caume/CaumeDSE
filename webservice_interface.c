@@ -375,7 +375,7 @@ static int cmeWebServiceV2Query(const char **arguments)
 }
 
 static int cmeWebServiceV2Read(char **responseText, char ***responseHeaders, const char **elements,
-    int count, const char **arguments, const char *method, const char *orgId)
+    int count, const char **arguments, const char *method, const char *orgId, const char *orgKey)
 {
     static const char prefix[]="{\"valueHex\":\"";
     static const char suffix[]="\"}";
@@ -397,7 +397,7 @@ static int cmeWebServiceV2Read(char **responseText, char ***responseHeaders, con
     row=strtoll(elements[9],NULL,10);
     if (errno || row<1 || row>INT64_MAX) return(400);
 
-    status=cmeContextLiveRead(orgId,elements[3],elements[7],(int64_t)row,&value);
+    status=cmeContextLiveRead(orgId,elements[3],elements[7],orgKey,(int64_t)row,&value);
     if (status==200)
     {
         *responseText=malloc(sizeof(prefix)-1+2*value.length+sizeof(suffix));
@@ -3195,7 +3195,7 @@ int cmeWebServiceProcessRequest (char **responseText, char **responseFilePath, c
 #endif
             ) *responseCode=403;
         else *responseCode=cmeWebServiceV2Read(responseText,responseHeaders,urlElements,numUrlElements,
-            argumentElements,method,orgId);
+            argumentElements,method,orgId,orgKey);
         cmeWebServiceProcessRequestFree();
         return(0);
     }

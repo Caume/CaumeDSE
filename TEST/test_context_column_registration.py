@@ -17,6 +17,9 @@ from test_context_frame import PASSWORD
 
 
 class RegistrationTests(transforms.TransformTests):
+    registration_org = 'fixtureOrg'
+    registration_storage = 'fixtureStorage'
+
     def setUp(self):
         super().setUp()
         self.metadata_profile='aes-256-cbc' if 'metadata_cbc' in self._testMethodName else 'aes-256-gcm'
@@ -31,14 +34,14 @@ class RegistrationTests(transforms.TransformTests):
                 for field in ('documentIdLookup','storageIdLookup','orgResourceIdLookup'):db.execute(f'alter table documents add column {field} TEXT')
                 for table in ('documents','users','storage'):
                     columns=[row[1] for row in db.execute(f'pragma table_info({table})')]
-                    values=dict.fromkeys(columns,'');values.update(id=1,userId='fixtureUser',orgId='fixtureOrg',orgResourceId='fixtureOrg')
+                    values=dict.fromkeys(columns,'');values.update(id=1,userId='fixtureUser',orgId='fixtureOrg',orgResourceId=self.registration_org)
                     if table=='documents':
                         values.update(resourceInfo='fixture-info',columnFile=self.source.name,type='file.csv',documentId='fixture-document',
-                                      storageId='fixtureStorage',partId='1',totalParts='1',columnId='1',lastModified='fixture-time')
+                                      storageId=self.registration_storage,partId='1',totalParts='1',columnId='1',lastModified='fixture-time')
                         for field in columns:
                             if field.endswith('Lookup'):values[field]=None
                     elif table=='storage':
-                        values.update(storageId='fixtureStorage',type='remote' if self._testMethodName=='test_remote_storage_refuses' else 'local',accessPath='/offline-original/')
+                        values.update(storageId=self.registration_storage,type='remote' if self._testMethodName=='test_remote_storage_refuses' else 'local',accessPath='/offline-original/')
                     db.execute(f"insert into {table} ({','.join(columns)}) values ({','.join('?' for _ in columns)})",[values[c] for c in columns])
         self.payload('bundle');self.payload('registered-lookups')
         with closing(sqlite3.connect(self.resources)) as db:db.execute('pragma journal_mode=DELETE')
@@ -62,8 +65,8 @@ class RegistrationTests(transforms.TransformTests):
                     candidate_resources_digest=hashlib.sha256(self.candidate_resources.read_bytes()).hexdigest(),
                     profile=self.profile,metadata_profile=self.metadata_profile,destination=self.destination,
                     source_row=1,destination_row=2,source_file='source.sqlite',destination_file='candidate.sqlite',
-                    source_document='fixture-document',destination_document='fixture-copy',storage_id='fixtureStorage',
-                    organization_resource='fixtureOrg',column_id='1',storage_path='/offline-original/')
+                    source_document='fixture-document',destination_document='fixture-copy',storage_id=self.registration_storage,
+                    organization_resource=self.registration_org,column_id='1',storage_path='/offline-original/')
         result.update(options);return result
 
     def registration_digest(self,**options):
