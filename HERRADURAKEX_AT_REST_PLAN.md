@@ -4548,3 +4548,26 @@ witnessed approval. Publication, admission, release and registration
 installation continue to use the same sequence. This phase covers
 single-part local CSV documents with one explicit AES profile per
 payload and a common source key.
+
+## Offline V2 registration retirement (#147 phase 49)
+
+Use `caumedse-admin context-column-unregister` with the same arguments as
+phase-47 registration installation. Stop the engine and catalog, release,
+and authority writers before running it. Use the original release envelope
+and independently retained digest, the current acknowledged witness token,
+and the existing organization key and AES metadata profile.
+
+The command authenticates the released registration and the existing active
+organization and local storage. It removes the single byte-matching
+protected document row from the active `ResourcesDB` in one SQLite
+transaction. It refuses mismatched or duplicate registrations and rolls back
+a deletion that would change additional rows through a foreign-key action.
+A busy commit rolls back.
+
+Success prints `registration=absent`. Repeat the command with the same
+approvals after losing the result. An already absent registration succeeds
+when the same release, witness, and catalog checks pass. The command preserves
+the release files and authority state. After the engine restarts with
+`CDSE_V2_READ_CATALOG=1`, a request for that document returns `404`.
+The phase-45 direct document pin continues to use the retained release
+independently of the active catalog.
