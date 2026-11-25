@@ -8,6 +8,7 @@
 static const unsigned char cmeProofDomain[]="CDSE-HKX-COLUMN-ADMISSION-FILES-v1";
 static const unsigned char cmeAdmissionJournalDomain[]="CDSE-HKX-COLUMN-ADMISSION-v1";
 static const unsigned char cmeGlobalDomain[]="CDSE-HKX-COLUMN-GLOBAL-RELEASE-v1";
+static const unsigned char cmeRevocationDomain[]="CDSE-HKX-COLUMN-REVOCATION-v1";
 typedef struct { unsigned char *bytes; size_t length,maximum; } cmeAdmissionWriter;
 typedef struct { const unsigned char *bytes; size_t length; } cmeAdmissionReader;
 
@@ -719,5 +720,109 @@ int cmeContextColumnGlobalReleaseRun(cmeContextManager *manager, cmeContextWitne
         CRYPTO_memcmp(current.digest,completed.witness.digest,32)) { result=2; goto done; }
     completed.state=2; *output=completed;
 done:
+    return(result);
+}
+
+int cmeContextColumnRevocationPrepare(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *envelope, size_t length, const unsigned char digest[32],
+    const cmeContextWitnessAnchor *acknowledged, cmeContextV2Buffer *approval, unsigned char pin[32])
+{
+    cmeAdmissionPlan plan={0};
+    cmeContextColumnReadRelease *guard=NULL;
+    cmeContextWitnessAnchor previous={0};
+    cmeContextMapAnchor catalog={0},next={0};
+    unsigned char bytes[sizeof(cmeRevocationDomain)+32+40+40],request[32],hash[32];
+    cmeAdmissionWriter writer={bytes,0,sizeof(bytes)};
+    int result=1;
+    _Static_assert(sizeof(bytes)<=cmeContextColumnRevocationMaxBytes,"revocation approval bound");
+    if (approval) *approval=(cmeContextV2Buffer){0};
+    if (pin) memset(pin,0,32);
+    if (!approval || !pin || !acknowledged || acknowledged->revision==UINT64_MAX ||
+        cmeGlobalDecode(envelope,length,digest,&plan,&previous,&catalog,request)) return(1);
+    result=cmeContextColumnGlobalReadOpen(manager,witness,source,published,envelope,length,digest,acknowledged,&guard);
+    if (result) goto done;
+    result=cmeContextManagerMapRemovePlan(manager,plan.name,&plan.completed.registry,&catalog,&next);
+    if (result) goto done;
+    result=cmeContextColumnReadReleaseCheck(guard);
+    if (result) goto done;
+    result=1;
+    if (cmeAdmissionAppend(&writer,cmeRevocationDomain,sizeof(cmeRevocationDomain)) ||
+        cmeAdmissionAppend(&writer,digest,32) || cmeAdmissionNumber(&writer,acknowledged->revision,8) ||
+        cmeAdmissionAppend(&writer,acknowledged->digest,32) || cmeAdmissionNumber(&writer,next.revision,8) ||
+        cmeAdmissionAppend(&writer,next.digest,32) || cmeAdmissionHash(bytes,writer.length,hash)) goto done;
+    approval->bytes=malloc(writer.length);
+    if (!approval->bytes) goto done;
+    memcpy(approval->bytes,bytes,writer.length); approval->length=writer.length;
+    memcpy(pin,hash,32); result=0;
+done:
+    cmeContextColumnReadReleaseFree(&guard);
+    return(result);
+}
+
+int cmeContextColumnRevocationRun(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *envelope, size_t length, const unsigned char digest[32],
+    const unsigned char *approval, size_t approvalLength, const unsigned char pin[32],
+    cmeContextColumnAdmissionResult *output)
+{
+    cmeAdmissionReader reader={approval,approvalLength};
+    cmeAdmissionPlan plan={0};
+    cmeContextColumnAdmissionResult completed={0};
+    cmeContextColumnReadRelease *guard=NULL;
+    cmeContextWitnessAnchor previous={0},acknowledged={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    cmeContextMapAnchor catalog={0};
+    cmeContextMap *map=NULL;
+    unsigned char hash[32],originalDigest[32],request[32];
+    int result=1;
+    if (output) *output=(cmeContextColumnAdmissionResult){0};
+    if (!output || !manager || !witness || !approval || !pin ||
+        approvalLength!=sizeof(cmeRevocationDomain)+32+40+40 ||
+        memcmp(approval,cmeRevocationDomain,sizeof(cmeRevocationDomain)) ||
+        cmeAdmissionHash(approval,approvalLength,hash) || CRYPTO_memcmp(hash,pin,32) ||
+        cmeGlobalDecode(envelope,length,digest,&plan,&previous,&catalog,request) ||
+        cmeAdmissionTake(&reader,NULL,sizeof(cmeRevocationDomain)) ||
+        cmeAdmissionTake(&reader,originalDigest,32) || CRYPTO_memcmp(originalDigest,digest,32) ||
+        cmeAdmissionReadNumber(&reader,&acknowledged.revision,8) || acknowledged.revision==UINT64_MAX ||
+        acknowledged.revision!=previous.revision+1 || cmeAdmissionTake(&reader,acknowledged.digest,32) ||
+        cmeAdmissionReadNumber(&reader,&completed.catalog.revision,8) || catalog.revision==UINT64_MAX ||
+        completed.catalog.revision!=catalog.revision+1 || cmeAdmissionTake(&reader,completed.catalog.digest,32)) return(1);
+    completed.registry=plan.completed.registry;
+    result=cmeContextManagerCheckAnchors(manager,&completed.registry,&catalog);
+    if (!result)
+    {
+        result=cmeContextColumnGlobalReadOpen(manager,witness,source,published,envelope,length,digest,&acknowledged,&guard);
+        if (result) goto done;
+        result=cmeContextManagerMapRemoveApproved(manager,plan.name,&completed.registry,&catalog,&completed.catalog);
+        if (result) goto done;
+    }
+    else if (result!=2) goto done;
+
+    /* Recover only at the exact committed catalog and tombstone. */
+    result=cmeContextManagerMapRead(manager,plan.name,&completed.registry,&completed.catalog,&map);
+    if (result) goto done;
+    if (map->active || map->blocked || map->count) { result=2; goto done; }
+    result=cmeContextWitnessReconcile(witness,&acknowledged,&completed.registry,&completed.catalog,&recovery,&completed.witness);
+    if (result) goto done;
+    if (recovery==cmeWitnessRecoveryAdvanceRequired)
+    {
+        result=cmeContextWitnessCheck(witness,&completed.registry,&catalog);
+        if (result) goto done;
+        result=cmeContextManagerCheckAnchors(manager,&completed.registry,&completed.catalog);
+        if (result) goto done;
+        result=cmeContextWitnessAdvance(witness,&acknowledged,&completed.registry,&completed.catalog,&completed.witness);
+        if (result) goto done;
+    }
+    else if (recovery!=cmeWitnessRecoveryAlreadyAdvanced) { result=2; goto done; }
+    result=cmeContextManagerCheckAnchors(manager,&completed.registry,&completed.catalog);
+    if (result) goto done;
+    result=cmeContextWitnessReconcile(witness,&acknowledged,&completed.registry,&completed.catalog,&recovery,&completed.witness);
+    if (result) goto done;
+    if (recovery!=cmeWitnessRecoveryAlreadyAdvanced) { result=2; goto done; }
+    completed.state=2; *output=completed;
+done:
+    cmeContextMapFree(&map);
+    cmeContextColumnReadReleaseFree(&guard);
     return(result);
 }

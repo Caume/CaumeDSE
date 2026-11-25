@@ -403,4 +403,20 @@ int cmeContextColumnGlobalReadOpen(cmeContextManager *manager, cmeContextWitness
     const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
     const unsigned char *envelope, size_t length, const unsigned char digest[32],
     const cmeContextWitnessAnchor *acknowledged, cmeContextColumnReadRelease **release);
+/* Offline retirement of the one map named by the original completed release.
+   Prepare pins the exact release, current W2 and approved tombstone successor.
+   Retain the approval bytes and digest separately before running it. Retry
+   with those same pins after losing output or interrupting witness advancement.
+   Quiesce authority and export writers and readers. No physical file writes.
+   Outputs clear on failure. Inputs and outputs must be nonoverlapping. */
+#define cmeContextColumnRevocationMaxBytes 160U
+int cmeContextColumnRevocationPrepare(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *envelope, size_t length, const unsigned char digest[32],
+    const cmeContextWitnessAnchor *acknowledged, cmeContextV2Buffer *approval, unsigned char pin[32]);
+int cmeContextColumnRevocationRun(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextColumnCustodyRoot *source, const cmeContextColumnCustodyRoot *published,
+    const unsigned char *envelope, size_t length, const unsigned char digest[32],
+    const unsigned char *approval, size_t approvalLength, const unsigned char pin[32],
+    cmeContextColumnAdmissionResult *output);
 #endif

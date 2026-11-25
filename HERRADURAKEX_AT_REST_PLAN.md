@@ -4571,3 +4571,41 @@ the release files and authority state. After the engine restarts with
 `CDSE_V2_READ_CATALOG=1`, a request for that document returns `404`.
 The phase-45 direct document pin continues to use the retained release
 independently of the active catalog.
+
+## Witnessed V2 release revocation (#147 phase 50)
+
+Stop the engine, export writers, and authority writers. Use the registry,
+witness, identity, key-file and export arguments from the original release.
+If the active `ResourcesDB` registration also needs retirement, run the
+phase-49 command first while its release is still readable.
+
+```bash
+caumedse-admin context-column-revoke prepare "${owner_args[@]}" \
+    --release-envelope "$release" --release-digest "$release_digest" \
+    --retained-witness-token "$w2" --revocation-envelope "$revocation"
+caumedse-admin context-column-revoke complete "${owner_args[@]}" \
+    --release-envelope "$release" --release-digest "$release_digest" \
+    --revocation-envelope "$revocation" --revocation-digest "$revocation_digest"
+```
+
+Prepare verifies the original completed release, physical proof, and exact
+acknowledged witness token W2. It previews removal of the release's map and
+records its original release digest, W2, and exact successor catalog pin. It
+saves the approval in a new private file outside the export and authority
+trees. Retain `revocation-digest` from prepare independently before completing.
+
+Complete rechecks the original release and witness before committing the
+approved catalog successor in one SQLite transaction.
+It tombstones the release's map and removes its slots. The catalog revision
+advances by one while the registry generation, other maps and slots, export
+files, and active `ResourcesDB` retain their existing state. Existing generic
+V2 map bindings expire when their catalog anchor changes. Bind other maps
+again with the successor catalog and witness token.
+
+If the process stops after committing the catalog, reads of the revoked
+release already fail. Repeat `complete` with the original approvals to
+advance the witness or recover the lost result. Recovery verifies the exact
+successor and its tombstone before updating the witness. Retain the returned
+`catalog` and `witness-token` values separately before restarting readers.
+The offline reader refuses the revoked release and both HTTPS modes return
+`503`, including when configured with the successor witness token.

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CaumeDSE REST API
-  version: 2.50.0
+  version: 2.51.0
   description: |
     Machine-readable reference for the stable CaumeDSE routes documented in
     README.md and exercised by the live API tests. Responses are
@@ -1032,7 +1032,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: The verified cell is unavailable, the registration is ambiguous or mismatched, or the reader is busy.
+          description: The release is revoked, the verified cell is unavailable, the registration is ambiguous or mismatched, or the reader is busy.
           content:
             application/json:
               schema:
