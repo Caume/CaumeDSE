@@ -228,6 +228,15 @@ int cmeContextManagerCopyProvision(cmeContextManager *manager, const char *sourc
 int cmeContextManagerCopyPlanPrepare(cmeContextManager *manager, const char *sourceName,
     const char *const *lookups, size_t count, const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, unsigned char **plan, size_t *length, unsigned char digest[32]);
+/* Floor-2 preview signer. The caller verifies the image against the witnessed
+   map first. This core checks the current v5 binding and signs the supplied
+   image digest, witness token, and tentative allocation in a distinct format.
+   The preview has no committing or binding API. Output ownership and error
+   conventions match CopyPlanPrepare. */
+int cmeContextManagerCopyPreviewV2(cmeContextManager *manager, const char *sourceName,
+    const char *const *lookups, size_t count, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, cmeContextWitness *witness, const cmeContextWitnessAnchor *retained,
+    const unsigned char imageDigest[32], unsigned char **plan, size_t *length, unsigned char digest[32]);
 int cmeContextManagerCopyPlanStatus(cmeContextManager *manager, const unsigned char *plan,
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, int *state, cmeContextMap **copy, cmeContextAnchor *next);

@@ -868,7 +868,7 @@ static int cmeCopyOwnerParse(const char *body, cmeOwnerApproval *approval)
         if (!i)
         {
             if (sqlite3_column_type(stmt,2)!=SQLITE_INTEGER ||
-                (sqlite3_column_int64(stmt,2)<1 || sqlite3_column_int64(stmt,2)>6)) goto done;
+                (sqlite3_column_int64(stmt,2)<1 || sqlite3_column_int64(stmt,2)>7)) goto done;
             approval->schema=(int)sqlite3_column_int64(stmt,2);
             approval->values[column]=strdup("1");
         }
@@ -876,8 +876,9 @@ static int cmeCopyOwnerParse(const char *body, cmeOwnerApproval *approval)
         if (!approval->values[column]) goto done;
         seen++;
     }
-    required=approval->schema==1 ? 11U : (approval->schema==2 ? 16U : (approval->schema>=5 ? (approval->schema==6 ? 26U : 24U) : 20U));
-    if (step!=SQLITE_DONE || seen!=required) goto done;
+    required=approval->schema==1 || approval->schema==7 ? 11U :
+        (approval->schema==2 ? 16U : (approval->schema>=5 ? (approval->schema==6 ? 26U : 24U) : 20U));
+    if (step!=SQLITE_DONE || seen!=required+(approval->schema==7 ? 2U : 0U)) goto done;
     for (i=0;i<required;i++) if (!approval->values[columns[i]]) goto done;
     if (cmeOfflineDecodeHex(approval->values[2],approval->deployment,16) ||
         cmeOfflineDecodeHex(approval->values[3],approval->organization,16) || cmeOfflineDecodeHex(approval->values[5],bytes,73)) goto done;
@@ -885,15 +886,17 @@ static int cmeCopyOwnerParse(const char *body, cmeOwnerApproval *approval)
     for (i=0;i<8;i++) approval->registry.generation=(approval->registry.generation<<8)|bytes[32+i];
     approval->registry.minimumFormat=bytes[40]; memcpy(approval->registry.digest,bytes+41,32);
     if (memcmp(approval->deployment,bytes,16) || memcmp(approval->organization,bytes+16,16) ||
-        approval->registry.minimumFormat!=1 || cmeOfflineDecodeHex(approval->values[6],bytes,40)) goto done;
+        approval->registry.minimumFormat!=(approval->schema==7 ? 2U : 1U) ||
+        cmeOfflineDecodeHex(approval->values[6],bytes,40)) goto done;
     for (i=0;i<8;i++) approval->catalog.revision=(approval->catalog.revision<<8)|bytes[i];
     memcpy(approval->catalog.digest,bytes+8,32);
-    if (approval->schema>=2 && (cmeOfflineDecodeHex(approval->values[15],approval->source,32) ||
-        cmeOfflineDecodeHex(approval->values[16],approval->target,32))) goto done;
+    if (approval->schema>=2 && cmeOfflineDecodeHex(approval->values[15],approval->source,32)) goto done;
+    if (approval->schema==7 && !approval->values[13]) goto done;
+    if (approval->schema>=2 && approval->schema<=6 && cmeOfflineDecodeHex(approval->values[16],approval->target,32)) goto done;
     sqlite3_finalize(stmt); stmt=NULL;
-    if (approval->schema>=5 && (cmeOfflineDecodeHex(approval->values[23],approval->resourcesTarget,32) ||
+    if (approval->schema>=5 && approval->schema<=6 && (cmeOfflineDecodeHex(approval->values[23],approval->resourcesTarget,32) ||
         *approval->values[25]!='/' || strcmp(approval->values[21],approval->values[25]))) goto done;
-    if (approval->schema>=3)
+    if (approval->schema>=3 && approval->schema<=6)
     {
         size_t registration;
         for (registration=0;registration<(approval->schema>=5 ? 2U : 1U);registration++)
@@ -1182,6 +1185,57 @@ done:
     cmeContextCopyInstallFree(&job); return(result);
 }
 
+static int cmeCopyOwnerPreviewV2(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *retained, const cmeOwnerApproval *approval, const char *const *lookups,
+    const char *passwordFile, cmeOfflineArtifact *destination)
+{
+    cmeOfflineArtifact source={.file=-1,.directory=-1};
+    cmeContextBinding *binding=NULL;
+    cmeContextMap *map=NULL;
+    cmeContextColumnStage *stage=NULL;
+    unsigned char *plan=NULL,digest[32];
+    char *image=NULL,*password=NULL;
+    const char *path=approval->values[13],*export=approval->values[7],*slash=strrchr(path,'/');
+    size_t imageLength=0,passwordLength=0,planLength=0;
+    struct stat directory;
+    int result=1;
+
+    if (!slash || (size_t)(slash-path)!=strlen(export) || strncmp(path,export,(size_t)(slash-path)) ||
+        !cmeOwnerOutside(approval->values[1],passwordFile) || !cmeOwnerOutside(approval->values[12],passwordFile) ||
+        !cmeOwnerOutside(export,passwordFile) || cmeOfflineAbsent(destination) || signal(SIGPIPE,SIG_IGN)==SIG_ERR) goto done;
+    result=cmeContextManagerMapBindWitness(manager,witness,retained,approval->values[4],&approval->registry,
+        &approval->catalog,&binding);
+    if (result) goto done;
+    result=cmeContextManagerMapRead(manager,approval->values[4],&approval->registry,&approval->catalog,&map);
+    if (result) goto done;
+    result=1;
+    if (map->count!=approval->count || cmeOfflineOpen(path,1,&source) || CRYPTO_memcmp(source.digest,approval->source,32) ||
+        cmeOfflineReadPrivate(path,cmeContextColumnMaxImageBytes,&image,&imageLength,cmeOfflineBinaryFile) ||
+        cmeOfflineReadPrivate(passwordFile,256,&password,&passwordLength,cmeOfflineBinaryFile)) goto done;
+    result=cmeColumnStageDeserializeMapped(manager,binding,map,(const unsigned char *)image,imageLength,approval->source,
+        (const unsigned char *)password,passwordLength,&stage);
+    if (result) goto done;
+    cmeContextColumnStageFree(&stage);
+    result=cmeContextManagerCopyPreviewV2(manager,approval->values[4],lookups,approval->count,&approval->registry,
+        &approval->catalog,witness,retained,approval->source,&plan,&planLength,digest);
+    if (result) goto done;
+    result=cmeContextBindingCheckMapped(manager,binding);
+    if (result) goto done;
+    result=1;
+    if (cmeOfflineVerify(&source) || lstat(export,&directory) || directory.st_dev!=source.parent.st_dev ||
+        directory.st_ino!=source.parent.st_ino || directory.st_uid!=geteuid() || (directory.st_mode&07777)!=0700 ||
+        cmeOwnerSave(destination,approval->values[8],plan,planLength)) goto done;
+    fputs("state=previewed-v2\npreview-digest=",stdout);
+    cmeOwnerPrint(digest,32); putchar('\n');
+    if (!fflush(stdout) && !ferror(stdout)) result=0;
+done:
+    if (password) OPENSSL_cleanse(password,passwordLength);
+    free(password); free(image); free(plan);
+    cmeContextColumnStageFree(&stage); cmeContextMapFree(&map); cmeContextBindingFree(&binding);
+    cmeOfflineClose(&source);
+    return(result);
+}
+
 static int cmeCopyOwnerMain(int argc, char **argv)
 {
     cmeOwnerApproval approval={0};
@@ -1198,6 +1252,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     const char *manifest=NULL,*keyFile=NULL,*witnessFile=NULL,*witnessDirectory=NULL,*confirmation=NULL;
     const char *token=NULL,*digestText=NULL,*approvedRegistry=NULL,*action=NULL;
     const char *orgFile=NULL,*publicationDigestText=NULL,*currentRegistryText=NULL,*currentCatalogText=NULL;
+    const char *passwordFile=NULL;
     const char **lookups=NULL;
     char *body=NULL,*keyText=NULL,*witnessText=NULL,*planText=NULL,*orgText=NULL,*intentText=NULL;
     FILE *output=NULL,*diagnostics=NULL;
@@ -1205,7 +1260,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     unsigned char publicationDigest[32],requestDigest[32],*intent=NULL;
     size_t length=0,i,intentLength=0;
     int result=1,state=0,prepare=0,advance=0,check=0,registered=0,export=0,destination=0;
-    int publication=0,publicationPrepare=0,installPrepare=0,installInit=0,installRecovery=0;
+    int publication=0,publicationPrepare=0,installPrepare=0,installInit=0,installRecovery=0,preview=0;
     if (argc==3 && !strcmp(argv[2],"--help"))
     {
         puts("Usage: caumedse-admin context-copy-plan --approval FILE --confirmed-offline APPROVAL_REALPATH\n"
@@ -1223,6 +1278,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
              "  Schema 6: --prepare-install --plan-digest SHA256 --publication-digest SHA256 --org-key-file FILE\n"
              "  Schema 6: --install-status | --complete-install | --abort-install | --advance-install-witness\n"
              "    --plan-digest SHA256 --publication-digest SHA256 --current-registry TOKEN --current-catalog TOKEN\n"
+             "  Schema 7: --preview-v2 --password-file FILE (current floor-2 witnessed V2 map)\n"
              "Private schema-1 approval, original pins, independently retained digest/token.\n"
              "Prepare exclusively creates and syncs the plan, never overwrites or allocates IDs.\n"
              "Stop all readers/writers. Retain uncertain files; never reset/blindly regenerate.\n"
@@ -1233,13 +1289,15 @@ static int cmeCopyOwnerMain(int argc, char **argv)
              "Checks do not publish files or authenticate V2 contexts.\n"
              "Publication preparation exclusively persists a signed intent; status rechecks it and all approvals.\n"
              "Install actions require stopped readers/writers and explicit witness advancement after every catalog write.\n"
-             "Legacy byte-preserving copy only; no V2 writes or context authentication.");
+             "The V2 preview verifies every cell in the pinned source and saves a signed allocation preview.\n"
+             "Preview runs with no V2 writes.\n"
+             "Retain the preview digest separately. The commit and install actions accept legacy plans only.");
         return(0);
     }
     for (i=2;i<(size_t)argc;i++)
     {
         const char **option=NULL;
-        if (!strcmp(argv[i],"--prepare") || !strcmp(argv[i],"--status") ||
+        if (!strcmp(argv[i],"--prepare") || !strcmp(argv[i],"--preview-v2") || !strcmp(argv[i],"--status") ||
             !strcmp(argv[i],"--commit") || !strcmp(argv[i],"--advance-witness") || !strcmp(argv[i],"--check-candidate") ||
             !strcmp(argv[i],"--check-registration") || !strcmp(argv[i],"--check-export") ||
             !strcmp(argv[i],"--check-destination") || !strcmp(argv[i],"--prepare-publication") || !strcmp(argv[i],"--publication-status") ||
@@ -1256,6 +1314,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         else if (!strcmp(argv[i],"--plan-digest")) option=&digestText;
         else if (!strcmp(argv[i],"--approved-registry")) option=&approvedRegistry;
         else if (!strcmp(argv[i],"--org-key-file")) option=&orgFile;
+        else if (!strcmp(argv[i],"--password-file")) option=&passwordFile;
         else if (!strcmp(argv[i],"--publication-digest")) option=&publicationDigestText;
         else if (!strcmp(argv[i],"--current-registry")) option=&currentRegistryText;
         else if (!strcmp(argv[i],"--current-catalog")) option=&currentCatalogText;
@@ -1273,16 +1332,18 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     if (installRecovery ? (!currentRegistryText || !currentCatalogText || orgFile || approval.schema!=6) :
         (currentRegistryText || currentCatalogText)) goto done;
     prepare=!strcmp(action,"--prepare"); advance=!strcmp(action,"--advance-witness");
+    preview=!strcmp(action,"--preview-v2");
+    if (preview ? (approval.schema!=7 || !passwordFile || orgFile) : passwordFile!=NULL) goto done;
     publicationPrepare=!strcmp(action,"--prepare-publication");
     publication=publicationPrepare || installPrepare || !strcmp(action,"--publication-status");
     destination=publication || !strcmp(action,"--check-destination"); export=destination || !strcmp(action,"--check-export");
     registered=export || !strcmp(action,"--check-registration"); check=registered || !strcmp(action,"--check-candidate");
-    if (!installRecovery && (check ? (approval.schema!=(publication ? 6 : (destination ? 5 : (export ? 4 : (registered ? 3 : 2)))) || !orgFile) :
+    if (!preview && !installRecovery && (check ? (approval.schema!=(publication ? 6 : (destination ? 5 : (export ? 4 : (registered ? 3 : 2)))) || !orgFile) :
         (approval.schema!=1 || orgFile))) goto done;
     if ((publication && !publicationPrepare) || installRecovery)
     { if (!publicationDigestText || cmeOfflineDecodeHex(publicationDigestText,publicationDigest,32)) goto done; }
     else if (publicationDigestText) goto done;
-    if (((prepare || installInit) ? digestText!=NULL : (!digestText || cmeOfflineDecodeHex(digestText,digest,32))) ||
+    if (((prepare || installInit || preview) ? digestText!=NULL : (!digestText || cmeOfflineDecodeHex(digestText,digest,32))) ||
         (advance ? (!approvedRegistry || cmeOfflineDecodeHex(approvedRegistry,approved,73)) : approvedRegistry!=NULL)) goto done;
     if (strlen(keyText)==65 && keyText[64]=='\n') keyText[64]=0;
     if (strlen(witnessText)==65 && witnessText[64]=='\n') witnessText[64]=0;
@@ -1296,6 +1357,11 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     lookups=calloc(approval.count,sizeof(*lookups));
     if (!lookups) goto done;
     for (i=0;i<approval.count;i++) lookups[i]=approval.slots[i].lookup;
+    if (preview)
+    {
+        result=cmeCopyOwnerPreviewV2(manager,witness,&retained,&approval,lookups,passwordFile,&parent);
+        goto done;
+    }
     if (installInit)
     {
         cmeContextMapAnchor published={0};
@@ -1484,7 +1550,8 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     result=0;
 done:
     if (result) fprintf(diagnostics ? diagnostics : stderr,"context-copy-plan: %s; retain existing plans, never reset blindly\n",
-        result==2 ? "stale approval; reconcile owner pins" : "invalid approval or unavailable state");
+        result==2 ? "stale approval; reconcile owner pins" : (result==3 ? "V2 provider or image support is unavailable" :
+            "invalid approval or unavailable state"));
     if (keyText) { OPENSSL_cleanse(keyText,strlen(keyText)); free(keyText); }
     if (witnessText) { OPENSSL_cleanse(witnessText,strlen(witnessText)); free(witnessText); }
     if (orgText) { OPENSSL_cleanse(orgText,strlen(orgText)); free(orgText); }

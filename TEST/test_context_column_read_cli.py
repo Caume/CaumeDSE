@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """Exercise the installed command with retained release evidence and private inputs."""
 import hashlib
+import hmac
+import io
+import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import unittest
+from contextlib import closing
 
+import herradura_registry_contract as registry_contract
 import test_context_column_released_read as released
+from test_context_manager import token
 from test_context_frame import PASSWORD
 
 
@@ -18,6 +25,13 @@ REVOKE = [ADMIN, 'context-column-revoke']
 
 
 class CommandTests(unittest.TestCase):
+    def test_copy_preview_help_and_incomplete_invocation(self):
+        args = [ADMIN, 'context-copy-plan']
+        usage = subprocess.run([*args, '--help'], capture_output=True, timeout=30, check=True)
+        self.assertIn(b'Schema 7: --preview-v2 --password-file FILE', usage.stdout)
+        result = subprocess.run([*args, '--preview-v2'], capture_output=True, timeout=30)
+        self.assertEqual((result.returncode, result.stdout), (1, b''))
+
     def test_revoke_help_and_incomplete_invocation(self):
         main = subprocess.run([ADMIN, '--help'], capture_output=True, timeout=30, check=True)
         self.assertIn(b'context-column-revoke --help', main.stdout)
@@ -117,6 +131,115 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
 
     def test_installed_read_metadata_cbc(self):
         self.read_cell()
+
+    def test_floor_two_copy_preview_authenticates_source_and_preserves_authority(self):
+        previous = self.copy_snapshot()
+        _, _, anchor = registry_contract.issue(previous, b'k' * 32)
+        self.assertEqual(self.current(), token(anchor))
+        floor_two = dict(previous, generation=previous['generation'] + 1, minimumFormat=2)
+        self.assertEqual(self.publish(floor_two, anchor).returncode, 0)
+        registry, catalog = self.current(), self.map_current()
+        source = self.published / 'candidate.sqlite'
+        image_digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        control = self.root / 'preview-control'
+        control.mkdir(mode=0o700)
+        plan = control / 'copy.preview'
+        manifest = self.private('copy-approval.json', b'{}')
+        lookups = [f'next/cell/{i}' for i in range(len(self.ordered))]
+        approval = dict(schema=7, manager=str(self.authority), deployment=self.anchor.deployment,
+                        organization=self.anchor.organization, map=self.destination, registry=registry,
+                        catalog=catalog, witness=str(self.witness), export=str(self.published), plan=str(plan),
+                        lookups=lookups, source=str(source), sourceDigest=image_digest)
+
+        def preview(witness_token, *, changes=None, password=self.password_file, action='--preview-v2', digest=None):
+            manifest.write_text(json.dumps(dict(approval, **(changes or {}))))
+            args = [ADMIN, 'context-copy-plan', '--approval', manifest, '--confirmed-offline', manifest,
+                    '--registry-key-file', self.registry_key, '--witness-directory', self.witness,
+                    '--witness-key-file', self.witness_key, '--retained-witness-token', witness_token, action]
+            if action == '--preview-v2':
+                args.extend(['--password-file', password])
+            if digest:
+                args.extend(['--plan-digest', digest])
+            result = self.invoke(args)
+            self.assertNotIn(PASSWORD, result.stderr)
+            self.assertNotIn(b'fixture-alpha', result.stdout + result.stderr)
+            return result
+
+        waiting = preview(self.final_token)
+        self.assertEqual((waiting.returncode, waiting.stdout), (2, b''))
+        self.assertFalse(plan.exists())
+        advanced = self.command('witness-advance', registry, catalog, self.final_token, directory=self.witness)
+        self.assertEqual(advanced.returncode, 0, advanced.stderr)
+        witness_token = advanced.stdout.decode().strip()
+        witness_file = self.witness / 'witness.sqlite'
+        registry_file = self.authority / 'registry.sqlite'
+        wrong_password = self.private('wrong.password', b'fixture-wrong-key')
+        altered = self.published / 'other.sqlite'
+        altered.write_bytes(source.read_bytes())
+        altered.chmod(0o600)
+        with closing(sqlite3.connect(altered)) as db, db:
+            db.execute('UPDATE cdse_column_v2_cells SET frame=zeroblob(length(frame)) WHERE ordinal='
+                       '(SELECT max(ordinal) FROM cdse_column_v2_cells)')
+        before = self.authority_files(), registry_file.read_bytes(), witness_file.read_bytes()
+        negatives = (
+            (self.final_token, {}, self.password_file, 2),
+            (witness_token, {'registry': token(anchor)}, self.password_file, 1),
+            (witness_token, {'sourceDigest': '00' * 32}, self.password_file, 1),
+            (witness_token, {}, wrong_password, 1),
+            (witness_token, {'source': str(altered), 'sourceDigest': hashlib.sha256(altered.read_bytes()).hexdigest()},
+             self.password_file, 1),
+            (witness_token, {'lookups': [lookups[0]] * len(lookups)}, self.password_file, 1),
+        )
+        for supplied, changes, password, code in negatives:
+            denied = preview(supplied, changes=changes, password=password)
+            self.assertEqual((denied.returncode, denied.stdout), (code, b''), denied.stderr)
+            self.assertFalse(plan.exists())
+
+        outcome = preview(witness_token)
+        self.assertEqual(outcome.returncode, 0, outcome.stderr)
+        encoded = plan.read_bytes()
+        digest = hashlib.sha256(encoded).hexdigest()
+        self.assertEqual(outcome.stdout, f'state=previewed-v2\npreview-digest={digest}\n'.encode())
+        self.assertEqual(outcome.stderr, b'')
+        self.assertEqual(plan.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(encoded[-32:], hmac.digest(b'k' * 32, encoded[:-32], 'sha256'))
+        wire = io.BytesIO(encoded[:-32])
+        prefix = b'CDSE-HKX-COPY-PREVIEW-v2\0' + bytes.fromhex(registry + catalog + witness_token + image_digest)
+        self.assertEqual(wire.read(len(prefix)), prefix)
+        planned, tag = wire.read(73), wire.read(32)
+
+        def read_text():
+            return wire.read(wire.read(1)[0]).decode('ascii')
+
+        self.assertEqual(read_text(), self.destination)
+        self.assertEqual(int.from_bytes(wire.read(4), 'big'), len(self.ordered))
+        for lookup, (_, table, row, field) in zip(lookups, self.ordered):
+            self.assertEqual([read_text(), read_text(), int.from_bytes(wire.read(8), 'big'), read_text()],
+                             [lookup, table, row, field])
+        body = wire.read(int.from_bytes(wire.read(4), 'big'))
+        self.assertEqual(wire.read(), b'')
+        snapshot = json.loads(body)
+        self.assertEqual(snapshot['minimumFormat'], 2)
+        self.assertEqual(snapshot['generation'], floor_two['generation'] + 1)
+        self.assertEqual(len(snapshot['entries']), len(floor_two['entries']) + len(lookups))
+        issued_body, issued_tag, issued_anchor = registry_contract.issue(snapshot, b'k' * 32)
+        self.assertEqual((body, tag, planned.hex()), (issued_body, issued_tag, token(issued_anchor)))
+        entries = {entry['lookup']: entry for entry in snapshot['entries']}
+        for entry in floor_two['entries']:
+            self.assertEqual(entries[entry['lookup']], entry)
+        allocated = [entries[lookup]['context'] for lookup in lookups]
+        self.assertEqual(len({item['resource'] for item in allocated}), 1)
+        self.assertNotIn(allocated[0]['resource'], {entry['context']['resource'] for entry in floor_two['entries']})
+
+        duplicate = preview(witness_token)
+        self.assertEqual((duplicate.returncode, duplicate.stdout), (1, b''))
+        for action in ('--status', '--commit'):
+            denied = preview(witness_token, action=action, digest=digest)
+            self.assertEqual((denied.returncode, denied.stdout), (1, b''))
+            direct = self.command(f'copy-plan-{action[2:]}', plan, digest, registry, catalog)
+            self.assertEqual((direct.returncode, direct.stdout), (1, b''))
+        self.assertEqual(plan.read_bytes(), encoded)
+        self.assertEqual((self.authority_files(), registry_file.read_bytes(), witness_file.read_bytes()), before)
 
     def test_supplied_pins_and_original_envelope_are_required(self):
         for options, code in (

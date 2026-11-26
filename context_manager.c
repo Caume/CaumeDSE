@@ -1539,7 +1539,8 @@ done:
 
 static int cmeCopyPrepare(cmeContextManager *manager, const char *sourceName,
     const char *const *lookups, size_t count, const cmeContextAnchor *expected,
-    const cmeContextMapAnchor *catalog, cmeContextMap **copy, cmeContextAnchor *published,
+    const cmeContextMapAnchor *catalog, cmeContextWitness *witness, const cmeContextWitnessAnchor *retained,
+    cmeContextMap **copy, cmeContextAnchor *published,
     unsigned char **snapshot, size_t *snapshotLength, unsigned char snapshotTag[32])
 {
     cmeManagerState state={0};
@@ -1551,6 +1552,7 @@ static int cmeCopyPrepare(cmeContextManager *manager, const char *sourceName,
     sqlite3_stmt *stmt=NULL;
     unsigned char *body=NULL,*added=NULL,tag[32];
     size_t length=0,addedLength=0,i,j;
+    unsigned int requiredFloor=witness ? 2U : 1U;
     int result=1;
     if (expected) { expectedCopy=*expected; expected=&expectedCopy; }
     if (copy) *copy=NULL;
@@ -1565,7 +1567,9 @@ static int cmeCopyPrepare(cmeContextManager *manager, const char *sourceName,
     result=cmeContextManagerMapRead(manager,sourceName,expected,catalog,&source); if (result) goto before;
     result=1;
     if (!source->active || source->blocked || source->role!=4 || source->count!=count) goto before;
-    result=cmeContextManagerMapBind(manager,sourceName,expected,catalog,&binding); if (result) goto before;
+    result=witness ? cmeContextManagerMapBindWitness(manager,witness,retained,sourceName,expected,catalog,&binding) :
+        cmeContextManagerMapBind(manager,sourceName,expected,catalog,&binding);
+    if (result) goto before;
     result=1;
     candidate=calloc(1,sizeof(*candidate)); allocated=calloc(count,sizeof(*allocated));
     if (!candidate || !allocated) goto before;
@@ -1578,7 +1582,7 @@ static int cmeCopyPrepare(cmeContextManager *manager, const char *sourceName,
     if (sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK) goto done;
     result=cmeShuffleCurrent(manager,expected,catalog,&state,&current); if (result) goto done;
     result=1;
-    if (state.anchor.minimumFormat!=1 || state.anchor.generation==UINT64_MAX ||
+    if (state.anchor.minimumFormat!=requiredFloor || state.anchor.generation==UINT64_MAX ||
         sqlite3_prepare_v2(manager->db,"SELECT json_array_length(?1,'$.entries')",-1,&stmt,NULL)!=SQLITE_OK ||
         sqlite3_bind_text(stmt,1,(const char *)state.body,-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_ROW ||
         sqlite3_column_int64(stmt,0)>(sqlite3_int64)(cmeContextRegistryMaxEntries-count)) goto done;
@@ -1595,7 +1599,7 @@ static int cmeCopyPrepare(cmeContextManager *manager, const char *sourceName,
             sqlite3_bind_text(stmt,2,lookups[i],-1,SQLITE_STATIC)!=SQLITE_OK || sqlite3_step(stmt)!=SQLITE_DONE) goto done;
         sqlite3_finalize(stmt); stmt=NULL;
         if (cmeContextBindingLookup(binding,source->slots[i].table,source->slots[i].row,
-            source->slots[i].field,context,&floor) || floor!=1) goto done;
+            source->slots[i].field,context,&floor) || floor!=requiredFloor) goto done;
         if (!i)
         { if (cmeManagerUUID(manager,&state,context,3)) goto done; }
         else memcpy(context->ids[3],allocated[0].ids[3],16);
@@ -1625,6 +1629,7 @@ done:
     sqlite3_finalize(stmt);
     if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
     cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
+    if (!result && witness) result=cmeContextBindingCheckMapped(manager,binding);
     if (!result)
     {
         *published=next; *copy=candidate; candidate=NULL;
@@ -1648,7 +1653,7 @@ int cmeContextManagerCopyProvision(cmeContextManager *manager, const char *sourc
     if (copy) *copy=NULL;
     if (published) memset(published,0,sizeof(*published));
     if (!copy || !published) return(1);
-    result=cmeCopyPrepare(manager,sourceName,lookups,count,expected,catalog,&candidate,&next,&body,&length,tag);
+    result=cmeCopyPrepare(manager,sourceName,lookups,count,expected,catalog,NULL,NULL,&candidate,&next,&body,&length,tag);
     if (!result)
     {
         cmeManagerCheckpoint("copy-before-publish");
@@ -1659,6 +1664,7 @@ int cmeContextManagerCopyProvision(cmeContextManager *manager, const char *sourc
 }
 
 static const unsigned char cmeCopyDomain[]="CDSE-HKX-COPY-v1";
+static const unsigned char cmeCopyPreviewDomain[]="CDSE-HKX-COPY-PREVIEW-v2";
 
 static int cmeCopyText(cmeMapEncoding *encoding, const char *text)
 {
@@ -1666,9 +1672,10 @@ static int cmeCopyText(cmeMapEncoding *encoding, const char *text)
     return(cmeMapNumber(encoding,length,1) || cmeMapAppend(encoding,text,length));
 }
 
-int cmeContextManagerCopyPlanPrepare(cmeContextManager *manager, const char *sourceName,
+static int cmeCopyPlanPrepare(cmeContextManager *manager, const char *sourceName,
     const char *const *lookups, size_t count, const cmeContextAnchor *expected,
-    const cmeContextMapAnchor *catalog, unsigned char **plan, size_t *length, unsigned char digest[32])
+    const cmeContextMapAnchor *catalog, cmeContextWitness *witness, const cmeContextWitnessAnchor *retained,
+    const unsigned char imageDigest[32], int preview, unsigned char **plan, size_t *length, unsigned char digest[32])
 {
     cmeContextMap *copy=NULL;
     cmeContextAnchor next={0};
@@ -1680,14 +1687,19 @@ int cmeContextManagerCopyPlanPrepare(cmeContextManager *manager, const char *sou
     if (plan) *plan=NULL;
     if (length) *length=0;
     if (digest) memset(digest,0,32);
-    if (!plan || !length || !digest || !expected || !catalog || cmeManagerAnchorPack(expected,beforeBytes)) return(1);
-    result=cmeCopyPrepare(manager,sourceName,lookups,count,expected,catalog,&copy,&next,&snapshot,&snapshotLength,tag);
+    if (!plan || !length || !digest || !expected || !catalog || cmeManagerAnchorPack(expected,beforeBytes) ||
+        (preview && (!witness || !retained || !imageDigest || expected->minimumFormat!=2))) return(1);
+    result=cmeCopyPrepare(manager,sourceName,lookups,count,expected,catalog,witness,retained,
+        &copy,&next,&snapshot,&snapshotLength,tag);
     if (result) goto done;
     result=1; encoding.bytes=malloc(cmeContextRegistryMaxBytes);
     if (!encoding.bytes || cmeManagerAnchorPack(&next,nextBytes) ||
-        cmeMapAppend(&encoding,cmeCopyDomain,sizeof(cmeCopyDomain)) ||
+        cmeMapAppend(&encoding,preview ? cmeCopyPreviewDomain : cmeCopyDomain,
+            preview ? sizeof(cmeCopyPreviewDomain) : sizeof(cmeCopyDomain)) ||
         cmeMapAppend(&encoding,beforeBytes,73) || cmeMapNumber(&encoding,catalog->revision,8) ||
-        cmeMapAppend(&encoding,catalog->digest,32) || cmeMapAppend(&encoding,nextBytes,73) ||
+        cmeMapAppend(&encoding,catalog->digest,32) ||
+        (preview && (cmeMapNumber(&encoding,retained->revision,8) || cmeMapAppend(&encoding,retained->digest,32) ||
+            cmeMapAppend(&encoding,imageDigest,32))) || cmeMapAppend(&encoding,nextBytes,73) ||
         cmeMapAppend(&encoding,tag,32) || cmeCopyText(&encoding,sourceName) || cmeMapNumber(&encoding,count,4)) goto done;
     for (i=0;i<count;i++)
         if (cmeCopyText(&encoding,copy->slots[i].lookup) || cmeCopyText(&encoding,copy->slots[i].table) ||
@@ -1703,6 +1715,22 @@ int cmeContextManagerCopyPlanPrepare(cmeContextManager *manager, const char *sou
 done:
     if (result) memset(digest,0,32);
     free(candidate); free(encoding.bytes); free(snapshot); cmeContextMapFree(&copy); return(result);
+}
+
+int cmeContextManagerCopyPlanPrepare(cmeContextManager *manager, const char *sourceName,
+    const char *const *lookups, size_t count, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, unsigned char **plan, size_t *length, unsigned char digest[32])
+{
+    return(cmeCopyPlanPrepare(manager,sourceName,lookups,count,expected,catalog,NULL,NULL,NULL,0,plan,length,digest));
+}
+
+int cmeContextManagerCopyPreviewV2(cmeContextManager *manager, const char *sourceName,
+    const char *const *lookups, size_t count, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, cmeContextWitness *witness, const cmeContextWitnessAnchor *retained,
+    const unsigned char imageDigest[32], unsigned char **plan, size_t *length, unsigned char digest[32])
+{
+    return(cmeCopyPlanPrepare(manager,sourceName,lookups,count,expected,catalog,witness,retained,imageDigest,1,
+        plan,length,digest));
 }
 
 typedef struct
