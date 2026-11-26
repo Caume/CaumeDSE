@@ -4609,3 +4609,47 @@ successor and its tombstone before updating the witness. Retain the returned
 `catalog` and `witness-token` values separately before restarting readers.
 The offline reader refuses the revoked release and both HTTPS modes return
 `503`, including when configured with the successor witness token.
+
+## Floor-2 V2 ColumnFile copy preview (#147 phase 51)
+
+Use an existing floor-2 registry, v5 catalog, and independently retained token
+for the current witness pair. Stop the engine and all export and authority
+writers. Start with the schema-1 `context-copy-plan` approval fields from
+phase 18, set `schema` to `7`, and add these two fields.
+
+- `source` is the absolute canonical path of the private V2 ColumnFile directly
+  inside `export`. Use a closed SQLite image in rollback format with mode `0600`
+  and one link.
+- `sourceDigest` is the independently approved lowercase SHA-256 of that image.
+
+Set `map` to the active source map. Supply one unused destination lookup per
+source slot in the authenticated map's table, row, and field order. Set `plan`
+to a new filename in a separate private directory outside the export,
+registry, and witness. The password file holds 1–256 raw bytes in mode `0600`
+outside those three trees.
+
+```sh
+caumedse-admin context-copy-plan --approval "$approval" --confirmed-offline "$approval" \
+    --registry-key-file "$registry_key" --witness-directory "$witness" \
+    --witness-key-file "$witness_key" --retained-witness-token "$current_token" \
+    --preview-v2 --password-file "$password_file"
+```
+
+The command checks the exact witness and manager pins, verifies the complete
+source inventory, and authenticates every cell against its floor-2 storage
+context before generating tentative destination IDs. It rechecks the authority
+and source file before saving. The signed preview binds the original registry,
+catalog, witness token, source image digest, source map, destination lookups,
+and proposed next registry snapshot. The snapshot retains floor 2 and proposes
+one new resource UUID and fresh record UUIDs grouped by source table and row.
+
+The preview starts with `CDSE-HKX-COPY-PREVIEW-v2` and a NUL byte. It uses
+the phase-17 anchor, slot, and snapshot encodings, with the 40-byte witness
+token and 32-byte image digest between the catalog and proposed registry
+anchors. The manager HMAC covers every preceding byte. `preview-digest` is
+SHA-256 over the whole file, including that HMAC.
+
+Success flushes the private preview and its parent directory, then prints
+`state=previewed-v2` and `preview-digest`. Retain the digest separately. The
+preview is for review. Legacy plan status, commit, and install commands reject
+this format. Publishing a floor-2 copy will require a separate workflow.
