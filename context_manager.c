@@ -1772,6 +1772,7 @@ static int cmeCopyName(cmeCopyCursor *cursor, char **name, int lookup)
    an owner holding the registry key. No file paths or keys are encoded. */
 static int cmeCopyDecode(cmeContextManager *manager, const unsigned char *plan, size_t length,
     const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    const cmeContextCopyPreviewPins *preview,
     cmeContextMap **copy, cmeContextAnchor *next, char **source,
     const unsigned char **snapshot, size_t *snapshotLength, unsigned char snapshotTag[32])
 {
@@ -1779,22 +1780,28 @@ static int cmeCopyDecode(cmeContextManager *manager, const unsigned char *plan, 
     cmeContextMap *candidate=NULL;
     cmeContextRegistry *registry=NULL;
     unsigned char actual[32],tag[32],before[73],encoded[73],after[73];
+    const unsigned char *domain=preview ? cmeCopyPreviewDomain : cmeCopyDomain;
+    size_t domainLength=preview ? sizeof(cmeCopyPreviewDomain) : sizeof(cmeCopyDomain);
+    unsigned int floor=preview ? 2U : 1U;
     uint64_t number;
     size_t i,j;
     unsigned int written;
     int result=1;
     if (!manager || !plan || !digest || !expected || !catalog || !catalog->revision ||
-        length<sizeof(cmeCopyDomain)+73+40+73+32+1+4+4+32 || length>cmeContextCopyPlanMaxBytes ||
-        cmeManagerAnchorPack(expected,before) ||
+        length<domainLength+73+40+73+32+1+4+4+32+(preview ? 72U : 0U) || length>cmeContextCopyPlanMaxBytes ||
+        cmeManagerAnchorPack(expected,before) || expected->minimumFormat!=floor ||
         !EVP_Digest(plan,length,actual,&written,EVP_sha256(),NULL) || written!=32 || CRYPTO_memcmp(actual,digest,32) ||
         !HMAC(EVP_sha256(),manager->key,32,plan,length-32,tag,&written) || written!=32 ||
-        CRYPTO_memcmp(tag,plan+length-32,32) || memcmp(plan,cmeCopyDomain,sizeof(cmeCopyDomain))) return(1);
-    if (cmeCopyTake(&cursor,NULL,sizeof(cmeCopyDomain)) || cmeCopyTake(&cursor,encoded,73) ||
+        CRYPTO_memcmp(tag,plan+length-32,32) || memcmp(plan,domain,domainLength)) return(1);
+    if (cmeCopyTake(&cursor,NULL,domainLength) || cmeCopyTake(&cursor,encoded,73) ||
         CRYPTO_memcmp(before,encoded,73) || cmeCopyNumber(&cursor,8,&number) || number!=catalog->revision ||
         cmeCopyTake(&cursor,actual,32) || CRYPTO_memcmp(actual,catalog->digest,32) ||
+        (preview && (cmeCopyNumber(&cursor,8,&number) || number!=preview->retained->revision ||
+            cmeCopyTake(&cursor,actual,32) || CRYPTO_memcmp(actual,preview->retained->digest,32) ||
+            cmeCopyTake(&cursor,actual,32) || CRYPTO_memcmp(actual,preview->imageDigest,32))) ||
         cmeCopyTake(&cursor,after,73) || cmeManagerAnchorUnpack(after,next) ||
         expected->generation==UINT64_MAX || next->generation!=expected->generation+1 ||
-        expected->minimumFormat!=1 || next->minimumFormat!=1 || memcmp(before,after,32) ||
+        next->minimumFormat!=floor || memcmp(before,after,32) ||
         cmeCopyTake(&cursor,snapshotTag,32) || cmeCopyName(&cursor,source,1) ||
         cmeCopyNumber(&cursor,4,&number) || !number || number>cmeContextRegistryMaxEntries) goto done;
     candidate=calloc(1,sizeof(*candidate));
@@ -1832,6 +1839,15 @@ done:
     cmeContextRegistryFree(&registry); cmeContextMapFree(&candidate); return(result);
 }
 
+static int cmeCopyMatchRequest(const char *source, const cmeContextMap *copy, const char *sourceName,
+    const char *const *lookups, size_t count)
+{
+    size_t i;
+    if (!sourceName || !lookups || strcmp(sourceName,source) || count!=copy->count) return(1);
+    for (i=0;i<count;i++) if (!lookups[i] || strcmp(lookups[i],copy->slots[i].lookup)) return(1);
+    return(0);
+}
+
 int cmeContextManagerCopyPlanMatch(cmeContextManager *manager, const unsigned char *plan,
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, const char *sourceName, const char *const *lookups, size_t count)
@@ -1841,15 +1857,35 @@ int cmeContextManagerCopyPlanMatch(cmeContextManager *manager, const unsigned ch
     char *source=NULL;
     const unsigned char *snapshot=NULL;
     unsigned char tag[32];
-    size_t snapshotLength=0,i;
+    size_t snapshotLength=0;
     int result=1;
     if (!sourceName || !lookups || !count || count>cmeContextRegistryMaxEntries ||
-        cmeCopyDecode(manager,plan,length,digest,expected,catalog,&copy,&next,&source,&snapshot,&snapshotLength,tag)) goto done;
-    if (strcmp(sourceName,source) || count!=copy->count) goto done;
-    for (i=0;i<count;i++) if (!lookups[i] || strcmp(lookups[i],copy->slots[i].lookup)) goto done;
-    result=0;
+        cmeCopyDecode(manager,plan,length,digest,expected,catalog,NULL,&copy,&next,&source,&snapshot,&snapshotLength,tag)) goto done;
+    result=cmeCopyMatchRequest(source,copy,sourceName,lookups,count);
 done:
     free(source); cmeContextMapFree(&copy); return(result);
+}
+
+static int cmeCopyPlanClassify(cmeContextManager *manager, const char *source, const cmeContextAnchor *expected,
+    const cmeContextMapAnchor *catalog, const cmeContextAnchor *next, int *classification)
+{
+    cmeContextMapAnchor current={0};
+    cmeManagerState state={0};
+    int result=1,pending=0;
+    pthread_mutex_lock(&manager->mutex);
+    if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
+        cmeManagerLoad(manager,&state) || cmeMapLoad(manager,&current)) goto done;
+    result=cmeMapMatch(&current,catalog); if (result) goto done;
+    result=1;
+    if (cmeShufflePending(manager,source,&pending) || pending) goto done;
+    if (!cmeManagerCurrentMatch(&state,expected)) *classification=1;
+    else if (!cmeManagerCurrentMatch(&state,next)) *classification=2;
+    else { result=2; goto done; }
+    if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)==SQLITE_OK) result=0;
+done:
+    if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
+    cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
+    return(result);
 }
 
 static int cmeCopyPlanAction(cmeContextManager *manager, const unsigned char *plan, size_t length,
@@ -1857,43 +1893,25 @@ static int cmeCopyPlanAction(cmeContextManager *manager, const unsigned char *pl
     int *status, cmeContextMap **copy, cmeContextAnchor *published, int commit)
 {
     cmeContextAnchor original,next={0};
-    cmeContextMapAnchor current={0};
     cmeContextMap *candidate=NULL;
-    cmeManagerState state={0};
     char *source=NULL;
     const unsigned char *snapshot=NULL;
     unsigned char snapshotTag[32];
     size_t snapshotLength=0;
-    int result=1,pending=0,classification=0;
+    int result=1,classification=0;
     if (expected) { original=*expected; expected=&original; }
     if (status) *status=0;
     if (copy) *copy=NULL;
     if (published) memset(published,0,sizeof(*published));
     if (!copy || !published || !status ||
-        cmeCopyDecode(manager,plan,length,digest,expected,catalog,&candidate,&next,&source,
+        cmeCopyDecode(manager,plan,length,digest,expected,catalog,NULL,&candidate,&next,&source,
             &snapshot,&snapshotLength,snapshotTag)) goto done;
     if (commit)
     {
         result=cmeManagerPublishPinned(manager,snapshot,snapshotLength,snapshotTag,&next,expected,catalog,source,1);
         classification=2;
     }
-    else
-    {
-        pthread_mutex_lock(&manager->mutex);
-        if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
-            cmeManagerLoad(manager,&state) || cmeMapLoad(manager,&current)) goto unlock;
-        result=cmeMapMatch(&current,catalog); if (result) goto unlock;
-        result=1;
-        if (cmeShufflePending(manager,source,&pending) || pending) goto unlock;
-        if (!cmeManagerCurrentMatch(&state,expected)) classification=1;
-        else if (!cmeManagerCurrentMatch(&state,&next)) classification=2;
-        else { result=2; goto unlock; }
-        if (sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)!=SQLITE_OK) goto unlock;
-        result=0;
-unlock:
-        if (!sqlite3_get_autocommit(manager->db)) sqlite3_exec(manager->db,"ROLLBACK",NULL,NULL,NULL);
-        cmeManagerStateFree(&state); pthread_mutex_unlock(&manager->mutex);
-    }
+    else result=cmeCopyPlanClassify(manager,source,expected,catalog,&next,&classification);
     if (!result) { *status=classification; *copy=candidate; candidate=NULL; *published=next; }
 done:
     free(source); cmeContextMapFree(&candidate); return(result);
@@ -1912,6 +1930,62 @@ int cmeContextManagerCopyPlanCommit(cmeContextManager *manager, const unsigned c
 {
     int state=0;
     return(cmeCopyPlanAction(manager,plan,length,digest,expected,catalog,&state,copy,published,1));
+}
+
+int cmeContextManagerCopyPreviewV2Step(cmeContextManager *manager, cmeContextWitness *witness,
+    const unsigned char *plan, size_t length, const unsigned char digest[32],
+    const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    const cmeContextCopyPreviewPins *pins, int commit, int *state, cmeContextAnchor *published)
+{
+    const cmeContextAnchor *currentRegistry;
+    cmeContextAnchor original,next={0};
+    cmeContextMap *candidate=NULL;
+    cmeContextWitnessAnchor current={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    const unsigned char *snapshot=NULL;
+    unsigned char snapshotTag[32];
+    char *source=NULL;
+    size_t snapshotLength=0;
+    int result=1,classification=0,required=0;
+    if (expected) { original=*expected; expected=&original; }
+    if (state) *state=0;
+    if (published) memset(published,0,sizeof(*published));
+    if (!state || !published || !witness || !pins || !pins->retained || !pins->retained->revision ||
+        !pins->imageDigest || (commit!=0 && commit!=1) ||
+        cmeCopyDecode(manager,plan,length,digest,expected,catalog,pins,&candidate,&next,&source,
+            &snapshot,&snapshotLength,snapshotTag) ||
+        cmeCopyMatchRequest(source,candidate,pins->sourceName,pins->lookups,pins->count)) goto done;
+    result=cmeCopyPlanClassify(manager,source,expected,catalog,&next,&classification);
+    if (result) goto done;
+    currentRegistry=classification==1 ? expected : &next;
+    result=cmeContextManagerWitnessRequired(manager,currentRegistry,catalog,&required);
+    if (result) goto done;
+    if (!required) { result=1; goto done; }
+    result=cmeContextWitnessReconcile(witness,pins->retained,currentRegistry,catalog,&recovery,&current);
+    if (result) goto done;
+    if (classification==1 ? recovery!=cmeWitnessRecoveryCurrent :
+        (recovery!=cmeWitnessRecoveryAdvanceRequired && recovery!=cmeWitnessRecoveryAlreadyAdvanced))
+    { result=2; goto done; }
+    if (recovery==cmeWitnessRecoveryAdvanceRequired)
+    {
+        result=cmeContextWitnessCheck(witness,expected,catalog);
+        if (result) goto done;
+    }
+    if (commit && classification==1)
+    {
+        result=cmeManagerPublishPinned(manager,snapshot,snapshotLength,snapshotTag,&next,expected,catalog,source,1);
+        if (result) goto done;
+        classification=2;
+    }
+    else
+    {
+        result=cmeContextManagerCheckAnchors(manager,currentRegistry,catalog);
+        if (result) goto done;
+    }
+    *state=classification; *published=next;
+done:
+    free(source); cmeContextMapFree(&candidate);
+    return(result);
 }
 
 int cmeContextManagerCopyPlanBind(cmeContextManager *manager,
@@ -2028,7 +2102,7 @@ int cmeContextManagerCopyPublicationPrepare(cmeContextManager *manager,
     if (intentDigest) memset(intentDigest,0,32);
     if (!intent || !intentLength || !intentDigest || !requestDigest ||
         cmeManagerName(destinationName,1) || cmeCopyDecode(manager,allocation,allocationLength,
-        allocationDigest,original,catalog,&copy,&next,&source,&snapshot,&snapshotLength,snapshotTag)) goto before;
+        allocationDigest,original,catalog,NULL,&copy,&next,&source,&snapshot,&snapshotLength,snapshotTag)) goto before;
     if (!strcmp(source,destinationName) || cmeManagerAnchorPack(&next,anchor)) goto before;
     pthread_mutex_lock(&manager->mutex);
     if (cmeManagerPrivate(manager) || sqlite3_exec(manager->db,"BEGIN",NULL,NULL,NULL)!=SQLITE_OK ||
@@ -2755,7 +2829,7 @@ int cmeContextManagerCopyInstallPrepare(cmeContextManager *manager,
     result=cmeContextManagerCopyPublicationMatch(manager,allocation,allocationLength,allocationDigest,original,catalog,
         requestDigest,destinationName,intent,intentLength,intentDigest); if (result) goto before;
     result=1;
-    if (cmeCopyDecode(manager,allocation,allocationLength,allocationDigest,original,catalog,&job.target,&job.registry,
+    if (cmeCopyDecode(manager,allocation,allocationLength,allocationDigest,original,catalog,NULL,&job.target,&job.registry,
         &job.sourceName,&snapshot,&snapshotLength,snapshotTag) || !artifacts->sourcePath || !artifacts->stagedPath ||
         !artifacts->resourcesPath || !artifacts->stagedResourcesPath || !strrchr(artifacts->sourcePath,'/') ||
         !strrchr(artifacts->stagedPath,'/') || strlen(artifacts->sourcePath)>=PATH_MAX ||
