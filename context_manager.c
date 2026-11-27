@@ -636,6 +636,8 @@ struct cmeContextBinding
     int mapped; /* 0 raw, 1 stored, 2 floor-1 target, 3 scoped reader, 4 witnessed map, 5 floor-2 target */
     cmeContextWitness *witness; /* Borrowed by witnessed map and floor-2 target. */
     cmeContextWitnessAnchor acknowledged;
+    char *copySource;
+    unsigned char copySourceDigest[32];
     size_t count;
     cmeBoundSlot *slots;
 };
@@ -659,7 +661,7 @@ static int cmeBindingRecordCompare(const void *left, const void *right)
 void cmeContextBindingFree(cmeContextBinding **binding)
 {
     if (!binding || !*binding) return;
-    free((*binding)->slots); free(*binding); *binding=NULL;
+    free((*binding)->copySource); free((*binding)->slots); free(*binding); *binding=NULL;
 }
 
 int cmeContextManagerBind(cmeContextManager *manager, const char *resource,
@@ -2047,12 +2049,33 @@ int cmeContextManagerCopyPreviewV2Bind(cmeContextManager *manager, cmeContextWit
     if (result) goto done;
     candidate->mapped=cmeBindingCopyTargetV2; candidate->mapAnchor=*catalog;
     candidate->witness=witness; candidate->acknowledged=*acknowledged;
+    candidate->copySource=source; source=NULL;
+    memcpy(candidate->copySourceDigest,pins->imageDigest,32);
     result=cmeContextBindingCheckCopyTargetV2(manager,candidate);
     if (result) goto done;
     *binding=candidate; candidate=NULL; *committed=next;
 done:
     free(source); cmeContextMapFree(&copy);
     cmeContextBindingFree(&sourceBinding); cmeContextBindingFree(&candidate);
+    return(result);
+}
+
+int cmeContextManagerCopyV2Source(cmeContextManager *manager, const cmeContextBinding *target,
+    cmeContextMap **map, cmeContextBinding **binding, unsigned char digest[32])
+{
+    int result;
+    if (map) *map=NULL;
+    if (binding) *binding=NULL;
+    if (digest) memset(digest,0,32);
+    if (!map || !binding || !digest) return(1);
+    result=cmeContextBindingCheckCopyTargetV2(manager,target);
+    if (result) return(result);
+    result=cmeContextManagerMapRead(manager,target->copySource,&target->anchor,&target->mapAnchor,map);
+    if (!result) result=cmeContextManagerMapBindWitness(manager,target->witness,&target->acknowledged,
+        target->copySource,&target->anchor,&target->mapAnchor,binding);
+    if (!result) result=cmeContextBindingCheckCopyTargetV2(manager,target);
+    if (result) { cmeContextMapFree(map); cmeContextBindingFree(binding); }
+    else memcpy(digest,target->copySourceDigest,32);
     return(result);
 }
 

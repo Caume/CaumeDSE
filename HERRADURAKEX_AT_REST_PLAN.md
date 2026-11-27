@@ -4722,3 +4722,37 @@ legacy copy, and admission codecs retain their own binding requirements.
 Keep readers and writers stopped during the owner workflow. This phase covers
 the in-memory destination binding and individual cells. Whole-image copy,
 publication, and registration remain pending.
+
+## Witnessed floor-2 V2 image staging (#147 phase 54)
+
+Use the original schema-7 approval and retained preview from phase 51, the
+original witness token, and the separately retained current token from phase
+52. Stop the engine and authority and export readers and writers. Supply the
+original pinned source image and private files with the source and destination
+passwords. Each file holds 1–256 raw bytes and lives outside the export,
+registry, and witness. Choose a new filename in a private `0700` directory
+outside those three trees.
+
+```bash
+caumedse-admin context-copy-plan "${owner_args[@]}" \
+    --stage-v2 --plan-digest "$preview_digest" --current-witness-token "$current_token" \
+    --password-file "$source_password_file" --target-password-file "$target_password_file" \
+    --output-image "$staged_image"
+```
+
+The target binding resolves the approved source map and image digest. The
+command authenticates the complete source inventory and every cell, then seals
+each data and metadata cell with fresh entropy under its allocated destination
+context. It opens the serialized copy and compares every plaintext before
+staging. The staging file contains the existing V2 container header, salts,
+and encrypted frames.
+
+The command verifies the private staging file and rechecks source custody and
+current authority before moving it to the requested absent name. It uses the
+existing Linux no-replace rename and directory sync. Success prints
+`state=staged-v2` and `image-digest`. Retain the digest separately. A retry
+refuses an existing destination, including a complete image left after lost
+stdout. Keep uncertain files for inspection and use a new path to restage.
+
+The source, registry, catalog, witness, and registrations remain as they were.
+Publication and registration of the staged image require a later workflow.

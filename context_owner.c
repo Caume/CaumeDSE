@@ -1201,6 +1201,12 @@ static int cmeCopyOwnerOpenV2Source(const cmeOwnerApproval *approval, cmeOffline
         CRYPTO_memcmp(source->digest,approval->source,32) || cmeCopyOwnerCheckV2Source(approval,source));
 }
 
+static int cmeCopyOwnerOutsideV2(const cmeOwnerApproval *approval, const char *path)
+{
+    return(cmeOwnerOutside(approval->values[1],path) && cmeOwnerOutside(approval->values[12],path) &&
+        cmeOwnerOutside(approval->values[7],path));
+}
+
 static int cmeCopyOwnerPreviewV2(cmeContextManager *manager, cmeContextWitness *witness,
     const cmeContextWitnessAnchor *retained, const cmeOwnerApproval *approval, const char *const *lookups,
     const char *passwordFile, cmeOfflineArtifact *destination)
@@ -1214,8 +1220,7 @@ static int cmeCopyOwnerPreviewV2(cmeContextManager *manager, cmeContextWitness *
     size_t imageLength=0,passwordLength=0,planLength=0;
     int result=1;
 
-    if (!cmeOwnerOutside(approval->values[1],passwordFile) || !cmeOwnerOutside(approval->values[12],passwordFile) ||
-        !cmeOwnerOutside(approval->values[7],passwordFile) || cmeOfflineAbsent(destination) || signal(SIGPIPE,SIG_IGN)==SIG_ERR) goto done;
+    if (!cmeCopyOwnerOutsideV2(approval,passwordFile) || cmeOfflineAbsent(destination) || signal(SIGPIPE,SIG_IGN)==SIG_ERR) goto done;
     result=cmeContextManagerMapBindWitness(manager,witness,retained,approval->values[4],&approval->registry,
         &approval->catalog,&binding);
     if (result) goto done;
@@ -1245,6 +1250,81 @@ done:
     free(password); free(image); free(plan);
     cmeContextColumnStageFree(&stage); cmeContextMapFree(&map); cmeContextBindingFree(&binding);
     cmeOfflineClose(&source);
+    return(result);
+}
+
+static int cmeCopyOwnerSaveV2Image(cmeContextManager *manager, const cmeContextBinding *target,
+    const cmeOwnerApproval *approval, const cmeOfflineArtifact *source, cmeOfflineArtifact *destination,
+    const char *path, const cmeContextV2Buffer *image, const unsigned char digest[32])
+{
+    cmeOfflineArtifact temporary={.file=-1,.directory=-1},staged={.file=-1,.directory=-1};
+    cmeOfflineArtifact saved={.file=-1,.directory=-1};
+    char directory[PATH_MAX],stagedPath[PATH_MAX];
+    const char *slash=strrchr(path,'/');
+    int used,result=1;
+
+    used=snprintf(directory,sizeof(directory),"%.*s/.cdse-image-XXXXXX",(int)(slash-path),path);
+    if (used<0 || (size_t)used+sizeof("/ColumnFile")>sizeof(stagedPath) || !mkdtemp(directory)) return(1);
+    memcpy(stagedPath,directory,(size_t)used);
+    memcpy(stagedPath+used,"/ColumnFile",sizeof("/ColumnFile"));
+    if (cmeOfflineOpen(stagedPath,0,&temporary) || cmeOwnerSave(&temporary,stagedPath,image->bytes,image->length) ||
+        cmeOfflineOpen(stagedPath,1,&staged) || CRYPTO_memcmp(staged.digest,digest,32) ||
+        cmeCopyOwnerCheckV2Source(approval,source)) goto done;
+    result=cmeContextBindingCheckCopyTargetV2(manager,target);
+    if (result) goto done;
+    result=1;
+    if (cmeOfflineCreate(destination,&staged) || cmeOfflineOpen(path,1,&saved) ||
+        saved.parent.st_dev!=destination->parent.st_dev || saved.parent.st_ino!=destination->parent.st_ino ||
+        saved.status.st_dev!=staged.status.st_dev || saved.status.st_ino!=staged.status.st_ino ||
+        CRYPTO_memcmp(saved.digest,digest,32)) goto done;
+    result=cmeContextBindingCheckCopyTargetV2(manager,target);
+done:
+    if (temporary.directory>=0 && unlinkat(temporary.directory,temporary.name,0) && errno!=ENOENT) result=1;
+    cmeOfflineClose(&temporary); cmeOfflineClose(&staged); cmeOfflineClose(&saved);
+    if (rmdir(directory) || fsync(destination->directory)) result=1;
+    return(result);
+}
+
+static int cmeCopyOwnerStageV2(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *retained, const cmeContextWitnessAnchor *current, const cmeOwnerApproval *approval,
+    const char *const *lookups, const unsigned char planDigest[32], const char *passwordFile,
+    const char *targetPasswordFile, const char *outputPath)
+{
+    cmeContextCopyPreviewPins pins={approval->values[4],lookups,approval->count,approval->source,retained};
+    cmeOfflineArtifact source={.file=-1,.directory=-1},destination={.file=-1,.directory=-1};
+    cmeContextBinding *target=NULL;
+    cmeContextAnchor committed={0};
+    cmeContextV2Buffer image={0};
+    char *plan=NULL,*bytes=NULL,*password=NULL,*targetPassword=NULL;
+    size_t planLength=0,length=0,passwordLength=0,targetPasswordLength=0;
+    unsigned char digest[32];
+    int result=1;
+
+    if (signal(SIGPIPE,SIG_IGN)==SIG_ERR || !cmeCopyOwnerOutsideV2(approval,passwordFile) ||
+        !cmeCopyOwnerOutsideV2(approval,targetPasswordFile) || !cmeCopyOwnerOutsideV2(approval,outputPath) ||
+        cmeOfflineOpen(outputPath,0,&destination) || cmeOfflineAbsent(&destination) ||
+        cmeOfflineReadPrivate(approval->values[8],cmeContextCopyPlanMaxBytes,&plan,&planLength,cmeOfflineDurableBinaryFile)) goto done;
+    result=cmeContextManagerCopyPreviewV2Bind(manager,witness,current,(const unsigned char *)plan,planLength,
+        planDigest,&approval->registry,&approval->catalog,&pins,&target,&committed);
+    if (result) goto done;
+    result=1;
+    if (cmeCopyOwnerOpenV2Source(approval,&source) ||
+        cmeOfflineReadPrivate(approval->values[13],cmeContextColumnMaxImageBytes,&bytes,&length,cmeOfflineBinaryFile) ||
+        cmeOfflineReadPrivate(passwordFile,256,&password,&passwordLength,cmeOfflineBinaryFile) ||
+        cmeOfflineReadPrivate(targetPasswordFile,256,&targetPassword,&targetPasswordLength,cmeOfflineBinaryFile)) goto done;
+    result=cmeContextColumnCopyV2Image(manager,target,(const unsigned char *)bytes,length,
+        (const unsigned char *)password,passwordLength,(const unsigned char *)targetPassword,targetPasswordLength,&image,digest);
+    if (result) goto done;
+    result=cmeCopyOwnerSaveV2Image(manager,target,approval,&source,&destination,outputPath,&image,digest);
+    if (result) goto done;
+    fputs("state=staged-v2\nimage-digest=",stdout); cmeOwnerPrint(digest,32); putchar('\n');
+    if (fflush(stdout) || ferror(stdout)) result=1;
+done:
+    if (password) OPENSSL_cleanse(password,passwordLength);
+    if (targetPassword) OPENSSL_cleanse(targetPassword,targetPasswordLength);
+    free(password); free(targetPassword); free(bytes); free(plan);
+    cmeContextV2BufferFree(&image); cmeContextBindingFree(&target);
+    cmeOfflineClose(&source); cmeOfflineClose(&destination);
     return(result);
 }
 
@@ -1335,7 +1415,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     const char *manifest=NULL,*keyFile=NULL,*witnessFile=NULL,*witnessDirectory=NULL,*confirmation=NULL;
     const char *token=NULL,*digestText=NULL,*approvedRegistry=NULL,*action=NULL;
     const char *orgFile=NULL,*publicationDigestText=NULL,*currentRegistryText=NULL,*currentCatalogText=NULL;
-    const char *passwordFile=NULL,*currentWitnessText=NULL;
+    const char *passwordFile=NULL,*currentWitnessText=NULL,*targetPasswordFile=NULL,*outputImage=NULL;
     const char **lookups=NULL;
     char *body=NULL,*keyText=NULL,*witnessText=NULL,*planText=NULL,*orgText=NULL,*intentText=NULL;
     FILE *output=NULL,*diagnostics=NULL;
@@ -1343,7 +1423,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     unsigned char publicationDigest[32],requestDigest[32],*intent=NULL;
     size_t length=0,i,intentLength=0;
     int result=1,state=0,prepare=0,advance=0,check=0,registered=0,export=0,destination=0;
-    int publication=0,publicationPrepare=0,installPrepare=0,installInit=0,installRecovery=0,preview=0,v2Step=0,bind=0;
+    int publication=0,publicationPrepare=0,installPrepare=0,installInit=0,installRecovery=0,preview=0,v2Step=0,bind=0,stage=0;
     if (argc==3 && !strcmp(argv[2],"--help"))
     {
         puts("Usage: caumedse-admin context-copy-plan --approval FILE --confirmed-offline APPROVAL_REALPATH\n"
@@ -1365,6 +1445,8 @@ static int cmeCopyOwnerMain(int argc, char **argv)
              "  Schema 7: --status-v2 | --commit-v2 | --advance-v2-witness, with --plan-digest SHA256\n"
              "  Advance v2 witness only: --approved-registry PLANNED_NEXT_REGISTRY_TOKEN\n"
              "  Schema 7: --bind-v2 --plan-digest SHA256 --current-witness-token TOKEN\n"
+             "  Schema 7: --stage-v2 --plan-digest SHA256 --current-witness-token TOKEN\n"
+             "    --password-file SOURCE_FILE --target-password-file TARGET_FILE --output-image NEW_FILE\n"
              "Private schema-1 approval, original pins, independently retained digest/token.\n"
              "Prepare exclusively creates and syncs the plan, never overwrites or allocates IDs.\n"
              "Stop all readers/writers. Retain uncertain files; never reset/blindly regenerate.\n"
@@ -1384,7 +1466,8 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     {
         const char **option=NULL;
         if (!strcmp(argv[i],"--prepare") || !strcmp(argv[i],"--preview-v2") || !strcmp(argv[i],"--status-v2") ||
-            !strcmp(argv[i],"--commit-v2") || !strcmp(argv[i],"--advance-v2-witness") || !strcmp(argv[i],"--bind-v2") || !strcmp(argv[i],"--status") ||
+            !strcmp(argv[i],"--commit-v2") || !strcmp(argv[i],"--advance-v2-witness") || !strcmp(argv[i],"--bind-v2") ||
+            !strcmp(argv[i],"--stage-v2") || !strcmp(argv[i],"--status") ||
             !strcmp(argv[i],"--commit") || !strcmp(argv[i],"--advance-witness") || !strcmp(argv[i],"--check-candidate") ||
             !strcmp(argv[i],"--check-registration") || !strcmp(argv[i],"--check-export") ||
             !strcmp(argv[i],"--check-destination") || !strcmp(argv[i],"--prepare-publication") || !strcmp(argv[i],"--publication-status") ||
@@ -1403,6 +1486,8 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         else if (!strcmp(argv[i],"--approved-registry")) option=&approvedRegistry;
         else if (!strcmp(argv[i],"--org-key-file")) option=&orgFile;
         else if (!strcmp(argv[i],"--password-file")) option=&passwordFile;
+        else if (!strcmp(argv[i],"--target-password-file")) option=&targetPasswordFile;
+        else if (!strcmp(argv[i],"--output-image")) option=&outputImage;
         else if (!strcmp(argv[i],"--publication-digest")) option=&publicationDigestText;
         else if (!strcmp(argv[i],"--current-registry")) option=&currentRegistryText;
         else if (!strcmp(argv[i],"--current-catalog")) option=&currentCatalogText;
@@ -1422,9 +1507,11 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     prepare=!strcmp(action,"--prepare"); advance=!strcmp(action,"--advance-witness") || !strcmp(action,"--advance-v2-witness");
     preview=!strcmp(action,"--preview-v2");
     bind=!strcmp(action,"--bind-v2");
-    v2Step=bind || !strcmp(action,"--status-v2") || !strcmp(action,"--commit-v2") || !strcmp(action,"--advance-v2-witness");
+    stage=!strcmp(action,"--stage-v2");
+    v2Step=bind || stage || !strcmp(action,"--status-v2") || !strcmp(action,"--commit-v2") || !strcmp(action,"--advance-v2-witness");
     if ((preview || v2Step) && (approval.schema!=7 || orgFile)) goto done;
-    if (preview!=!!passwordFile || bind!=!!currentWitnessText) goto done;
+    if ((preview || stage)!=!!passwordFile || (bind || stage)!=!!currentWitnessText ||
+        stage!=!!targetPasswordFile || stage!=!!outputImage) goto done;
     publicationPrepare=!strcmp(action,"--prepare-publication");
     publication=publicationPrepare || installPrepare || !strcmp(action,"--publication-status");
     destination=publication || !strcmp(action,"--check-destination"); export=destination || !strcmp(action,"--check-export");
@@ -1442,7 +1529,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         cmeOfflineDecodeHex(token,bytes,40)) goto done;
     for (i=0;i<8;i++) retained.revision=(retained.revision<<8)|bytes[i];
     memcpy(retained.digest,bytes+8,32);
-    if (bind)
+    if (bind || stage)
     {
         if (cmeOfflineDecodeHex(currentWitnessText,bytes,40)) goto done;
         for (i=0;i<8;i++) bindToken.revision=(bindToken.revision<<8)|bytes[i];
@@ -1457,6 +1544,12 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     if (preview)
     {
         result=cmeCopyOwnerPreviewV2(manager,witness,&retained,&approval,lookups,passwordFile,&parent);
+        goto done;
+    }
+    if (stage)
+    {
+        result=cmeCopyOwnerStageV2(manager,witness,&retained,&bindToken,&approval,lookups,digest,
+            passwordFile,targetPasswordFile,outputImage);
         goto done;
     }
     if (v2Step)
