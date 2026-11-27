@@ -77,6 +77,17 @@ int cmeContextColumnStageDeserialize(cmeContextManager *manager, const cmeContex
     const unsigned char *image, size_t length, const unsigned char digest[32],
     const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage);
 
+/* Offline V2-to-V2 copy of the whole image approved by a floor-2 target
+   binding. Authenticate the complete source, seal into the approved destination
+   contexts, then reopen the serialized copy and compare every cell. Passwords
+   are counted binary (1..256 bytes). Returns 0/1/2/3 as the image codec, clears
+   both outputs on failure, and transfers the verified image to the caller on
+   success. Inputs are stable/nonoverlapping; free the image with V2BufferFree.
+   No file, registry, catalog or witness writes. Quiesce readers and writers. */
+int cmeContextColumnCopyV2Image(cmeContextManager *manager, const cmeContextBinding *target,
+    const unsigned char *source, size_t length, const unsigned char *sourcePassword, size_t sourcePasswordLength,
+    const unsigned char *targetPassword, size_t targetPasswordLength, cmeContextV2Buffer *image, unsigned char digest[32]);
+
 typedef struct
 {
     const char *sourceProfile,*destinationMap;

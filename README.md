@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.54.0
+# Caume Data Security Engine (CaumeDSE) version 2.55.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2940,6 +2940,8 @@ advance the witness.
 Use the [floor-2 target binding](HERRADURAKEX_AT_REST_PLAN.md#witnessed-floor-2-copy-target-binding-147-phase-53)
 to verify the acknowledged allocation and open its destination contexts for
 in-memory V2 cell encryption and decryption.
+Use [floor-2 image staging](HERRADURAKEX_AT_REST_PLAN.md#witnessed-floor-2-v2-image-staging-147-phase-54)
+to save a checked V2 copy under the allocated destination contexts.
 Its optional [schema-2 candidate check](HERRADURAKEX_AT_REST_PLAN.md#legacy-copy-candidate-preflight-147-phase-19)
 verifies complete selected ColumnFile cell coverage and a distinct byte-exact
 legacy candidate under current plan/witness approval. It publishes nothing and

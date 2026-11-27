@@ -99,10 +99,28 @@ static uint32_t cmeColumnImageU32(const unsigned char *bytes)
     return(((uint32_t)bytes[0]<<24)|((uint32_t)bytes[1]<<16)|((uint32_t)bytes[2]<<8)|bytes[3]);
 }
 
+typedef enum { cmeImageAdmission, cmeImageMapped, cmeImageFloor2Target } cmeColumnImageBindingMode;
+
+static int cmeColumnImageBindingCheck(cmeContextManager *manager, const cmeContextBinding *binding,
+    cmeColumnImageBindingMode mode)
+{
+    if (mode==cmeImageMapped) return(cmeContextBindingCheckMapped(manager,binding));
+    if (mode==cmeImageFloor2Target) return(cmeContextBindingCheckCopyTargetV2(manager,binding));
+    return(cmeContextBindingCheckAdmission(manager,binding));
+}
+
+static void cmeColumnImagePlainFree(cmeContextV2Buffer *plain, size_t count)
+{
+    size_t i;
+    if (!plain) return;
+    for (i=0;i<count;i++) cmeContextV2BufferFree(&plain[i]);
+    free(plain);
+}
+
 static int cmeColumnDeserialize(cmeContextManager *manager, const cmeContextCopyTarget *target,
-    const cmeContextBinding *admissionBinding, const cmeContextMap *admissionMap, int mapped,
+    const cmeContextBinding *inputBinding, const cmeContextMap *inputMap, cmeColumnImageBindingMode mode,
     const unsigned char *image, size_t length, const unsigned char digest[32],
-    const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage)
+    const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage, cmeContextV2Buffer **plaintext)
 {
     cmeContextMap *map=NULL;
     cmeContextBinding *binding=NULL;
@@ -117,12 +135,14 @@ static int cmeColumnDeserialize(cmeContextManager *manager, const cmeContextCopy
     size_t i,total=0,plainTotal=0;
     int result=1,step;
     if (stage) *stage=NULL;
-    if (!stage || !manager || (!target && (!admissionBinding || !admissionMap)) || (target && (admissionBinding || admissionMap)) || !image || length<4096 || length>cmeContextColumnMaxImageBytes ||
+    if (plaintext) *plaintext=NULL;
+    if (!stage || !manager || (!target && (!inputBinding || !inputMap)) || (target && (inputBinding || inputMap)) ||
+        !image || length<4096 || length>cmeContextColumnMaxImageBytes ||
         !digest || !password || !passwordLength || passwordLength>256) goto done;
     if (target) result=cmeContextCopyTargetSource(manager,target,&map,&binding);
-    else result=mapped ? cmeContextBindingCheckMapped(manager,admissionBinding) : cmeContextBindingCheckAdmission(manager,admissionBinding);
+    else result=cmeColumnImageBindingCheck(manager,inputBinding,mode);
     if (result) goto done;
-    inventory=target ? map : admissionMap;
+    inventory=target ? map : inputMap;
     result=1;
     if (cmeColumnImageInventory(inventory,&slots) || !(copy=sqlite3_malloc64(length))) goto done;
     memcpy(copy,image,length);
@@ -182,25 +202,27 @@ static int cmeColumnDeserialize(cmeContextManager *manager, const cmeContextCopy
     for (i=0;i<inventory->count;i++)
     {
         cmeContextColumnCell *cell=&candidate->cells[i];
-        result=target ? cmeContextV2OpenCopyTarget(manager,target,cell->table,cell->row,cell->field,password,passwordLength,
-            cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]) :
-            (mapped ? cmeContextV2Open(manager,admissionBinding,cell->table,cell->row,cell->field,password,passwordLength,
-                cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]) :
-            cmeContextV2OpenAdmissionBinding(manager,admissionBinding,cell->table,cell->row,cell->field,password,passwordLength,
-                cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]));
+        if (target) result=cmeContextV2OpenCopyTarget(manager,target,cell->table,cell->row,cell->field,password,passwordLength,
+            cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]);
+        else if (mode==cmeImageMapped) result=cmeContextV2Open(manager,inputBinding,cell->table,cell->row,cell->field,
+            password,passwordLength,cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]);
+        else if (mode==cmeImageFloor2Target) result=cmeContextV2OpenCopyTargetV2(manager,inputBinding,cell->table,cell->row,cell->field,
+            password,passwordLength,cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]);
+        else result=cmeContextV2OpenAdmissionBinding(manager,inputBinding,cell->table,cell->row,cell->field,password,passwordLength,
+            cell->salt,cell->frame.bytes,cell->frame.length,&plain[i]);
         if (result) goto done;
         result=1;
         if (memchr(plain[i].bytes,0,plain[i].length) || (plainTotal+=plain[i].length+1)>cmeContextColumnMaxBytes) goto done;
     }
     if (cmeColumnImagePlain(candidate,plain)) goto done;
-    result=target ? cmeContextBindingCheckMapped(manager,binding) : (mapped ? cmeContextBindingCheckMapped(manager,admissionBinding) :
-        cmeContextBindingCheckAdmission(manager,admissionBinding));
+    result=target ? cmeContextBindingCheckMapped(manager,binding) : cmeColumnImageBindingCheck(manager,inputBinding,mode);
     if (result) goto done;
     if (target) { result=cmeContextCopyTargetCheck(manager,target); if (result) goto done; }
     *stage=candidate; candidate=NULL;
+    if (plaintext) { *plaintext=plain; plain=NULL; }
 done:
-    if (plain) for (i=0;i<inventory->count;i++) cmeContextV2BufferFree(&plain[i]);
-    free(plain); cmeContextColumnStageFree(&candidate); free(slots);
+    if (plain) cmeColumnImagePlainFree(plain,inventory->count);
+    cmeContextColumnStageFree(&candidate); free(slots);
     cmeContextBindingFree(&binding); cmeContextMapFree(&map); sqlite3_finalize(stmt); sqlite3_close(db);
     if (copy) OPENSSL_cleanse(copy,length);
     sqlite3_free(copy); OPENSSL_cleanse(actual,sizeof(actual)); return(result);
@@ -210,7 +232,7 @@ int cmeContextColumnStageDeserialize(cmeContextManager *manager, const cmeContex
     const unsigned char *image, size_t length, const unsigned char digest[32],
     const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage)
 {
-    return(cmeColumnDeserialize(manager,target,NULL,NULL,0,image,length,digest,password,passwordLength,stage));
+    return(cmeColumnDeserialize(manager,target,NULL,NULL,cmeImageAdmission,image,length,digest,password,passwordLength,stage,NULL));
 }
 
 int cmeColumnStageDeserializeAdmission(cmeContextManager *manager, const cmeContextBinding *binding,
@@ -221,24 +243,20 @@ int cmeColumnStageDeserializeAdmission(cmeContextManager *manager, const cmeCont
     if (stage) *stage=NULL;
     if (!map || !stage) return(1);
     view=*map; view.blocked=0; /* Only a validated type-3 binding authorizes this inventory. */
-    return(cmeColumnDeserialize(manager,NULL,binding,&view,0,image,length,digest,password,passwordLength,stage));
+    return(cmeColumnDeserialize(manager,NULL,binding,&view,cmeImageAdmission,image,length,digest,password,passwordLength,stage,NULL));
 }
 
 int cmeColumnStageDeserializeMapped(cmeContextManager *manager, const cmeContextBinding *binding,
     const cmeContextMap *map, const unsigned char *image, size_t length, const unsigned char digest[32],
     const unsigned char *password, size_t passwordLength, cmeContextColumnStage **stage)
 {
-    return(cmeColumnDeserialize(manager,NULL,binding,map,1,image,length,digest,password,passwordLength,stage));
+    return(cmeColumnDeserialize(manager,NULL,binding,map,cmeImageMapped,image,length,digest,password,passwordLength,stage,NULL));
 }
 
-int cmeContextColumnStageSerialize(cmeContextManager *manager, const cmeContextCopyTarget *target,
-    const cmeContextColumnStage *stage, const unsigned char *password, size_t passwordLength,
+static int cmeColumnSerialize(const cmeContextMap *map, const cmeContextColumnStage *stage,
     cmeContextV2Buffer *image, unsigned char digest[32])
 {
-    cmeContextMap *map=NULL;
-    cmeContextBinding *binding=NULL;
     const cmeContextSlot **slots=NULL;
-    cmeContextColumnStage *check=NULL;
     cmeContextV2Buffer candidate={0};
     sqlite3 *db=NULL;
     sqlite3_stmt *stmt=NULL;
@@ -247,11 +265,6 @@ int cmeContextColumnStageSerialize(cmeContextManager *manager, const cmeContextC
     unsigned int written=0;
     size_t i,total=0;
     int result=1;
-    if (image) memset(image,0,sizeof(*image));
-    if (digest) memset(digest,0,32);
-    if (!image || !digest || !manager || !target || !stage || !password || !passwordLength || passwordLength>256) goto done;
-    result=cmeContextCopyTargetSource(manager,target,&map,&binding); if (result) goto done;
-    result=1;
     if (stage->count!=map->count || cmeColumnImageInventory(map,&slots)) goto done;
     for (i=0;i<stage->count;i++)
     {
@@ -283,16 +296,84 @@ int cmeContextColumnStageSerialize(cmeContextManager *manager, const cmeContextC
         length<4096 || length>cmeContextColumnMaxImageBytes || !(candidate.bytes=malloc((size_t)length+1))) goto done;
     candidate.length=length; memcpy(candidate.bytes,serialized,length); candidate.bytes[length]=0;
     if (!EVP_Digest(candidate.bytes,candidate.length,actual,&written,EVP_sha256(),NULL) || written!=32) goto done;
+    *image=candidate; memset(&candidate,0,sizeof(candidate)); memcpy(digest,actual,32); result=0;
+done:
+    cmeContextV2BufferFree(&candidate); free(slots); sqlite3_finalize(stmt); sqlite3_close(db);
+    if (serialized) OPENSSL_cleanse(serialized,length);
+    sqlite3_free(serialized); OPENSSL_cleanse(actual,sizeof(actual)); return(result);
+}
+
+int cmeContextColumnStageSerialize(cmeContextManager *manager, const cmeContextCopyTarget *target,
+    const cmeContextColumnStage *stage, const unsigned char *password, size_t passwordLength,
+    cmeContextV2Buffer *image, unsigned char digest[32])
+{
+    cmeContextMap *map=NULL;
+    cmeContextBinding *binding=NULL;
+    cmeContextColumnStage *check=NULL;
+    cmeContextV2Buffer candidate={0};
+    unsigned char actual[32];
+    int result=1;
+    if (image) memset(image,0,sizeof(*image));
+    if (digest) memset(digest,0,32);
+    if (!image || !digest || !manager || !target || !stage || !password || !passwordLength || passwordLength>256) goto done;
+    result=cmeContextCopyTargetSource(manager,target,&map,&binding); if (result) goto done;
+    result=cmeColumnSerialize(map,stage,&candidate,actual); if (result) goto done;
     result=cmeContextColumnStageDeserialize(manager,target,candidate.bytes,candidate.length,actual,password,passwordLength,&check);
     if (result) goto done;
     result=cmeContextBindingCheckMapped(manager,binding); if (result) goto done;
     result=cmeContextCopyTargetCheck(manager,target); if (result) goto done;
     *image=candidate; memset(&candidate,0,sizeof(candidate)); memcpy(digest,actual,32);
 done:
-    cmeContextColumnStageFree(&check); cmeContextV2BufferFree(&candidate); free(slots);
-    cmeContextBindingFree(&binding); cmeContextMapFree(&map); sqlite3_finalize(stmt); sqlite3_close(db);
-    if (serialized) OPENSSL_cleanse(serialized,length);
-    sqlite3_free(serialized); OPENSSL_cleanse(actual,sizeof(actual)); return(result);
+    cmeContextColumnStageFree(&check); cmeContextV2BufferFree(&candidate);
+    cmeContextBindingFree(&binding); cmeContextMapFree(&map);
+    return(result);
+}
+
+int cmeContextColumnCopyV2Image(cmeContextManager *manager, const cmeContextBinding *target,
+    const unsigned char *source, size_t length, const unsigned char *sourcePassword, size_t sourcePasswordLength,
+    const unsigned char *targetPassword, size_t targetPasswordLength, cmeContextV2Buffer *image, unsigned char digest[32])
+{
+    cmeContextMap *map=NULL;
+    cmeContextBinding *binding=NULL;
+    cmeContextColumnStage *stage=NULL,*readback=NULL;
+    cmeContextV2Buffer *plain=NULL,*copied=NULL,candidate={0};
+    unsigned char sourceDigest[32],actual[32];
+    size_t count=0,i;
+    int result=1;
+
+    if (image) memset(image,0,sizeof(*image));
+    if (digest) memset(digest,0,32);
+    if (!image || !digest || !targetPassword || !targetPasswordLength || targetPasswordLength>256) goto done;
+    result=cmeContextManagerCopyV2Source(manager,target,&map,&binding,sourceDigest);
+    if (result) goto done;
+    count=map->count;
+    result=cmeColumnDeserialize(manager,NULL,binding,map,cmeImageMapped,source,length,sourceDigest,
+        sourcePassword,sourcePasswordLength,&stage,&plain);
+    if (result) goto done;
+    for (i=0;i<count;i++)
+    {
+        cmeContextColumnCell *cell=&stage->cells[i];
+        cmeContextV2BufferFree(&cell->frame);
+        result=cmeContextV2SealCopyTargetV2(manager,target,cell->table,cell->row,cell->field,targetPassword,targetPasswordLength,
+            plain[i].bytes,plain[i].length,&cell->frame,cell->salt);
+        if (result) goto done;
+    }
+    result=cmeColumnSerialize(map,stage,&candidate,actual);
+    if (result) goto done;
+    result=cmeColumnDeserialize(manager,NULL,target,map,cmeImageFloor2Target,candidate.bytes,candidate.length,actual,
+        targetPassword,targetPasswordLength,&readback,&copied);
+    if (result) goto done;
+    result=1;
+    for (i=0;i<count;i++) if (plain[i].length!=copied[i].length ||
+        CRYPTO_memcmp(plain[i].bytes,copied[i].bytes,plain[i].length)) goto done;
+    result=cmeContextBindingCheckMapped(manager,binding); if (result) goto done;
+    result=cmeContextBindingCheckCopyTargetV2(manager,target); if (result) goto done;
+    *image=candidate; memset(&candidate,0,sizeof(candidate)); memcpy(digest,actual,32);
+done:
+    cmeColumnImagePlainFree(plain,count); cmeColumnImagePlainFree(copied,count);
+    cmeContextColumnStageFree(&readback); cmeContextColumnStageFree(&stage); cmeContextV2BufferFree(&candidate);
+    cmeContextBindingFree(&binding); cmeContextMapFree(&map);
+    return(result);
 }
 #else
 int cmeContextColumnStageDeserialize(cmeContextManager *manager, const cmeContextCopyTarget *target,
@@ -328,5 +409,15 @@ int cmeColumnStageDeserializeMapped(cmeContextManager *manager, const cmeContext
     (void)manager; (void)binding; (void)map; (void)image; (void)length; (void)digest; (void)password; (void)passwordLength;
     if (stage) *stage=NULL;
     return(stage ? 3 : 1);
+}
+int cmeContextColumnCopyV2Image(cmeContextManager *manager, const cmeContextBinding *target,
+    const unsigned char *source, size_t length, const unsigned char *sourcePassword, size_t sourcePasswordLength,
+    const unsigned char *targetPassword, size_t targetPasswordLength, cmeContextV2Buffer *image, unsigned char digest[32])
+{
+    (void)manager; (void)target; (void)source; (void)length; (void)sourcePassword; (void)sourcePasswordLength;
+    (void)targetPassword; (void)targetPasswordLength;
+    if (image) memset(image,0,sizeof(*image));
+    if (digest) memset(digest,0,32);
+    return(image && digest ? 3 : 1);
 }
 #endif

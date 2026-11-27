@@ -268,6 +268,11 @@ int cmeContextManagerCopyPreviewV2Bind(cmeContextManager *manager, cmeContextWit
     const cmeContextWitnessAnchor *acknowledged, const unsigned char *plan, size_t length,
     const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
     const cmeContextCopyPreviewPins *pins, cmeContextBinding **binding, cmeContextAnchor *committed);
+/* Resolve only the source approved by the current floor-2 target. Return owned
+   map/binding and the image digest authenticated by its preview. Free both
+   bindings before closing witness. Outputs clear on failure. */
+int cmeContextManagerCopyV2Source(cmeContextManager *manager, const cmeContextBinding *target,
+    cmeContextMap **map, cmeContextBinding **binding, unsigned char digest[32]);
 int cmeContextManagerCopyPlanStatus(cmeContextManager *manager, const unsigned char *plan,
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, int *state, cmeContextMap **copy, cmeContextAnchor *next);
