@@ -637,7 +637,7 @@ struct cmeContextBinding
     cmeContextWitness *witness; /* Borrowed by witnessed map and floor-2 target. */
     cmeContextWitnessAnchor acknowledged;
     char *copySource;
-    unsigned char copySourceDigest[32];
+    unsigned char copySourceDigest[32],copyPlanDigest[32];
     size_t count;
     cmeBoundSlot *slots;
 };
@@ -2051,6 +2051,7 @@ int cmeContextManagerCopyPreviewV2Bind(cmeContextManager *manager, cmeContextWit
     candidate->witness=witness; candidate->acknowledged=*acknowledged;
     candidate->copySource=source; source=NULL;
     memcpy(candidate->copySourceDigest,pins->imageDigest,32);
+    memcpy(candidate->copyPlanDigest,digest,32);
     result=cmeContextBindingCheckCopyTargetV2(manager,candidate);
     if (result) goto done;
     *binding=candidate; candidate=NULL; *committed=next;
@@ -2077,6 +2078,34 @@ int cmeContextManagerCopyV2Source(cmeContextManager *manager, const cmeContextBi
     if (result) { cmeContextMapFree(map); cmeContextBindingFree(binding); }
     else memcpy(digest,target->copySourceDigest,32);
     return(result);
+}
+
+int cmeContextManagerCopyV2ImageReceipt(cmeContextManager *manager, const cmeContextBinding *target,
+    const unsigned char imageDigest[32], unsigned char receipt[cmeContextCopyV2ImageReceiptMaxBytes], size_t *length)
+{
+    static const unsigned char domain[]="CDSE-HKX-FLOOR2-IMAGE-RECEIPT-v1";
+    unsigned char bytes[cmeContextCopyV2ImageReceiptMaxBytes],registry[CME_ANCHOR_BYTES],tag[32];
+    cmeMapEncoding encoded={bytes,0};
+    unsigned int written=0;
+    int result;
+
+    _Static_assert(sizeof(domain)+96+CME_ANCHOR_BYTES+80+32<=sizeof(bytes),"floor-2 receipt bound");
+    if (length) *length=0;
+    if (receipt) memset(receipt,0,cmeContextCopyV2ImageReceiptMaxBytes);
+    if (!receipt || !length || !imageDigest) return(1);
+    result=cmeContextBindingCheckCopyTargetV2(manager,target);
+    if (result) return(result);
+    if (cmeManagerAnchorPack(&target->anchor,registry) || cmeMapAppend(&encoded,domain,sizeof(domain)) ||
+        cmeMapAppend(&encoded,target->copyPlanDigest,32) || cmeMapAppend(&encoded,target->copySourceDigest,32) ||
+        cmeMapAppend(&encoded,imageDigest,32) || cmeMapAppend(&encoded,registry,sizeof(registry)) ||
+        cmeMapNumber(&encoded,target->mapAnchor.revision,8) || cmeMapAppend(&encoded,target->mapAnchor.digest,32) ||
+        cmeMapNumber(&encoded,target->acknowledged.revision,8) || cmeMapAppend(&encoded,target->acknowledged.digest,32) ||
+        !HMAC(EVP_sha256(),manager->key,32,bytes,encoded.length,tag,&written) || written!=32 ||
+        cmeMapAppend(&encoded,tag,32)) return(1);
+    result=cmeContextBindingCheckCopyTargetV2(manager,target);
+    if (result) return(result);
+    memcpy(receipt,bytes,encoded.length); *length=encoded.length;
+    return(0);
 }
 
 int cmeContextManagerCopyPlanBind(cmeContextManager *manager,

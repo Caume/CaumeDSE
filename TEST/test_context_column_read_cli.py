@@ -29,7 +29,8 @@ class CommandTests(unittest.TestCase):
     def test_copy_preview_help_and_incomplete_invocation(self):
         args = [ADMIN, 'context-copy-plan']
         usage = subprocess.run([*args, '--help'], capture_output=True, timeout=30, check=True)
-        for action in ('--preview-v2', '--status-v2', '--commit-v2', '--advance-v2-witness', '--bind-v2', '--stage-v2'):
+        for action in ('--preview-v2', '--status-v2', '--commit-v2', '--advance-v2-witness', '--bind-v2',
+                       '--stage-v2', '--approve-staged-v2', '--verify-staged-v2'):
             self.assertIn(action.encode(), usage.stdout)
             result = subprocess.run([*args, action], capture_output=True, timeout=30)
             self.assertEqual((result.returncode, result.stdout), (1, b''))
@@ -155,23 +156,21 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
 
         def preview(witness_token, *, changes=None, password=self.password_file, action='--preview-v2',
                     digest=None, approved_registry=None, current_token=None, target_password=None,
-                    output_image=None, output=None):
+                    output_image=None, staged_image=None, image_digest=None, image_receipt=None,
+                    receipt_digest=None, output=None):
             manifest.write_text(json.dumps(dict(approval, **(changes or {}))))
             args = [ADMIN, 'context-copy-plan', '--approval', manifest, '--confirmed-offline', manifest,
                     '--registry-key-file', self.registry_key, '--witness-directory', self.witness,
                     '--witness-key-file', self.witness_key, '--retained-witness-token', witness_token, action]
-            if action in ('--preview-v2', '--stage-v2'):
+            if action in ('--preview-v2', '--stage-v2', '--approve-staged-v2', '--verify-staged-v2'):
                 args.extend(['--password-file', password])
-            if target_password:
-                args.extend(['--target-password-file', target_password])
-            if output_image:
-                args.extend(['--output-image', output_image])
-            if digest:
-                args.extend(['--plan-digest', digest])
-            if approved_registry:
-                args.extend(['--approved-registry', approved_registry])
-            if current_token:
-                args.extend(['--current-witness-token', current_token])
+            for option, value in (('target-password-file', target_password), ('output-image', output_image),
+                                  ('plan-digest', digest), ('approved-registry', approved_registry),
+                                  ('current-witness-token', current_token), ('staged-image', staged_image),
+                                  ('image-digest', image_digest), ('image-receipt', image_receipt),
+                                  ('receipt-digest', receipt_digest)):
+                if value is not None:
+                    args.extend([f'--{option}', value])
             result = self.invoke(args) if output is None else subprocess.run(args, stdout=output,
                                                                             stderr=subprocess.PIPE, timeout=90)
             self.assertNotIn(PASSWORD, result.stderr)
@@ -494,6 +493,72 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
         self.assertEqual(list(output.parent.glob('.cdse-image-*')), [])
         self.assertEqual((self.authority_files(), (self.authority / 'registry.sqlite').read_bytes()), authority)
         self.assertEqual(Path(approval['plan']).read_bytes(), preview_bytes)
+        self.check_floor_two_image_receipt(approval, current_token, key, target_password, output, digest,
+                                          run_plan, target_args)
+
+    def check_floor_two_image_receipt(self, approval, current_token, key, target_password, image, image_digest,
+                                     run_plan, target_args):
+        receipt = image.with_name('copy.receipt')
+        authority = self.authority_files(), (self.authority / 'registry.sqlite').read_bytes()
+        image_bytes = image.read_bytes()
+
+        def check(action='--approve-staged-v2', **overrides):
+            options = dict(current_token=current_token, target_password=key, staged_image=image,
+                           image_digest=image_digest, image_receipt=receipt)
+            return run_plan(action, **(options | overrides))
+
+        different = image.with_name('different.sqlite')
+        different.write_bytes(image_bytes)
+        different.chmod(0o600)
+        invalid = self.invoke(target_args('seal', b'different-value', password=target_password))
+        self.assertEqual(invalid.returncode, 0, invalid.stderr)
+        salt, frame = map(bytes.fromhex, invalid.stdout.decode().split())
+        ordinal = next(i + 1 for i, slot in enumerate(self.ordered) if slot[1:] == ['data', 1, 'value'])
+        with closing(sqlite3.connect(different)) as db, db:
+            db.execute('UPDATE cdse_column_v2_cells SET salt=?,frame=? WHERE ordinal=?', (salt, frame, ordinal))
+        different_digest = hashlib.sha256(different.read_bytes()).hexdigest()
+        for options in (
+            {'image_digest': '00' * 32},
+            {'target_password': self.password_file},
+            {'staged_image': different, 'image_digest': different_digest},
+        ):
+            rejected = check(**options)
+            self.assertEqual((rejected.returncode, rejected.stdout), (1, b''), rejected.stderr)
+            self.assertFalse(receipt.exists())
+        missing = check('--verify-staged-v2', receipt_digest='00' * 32)
+        self.assertEqual((missing.returncode, missing.stdout), (1, b''))
+
+        if Path('/dev/full').exists():
+            with open('/dev/full', 'wb') as sink:
+                lost = check(output=sink)
+            self.assertEqual(lost.returncode, 1, lost.stderr)
+        else:
+            self.assertEqual(check().returncode, 0)
+        encoded = receipt.read_bytes()
+        preview_digest = hashlib.sha256(Path(approval['plan']).read_bytes()).hexdigest()
+        body = b'CDSE-HKX-FLOOR2-IMAGE-RECEIPT-v1\0' + bytes.fromhex(
+            preview_digest + approval['sourceDigest'] + image_digest + self.current() + approval['catalog'] + current_token)
+        self.assertEqual(encoded, body + hmac.digest(b'k' * 32, body, 'sha256'))
+        receipt_digest = hashlib.sha256(encoded).hexdigest()
+        self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
+        receipt_inode = receipt.stat().st_ino
+        for result, state in ((check(), 'approved-v2-image'),
+                              (check('--verify-staged-v2', receipt_digest=receipt_digest), 'verified-v2-image')):
+            self.assertEqual((result.returncode, result.stdout, result.stderr),
+                             (0, f'state={state}\nreceipt-digest={receipt_digest}\n'.encode(), b''))
+        forged = self.private('preview-control/forged.receipt', encoded[:-1] + bytes([encoded[-1] ^ 1]))
+        forged_digest = hashlib.sha256(forged.read_bytes()).hexdigest()
+        for rejected in (
+            check('--verify-staged-v2', receipt_digest='00' * 32),
+            check('--verify-staged-v2', receipt_digest=forged_digest, image_receipt=forged),
+            check('--verify-staged-v2', receipt_digest=receipt_digest, staged_image=different,
+                  image_digest=different_digest),
+            check(image_receipt=forged),
+        ):
+            self.assertEqual((rejected.returncode, rejected.stdout), (1, b''), rejected.stderr)
+        self.assertEqual((receipt.read_bytes(), receipt.stat().st_ino), (encoded, receipt_inode))
+        self.assertEqual(image.read_bytes(), image_bytes)
+        self.assertEqual((self.authority_files(), (self.authority / 'registry.sqlite').read_bytes()), authority)
 
     def test_supplied_pins_and_original_envelope_are_required(self):
         for options, code in (
