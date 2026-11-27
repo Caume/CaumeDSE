@@ -1,4 +1,4 @@
-# Caume Data Security Engine (CaumeDSE) version 2.52.0
+# Caume Data Security Engine (CaumeDSE) version 2.53.0
 
 This is the canonical GitHub-compatible Markdown README. The legacy `README` file is kept as a compatibility pointer for tooling and distribution paths that still expect that filename.
 
@@ -2934,6 +2934,9 @@ registry identities only; install actions below publish backing files and maps.
 Use the [floor-2 copy preview](HERRADURAKEX_AT_REST_PLAN.md#floor-2-v2-columnfile-copy-preview-147-phase-51)
 to verify a V2 ColumnFile against its witnessed map and prepare a signed
 allocation preview for owner review.
+Use [floor-2 allocation](HERRADURAKEX_AT_REST_PLAN.md#witnessed-floor-2-copy-allocation-147-phase-52)
+to inspect the preview, commit its exact registry snapshot, and separately
+advance the witness.
 Its optional [schema-2 candidate check](HERRADURAKEX_AT_REST_PLAN.md#legacy-copy-candidate-preflight-147-phase-19)
 verifies complete selected ColumnFile cell coverage and a distinct byte-exact
 legacy candidate under current plan/witness approval. It publishes nothing and

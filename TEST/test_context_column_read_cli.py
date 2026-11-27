@@ -28,9 +28,10 @@ class CommandTests(unittest.TestCase):
     def test_copy_preview_help_and_incomplete_invocation(self):
         args = [ADMIN, 'context-copy-plan']
         usage = subprocess.run([*args, '--help'], capture_output=True, timeout=30, check=True)
-        self.assertIn(b'Schema 7: --preview-v2 --password-file FILE', usage.stdout)
-        result = subprocess.run([*args, '--preview-v2'], capture_output=True, timeout=30)
-        self.assertEqual((result.returncode, result.stdout), (1, b''))
+        for action in ('--preview-v2', '--status-v2', '--commit-v2', '--advance-v2-witness'):
+            self.assertIn(action.encode(), usage.stdout)
+            result = subprocess.run([*args, action], capture_output=True, timeout=30)
+            self.assertEqual((result.returncode, result.stdout), (1, b''))
 
     def test_revoke_help_and_incomplete_invocation(self):
         main = subprocess.run([ADMIN, '--help'], capture_output=True, timeout=30, check=True)
@@ -132,7 +133,7 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
     def test_installed_read_metadata_cbc(self):
         self.read_cell()
 
-    def test_floor_two_copy_preview_authenticates_source_and_preserves_authority(self):
+    def test_floor_two_copy_preview_and_witnessed_allocation(self):
         previous = self.copy_snapshot()
         _, _, anchor = registry_contract.issue(previous, b'k' * 32)
         self.assertEqual(self.current(), token(anchor))
@@ -151,7 +152,8 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
                         catalog=catalog, witness=str(self.witness), export=str(self.published), plan=str(plan),
                         lookups=lookups, source=str(source), sourceDigest=image_digest)
 
-        def preview(witness_token, *, changes=None, password=self.password_file, action='--preview-v2', digest=None):
+        def preview(witness_token, *, changes=None, password=self.password_file, action='--preview-v2',
+                    digest=None, approved_registry=None, output=None):
             manifest.write_text(json.dumps(dict(approval, **(changes or {}))))
             args = [ADMIN, 'context-copy-plan', '--approval', manifest, '--confirmed-offline', manifest,
                     '--registry-key-file', self.registry_key, '--witness-directory', self.witness,
@@ -160,9 +162,12 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
                 args.extend(['--password-file', password])
             if digest:
                 args.extend(['--plan-digest', digest])
-            result = self.invoke(args)
+            if approved_registry:
+                args.extend(['--approved-registry', approved_registry])
+            result = self.invoke(args) if output is None else subprocess.run(args, stdout=output,
+                                                                            stderr=subprocess.PIPE, timeout=90)
             self.assertNotIn(PASSWORD, result.stderr)
-            self.assertNotIn(b'fixture-alpha', result.stdout + result.stderr)
+            self.assertNotIn(b'fixture-alpha', (result.stdout or b'') + result.stderr)
             return result
 
         waiting = preview(self.final_token)
@@ -240,6 +245,93 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
             self.assertEqual((direct.returncode, direct.stdout), (1, b''))
         self.assertEqual(plan.read_bytes(), encoded)
         self.assertEqual((self.authority_files(), registry_file.read_bytes(), witness_file.read_bytes()), before)
+        self.check_floor_two_allocation(preview, approval, witness_token, digest, planned.hex(), snapshot)
+
+    def check_floor_two_allocation(self, run_plan, approval, witness_token, digest, planned, snapshot):
+        registry_file = self.authority / 'registry.sqlite'
+        witness_file = self.witness / 'witness.sqlite'
+        source = Path(approval['source'])
+        image = source.read_bytes()
+        plan = Path(approval['plan'])
+        before = self.authority_files(), registry_file.read_bytes()
+
+        def command(action, **options):
+            pins = dict(digest=digest, witness_token=witness_token, action=action)
+            return run_plan(**(pins | options))
+
+        def accepted(action, **options):
+            result = command(action, **options)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, b'')
+            return dict(line.split('=', 1) for line in result.stdout.decode().splitlines())
+
+        ready = dict(state='ready', registry=planned, catalog=approval['catalog'],
+                     **{'preview-digest': digest, 'witness-state': 'current'})
+        self.assertEqual(accepted('--status-v2'), ready)
+        denied = command('--advance-v2-witness', approved_registry=planned)
+        self.assertEqual((denied.returncode, denied.stdout), (2, b''))
+        bad_plan = self.private('preview-control/changed.preview', plan.read_bytes() + b'\0')
+        for options in (
+            {'digest': '00' * 32},
+            {'witness_token': self.final_token},
+            {'changes': {'map': 'view'}},
+            {'changes': {'lookups': list(reversed(approval['lookups']))}},
+            {'changes': {'sourceDigest': '00' * 32}},
+            {'changes': {'plan': str(bad_plan)}, 'digest': hashlib.sha256(bad_plan.read_bytes()).hexdigest()},
+        ):
+            denied = command('--commit-v2', **options)
+            self.assertEqual((denied.returncode, denied.stdout), (1, b''), denied.stderr)
+        try:
+            source.write_bytes(image[:-1] + bytes([image[-1] ^ 1]))
+            denied = command('--commit-v2')
+            self.assertEqual((denied.returncode, denied.stdout), (1, b''))
+        finally:
+            source.write_bytes(image)
+        self.assertEqual((self.authority_files(), registry_file.read_bytes()), before)
+
+        if Path('/dev/full').exists():
+            with open('/dev/full', 'wb') as output:
+                lost = command('--commit-v2', output=output)
+            self.assertEqual(lost.returncode, 1, lost.stderr)
+        else:
+            accepted('--commit-v2')
+        self.assertEqual(self.copy_snapshot(), snapshot)
+        self.assertEqual(self.current(), planned)
+        self.assertEqual(self.map_current(), approval['catalog'])
+        self.assertEqual(witness_file.read_bytes(), before[0][2])
+        self.assertEqual(self.authority_files()[3], before[0][3])
+        committed = ready | {'state': 'committed', 'witness-state': 'advance-required'}
+        self.assertEqual(accepted('--status-v2'), committed)
+        self.assertNotEqual(registry_file.read_bytes(), before[1])
+        committed_registry = registry_file.read_bytes()
+
+        backup = source.with_suffix('.retained')
+        source.rename(backup)
+        try:
+            self.assertEqual(accepted('--commit-v2'), committed)
+            denied = command('--advance-v2-witness', approved_registry=approval['registry'])
+            self.assertEqual((denied.returncode, denied.stdout), (1, b''))
+            with closing(sqlite3.connect(witness_file)) as db:
+                db.execute('BEGIN IMMEDIATE')
+                denied = command('--advance-v2-witness', approved_registry=planned)
+                self.assertEqual((denied.returncode, denied.stdout), (1, b''))
+                db.rollback()
+            self.assertEqual(witness_file.read_bytes(), before[0][2])
+            self.assertEqual(accepted('--status-v2'), committed)
+            advanced = accepted('--advance-v2-witness', approved_registry=planned)
+            new_token = advanced.pop('witness-token')
+            self.assertEqual(int(new_token[:16], 16), int(witness_token[:16], 16) + 1)
+            self.assertEqual(advanced, ready | {'state': 'witness-advanced'})
+            self.assertEqual(accepted('--advance-v2-witness', approved_registry=planned),
+                             advanced | {'witness-token': new_token})
+            self.assertEqual(accepted('--commit-v2'), committed | {'witness-state': 'already-advanced'})
+        finally:
+            backup.rename(source)
+        self.assertEqual(registry_file.read_bytes(), committed_registry)
+        self.assertEqual(self.authority_files()[3], before[0][3])
+        self.assertNotEqual(witness_file.read_bytes(), before[0][2])
+        checked = self.command('witness-check', planned, approval['catalog'], directory=self.witness)
+        self.assertEqual(checked.returncode, 0, checked.stderr)
 
     def test_supplied_pins_and_original_envelope_are_required(self):
         for options, code in (

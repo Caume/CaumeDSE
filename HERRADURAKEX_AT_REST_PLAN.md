@@ -4653,3 +4653,43 @@ Success flushes the private preview and its parent directory, then prints
 `state=previewed-v2` and `preview-digest`. Retain the digest separately. The
 preview is for review. Legacy plan status, commit, and install commands reject
 this format. Publishing a floor-2 copy will require a separate workflow.
+
+## Witnessed floor-2 copy allocation (#147 phase 52)
+
+Keep the engine and readers and writers of the authority and source stopped.
+Use the original private schema-7 approval, exact preview file, independently
+retained `preview-digest`, and original witness token from phase 51. Supply the
+same authority key files and `--confirmed-offline` path as during preview.
+
+```bash
+caumedse-admin context-copy-plan "${owner_args[@]}" \
+    --plan-digest "$preview_digest" --status-v2
+caumedse-admin context-copy-plan "${owner_args[@]}" \
+    --plan-digest "$preview_digest" --commit-v2
+caumedse-admin context-copy-plan "${owner_args[@]}" \
+    --plan-digest "$preview_digest" --advance-v2-witness --approved-registry "$next_registry"
+```
+
+`--status-v2` authenticates the preview digest and MAC, the original registry
+and catalog pins, current authority, original witness token, and exact source
+map, image digest, and destination lookup vector. It prints the proposed
+`registry` token and reports `ready` or `committed` for the exact pair.
+
+The first `--commit-v2` rechecks the private source file and its pinned image
+digest while the original witness is current. It publishes the exact next
+registry snapshot by compare-and-swap, with floor 2 and the catalog pin
+preserved. The committed `registry` token now identifies the allocated
+destinations. Scope is registry identity allocation. The source map, export
+files, and witness keep their prior state. The new anchor expires bindings
+and releases pinned to the previous registry.
+
+Review the `registry` token before separately supplying it as
+`--approved-registry`. `--advance-v2-witness` checks the exact committed pair
+and prints the current `witness-token` after advancing. Retain that token
+independently for future operations. Retry either command with the original
+approval, preview, digest, and witness token after interrupted work or lost
+output. At the exact committed pair, retries reconcile from the retained
+authority evidence without reading the source image again.
+
+Executing the copy still requires a floor-2 target binding and guarded V2
+re-encryption, followed by publication and registration.

@@ -231,12 +231,31 @@ int cmeContextManagerCopyPlanPrepare(cmeContextManager *manager, const char *sou
 /* Floor-2 preview signer. The caller verifies the image against the witnessed
    map first. This core checks the current v5 binding and signs the supplied
    image digest, witness token, and tentative allocation in a distinct format.
-   The preview has no committing or binding API. Output ownership and error
-   conventions match CopyPlanPrepare. */
+   Output ownership and error conventions match CopyPlanPrepare. */
 int cmeContextManagerCopyPreviewV2(cmeContextManager *manager, const char *sourceName,
     const char *const *lookups, size_t count, const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, cmeContextWitness *witness, const cmeContextWitnessAnchor *retained,
     const unsigned char imageDigest[32], unsigned char **plan, size_t *length, unsigned char digest[32]);
+typedef struct
+{
+    const char *sourceName;
+    const char *const *lookups;
+    size_t count;
+    const unsigned char *imageDigest;
+    const cmeContextWitnessAnchor *retained;
+} cmeContextCopyPreviewPins;
+
+/* Authenticate the exact floor-2 preview, independently retained digest and
+   original pins. Inspect yields state 1 (ready) or 2 (committed). Commit
+   requires the original current witness and publishes only the planned
+   registry generation. Exact retries reconcile the witness at the original or
+   committed pair. The caller rechecks source custody before the first commit
+   and separately approves witness advancement. Quiesce readers and writers.
+   No destination binding or file authority. Clear outputs on failure, 0/1/2. */
+int cmeContextManagerCopyPreviewV2Step(cmeContextManager *manager, cmeContextWitness *witness,
+    const unsigned char *plan, size_t length, const unsigned char digest[32],
+    const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    const cmeContextCopyPreviewPins *pins, int commit, int *state, cmeContextAnchor *next);
 int cmeContextManagerCopyPlanStatus(cmeContextManager *manager, const unsigned char *plan,
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, int *state, cmeContextMap **copy, cmeContextAnchor *next);
