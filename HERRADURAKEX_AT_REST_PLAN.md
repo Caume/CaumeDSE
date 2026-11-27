@@ -4693,3 +4693,32 @@ authority evidence without reading the source image again.
 
 Executing the copy still requires a floor-2 target binding and guarded V2
 re-encryption, followed by publication and registration.
+
+## Witnessed floor-2 copy target binding (#147 phase 53)
+
+Use the phase-52 schema-7 approval, preview, independently retained digest,
+and the original `--retained-witness-token` from preview. Supply the separately
+retained token from `--advance-v2-witness` as `--current-witness-token`.
+
+```bash
+caumedse-admin context-copy-plan "${owner_args[@]}" \
+    --bind-v2 --plan-digest "$preview_digest" --current-witness-token "$current_token"
+```
+
+`--bind-v2` verifies the signed preview and constructs a destination binding
+only at the exact committed floor-2 snapshot with the original catalog.
+It requires an active witnessed source map and the exact acknowledgement of
+the transition from the preview's original witness. On success the command
+reports `state=bound-v2` and frees the in-memory binding before exiting.
+
+In-process callers can use `cmeContextManagerCopyPreviewV2Bind` and then
+`cmeContextV2SealCopyTargetV2` or `cmeContextV2OpenCopyTargetV2` on approved
+slots. The binding owns the destination slot contexts and borrows the witness
+handle. Use `cmeContextBindingFree` before closing the witness. The cell codec
+checks the current registry, catalog, and retained witness before and after
+provider work. A stale or changed authority withholds output. Stored-map,
+legacy copy, and admission codecs retain their own binding requirements.
+
+Keep readers and writers stopped during the owner workflow. This phase covers
+the in-memory destination binding and individual cells. Whole-image copy,
+publication, and registration remain pending.

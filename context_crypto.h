@@ -57,6 +57,16 @@ int cmeContextV2OpenCopyTarget(cmeContextManager *manager, const cmeContextCopyT
     const unsigned char salt[cmeContextV2SaltBytes], const unsigned char *frame, size_t length,
     cmeContextV2Buffer *plaintext);
 
+/* In-memory cell codec for an unpublished floor-2 preview binding. Uses the
+   same frame and buffer contracts as Seal/Open. Requires the distinct binding
+   from CopyPreviewV2Bind and checks authority before and after provider work. */
+int cmeContextV2SealCopyTargetV2(cmeContextManager *manager, const cmeContextBinding *binding,
+    const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
+    const unsigned char *plaintext, size_t length, cmeContextV2Buffer *frame, unsigned char salt[cmeContextV2SaltBytes]);
+int cmeContextV2OpenCopyTargetV2(cmeContextManager *manager, const cmeContextBinding *binding,
+    const char *table, int64_t row, const char *field, const unsigned char *password, size_t passwordLength,
+    const unsigned char salt[cmeContextV2SaltBytes], const unsigned char *frame, size_t length, cmeContextV2Buffer *plaintext);
+
 /* Cleanses the owned bytes (including the allocation's trailing zero), frees,
    and clears the structure. NULL and already-cleared buffers are safe. */
 void cmeContextV2BufferFree(cmeContextV2Buffer *buffer);

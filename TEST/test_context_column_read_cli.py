@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import select
 import sqlite3
 import subprocess
 import unittest
@@ -28,7 +29,7 @@ class CommandTests(unittest.TestCase):
     def test_copy_preview_help_and_incomplete_invocation(self):
         args = [ADMIN, 'context-copy-plan']
         usage = subprocess.run([*args, '--help'], capture_output=True, timeout=30, check=True)
-        for action in ('--preview-v2', '--status-v2', '--commit-v2', '--advance-v2-witness'):
+        for action in ('--preview-v2', '--status-v2', '--commit-v2', '--advance-v2-witness', '--bind-v2'):
             self.assertIn(action.encode(), usage.stdout)
             result = subprocess.run([*args, action], capture_output=True, timeout=30)
             self.assertEqual((result.returncode, result.stdout), (1, b''))
@@ -153,7 +154,7 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
                         lookups=lookups, source=str(source), sourceDigest=image_digest)
 
         def preview(witness_token, *, changes=None, password=self.password_file, action='--preview-v2',
-                    digest=None, approved_registry=None, output=None):
+                    digest=None, approved_registry=None, current_token=None, output=None):
             manifest.write_text(json.dumps(dict(approval, **(changes or {}))))
             args = [ADMIN, 'context-copy-plan', '--approval', manifest, '--confirmed-offline', manifest,
                     '--registry-key-file', self.registry_key, '--witness-directory', self.witness,
@@ -164,6 +165,8 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
                 args.extend(['--plan-digest', digest])
             if approved_registry:
                 args.extend(['--approved-registry', approved_registry])
+            if current_token:
+                args.extend(['--current-witness-token', current_token])
             result = self.invoke(args) if output is None else subprocess.run(args, stdout=output,
                                                                             stderr=subprocess.PIPE, timeout=90)
             self.assertNotIn(PASSWORD, result.stderr)
@@ -268,6 +271,8 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
         ready = dict(state='ready', registry=planned, catalog=approval['catalog'],
                      **{'preview-digest': digest, 'witness-state': 'current'})
         self.assertEqual(accepted('--status-v2'), ready)
+        denied = command('--bind-v2', current_token=witness_token)
+        self.assertEqual((denied.returncode, denied.stdout), (2, b''))
         denied = command('--advance-v2-witness', approved_registry=planned)
         self.assertEqual((denied.returncode, denied.stdout), (2, b''))
         bad_plan = self.private('preview-control/changed.preview', plan.read_bytes() + b'\0')
@@ -318,6 +323,8 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
                 db.rollback()
             self.assertEqual(witness_file.read_bytes(), before[0][2])
             self.assertEqual(accepted('--status-v2'), committed)
+            denied = command('--bind-v2', current_token=witness_token)
+            self.assertEqual((denied.returncode, denied.stdout), (2, b''))
             advanced = accepted('--advance-v2-witness', approved_registry=planned)
             new_token = advanced.pop('witness-token')
             self.assertEqual(int(new_token[:16], 16), int(witness_token[:16], 16) + 1)
@@ -325,6 +332,17 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
             self.assertEqual(accepted('--advance-v2-witness', approved_registry=planned),
                              advanced | {'witness-token': new_token})
             self.assertEqual(accepted('--commit-v2'), committed | {'witness-state': 'already-advanced'})
+            self.assertEqual(accepted('--bind-v2', current_token=new_token), ready | {'state': 'bound-v2'})
+            wrong = new_token[:-1] + ('0' if new_token[-1] != '0' else '1')
+            for supplied in (witness_token, wrong):
+                denied = command('--bind-v2', current_token=supplied)
+                self.assertEqual((denied.returncode, denied.stdout), (2, b''))
+            denied = command('--bind-v2', current_token=new_token, witness_token=self.final_token)
+            self.assertEqual((denied.returncode, denied.stdout), (1, b''))
+            denied = command('--bind-v2')
+            self.assertEqual((denied.returncode, denied.stdout), (1, b''))
+            denied = command('--status-v2', current_token=new_token)
+            self.assertEqual((denied.returncode, denied.stdout), (1, b''))
         finally:
             backup.rename(source)
         self.assertEqual(registry_file.read_bytes(), committed_registry)
@@ -332,6 +350,72 @@ class ReleasedReadCommandTests(released.ReleasedReadTests):
         self.assertNotEqual(witness_file.read_bytes(), before[0][2])
         checked = self.command('witness-check', planned, approval['catalog'], directory=self.witness)
         self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.check_floor_two_target_codec(approval, witness_token, new_token, digest, planned, before[0][2])
+
+    def check_floor_two_target_codec(self, approval, original_token, current_token, digest, planned, old_witness):
+        plan = Path(approval['plan'])
+        registry = self.authority / 'registry.sqlite'
+        witness = self.witness / 'witness.sqlite'
+        files = (registry, witness, plan, Path(approval['source']))
+        before = tuple(path.read_bytes() for path in files)
+
+        def target_args(action, value=b'', *, salt=None, row=1):
+            args = [self.admission_fixture, self.authority, f'target-v2-{action}', self.anchor.deployment,
+                    self.anchor.organization, approval['registry'], approval['catalog'], self.witness,
+                    original_token, plan, digest, approval['map'], approval['sourceDigest'], current_token,
+                    str(len(approval['lookups'])), *approval['lookups']]
+            if action in ('open', 'seal'):
+                args.extend(['data', str(row), 'value', PASSWORD.hex()])
+                if salt is not None:
+                    args.append(salt.hex())
+                args.append(value.hex())
+            return args
+
+        contract = self.invoke(target_args('contract'))
+        self.assertEqual((contract.returncode, contract.stdout, contract.stderr), (0, b'contract\n', b''))
+        plaintext = b'floor-two target fixture\0'
+        sealed = self.invoke(target_args('seal', plaintext))
+        self.assertEqual(sealed.returncode, 0, sealed.stderr)
+        salt, frame = map(bytes.fromhex, sealed.stdout.decode().split())
+        args = target_args('open', frame, salt=salt)
+        opened = self.invoke(args)
+        self.assertEqual((opened.returncode, opened.stdout), (0, plaintext.hex().encode() + b'\n'))
+        wrong_row = self.invoke(target_args('open', frame, salt=salt, row=2))
+        self.assertEqual((wrong_row.returncode, wrong_row.stdout), (1, b''))
+
+        source_args = self.codec_args(token=current_token)
+        source_args[5] = planned
+        original = self.invoke(source_args)
+        self.assertEqual((original.returncode, original.stdout), (0, b'fixture-alpha'.hex().encode() + b'\n'))
+        source_salt, source_frame = map(bytes.fromhex, source_args[-2:])
+        denied = self.invoke(target_args('open', source_frame, salt=source_salt))
+        self.assertEqual((denied.returncode, denied.stdout), (1, b''))
+        denied = self.invoke([*source_args[:-2], salt.hex(), frame.hex()])
+        self.assertEqual((denied.returncode, denied.stdout), (1, b''))
+
+        ready_read, ready_write = os.pipe()
+        resume_read, resume_write = os.pipe()
+        process = None
+        try:
+            env = dict(os.environ, CDSE_CONTEXT_CRYPTO_PAUSE='after-crypto',
+                       CDSE_CONTEXT_CRYPTO_READY_FD=str(ready_write), CDSE_CONTEXT_CRYPTO_RESUME_FD=str(resume_read))
+            process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+                                       pass_fds=(ready_write, resume_read))
+            self.assertTrue(select.select([ready_read], [], [], 90)[0])
+            self.assertEqual(os.read(ready_read, 1), b'1')
+            witness.write_bytes(old_witness)
+            os.write(resume_write, b'1')
+            stdout, stderr = process.communicate(timeout=90)
+            self.assertEqual((process.returncode, stdout), (2, b''), stderr)
+        finally:
+            if process is not None:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+            witness.write_bytes(before[1])
+            for fd in (ready_read, ready_write, resume_read, resume_write):
+                os.close(fd)
+        self.assertEqual(tuple(path.read_bytes() for path in files), before)
 
     def test_supplied_pins_and_original_envelope_are_required(self):
         for options, code in (
