@@ -627,12 +627,14 @@ typedef struct
     cmeStorageContext context;
 } cmeBoundSlot;
 
+enum { cmeBindingCopyTargetV2=5 };
+
 struct cmeContextBinding
 {
     cmeContextAnchor anchor;
     cmeContextMapAnchor mapAnchor;
-    int mapped; /* 0 raw, 1 stored, 2 target, 3 scoped reader, 4 witnessed map */
-    cmeContextWitness *witness; /* Borrowed for type 4 only. */
+    int mapped; /* 0 raw, 1 stored, 2 floor-1 target, 3 scoped reader, 4 witnessed map, 5 floor-2 target */
+    cmeContextWitness *witness; /* Borrowed by witnessed map and floor-2 target. */
     cmeContextWitnessAnchor acknowledged;
     size_t count;
     cmeBoundSlot *slots;
@@ -757,11 +759,16 @@ int cmeContextBindingLookup(const cmeContextBinding *binding, const char *table,
 
 static int cmeManagerBindingCurrent(cmeContextManager *manager, const cmeContextBinding *binding);
 
+static int cmeBindingNeedsWitness(const cmeContextBinding *binding)
+{
+    return(binding->mapped==4 || binding->mapped==cmeBindingCopyTargetV2);
+}
+
 int cmeContextBindingCheck(cmeContextManager *manager, const cmeContextBinding *binding)
 {
     if (!manager || !binding || memcmp(manager->deployment,binding->anchor.deployment,16) ||
         memcmp(manager->organization,binding->anchor.organization,16)) return(1);
-    if (binding->mapped==4)
+    if (cmeBindingNeedsWitness(binding))
     {
         cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
         cmeContextWitnessAnchor current={0};
@@ -784,6 +791,12 @@ int cmeContextBindingCheckMapped(cmeContextManager *manager, const cmeContextBin
 int cmeContextBindingCheckCopyTarget(cmeContextManager *manager, const cmeContextBinding *binding)
 {
     if (!binding || binding->mapped!=2) return(1);
+    return(cmeContextBindingCheck(manager,binding));
+}
+
+int cmeContextBindingCheckCopyTargetV2(cmeContextManager *manager, const cmeContextBinding *binding)
+{
+    if (!binding || binding->mapped!=cmeBindingCopyTargetV2) return(1);
     return(cmeContextBindingCheck(manager,binding));
 }
 
@@ -1298,7 +1311,7 @@ static int cmeManagerBindingCurrent(cmeContextManager *manager, const cmeContext
         result=cmeMapMatch(&map,&binding->mapAnchor); if (result) goto done;
         result=1;
         if (cmeWitnessVersion(manager,&witnessed) || (binding->mapped==1 && witnessed) ||
-            (binding->mapped==4 && !witnessed)) goto done;
+            (cmeBindingNeedsWitness(binding) && !witnessed)) goto done;
     }
     result=sqlite3_exec(manager->db,"COMMIT",NULL,NULL,NULL)==SQLITE_OK ? 0 : 1;
 done:
@@ -1848,6 +1861,17 @@ static int cmeCopyMatchRequest(const char *source, const cmeContextMap *copy, co
     return(0);
 }
 
+static int cmeCopyPreviewDecode(cmeContextManager *manager, const unsigned char *plan, size_t length,
+    const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    const cmeContextCopyPreviewPins *pins, cmeContextMap **copy, cmeContextAnchor *next, char **source,
+    const unsigned char **snapshot, size_t *snapshotLength, unsigned char snapshotTag[32])
+{
+    return(!pins || !pins->retained || !pins->retained->revision || !pins->imageDigest ||
+        cmeCopyDecode(manager,plan,length,digest,expected,catalog,pins,copy,next,source,
+            snapshot,snapshotLength,snapshotTag) ||
+        cmeCopyMatchRequest(*source,*copy,pins->sourceName,pins->lookups,pins->count));
+}
+
 int cmeContextManagerCopyPlanMatch(cmeContextManager *manager, const unsigned char *plan,
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, const char *sourceName, const char *const *lookups, size_t count)
@@ -1950,11 +1974,9 @@ int cmeContextManagerCopyPreviewV2Step(cmeContextManager *manager, cmeContextWit
     if (expected) { original=*expected; expected=&original; }
     if (state) *state=0;
     if (published) memset(published,0,sizeof(*published));
-    if (!state || !published || !witness || !pins || !pins->retained || !pins->retained->revision ||
-        !pins->imageDigest || (commit!=0 && commit!=1) ||
-        cmeCopyDecode(manager,plan,length,digest,expected,catalog,pins,&candidate,&next,&source,
-            &snapshot,&snapshotLength,snapshotTag) ||
-        cmeCopyMatchRequest(source,candidate,pins->sourceName,pins->lookups,pins->count)) goto done;
+    if (!state || !published || !witness || (commit!=0 && commit!=1) ||
+        cmeCopyPreviewDecode(manager,plan,length,digest,expected,catalog,pins,&candidate,&next,&source,
+            &snapshot,&snapshotLength,snapshotTag)) goto done;
     result=cmeCopyPlanClassify(manager,source,expected,catalog,&next,&classification);
     if (result) goto done;
     currentRegistry=classification==1 ? expected : &next;
@@ -1985,6 +2007,52 @@ int cmeContextManagerCopyPreviewV2Step(cmeContextManager *manager, cmeContextWit
     *state=classification; *published=next;
 done:
     free(source); cmeContextMapFree(&candidate);
+    return(result);
+}
+
+int cmeContextManagerCopyPreviewV2Bind(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *acknowledged, const unsigned char *plan, size_t length,
+    const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    const cmeContextCopyPreviewPins *pins, cmeContextBinding **binding, cmeContextAnchor *committed)
+{
+    cmeContextAnchor original,next={0};
+    cmeContextMap *copy=NULL;
+    cmeContextBinding *sourceBinding=NULL,*candidate=NULL;
+    cmeContextWitnessAnchor current={0};
+    cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
+    const unsigned char *snapshot=NULL;
+    char *source=NULL;
+    unsigned char snapshotTag[32];
+    size_t snapshotLength=0,i;
+    int result=1,state=0;
+
+    if (expected) { original=*expected; expected=&original; }
+    if (binding) *binding=NULL;
+    if (committed) memset(committed,0,sizeof(*committed));
+    if (!binding || !committed || !witness || !acknowledged || !acknowledged->revision ||
+        cmeCopyPreviewDecode(manager,plan,length,digest,expected,catalog,pins,&copy,&next,&source,
+            &snapshot,&snapshotLength,snapshotTag)) goto done;
+    result=cmeCopyPlanClassify(manager,source,expected,catalog,&next,&state);
+    if (result) goto done;
+    if (state!=2) { result=2; goto done; }
+    result=cmeContextWitnessReconcile(witness,pins->retained,&next,catalog,&recovery,&current);
+    if (result) goto done;
+    if (recovery!=cmeWitnessRecoveryAlreadyAdvanced || current.revision!=acknowledged->revision ||
+        CRYPTO_memcmp(current.digest,acknowledged->digest,32)) { result=2; goto done; }
+    result=cmeContextManagerMapBindWitness(manager,witness,acknowledged,source,&next,catalog,&sourceBinding);
+    if (result) goto done;
+    result=1;
+    for (i=0;i<copy->count;i++) if (copy->slots[i].row<1) goto done;
+    result=cmeContextManagerBind(manager,copy->resource,copy->role,copy->slots,copy->count,&next,&candidate);
+    if (result) goto done;
+    candidate->mapped=cmeBindingCopyTargetV2; candidate->mapAnchor=*catalog;
+    candidate->witness=witness; candidate->acknowledged=*acknowledged;
+    result=cmeContextBindingCheckCopyTargetV2(manager,candidate);
+    if (result) goto done;
+    *binding=candidate; candidate=NULL; *committed=next;
+done:
+    free(source); cmeContextMapFree(&copy);
+    cmeContextBindingFree(&sourceBinding); cmeContextBindingFree(&candidate);
     return(result);
 }
 

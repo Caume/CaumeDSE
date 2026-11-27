@@ -143,6 +143,7 @@ int cmeContextBindingCheckMapped(cmeContextManager *manager, const cmeContextBin
 /* Retained-allocation target only; refuses stored-map and raw bindings.
    This core check has no witness guard and cannot authorize V2 target crypto. */
 int cmeContextBindingCheckCopyTarget(cmeContextManager *manager, const cmeContextBinding *binding);
+int cmeContextBindingCheckCopyTargetV2(cmeContextManager *manager, const cmeContextBinding *binding);
 void cmeContextBindingFree(cmeContextBinding **binding);
 
 /* Opt-in trusted-owner catalog in the private manager DB. Init is explicit and
@@ -256,6 +257,17 @@ int cmeContextManagerCopyPreviewV2Step(cmeContextManager *manager, cmeContextWit
     const unsigned char *plan, size_t length, const unsigned char digest[32],
     const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
     const cmeContextCopyPreviewPins *pins, int commit, int *state, cmeContextAnchor *next);
+/* Bind the exact committed floor-2 preview as an unpublished destination.
+   Require the original approved pins and the independently retained current
+   witness token for their acknowledged successor. The binding owns its slot
+   contexts and borrows witness. Free it before closing witness. Inputs remain
+   stable and nonoverlapping; committed may alias expected. Clear outputs on
+   failure, 0/1/2. This binding is accepted only by the floor-2 target codec.
+   Keep authority namespaces fixed and coordinate all readers and writers. */
+int cmeContextManagerCopyPreviewV2Bind(cmeContextManager *manager, cmeContextWitness *witness,
+    const cmeContextWitnessAnchor *acknowledged, const unsigned char *plan, size_t length,
+    const unsigned char digest[32], const cmeContextAnchor *expected, const cmeContextMapAnchor *catalog,
+    const cmeContextCopyPreviewPins *pins, cmeContextBinding **binding, cmeContextAnchor *committed);
 int cmeContextManagerCopyPlanStatus(cmeContextManager *manager, const unsigned char *plan,
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, int *state, cmeContextMap **copy, cmeContextAnchor *next);

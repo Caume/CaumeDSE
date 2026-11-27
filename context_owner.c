@@ -1250,11 +1250,13 @@ done:
 
 static int cmeCopyOwnerStepV2(cmeContextManager *manager, cmeContextWitness *witness,
     const cmeContextWitnessAnchor *retained, const cmeOwnerApproval *approval, const char *const *lookups,
-    const unsigned char digest[32], int commit, const unsigned char *approved)
+    const unsigned char digest[32], int commit, const unsigned char *approved,
+    const cmeContextWitnessAnchor *bindToken)
 {
     cmeContextCopyPreviewPins pins={approval->values[4],lookups,approval->count,approval->source,retained};
     cmeOfflineArtifact source={.file=-1,.directory=-1};
     cmeContextAnchor next={0};
+    cmeContextBinding *binding=NULL;
     cmeContextWitnessAnchor current={0};
     cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
     const cmeContextAnchor *registry;
@@ -1265,6 +1267,14 @@ static int cmeCopyOwnerStepV2(cmeContextManager *manager, cmeContextWitness *wit
 
     if (signal(SIGPIPE,SIG_IGN)==SIG_ERR ||
         cmeOfflineReadPrivate(approval->values[8],cmeContextCopyPlanMaxBytes,&plan,&length,cmeOfflineDurableBinaryFile)) goto done;
+    if (bindToken)
+    {
+        result=cmeContextManagerCopyPreviewV2Bind(manager,witness,bindToken,(const unsigned char *)plan,length,digest,
+            &approval->registry,&approval->catalog,&pins,&binding,&next);
+        if (result) goto done;
+        cmeCopyOwnerRegistry(&next,bytes);
+        goto output;
+    }
     result=cmeContextManagerCopyPreviewV2Step(manager,witness,(const unsigned char *)plan,length,digest,
         &approval->registry,&approval->catalog,&pins,0,&state,&next);
     if (result) goto done;
@@ -1295,16 +1305,17 @@ static int cmeCopyOwnerStepV2(cmeContextManager *manager, cmeContextWitness *wit
         (recovery!=cmeWitnessRecoveryAlreadyAdvanced && (approved || recovery!=cmeWitnessRecoveryAdvanceRequired)))
     { result=2; goto done; }
 
-    printf("state=%s\npreview-digest=",approved ? "witness-advanced" : (state==1 ? "ready" : "committed"));
+output:
+    printf("state=%s\npreview-digest=",bindToken ? "bound-v2" : (approved ? "witness-advanced" : (state==1 ? "ready" : "committed")));
     cmeOwnerPrint(digest,32);
     fputs("\nregistry=",stdout); cmeOwnerPrint(bytes,sizeof(bytes)); putchar('\n');
     cmeColumnOwnerAnchor("catalog=",approval->catalog.revision,approval->catalog.digest);
-    printf("witness-state=%s\n",approved || state==1 ? "current" :
+    printf("witness-state=%s\n",bindToken || approved || state==1 ? "current" :
         (recovery==cmeWitnessRecoveryAdvanceRequired ? "advance-required" : "already-advanced"));
     if (approved) cmeColumnOwnerAnchor("witness-token=",current.revision,current.digest);
     if (fflush(stdout) || ferror(stdout)) result=1;
 done:
-    free(plan); cmeOfflineClose(&source);
+    cmeContextBindingFree(&binding); free(plan); cmeOfflineClose(&source);
     return(result);
 }
 
@@ -1313,7 +1324,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     cmeOwnerApproval approval={0};
     cmeContextManager *manager=NULL;
     cmeContextWitness *witness=NULL;
-    cmeContextWitnessAnchor retained={0},current={0};
+    cmeContextWitnessAnchor retained={0},current={0},bindToken={0};
     cmeContextWitnessRecovery recovery=cmeWitnessRecoveryInvalid;
     cmeContextAnchor next={0};
     cmeContextMap *copy=NULL;
@@ -1324,7 +1335,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     const char *manifest=NULL,*keyFile=NULL,*witnessFile=NULL,*witnessDirectory=NULL,*confirmation=NULL;
     const char *token=NULL,*digestText=NULL,*approvedRegistry=NULL,*action=NULL;
     const char *orgFile=NULL,*publicationDigestText=NULL,*currentRegistryText=NULL,*currentCatalogText=NULL;
-    const char *passwordFile=NULL;
+    const char *passwordFile=NULL,*currentWitnessText=NULL;
     const char **lookups=NULL;
     char *body=NULL,*keyText=NULL,*witnessText=NULL,*planText=NULL,*orgText=NULL,*intentText=NULL;
     FILE *output=NULL,*diagnostics=NULL;
@@ -1332,7 +1343,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     unsigned char publicationDigest[32],requestDigest[32],*intent=NULL;
     size_t length=0,i,intentLength=0;
     int result=1,state=0,prepare=0,advance=0,check=0,registered=0,export=0,destination=0;
-    int publication=0,publicationPrepare=0,installPrepare=0,installInit=0,installRecovery=0,preview=0,v2Step=0;
+    int publication=0,publicationPrepare=0,installPrepare=0,installInit=0,installRecovery=0,preview=0,v2Step=0,bind=0;
     if (argc==3 && !strcmp(argv[2],"--help"))
     {
         puts("Usage: caumedse-admin context-copy-plan --approval FILE --confirmed-offline APPROVAL_REALPATH\n"
@@ -1353,6 +1364,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
              "  Schema 7: --preview-v2 --password-file FILE (current floor-2 witnessed V2 map)\n"
              "  Schema 7: --status-v2 | --commit-v2 | --advance-v2-witness, with --plan-digest SHA256\n"
              "  Advance v2 witness only: --approved-registry PLANNED_NEXT_REGISTRY_TOKEN\n"
+             "  Schema 7: --bind-v2 --plan-digest SHA256 --current-witness-token TOKEN\n"
              "Private schema-1 approval, original pins, independently retained digest/token.\n"
              "Prepare exclusively creates and syncs the plan, never overwrites or allocates IDs.\n"
              "Stop all readers/writers. Retain uncertain files; never reset/blindly regenerate.\n"
@@ -1372,7 +1384,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     {
         const char **option=NULL;
         if (!strcmp(argv[i],"--prepare") || !strcmp(argv[i],"--preview-v2") || !strcmp(argv[i],"--status-v2") ||
-            !strcmp(argv[i],"--commit-v2") || !strcmp(argv[i],"--advance-v2-witness") || !strcmp(argv[i],"--status") ||
+            !strcmp(argv[i],"--commit-v2") || !strcmp(argv[i],"--advance-v2-witness") || !strcmp(argv[i],"--bind-v2") || !strcmp(argv[i],"--status") ||
             !strcmp(argv[i],"--commit") || !strcmp(argv[i],"--advance-witness") || !strcmp(argv[i],"--check-candidate") ||
             !strcmp(argv[i],"--check-registration") || !strcmp(argv[i],"--check-export") ||
             !strcmp(argv[i],"--check-destination") || !strcmp(argv[i],"--prepare-publication") || !strcmp(argv[i],"--publication-status") ||
@@ -1386,6 +1398,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         else if (!strcmp(argv[i],"--witness-directory")) option=&witnessDirectory;
         else if (!strcmp(argv[i],"--confirmed-offline")) option=&confirmation;
         else if (!strcmp(argv[i],"--retained-witness-token")) option=&token;
+        else if (!strcmp(argv[i],"--current-witness-token")) option=&currentWitnessText;
         else if (!strcmp(argv[i],"--plan-digest")) option=&digestText;
         else if (!strcmp(argv[i],"--approved-registry")) option=&approvedRegistry;
         else if (!strcmp(argv[i],"--org-key-file")) option=&orgFile;
@@ -1408,9 +1421,10 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         (currentRegistryText || currentCatalogText)) goto done;
     prepare=!strcmp(action,"--prepare"); advance=!strcmp(action,"--advance-witness") || !strcmp(action,"--advance-v2-witness");
     preview=!strcmp(action,"--preview-v2");
-    v2Step=!strcmp(action,"--status-v2") || !strcmp(action,"--commit-v2") || !strcmp(action,"--advance-v2-witness");
+    bind=!strcmp(action,"--bind-v2");
+    v2Step=bind || !strcmp(action,"--status-v2") || !strcmp(action,"--commit-v2") || !strcmp(action,"--advance-v2-witness");
     if ((preview || v2Step) && (approval.schema!=7 || orgFile)) goto done;
-    if (preview!=!!passwordFile) goto done;
+    if (preview!=!!passwordFile || bind!=!!currentWitnessText) goto done;
     publicationPrepare=!strcmp(action,"--prepare-publication");
     publication=publicationPrepare || installPrepare || !strcmp(action,"--publication-status");
     destination=publication || !strcmp(action,"--check-destination"); export=destination || !strcmp(action,"--check-export");
@@ -1428,6 +1442,12 @@ static int cmeCopyOwnerMain(int argc, char **argv)
         cmeOfflineDecodeHex(token,bytes,40)) goto done;
     for (i=0;i<8;i++) retained.revision=(retained.revision<<8)|bytes[i];
     memcpy(retained.digest,bytes+8,32);
+    if (bind)
+    {
+        if (cmeOfflineDecodeHex(currentWitnessText,bytes,40)) goto done;
+        for (i=0;i<8;i++) bindToken.revision=(bindToken.revision<<8)|bytes[i];
+        memcpy(bindToken.digest,bytes+8,32);
+    }
     if (cmeContextManagerOpen(approval.values[1],0,key,approval.deployment,approval.organization,&manager) ||
         cmeContextWitnessOpen(approval.values[12],0,witnessKey,approval.deployment,approval.organization,
             &approval.registry,&approval.catalog,&witness)) goto done;
@@ -1442,7 +1462,7 @@ static int cmeCopyOwnerMain(int argc, char **argv)
     if (v2Step)
     {
         result=cmeCopyOwnerStepV2(manager,witness,&retained,&approval,lookups,digest,
-            !strcmp(action,"--commit-v2"),advance ? approved : NULL);
+            !strcmp(action,"--commit-v2"),advance ? approved : NULL,bind ? &bindToken : NULL);
         goto done;
     }
     if (installInit)

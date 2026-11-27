@@ -594,29 +594,38 @@ static int cmeFixtureTarget(int argc, char **argv)
     cmeContextManager *manager=NULL;
     cmeContextWitness *witness=NULL;
     cmeContextCopyTarget *target=NULL;
-    cmeContextBinding *core=NULL;
-    cmeContextAnchor original={0},committed={0};
+    cmeContextBinding *core=NULL,*sourceBinding=NULL;
+    cmeContextAnchor original={0},committed={0},emptyAnchor={0};
     cmeContextMapAnchor catalog={0};
-    cmeContextWitnessAnchor retained={0};
+    cmeContextWitnessAnchor retained={0},acknowledged={0};
     cmeContextV2Buffer output={0};
     unsigned char key[32],witnessKey[32],deployment[16],organization[16],bytes[40],digest[32],salt[16],zero[16]={0};
+    unsigned char imageDigest[32];
     unsigned char *plan=NULL,*password=NULL,*input=NULL;
     size_t length=0,passwordLength=0,planLength=0,count,offset,i;
-    int result=1,seal;
+    int result=1,seal,floorTwo=!strncmp(argv[2],"target-v2-",10);
+    size_t countIndex=floorTwo ? 14U : 12U;
+    const char *action=argv[2]+(floorTwo ? 10 : 7);
     int64_t row;
     char *end;
     FILE *file=NULL;
     long size;
-    if (argc<13 || cmeFixtureHex(argv[3],deployment,16) || cmeFixtureHex(argv[4],organization,16) ||
+    if ((size_t)argc<=countIndex || cmeFixtureHex(argv[3],deployment,16) || cmeFixtureHex(argv[4],organization,16) ||
         cmeFixtureAnchor(argv[5],&original) || cmeFixtureHex(argv[6],bytes,40)) goto done;
     for (i=0;i<8;i++) catalog.revision=(catalog.revision<<8)|bytes[i];
     memcpy(catalog.digest,bytes+8,32);
     if (cmeFixtureHex(argv[8],bytes,40) || cmeFixtureHex(argv[10],digest,32)) goto done;
     for (i=0;i<8;i++) retained.revision=(retained.revision<<8)|bytes[i];
     memcpy(retained.digest,bytes+8,32);
-    errno=0; count=strtoul(argv[12],&end,10);
-    if (errno || *end || !*argv[12] || count>cmeContextRegistryMaxEntries || count>(size_t)argc-13) goto done;
-    offset=13+count; memset(key,'k',32); memset(witnessKey,'w',32);
+    if (floorTwo)
+    {
+        if (cmeFixtureHex(argv[12],imageDigest,32) || cmeFixtureHex(argv[13],bytes,40)) goto done;
+        for (i=0;i<8;i++) acknowledged.revision=(acknowledged.revision<<8)|bytes[i];
+        memcpy(acknowledged.digest,bytes+8,32);
+    }
+    errno=0; count=strtoul(argv[countIndex],&end,10);
+    if (errno || *end || !*argv[countIndex] || count>cmeContextRegistryMaxEntries || count>(size_t)argc-countIndex-1) goto done;
+    offset=countIndex+1+count; memset(key,'k',32); memset(witnessKey,'w',32);
     file=fopen(argv[9],"rb");
     if (!file || fseek(file,0,SEEK_END) || (size=ftell(file))<1 ||
         (unsigned long)size>cmeContextCopyPlanMaxBytes || fseek(file,0,SEEK_SET)) goto done;
@@ -625,17 +634,45 @@ static int cmeFixtureTarget(int argc, char **argv)
     fclose(file); file=NULL;
     if (cmeContextManagerOpen(argv[1],0,key,deployment,organization,&manager) ||
         cmeContextWitnessOpen(argv[7],0,witnessKey,deployment,organization,&original,&catalog,&witness)) goto done;
-    target=(cmeContextCopyTarget *)1;
-    result=cmeContextWitnessCopyTargetBind(manager,witness,&retained,plan,planLength,digest,&original,&catalog,
-        argv[11],(const char *const *)(argv+13),count,&target);
-    if (result) { if (target) result=99; goto done; }
-    if (!target) { result=99; goto done; }
-    result=1;
-    if (!strcmp(argv[2],"target-bind") && (size_t)argc==offset)
+    if (floorTwo)
     {
-        result=cmeContextCopyTargetCheck(manager,target);
+        cmeContextCopyPreviewPins pins={argv[11],(const char *const *)(argv+countIndex+1),count,imageDigest,&retained};
+        core=(cmeContextBinding *)1; committed=original;
+        result=cmeContextManagerCopyPreviewV2Bind(manager,witness,&acknowledged,plan,planLength,digest,&original,&catalog,
+            &pins,&core,&committed);
+        if (result) { if (core || memcmp(&committed,&emptyAnchor,sizeof(emptyAnchor))) result=99; goto done; }
+        if (!core) { result=99; goto done; }
+    }
+    else
+    {
+        target=(cmeContextCopyTarget *)1;
+        result=cmeContextWitnessCopyTargetBind(manager,witness,&retained,plan,planLength,digest,&original,&catalog,
+            argv[11],(const char *const *)(argv+13),count,&target);
+        if (result) { if (target) result=99; goto done; }
+        if (!target) { result=99; goto done; }
+    }
+    result=1;
+    if (!strcmp(action,"bind") && (size_t)argc==offset)
+    {
+        result=floorTwo ? cmeContextBindingCheckCopyTargetV2(manager,core) : cmeContextCopyTargetCheck(manager,target);
         if (!result) puts("bound");
         goto done;
+    }
+    if (floorTwo && !strcmp(action,"contract") && (size_t)argc==offset)
+    {
+        cmeStorageContext context={0};
+        unsigned int floor=0;
+        unsigned char plain=0;
+        if (cmeContextBindingLookup(core,"data",1,"value",&context,&floor) || floor!=2 ||
+            cmeContextBindingCheckMapped(manager,core)!=1 || cmeContextBindingCheckCopyTarget(manager,core)!=1 ||
+            cmeContextManagerMapBindWitness(manager,witness,&acknowledged,argv[11],&committed,&catalog,&sourceBinding)) goto done;
+        output.bytes=(unsigned char *)1; output.length=99; memset(salt,0xa5,16);
+        if (cmeContextV2Seal(manager,core,"data",1,"value",&plain,1,&plain,1,&output,salt)!=1 ||
+            output.bytes || output.length || memcmp(salt,zero,16)) goto done;
+        output.bytes=(unsigned char *)1; output.length=99; memset(salt,0xa5,16);
+        if (cmeContextV2SealCopyTargetV2(manager,sourceBinding,"data",1,"value",&plain,1,&plain,1,&output,salt)!=1 ||
+            output.bytes || output.length || memcmp(salt,zero,16)) goto done;
+        puts("contract"); result=0; goto done;
     }
     if (!strcmp(argv[2],"target-contract") && (size_t)argc==offset)
     {
@@ -680,8 +717,8 @@ static int cmeFixtureTarget(int argc, char **argv)
     if (!strcmp(argv[2],"target-column") || !strcmp(argv[2],"target-column-export") || !strcmp(argv[2],"target-column-import"))
     { result=cmeFixtureColumn(manager,target,argv[2],argc-offset,argv+offset); goto done; }
 #endif
-    seal=!strcmp(argv[2],"target-seal");
-    if (seal ? (size_t)argc!=offset+5 : (strcmp(argv[2],"target-open") || (size_t)argc!=offset+6)) goto done;
+    seal=!strcmp(action,"seal");
+    if (seal ? (size_t)argc!=offset+5 : (strcmp(action,"open") || (size_t)argc!=offset+6)) goto done;
     errno=0; row=strtoll(argv[offset+1],&end,10); if (errno || *end || !*argv[offset+1]) goto done;
     if (strlen(argv[offset+3])%2 || strlen(argv[offset+3])>512) goto done;
     passwordLength=strlen(argv[offset+3])/2; password=malloc(passwordLength+1);
@@ -697,11 +734,13 @@ static int cmeFixtureTarget(int argc, char **argv)
     if (seal)
     {
         memset(salt,0xa5,16);
-        result=cmeContextV2SealCopyTarget(manager,target,argv[offset],row,argv[offset+2],password,passwordLength,
-            input,length,&output,salt);
+        result=floorTwo ? cmeContextV2SealCopyTargetV2(manager,core,argv[offset],row,argv[offset+2],password,passwordLength,
+            input,length,&output,salt) : cmeContextV2SealCopyTarget(manager,target,argv[offset],row,argv[offset+2],
+            password,passwordLength,input,length,&output,salt);
     }
-    else result=cmeContextV2OpenCopyTarget(manager,target,argv[offset],row,argv[offset+2],password,passwordLength,
-        salt,input,length,&output);
+    else result=floorTwo ? cmeContextV2OpenCopyTargetV2(manager,core,argv[offset],row,argv[offset+2],password,passwordLength,
+        salt,input,length,&output) : cmeContextV2OpenCopyTarget(manager,target,argv[offset],row,argv[offset+2],
+        password,passwordLength,salt,input,length,&output);
     if (result)
     {
         if (output.bytes || output.length || (seal && memcmp(salt,zero,16))) result=99;
@@ -715,7 +754,8 @@ done:
     if (password) { OPENSSL_cleanse(password,passwordLength); free(password); }
     if (input) { OPENSSL_cleanse(input,length); free(input); }
     if (output.bytes!=(unsigned char *)1) cmeContextV2BufferFree(&output);
-    cmeContextBindingFree(&core);
+    if (core!=(cmeContextBinding *)1) cmeContextBindingFree(&core);
+    cmeContextBindingFree(&sourceBinding);
     if (target!=(cmeContextCopyTarget *)1) cmeContextCopyTargetFree(&target);
     cmeContextWitnessClose(&witness); cmeContextManagerClose(&manager);
     OPENSSL_cleanse(key,sizeof(key)); OPENSSL_cleanse(witnessKey,sizeof(witnessKey));
