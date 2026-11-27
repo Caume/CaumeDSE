@@ -329,14 +329,60 @@ done:
     return(result);
 }
 
+static int cmeColumnImageCheckReadback(cmeContextManager *manager, const cmeContextBinding *target,
+    const cmeContextBinding *sourceBinding, const cmeContextMap *map, const cmeContextV2Buffer *sourcePlaintext,
+    const cmeContextColumnV2ImageInput *image, const unsigned char digest[32])
+{
+    cmeContextColumnStage *readback=NULL;
+    cmeContextV2Buffer *copied=NULL;
+    size_t i;
+    int result;
+
+    result=cmeColumnDeserialize(manager,NULL,target,map,cmeImageFloor2Target,image->bytes,image->length,digest,
+        image->password,image->passwordLength,&readback,&copied);
+    if (result) goto done;
+    result=1;
+    for (i=0;i<map->count;i++) if (sourcePlaintext[i].length!=copied[i].length ||
+        CRYPTO_memcmp(sourcePlaintext[i].bytes,copied[i].bytes,copied[i].length)) goto done;
+    result=cmeContextBindingCheckMapped(manager,sourceBinding);
+    if (!result) result=cmeContextBindingCheckCopyTargetV2(manager,target);
+done:
+    cmeContextColumnStageFree(&readback); cmeColumnImagePlainFree(copied,map->count);
+    return(result);
+}
+
+int cmeContextColumnCheckV2Copy(cmeContextManager *manager, const cmeContextBinding *target,
+    const cmeContextColumnV2ImageInput *source, const cmeContextColumnV2ImageInput *candidate,
+    const unsigned char candidateDigest[32])
+{
+    cmeContextMap *map=NULL;
+    cmeContextBinding *binding=NULL;
+    cmeContextColumnStage *stage=NULL;
+    cmeContextV2Buffer *plain=NULL;
+    unsigned char sourceDigest[32];
+    int result;
+
+    if (!source || !candidate || !candidateDigest) return(1);
+    result=cmeContextManagerCopyV2Source(manager,target,&map,&binding,sourceDigest);
+    if (result) goto done;
+    result=cmeColumnDeserialize(manager,NULL,binding,map,cmeImageMapped,source->bytes,source->length,sourceDigest,
+        source->password,source->passwordLength,&stage,&plain);
+    if (!result) result=cmeColumnImageCheckReadback(manager,target,binding,map,plain,candidate,candidateDigest);
+done:
+    if (plain) cmeColumnImagePlainFree(plain,map->count);
+    cmeContextColumnStageFree(&stage); cmeContextBindingFree(&binding); cmeContextMapFree(&map);
+    return(result);
+}
+
 int cmeContextColumnCopyV2Image(cmeContextManager *manager, const cmeContextBinding *target,
     const unsigned char *source, size_t length, const unsigned char *sourcePassword, size_t sourcePasswordLength,
     const unsigned char *targetPassword, size_t targetPasswordLength, cmeContextV2Buffer *image, unsigned char digest[32])
 {
     cmeContextMap *map=NULL;
     cmeContextBinding *binding=NULL;
-    cmeContextColumnStage *stage=NULL,*readback=NULL;
-    cmeContextV2Buffer *plain=NULL,*copied=NULL,candidate={0};
+    cmeContextColumnStage *stage=NULL;
+    cmeContextV2Buffer *plain=NULL,candidate={0};
+    cmeContextColumnV2ImageInput readback;
     unsigned char sourceDigest[32],actual[32];
     size_t count=0,i;
     int result=1;
@@ -360,18 +406,12 @@ int cmeContextColumnCopyV2Image(cmeContextManager *manager, const cmeContextBind
     }
     result=cmeColumnSerialize(map,stage,&candidate,actual);
     if (result) goto done;
-    result=cmeColumnDeserialize(manager,NULL,target,map,cmeImageFloor2Target,candidate.bytes,candidate.length,actual,
-        targetPassword,targetPasswordLength,&readback,&copied);
-    if (result) goto done;
-    result=1;
-    for (i=0;i<count;i++) if (plain[i].length!=copied[i].length ||
-        CRYPTO_memcmp(plain[i].bytes,copied[i].bytes,plain[i].length)) goto done;
-    result=cmeContextBindingCheckMapped(manager,binding); if (result) goto done;
-    result=cmeContextBindingCheckCopyTargetV2(manager,target); if (result) goto done;
+    readback=(cmeContextColumnV2ImageInput){candidate.bytes,targetPassword,candidate.length,targetPasswordLength};
+    result=cmeColumnImageCheckReadback(manager,target,binding,map,plain,&readback,actual); if (result) goto done;
     *image=candidate; memset(&candidate,0,sizeof(candidate)); memcpy(digest,actual,32);
 done:
-    cmeColumnImagePlainFree(plain,count); cmeColumnImagePlainFree(copied,count);
-    cmeContextColumnStageFree(&readback); cmeContextColumnStageFree(&stage); cmeContextV2BufferFree(&candidate);
+    cmeColumnImagePlainFree(plain,count);
+    cmeContextColumnStageFree(&stage); cmeContextV2BufferFree(&candidate);
     cmeContextBindingFree(&binding); cmeContextMapFree(&map);
     return(result);
 }
@@ -419,5 +459,12 @@ int cmeContextColumnCopyV2Image(cmeContextManager *manager, const cmeContextBind
     if (image) memset(image,0,sizeof(*image));
     if (digest) memset(digest,0,32);
     return(image && digest ? 3 : 1);
+}
+int cmeContextColumnCheckV2Copy(cmeContextManager *manager, const cmeContextBinding *target,
+    const cmeContextColumnV2ImageInput *source, const cmeContextColumnV2ImageInput *candidate,
+    const unsigned char candidateDigest[32])
+{
+    (void)manager; (void)target;
+    return(source && candidate && candidateDigest ? 3 : 1);
 }
 #endif

@@ -90,6 +90,19 @@ int cmeContextColumnCopyV2Image(cmeContextManager *manager, const cmeContextBind
 
 typedef struct
 {
+    const unsigned char *bytes,*password;
+    size_t length,passwordLength;
+} cmeContextColumnV2ImageInput;
+
+/* Reauthenticate the pinned source and independently pinned staged copy and
+   compare every plaintext at the current witnessed floor-2 allocation. Same
+   size, credential, return and custody contracts as CopyV2Image. Read-only. */
+int cmeContextColumnCheckV2Copy(cmeContextManager *manager, const cmeContextBinding *target,
+    const cmeContextColumnV2ImageInput *source, const cmeContextColumnV2ImageInput *candidate,
+    const unsigned char candidateDigest[32]);
+
+typedef struct
+{
     const char *sourceProfile,*destinationMap;
     unsigned char sourceDigest[32],candidateDigest[32],registrationEvidenceDigest[32];
 } cmeContextColumnTransformApproval;

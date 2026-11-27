@@ -4756,3 +4756,39 @@ stdout. Keep uncertain files for inspection and use a new path to restage.
 
 The source, registry, catalog, witness, and registrations remain as they were.
 Publication and registration of the staged image require a later workflow.
+
+## Witnessed floor-2 V2 image receipts (#147 phase 55)
+
+Use the original schema-7 approval and preview, its independently retained
+digest, and both retained witness tokens from phase 54. Keep the engine and
+authority and export readers and writers stopped. Supply the staged image's
+independently retained SHA-256 and both private password files. Keep the staged
+image and receipt outside the export, registry, and witness trees, with private
+owner directories and files.
+
+```bash
+image_args=(--plan-digest "$preview_digest" --current-witness-token "$current_token"
+    --password-file "$source_password_file" --target-password-file "$target_password_file"
+    --staged-image "$staged_image" --image-digest "$image_digest" --image-receipt "$receipt")
+caumedse-admin context-copy-plan "${owner_args[@]}" "${image_args[@]}" --approve-staged-v2
+caumedse-admin context-copy-plan "${owner_args[@]}" "${image_args[@]}" --verify-staged-v2 \
+    --receipt-digest "$receipt_digest"
+```
+
+Approval authenticates the complete original and staged images and compares
+every data and metadata plaintext. It checks file custody and the allocation
+again before saving the receipt. Success prints `state=approved-v2-image`
+and `receipt-digest`. Retain that digest separately. A retry after lost stdout
+rechecks both images, accepts the exact retained receipt, and preserves its
+bytes and inode. Use a new path for a different approval.
+
+The receipt begins with `CDSE-HKX-FLOOR2-IMAGE-RECEIPT-v1` and a NUL byte,
+then includes the 32-byte preview, source, and staged image digests in order.
+The committed registry anchor, catalog anchor, and current witness token use
+the phase-51 encodings of 73, 40, and 40 bytes respectively. The manager HMAC
+covers the full body. `receipt-digest` is SHA-256 of the body and HMAC.
+
+Verification requires the original approved receipt digest and reauthenticates
+both images and current authority before reporting `state=verified-v2-image`.
+The receipt authenticates image contents and the current allocation. Durable
+publication will need its own path, custody, and activation checks.

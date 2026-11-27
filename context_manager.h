@@ -273,6 +273,13 @@ int cmeContextManagerCopyPreviewV2Bind(cmeContextManager *manager, cmeContextWit
    bindings before closing witness. Outputs clear on failure. */
 int cmeContextManagerCopyV2Source(cmeContextManager *manager, const cmeContextBinding *target,
     cmeContextMap **map, cmeContextBinding **binding, unsigned char digest[32]);
+/* Trusted receipt encoder. The owner must validate both images with
+   ColumnCheckV2Copy. This only authenticates the supplied digest and current
+   allocation evidence. Inputs/outputs must be stable and nonoverlapping. No
+   file, catalog, registry or witness mutation. */
+#define cmeContextCopyV2ImageReceiptMaxBytes 384U
+int cmeContextManagerCopyV2ImageReceipt(cmeContextManager *manager, const cmeContextBinding *target,
+    const unsigned char imageDigest[32], unsigned char receipt[cmeContextCopyV2ImageReceiptMaxBytes], size_t *length);
 int cmeContextManagerCopyPlanStatus(cmeContextManager *manager, const unsigned char *plan,
     size_t length, const unsigned char digest[32], const cmeContextAnchor *expected,
     const cmeContextMapAnchor *catalog, int *state, cmeContextMap **copy, cmeContextAnchor *next);
